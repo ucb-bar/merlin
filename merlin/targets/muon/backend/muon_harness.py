@@ -1154,6 +1154,10 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
+    from . import muon_mx_abi as _mxabi
+    if _mxabi.is_native_mx_cb(cb):
+        raise _mxabi.NativeMxAbiError(
+            "native MX GEMM is a digest-bound full program, not an external pointer kernel")
     derived = args_from_cb(cb)
     if derived is None:
         return None
@@ -1166,6 +1170,15 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = 
     """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
     None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
     Inlines the *source* kernel (:func:`build_program`); operand order from :func:`args_from_cb`."""
+    # A compiler-native MX program already owns its operand staging. Validate that it is bound to this
+    # exact semantic ABI before the caller compiles it, and refuse any legacy golden/reference fields.
+    from . import muon_mx_abi as _mxabi
+    if _mxabi.is_native_mx_cb(cb):
+        _mxabi.bind_native_program(cb, kernel_fn_src)
+        if "int main" not in kernel_fn_src:
+            raise _mxabi.NativeMxAbiError("native MX emission did not produce a complete program")
+        return None
+
     # A block-scaled MX matmul (fp8/fp6/fp4): the emit entrypoint left a placeholder; bake the self-contained
     # MX-Gemmini co-model kernel from the golden-provided operand codes + block scales the runner attached.
     from . import muon_mx_codegen as _mx

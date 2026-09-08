@@ -345,9 +345,9 @@ def _emit_flash_kernel(mx: dict, out_name: str) -> str:
             f"#define FULL_ATTN2\n{src}")
 
 
-def emit_mx_kernel(mx: dict, out_name: str) -> str:
+def _emit_mx_kernel_program(mx: dict, out_name: str, *, provenance: str) -> str:
     """Render the self-contained MX kernel: the data header + the ``mxgemm<CFG>`` driver + OUT-protocol print
-    of the ``M x N`` top-left result. ``mx`` is the golden operand bundle (fmt / M / N / K / A_bytes / B_bytes
+    of the ``M x N`` top-left result. ``mx`` is the renderer operand bundle (fmt / M / N / K / A_bytes / B_bytes
     / SA / SB / lutA / lutB)."""
     if mx.get("flash"):
         # Fused MX flash-attention: wrap the proven radiance-kernels FULL_ATTN2 kernel, baking an fa_data.h
@@ -369,7 +369,7 @@ def emit_mx_kernel(mx: dict, out_name: str) -> str:
         "static const uint8_t C_lut[64][16] = {0};\n")
     unify = "static const uint8_t *A_in = &A_in_hw[0][0];" if fmt != "fp8" else ""
     prefix = _putchars(f"OUT {out_name} {rows} {cols}")
-    return f"""// @generated self-contained MX reference kernel ({fmt}); drives cyclotron MX-Gemmini co-model.
+    return f"""// @generated self-contained MX {provenance} kernel ({fmt}); drives the MX-Gemmini co-model.
 #include <stdint.h>
 #include <mu_schedule.h>
 #include <mu_intrinsics.h>
@@ -425,6 +425,24 @@ void mxgemm_entry(void *a, uint32_t tid, uint32_t th, uint32_t tb) {{
 
 int main() {{ mu_schedule(mxgemm_entry, nullptr, 2); return 0; }}
 """
+
+
+def emit_mx_kernel(mx: dict, out_name: str) -> str:
+    """Legacy public-capsule reference path, sourced from a golden operand bundle."""
+    return _emit_mx_kernel_program(mx, out_name, provenance="reference")
+
+
+def emit_native_mxfp8_kernel(cb: dict) -> str:
+    """Emit a compiler-selected native v1 GEMM from the command buffer's validated operand ABI.
+
+    The native entry point cannot consume ``mx_operands`` and deliberately does not call the legacy
+    :func:`emit_mx_kernel`; only compiler-derived codes/scales reach the shared low-level renderer.
+    """
+    from . import muon_mx_abi as _abi
+
+    abi = _abi.validate_native_mxfp8_gemm_abi(cb)
+    source = _emit_mx_kernel_program(_abi.emitter_bundle(abi), str(abi["output"]), provenance="compiler-native")
+    return f"{_abi.PROGRAM_MARKER}{abi['abi_sha256']}\n{source}"
 
 
 def mx_output_name(cb: dict) -> str:

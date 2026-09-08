@@ -52,6 +52,10 @@ def test_a_scale_operand_declares_what_it_scales_and_by_how_much():
     props = _capsule_input_props()
     assert props["scale_of"]["type"] == "string", "the pairing must be explicit, not positional"
     assert props["block"]["type"] == "integer" and props["block"]["minimum"] == 1
+    cb_props = _cb_tensor_props()
+    assert cb_props["scale_of"]["type"] == "string", \
+        "the semantic command buffer must preserve the explicit pairing"
+    assert cb_props["block"]["type"] == "integer" and cb_props["block"]["minimum"] == 1
 
 
 def test_a_declared_scale_operand_validates():

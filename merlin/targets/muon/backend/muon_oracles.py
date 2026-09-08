@@ -66,6 +66,7 @@ def _adapter(simulator: str) -> Callable:
         # LLVM + RTL-derived transcode) and record which toolchain produced the graded ELF, so the experiment
         # measures fork-free coverage and never hides a fork fallback (MERLIN_MUON_FORKFREE_ONLY fails closed).
         from . import muon_harness as _mh
+        from . import muon_mx_abi as _mxabi
         from . import muon_mx_codegen as _mx
         target = cb.get("target", "radiance")
         # A block-scaled MX capsule is graded on the HARNESS's reference MX kernel, whatever the artifact.
@@ -96,7 +97,12 @@ def _adapter(simulator: str) -> Callable:
         # NOT block-scaled at all, while `mxfp8` is exactly `mx_block`/`block_e8m0` -- so the string test
         # was matching the wrong formats in both directions.
         _mxprog = None
-        if cb.get("mx_operands"):
+        native_mx = _mxabi.is_native_mx_cb(cb)
+        if native_mx:
+            # The native compiler program is the subject under test.  Validate its ABI binding before
+            # even considering the legacy golden-backed substitution below; mixed provenance is an error.
+            _mxabi.bind_native_program(cb, kernel_src)
+        elif cb.get("mx_operands"):
             try:
                 _mxprog = _mx.emit_mx_kernel(cb["mx_operands"], _mx.mx_output_name(cb))
             except Exception as _mxe:  # noqa: BLE001 — emitter fails closed (e.g. fp6/fp4 flash)
@@ -104,7 +110,9 @@ def _adapter(simulator: str) -> Callable:
                 # cannot use, which is the failure this whole branch exists to prevent. Record why.
                 _mxprog = None
                 _mx_refusal = f"{type(_mxe).__name__}: {_mxe}"
-        if _mxprog is not None:
+        if native_mx:
+            elf, toolchain = muon.compile_for_oracle(kernel_src, workdir, target=target)
+        elif _mxprog is not None:
             _elf, _tc = muon.compile_for_oracle(_mxprog, workdir, target=target)
             elf, toolchain = _elf, f"mx-reference-kernel(not-the-submission;{_tc})"
         elif muon.is_mlir_artifact(kernel_src):

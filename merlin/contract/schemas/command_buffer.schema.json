@@ -115,6 +115,16 @@
           "preload_b64": {
             "type": "string",
             "description": "harness-attached input bytes (base64); not emitted by the package"
+          },
+          "scale_of": {
+            "type": "string",
+            "minLength": 1,
+            "description": "For role=scale, the element tensor whose blocks this stream scales."
+          },
+          "block": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "For role=scale, the number of elements sharing one scale code."
           }
         },
         "additionalProperties": false

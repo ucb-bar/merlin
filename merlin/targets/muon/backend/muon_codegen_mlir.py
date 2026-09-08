@@ -1205,6 +1205,8 @@ def emit_kernel_mlir(
     target: str | None = None,
     selection_contract: Mapping[str, Any] | None = None,
     hardware_contract: Mapping[str, Any] | None = None,
+    actual_tensors: Mapping[str, Any] | None = None,
+    model_quantization: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> str:
     """Emit the LLVM-dialect MLIR kernel module for ``cb``. Dispatches on the command-buffer op: a single fp32
     matmul commit (the SIMT gemm corpus, optional relu/bias epilogue), attention scores ``Q@K^T``
@@ -1236,9 +1238,28 @@ def emit_kernel_mlir(
         if selected_family is None:
             raise MuonMlirCodegenError(
                 "semantic kernel family selection refused every declared strategy")
-        if selected_family not in {"kernels/bias_add", "kernels/layernorm"}:
+        if selected_family not in {
+                "kernels/bias_add", "kernels/layernorm", "kernels/gemm_mxgemmini"}:
             raise MuonMlirCodegenError(
                 f"selected family {selected_family!r} has no registered Muon MLIR emitter")
+    if (actual_tensors is not None or model_quantization is not None) and selected_family is None:
+        raise MuonMlirCodegenError(
+            "native MX operands require contract-driven semantic family selection")
+
+    # The first compiler-native MX family emits a complete co-model program rather than LLVM dialect:
+    # the custom mesh instructions and its operand staging live below the stock LLVM boundary.  Unlike
+    # the legacy placeholder below, the program is generated now from ordinary actual tensors or explicit
+    # model quantization metadata and digest-bound to a command-buffer-owned ABI.
+    if selected_family == "kernels/gemm_mxgemmini":
+        from . import muon_mx_abi as _mxabi
+        from . import muon_mx_codegen as _mx
+        try:
+            _mxabi.attach_native_mxfp8_gemm_abi(
+                cb, actual_tensors=actual_tensors, model_quantization=model_quantization,
+                selected_family=selected_family)
+            return _mx.emit_native_mxfp8_kernel(cb)
+        except _mxabi.NativeMxAbiError as exc:
+            raise MuonMlirCodegenError(f"cannot emit native MX GEMM: {exc}") from exc
     env = materialize_inputs(cb)
     sym = f"{target}_kernel"
 

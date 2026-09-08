@@ -160,8 +160,16 @@ def emit_interface_mlir(cb: dict[str, Any]) -> str:
 
     for name, spec in tensors.items():
         role = spec.get("role", "input")
+        tensor_attrs = {"name": name, "role": role}
+        if role == "scale":
+            # Preserve the semantic pairing. A name suffix is not an ABI and cannot safely identify
+            # which element tensor a scale stream belongs to.
+            if "scale_of" in spec:
+                tensor_attrs["scale_of"] = spec["scale_of"]
+            if "block" in spec:
+                tensor_attrs["block"] = spec["block"]
         lines.append(f'  %{name} = merlin_iface.tensor '
-                     f'{{name = "{name}", role = "{role}"}} : {_tensor_type(spec)}')
+                     f'{_fmt_attrs(tensor_attrs)} : {_tensor_type(spec)}')
 
     acc_t = _acc_dtype(cb)
     # remember each leaf/handle type for printing operand type lists
@@ -618,8 +626,13 @@ def parse_interface_mlir(text: str) -> dict[str, Any]:
         if mnem == "tensor":
             name = attrs.get("name", result)
             shape, dtype = _shape_dtype(_last_type(op["tail"]))
-            cb["tensors"][name] = {"shape": shape, "dtype": dtype,
-                                   "role": attrs.get("role", "input")}
+            tensor_spec = {"shape": shape, "dtype": dtype,
+                           "role": attrs.get("role", "input")}
+            if tensor_spec["role"] == "scale":
+                for key in ("scale_of", "block"):
+                    if key in attrs:
+                        tensor_spec[key] = attrs[key]
+            cb["tensors"][name] = tensor_spec
         elif mnem == "resident_pack":
             cb["commands"].append({"opcode": "RES_PACK",
                                    "operands": {"src": srcs[0], "dst": result},

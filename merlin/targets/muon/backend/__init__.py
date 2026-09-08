@@ -41,7 +41,7 @@ _LAZY_SUBMODULES = (
     "muon_codegen", "muon_codegen_mlir", "muon_bsp", "muon_link", "muon_harness",
     "muon_oracles", "muon_introspect", "gen_muon_digest", "muon_capsule_runner",
     "muon_mx_codegen", "muon_result_page",
-    "muon_kernel_selection",
+    "muon_kernel_selection", "muon_mx_abi",
 )
 
 

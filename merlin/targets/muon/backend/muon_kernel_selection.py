@@ -327,6 +327,21 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     tensors = cb.get("tensors")
     if not isinstance(commands, list) or not isinstance(tensors, Mapping):
         raise KernelSelectionContractError("command buffer has no commands/tensors selection facts")
+    # An E4M3 spelling alone does not imply microscaling.  Admit this route only when the semantic
+    # buffer also carries explicit scale operands; the native ABI extractor then validates their
+    # relationships, layout, and the complete single-GEMM command shape.
+    has_scale = any(isinstance(spec, Mapping)
+                    and str(spec.get("role") or "").lower() == "scale"
+                    for spec in tensors.values())
+    has_matmul = any(isinstance(command, Mapping)
+                     and str(command.get("opcode") or "").upper() in {"MATMUL", "MATMUL_RESIDENT"}
+                     for command in commands)
+    if has_scale and has_matmul:
+        from .muon_mx_abi import NativeMxAbiError, semantic_request
+        try:
+            return KernelRequest.from_mapping(semantic_request(cb))
+        except NativeMxAbiError as exc:
+            raise KernelSelectionContractError(f"invalid native MX GEMM: {exc}") from exc
     if (len(commands) == 2 and all(isinstance(command, Mapping) for command in commands)
             and all(str(command.get("opcode") or "").upper() == "RMSNORM"
                     for command in commands)):
