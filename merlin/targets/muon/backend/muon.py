@@ -228,6 +228,28 @@ def soc_fuse_dir() -> Path:
     return radiance_kernels_root() / "soc"
 
 
+def soc_fuse_offset() -> int:
+    """Muon-local to fused-SoC address delta, parsed from the active fuse helper.
+
+    The offset is part of the helper's executable ABI, not a property callers may
+    restate.  Parsing its assignment keeps result-page readback aligned with the
+    exact script that will build the carrier and fails closed if that ABI vanishes.
+    """
+    script = soc_fuse_dir() / "fuse_rv32_into_rv64.sh"
+    if not script.is_file():
+        raise MuonUnavailable(f"SoC fuse helper not found at {script}")
+    for line in script.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text.startswith("OFFSET_HEX="):
+            continue
+        value = text.partition("=")[2].split("#", 1)[0].strip()
+        try:
+            return int(value, 0)
+        except ValueError as exc:
+            raise MuonUnavailable(f"invalid OFFSET_HEX in SoC fuse helper: {value!r}") from exc
+    raise MuonUnavailable(f"SoC fuse helper {script} declares no OFFSET_HEX mapping")
+
+
 def rv64_cross_prefix() -> str | None:
     """Toolchain prefix (``…/riscv64-unknown-elf``) for the rv64 SoC-carrier fuse. ``MERLIN_MUON_RV64_CROSS``
     overrides; else the chipyard ``riscv-tools`` bin if present; else a bare prefix if it is on PATH.
@@ -271,7 +293,8 @@ def _facts_target() -> str:
     return _T
 
 
-def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
+def fuse_soc_elf(muon_elf: Path, work: Path, *, carrier_source: Path | None = None,
+                 carrier_cflags: str | None = None) -> Path:
     """Fuse a bare rv32 Muon ELF into the rv64 'SoC' carrier ELF the Verilator RTL harness loads
     (radiance-kernels ``soc/fuse_rv32_into_rv64.sh``): the muon PT_LOADs are mirrored at +0x1_0000_0000
     inside a spinning rv64 image, which cyclotron's ``copy_elf`` auto-detects ("CPU-fused ELF") and
@@ -290,6 +313,13 @@ def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     env = dict(os.environ)
     env.update(CROSS64=cross, RV32_ELF=str(muon_elf), OUT=str(out),
                RV64_START=str(start_s), RV64_MAIN=str(main_c))
+    if carrier_source is not None:
+        carrier = Path(carrier_source)
+        if not carrier.is_file():
+            raise MuonUnavailable(f"runner-owned SoC carrier missing at {carrier}")
+        env["RV64_MAIN"] = str(carrier)
+        if carrier_cflags:
+            env["RV64_CFLAGS"] = carrier_cflags
     # RUNNER-OWNED CARRIER (opt-in). The stock carrier spins, so nothing on the chip ever drives the
     # console: the kernel's OUT/DONE bytes go to the Vortex IO_COUT aperture, which this SoC maps no
     # device at, and Rocket -- the only master that reaches serial@10020000 -- does nothing. Swapping in
@@ -297,7 +327,8 @@ def fuse_soc_elf(muon_elf: Path, work: Path) -> Path:
     # Gated on MERLIN_MUON_SOC_CARRIER so a normal grade stays byte-identical until it is asked for, and
     # the UART base is DERIVED from the target's elaborated console fact (never a literal): no fact, no
     # carrier -- fail closed rather than guess an address.
-    if os.environ.get("MERLIN_MUON_SOC_CARRIER", "").strip().lower() in ("1", "true", "yes", "on"):
+    if carrier_source is None and os.environ.get("MERLIN_MUON_SOC_CARRIER", "").strip().lower() in (
+            "1", "true", "yes", "on"):
         base = console_base()
         if base is None:
             raise MuonUnavailable(
@@ -726,7 +757,8 @@ def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
 
 
 def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
-                          *, target: str = "radiance", num_warps: int = 1) -> Path:
+                          *, target: str = "radiance", num_warps: int = 1,
+                          result_page: bool = False) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
     COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
     gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
@@ -743,8 +775,16 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     from merlin.targetgen import build_cache as _bc
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
-    _key = _build_cache_key("muon-mlir-forkfree", target,
-                            {"mlir": lowered_mlir_text, "cb": cb, "num_warps": num_warps})
+    # Private oracle payloads affect only the trusted rv64 grading carrier, not
+    # the submitted rv32 kernel/harness. Never let a golden (or a negative-control
+    # perturbation) rebuild an identical Muon ELF. In particular this preserves
+    # the exact legacy key when result_page=False.
+    _kernel_cb = {key: value for key, value in cb.items()
+                  if not str(key).startswith("_oracle_")}
+    _cache_inputs = {"mlir": lowered_mlir_text, "cb": _kernel_cb, "num_warps": num_warps}
+    if result_page:
+        _cache_inputs["result_page"] = True
+    _key = _build_cache_key("muon-mlir-forkfree", target, _cache_inputs)
     _hit = _bc.reuse(work, _key)
     if _hit is not None:
         return _hit
@@ -771,7 +811,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         raise MuonError(f"stock rv32 compile of the lowered MLIR failed:\n{cc.stderr[-2000:]}")
 
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
-    harness = muon_harness.external_main_from_cb(cb, kernel_symbol=kernel_symbol, model=model)
+    harness = muon_harness.external_main_from_cb(
+        cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page)
     if harness is None:
         raise MuonError("could not derive harness operands from the command buffer: "
                         + muon_harness.why_no_operands(cb))
@@ -959,7 +1000,8 @@ def _run_vcs(elf: Path, timeout: int) -> tuple[str, int | None]:
 #: Substrings the RTL completion grade depends on. They must survive console truncation WHEREVER they
 #: appear in the file — the perf report's ``Cycles:`` line is near the start of the epilogue while the
 #: watchdog's verdict is at the very end, so a pure tail window can drop the one that decides the grade.
-_GSIM_MARKERS = ("Cycles:", "Timeout exceeded", "FINISHED: cycles=", "finished execution")
+_GSIM_MARKERS = ("Cycles:", "Timeout exceeded", "FINISHED: cycles=", "finished execution",
+                 "[gsim-probe final] rocket_pc=")
 
 
 def _read_console(path: Path, *, tail_bytes: int | None = None) -> tuple[str, int, bool]:

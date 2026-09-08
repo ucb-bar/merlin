@@ -71,6 +71,33 @@ class Harness:
     Empty when every operand fit under :data:`_BLOB_MIN_ELEMS`."""
     source: str
     blobs: dict[str, bytes]
+    results: list[dict] | None = None
+
+
+def _result_declarations(outputs: list[TensorArg]) -> tuple[list[str], list[dict]]:
+    """Linker-visible result buffers and READY/ACK status for RTL readback."""
+    from . import muon_result_page as _rp
+
+    specs = _rp.result_specs(outputs)
+    declarations = [
+        f'volatile uint32_t {_rp.STATUS_SYMBOL}[8] '
+        '__attribute__((used,section(".data.merlin_result"),aligned(64)));'
+    ]
+    for spec in specs:
+        declarations.append(
+            f'volatile uint32_t {spec["symbol"]}[{spec["elements"]}] '
+            '__attribute__((used,section(".data.merlin_result"),aligned(64)));')
+    return declarations, specs
+
+
+def _result_publish_lines(total: int) -> list[str]:
+    from . import muon_result_page as _rp
+
+    return [f"  {_rp.STATUS_SYMBOL}[1]={int(total)}u;",
+            '  __asm__ volatile("fence rw,rw" ::: "memory");',
+            f"  {_rp.STATUS_SYMBOL}[0]=0x{_rp.RESULT_READY:08x}u;",
+            '  __asm__ volatile("fence rw,rw" ::: "memory");',
+            f"  while({_rp.STATUS_SYMBOL}[2]!=0x{_rp.RESULT_ACK:08x}u){{}}"]
 
 
 def _blob_bytes(arg: TensorArg) -> bytes:
@@ -133,7 +160,7 @@ static void _pf(float x){{if(x<0.0f){{_pc('-');x=-x;}}uint32_t ip=(uint32_t)x;fl
 
 
 def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[TensorArg],
-                  *, kernel_symbol: str, model) -> str:
+                  *, kernel_symbol: str, model, result_page: bool = False) -> str:
     """Assemble the self-contained C program: helpers + the agent's kernel function + a ``main`` that
     embeds every input, calls ``kernel_symbol(<inputs>, <outputs>)``, and prints ``OUT <name> <r> <c> ...``
     for each output followed by ``DONE``. ``args`` is the kernel's input arguments in ABI order (weight,
@@ -143,19 +170,26 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     # reassemble-after-transcode path. Prepended to the agent's definition (which starts with its return
     # type), yielding e.g. `static inline __attribute__((always_inline)) void radiance_kernel(...)`.
     kernel_inlined = "static inline __attribute__((always_inline)) " + kernel_fn_src.strip()
-    body: list[str] = [_render_helpers(model).strip(), "", kernel_inlined, "", "int main(void){",
-                       "  if(_hid()!=0)return 0;"]
+    declarations, result_specs = _result_declarations(outputs) if result_page else ([], [])
+    body: list[str] = [_render_helpers(model).strip(), "", kernel_inlined, ""]
+    body += declarations + ([""] if declarations else [])
+    body += ["int main(void){", "  if(_hid()!=0)return 0;"]
     call_ptrs: list[str] = []
     for a in args:
         arr = f"_in_{a.name}"
         body += _emit_fill(arr, a)
         call_ptrs.append(f"(float*){arr}" if a.dtype == "f32" else f"(int32_t*){arr}")
-    for o in outputs:
+    for index, o in enumerate(outputs):
         arr = f"_out_{o.name}"
-        body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
+        if result_page:
+            arr = result_specs[index]["symbol"]
+        else:
+            body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
         call_ptrs.append(f"(float*){arr}" if o.dtype == "f32" else f"(int32_t*){arr}")
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in outputs:
+        if result_page:
+            continue
         arr = f"_out_{o.name}"
         body.append(f'  _ps("OUT {o.name} {o.rows} {o.cols}");')
         if o.dtype == "f32":
@@ -164,6 +198,9 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
             body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pu({arr}[i]);}}")
         body.append("  _pc('\\n');")
     body.append('  _ps("DONE\\n");')
+    if result_page:
+        body.pop()  # remove the console-only DONE marker
+        body += _result_publish_lines(sum(spec["elements"] for spec in result_specs))
     body.append("  return 0;")
     body.append("}")
     return "\n".join(body) + "\n"
@@ -211,10 +248,15 @@ def _decode_preload(tspec: dict | None) -> list[float] | None:
              "i32": "<i4", "int32": "<i4", "f32": "<f4", "float32": "<f4"}.get(dt)
     if codec is not None:
         arr = np.frombuffer(raw, dtype=codec)
-    else:                                            # fp8 / bf16 / fp16 via the derived float codec
+    elif dt in ("fp16", "f16", "float16"):
+        arr = np.frombuffer(raw, dtype="<f2").astype(np.float32)
+    elif dt in ("bf16", "bfloat16"):
+        words = np.frombuffer(raw, dtype="<u2").astype(np.uint32) << 16
+        arr = words.view(np.float32)
+    else:                                            # fp8 via the shared float-format codec
         try:
-            from merlin.targetgen.rtl.fp8_codec import decode_bytes as _fp_decode
-            arr = np.asarray(_fp_decode(raw, dt))
+            from merlin.runtime.fp8_formats import _decode as _fp_decode
+            arr = np.asarray(_fp_decode(np.frombuffer(raw, dtype=np.uint8), dt))
         except Exception as e:  # noqa: BLE001 — present operand we cannot decode: fail closed
             raise ValueError(f"injected operand of dtype {dt!r} has no decoder") from e
     return [float(x) for x in np.asarray(arr).reshape(-1)]
@@ -908,7 +950,8 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
 
 
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
-                               *, kernel_symbol: str, model) -> Harness:
+                               *, kernel_symbol: str, model,
+                               result_page: bool = False) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
@@ -926,20 +969,26 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         arr = f"_in_{a.name}"
         inner += _emit_input(arr, a, blobs)
         call_ptrs.append(f"(const void*){arr}")
-    for o in out_args:
+    result_decls, result_specs = _result_declarations(out_args) if result_page else ([], [])
+    for index, o in enumerate(out_args):
         arr = f"_out_{o.name}"
-        inner += _emit_output(arr, o, statics)
+        if result_page:
+            arr = result_specs[index]["symbol"]
+        else:
+            inner += _emit_output(arr, o, statics)
         call_ptrs.append(f"(void*){arr}")
 
     # Blob and .bss symbols are file-scope, so they must be declared before main.
     externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)]
     body: list[str] = [_render_helpers(model).strip(), ""]
-    body += externs + statics + ([""] if (externs or statics) else [])
+    body += externs + statics + result_decls + ([""] if (externs or statics or result_decls) else [])
     body += [f"extern void {kernel_symbol}({ptrs});", "",
              "int main(void){", "  if(_hid()!=0)return 0;"]
     body += inner
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
+        if result_page:
+            continue
         arr = f"_out_{o.name}"
         body.append(f'  _ps("OUT {o.name} {o.rows} {o.cols}");')
         if o.dtype == "f32":
@@ -947,8 +996,13 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         else:
             body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pu({arr}[i]);}}")
         body.append("  _pc('\\n');")
-    body += ['  _ps("DONE\\n");', "  return 0;", "}"]
-    return Harness(source="\n".join(body) + "\n", blobs=blobs)
+    if result_page:
+        body += _result_publish_lines(sum(spec["elements"] for spec in result_specs))
+    else:
+        body.append('  _ps("DONE\\n");')
+    body += ["  return 0;", "}"]
+    return Harness(source="\n".join(body) + "\n", blobs=blobs,
+                   results=result_specs if result_page else None)
 
 
 
@@ -1065,7 +1119,8 @@ def why_no_operands(cb: dict) -> str:
     return (f"operand shapes could not be reduced to the 1-D/2-D form this reference harness builds "
             f"(opcodes {sorted(set(ops))} were all modelled)")
 
-def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> Harness | None:
+def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
+                          result_page: bool = False) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1073,10 +1128,11 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model) -> Harness | N
     if derived is None:
         return None
     in_args, out_args = derived
-    return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model)
+    return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model,
+                                      result_page=result_page)
 
 
-def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
+def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = False) -> str | None:
     """Build the self-contained harness program for a capsule directly from its COMMAND BUFFER, or return
     None when the artifact is already a full program (has ``main``) — the caller then compiles it directly.
     Inlines the *source* kernel (:func:`build_program`); operand order from :func:`args_from_cb`."""
@@ -1095,4 +1151,4 @@ def program_from_cb(cb: dict, kernel_fn_src: str, model) -> str | None:
         return None
     in_args, out_args = derived
     return build_program(kernel_fn_src, in_args, out_args, kernel_symbol=_kernel_symbol(kernel_fn_src),
-                         model=model)
+                         model=model, result_page=result_page)

@@ -158,6 +158,52 @@ def test_float_run_capsule_grades_fail_on_mismatch(tmp_path, monkeypatch):
     assert res["numeric"]["golden_source"] == "specir_refmodel_fp8_bf16"
 
 
+@pytest.mark.parametrize("onboard_status", ["pass", "fail"])
+def test_float_run_capsule_accepts_declared_result_page_verdict(
+        onboard_status, tmp_path, monkeypatch):
+    """An RTL carrier can grade memory without fabricating captured outputs.
+
+    This exercises both halves of the production seam: run_capsule attaches the
+    post-submission expected output/policy to the command buffer, and consumes
+    the adapter's explicit onboard verdict even though ``outputs`` is empty.
+    """
+    seen = []
+    cb = _stub_front_half(monkeypatch)
+    cap = load_capsule(ATLAS_AT2, contract="merlin/contract")
+    gold = CG.golden(cap)
+
+    def onboard(bound_cb, llvm_text, workdir, timeout):
+        seen.append(bound_cb)
+        assert bound_cb["_oracle_expected_outputs"] == gold
+        assert bound_cb["_oracle_numeric_policy"]["compare"] == "tolerance_float"
+        return {
+            "outputs": {},
+            "cycles": None,
+            "oracle": {"kind": "rtl-result-page-test", "derived_from_rtl": True},
+            "numeric_verdict": {
+                "status": onboard_status,
+                "elements_checked": 32 * 32,
+                "policy": bound_cb["_oracle_numeric_policy"],
+                "witness": "final_rocket_pc",
+            },
+        }
+
+    tiers = [tier for tier in cap.get("required_oracle_tiers", []) if tier not in ("L0", "L1")]
+    result = CR.run_capsule(
+        cap, "unused-package", runs_root=tmp_path, run_id=f"AT2_onboard_{onboard_status}",
+        config=_atlas_config(cap), oracle_adapters={tier: onboard for tier in tiers},
+    )
+
+    assert seen and all(item is not cb for item in seen)
+    assert "_oracle_expected_outputs" not in cb
+    assert "_oracle_numeric_policy" not in cb
+    assert result["status"] == onboard_status
+    assert result["numeric"]["status"] == onboard_status
+    assert result["numeric"]["elements_checked"] == 32 * 32
+    assert result["numeric"]["witness"] == "final_rocket_pc"
+    schemas.validate(result, "capsule_result", contract="merlin/contract")
+
+
 def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
     """A required RTL oracle that is absent -> incomplete, never pass — even though the integer L0/L1
     floor is legitimately skipped for the float datapath."""
@@ -195,13 +241,13 @@ def test_no_oracle_smoke_is_not_gradeable_never_pass(tmp_path, monkeypatch):
 
 def test_atlas_oracle_routes_to_program_oracle():
     ad = CR.oracle_adapters("atlas")
-    assert {"L2", "L3"} <= set(ad)                              # fast functional loop + cycle-exact cosim
+    assert {"L2", "L3"} <= set(ad)                              # model loop + elaborated-RTL cert
     assert ad["L2"].__module__ == "merlin.targetgen.program_oracle"
     assert ad["L3"].__module__ == "merlin.targetgen.program_oracle"
     if "L4" in ad:                                              # additive RTL-certified verilator tier
         assert ad["L4"].__module__ == "merlin.targetgen.program_oracle"
-    assert "program_functional_adapter" in ad["L2"].__qualname__   # fast per-round tier
-    assert "program_oracle_adapter" in ad["L3"].__qualname__       # gold checkpoint tier
+    assert "program_oracle_adapter" in ad["L2"].__qualname__       # model-backed numeric loop
+    assert "program_verilator_adapter" in ad["L3"].__qualname__    # elaborated-RTL certification
 
 
 def test_external_backend_requires_model_ext_no_target_default(monkeypatch):

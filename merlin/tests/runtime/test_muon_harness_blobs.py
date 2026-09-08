@@ -14,6 +14,8 @@ supplies and the kernel reads in place -- no initializer, no copy, no stack.
 These tests pin all three properties that matter: small operands are untouched, large ones stop being
 emitted as text, and the linked result still computes the right answer.
 """
+import base64
+
 import numpy as np
 import pytest
 
@@ -59,6 +61,24 @@ def _matmul_cb(n: int, a: np.ndarray, w: np.ndarray) -> dict:
             "B": {"values": w.ravel().tolist()},
         },
     }
+
+
+@pytest.mark.parametrize(("dtype", "raw"), [
+    ("fp16", bytes.fromhex("003c00c00038")),
+    ("bf16", bytes.fromhex("803f00c0003f")),
+])
+def test_canonical_16bit_preloads_decode_by_their_declared_format(dtype, raw):
+    """FP16 and BF16 share a width, not an encoding.
+
+    The production result-page replay consumes the capsule's canonical bytes;
+    treating either format as generic FP8 changes the submitted stimulus while
+    leaving the output comparison apparently well formed.
+    """
+    decoded = H._decode_preload({
+        "dtype": dtype,
+        "preload_b64": base64.b64encode(raw).decode("ascii"),
+    })
+    assert decoded == [1.0, -2.0, 0.5]
 
 
 def test_small_operand_stays_element_wise():

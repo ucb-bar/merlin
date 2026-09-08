@@ -263,15 +263,43 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             raise muon.MuonUnavailable(f"GSIM oracle unavailable: {_why}")
         emu = str(_gsim.emulator_path(target, env_var=GSIM_EMU_ENV))
         from . import muon_harness as _mh
+        from . import muon_result_page as _rp
         t0 = time.perf_counter()
+        expected = cb.get("_oracle_expected_outputs")
+        numeric_policy = cb.get("_oracle_numeric_policy")
+        numeric_readback = isinstance(expected, dict) and bool(expected)
+        derived = _mh.args_from_cb(cb) if numeric_readback else None
+        if numeric_readback and derived is None:
+            raise muon.MuonUnavailable(
+                "GSIM numeric readback requested but the harness cannot derive declared outputs")
         # Build the graded ELF identically to the Verilator/cyclotron adapters (fork-free thesis path when
         # the artifact is LLVM-dialect MLIR; otherwise the runner-owned harness + oracle compile).
         if muon.is_mlir_artifact(kernel_src):
-            elf, toolchain = muon.compile_mlir_forkfree(kernel_src, cb, workdir, target=target), "fork-free"
+            elf, toolchain = muon.compile_mlir_forkfree(
+                kernel_src, cb, workdir, target=target, result_page=numeric_readback), "fork-free"
         else:
-            program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
+            program = _mh.program_from_cb(
+                cb, kernel_src, muon._model_for(target), result_page=numeric_readback)
+            if numeric_readback and program is None:
+                raise muon.MuonUnavailable(
+                    "GSIM numeric readback cannot instrument an artifact that owns its main program")
+            program = program or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
-        soc = muon.fuse_soc_elf(Path(elf), Path(workdir))
+        result_manifest = outcome_symbols = None
+        if numeric_readback:
+            result_manifest = _rp.manifest_from_elf(
+                elf, derived[1], soc_offset=muon.soc_fuse_offset())
+            import json
+            manifest_path = Path(workdir) / "result_page.json"
+            manifest_path.write_text(json.dumps(result_manifest, indent=2) + "\n", encoding="utf-8")
+            carrier = Path(workdir) / "result_carrier.c"
+            carrier.write_text(_rp.render_carrier(result_manifest, expected, numeric_policy),
+                               encoding="utf-8")
+            soc = muon.fuse_soc_elf(Path(elf), Path(workdir), carrier_source=carrier)
+            outcome_symbols = _rp.symbol_addresses(
+                soc, (_rp.PASS_SYMBOL, _rp.FAIL_SYMBOL))
+        else:
+            soc = muon.fuse_soc_elf(Path(elf), Path(workdir))
         t1 = time.perf_counter()
         maxcyc = os.environ.get("MERLIN_MUON_GSIM_MAXCYCLES", "2000000")
 
@@ -311,6 +339,39 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             raise muon.MuonUnavailable(
                 f"GSIM emu exited nonzero ({completed.returncode}); refusing completion markers from "
                 f"a failed process. tail:\n{console[-600:]}")
+        if numeric_readback:
+            outcome = _rp.outcome_from_console(console, outcome_symbols)
+            if outcome is None:
+                raise muon.MuonUnavailable(
+                    "GSIM numeric result page was instrumented but Rocket's final PC reached neither "
+                    f"{_rp.PASS_SYMBOL} nor {_rp.FAIL_SYMBOL}; the cycle cap is not a numeric verdict. "
+                    f"tail:\n{console[-600:]}")
+            elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])
+            return {
+                "outputs": {},
+                "cycles": None,
+                "oracle": {"kind": "rtl_gsim_muon_numeric", "derived_from_rtl": True,
+                           "fidelity": "elaborated_rtl"},
+                "console": console,
+                "console_spool": {"path": str(log), "bytes_on_disk": console_bytes,
+                                  "truncated": console_truncated,
+                                  "markers_preserved": list(muon._GSIM_MARKERS)},
+                "toolchain": toolchain,
+                "timing": _timing(t1 - t0, t2 - t1),
+                "gflops": None,
+                "pct_fp_peak": None,
+                "numeric_verdict": {
+                    "status": outcome,
+                    "elements_checked": elements,
+                    "policy": dict(numeric_policy or {}),
+                    "witness": "final_rocket_pc",
+                    "pass_symbol": f"0x{outcome_symbols[_rp.PASS_SYMBOL]:x}",
+                    "fail_symbol": f"0x{outcome_symbols[_rp.FAIL_SYMBOL]:x}",
+                },
+                "result_page": result_manifest,
+                "bounded_observation": {"max_cycles": int(maxcyc),
+                                        "performance_measurement": False},
+            }
         # GSIM completion contract (the radiance kernels self-verify against their embedded golden, then
         # go idle on PASS or spin on FAIL):
         #   PASS  => the GPUResetAggregator's stopSim (GPU idle for 1k cycles) fires, which the emitted

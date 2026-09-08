@@ -218,6 +218,33 @@ def test_the_mlir_path_returns_a_hit_rather_than_rebuilding(muon, tmp_path, monk
 
     monkeypatch.setattr(_tc, "mlir_bin",
                         lambda *a, **k: pytest.fail("the toolchain was invoked despite a cache hit"))
-    got = muon.compile_mlir_forkfree("module {}", {}, tmp_path / "fresh", target="radiance",
-                                     num_warps=1)
+    # Private grading payload must neither perturb the old result_page=False key
+    # nor become part of the submitted-kernel identity.
+    oracle_view = {
+        "_oracle_expected_outputs": {"Y0": [[123.0]]},
+        "_oracle_numeric_policy": {"compare": "tolerance_float", "atol": 0.1},
+    }
+    got = muon.compile_mlir_forkfree(
+        "module {}", oracle_view, tmp_path / "fresh", target="radiance", num_warps=1)
     assert got is not None and got.read_bytes().endswith(b"prebuilt")
+
+
+def test_result_page_kernel_key_ignores_trusted_golden(muon, tmp_path, monkeypatch):
+    """The result-page ABI changes the harness, but changing only its trusted
+    Rocket-side answer must reuse the same submitted Muon ELF."""
+    from merlin.targetgen.contract import toolchain as _tc
+
+    key = muon._build_cache_key(
+        "muon-mlir-forkfree", "radiance",
+        {"mlir": "module {}", "cb": {}, "num_warps": 1, "result_page": True})
+    assert key
+    work = tmp_path / "gen-rp"
+    _elf(work, "kernel.radiance.elf", b"result-page-prebuilt")
+    BC.store(key, work, "kernel.radiance.elf")
+    monkeypatch.setattr(
+        _tc, "mlir_bin",
+        lambda *a, **k: pytest.fail("trusted-golden change rebuilt the submitted kernel"))
+    got = muon.compile_mlir_forkfree(
+        "module {}", {"_oracle_expected_outputs": {"Y0": [[-999.0]]}},
+        tmp_path / "fresh-rp", target="radiance", result_page=True)
+    assert got.read_bytes().endswith(b"result-page-prebuilt")

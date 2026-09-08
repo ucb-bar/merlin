@@ -3830,7 +3830,6 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         direct_oracle_golden = independent_float or whole_program
         gsource = CG.golden_source(capsule, capsule_dir)
         gold = CG.golden(capsule, capsule_dir)
-
         # A linalg-on-tensors reference lowering names its output positionally ("out"); the readback base +
         # golden compare are keyed by the capsule's DECLARED output name (the merlin_iface grammar already
         # names it via the commit op). Rename the sole output leaf to the declared name so preload, kernel,
@@ -4213,7 +4212,15 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                         "partial": True,
                         "unavailable_reason": "adapter raised before returning the phase timing split"}
             try:
-                res = adapter(cb, llvm_text, paths.generated, timeout)
+                # Keep the compiler-owned command buffer canonical. The expected
+                # answer is private runner-to-oracle state, so attach it only to
+                # the shallow per-call view passed to an adapter. Besides avoiding
+                # later serialization leakage, this keeps trusted golden changes
+                # out of submitted-kernel build identities.
+                oracle_cb = dict(cb)
+                oracle_cb["_oracle_expected_outputs"] = gold
+                oracle_cb["_oracle_numeric_policy"] = policy
+                res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's
                 # bug, not a missing oracle — record it as a tier FAIL (not "unavailable") so the
@@ -4344,7 +4351,33 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                     timing_capability=res.get("timing_capability"), concurrency=_conc,
                     console_log=_clog, console_bytes=_cbytes, **_tel)
                 continue
-            if direct_oracle_golden:
+            onboard_numeric = res.get("numeric_verdict")
+            onrep = None
+            if onboard_numeric is not None:
+                # Some RTL SoCs cannot route accelerator console bytes to the
+                # host. Their trusted carrier grades a declared coherent result
+                # page and exports PASS/FAIL as a retained PC symbol instead.
+                # Do not fabricate `outputs` from the expected values: the
+                # carrier's explicit verdict is the evidence.
+                okt = onboard_numeric.get("status") == "pass"
+                if direct_oracle_golden and (mand or numeric.get("status") == "skipped"):
+                    _onboard_policy = onboard_numeric.get("policy", policy)
+                    if isinstance(_onboard_policy, dict):
+                        _onboard_policy = _onboard_policy.get("compare", "exact_int")
+                    numeric = {
+                        "status": "pass" if okt else "fail",
+                        "policy": _onboard_policy,
+                        "golden_source": gsource,
+                        "elements_checked": onboard_numeric.get("elements_checked"),
+                        "witness": onboard_numeric.get("witness"),
+                        "max_abs_diff": None,
+                        "max_rel_error": None,
+                        "mismatch_count": 0 if okt else None,
+                        "first_mismatch": None,
+                        "per_output": {},
+                        "missing_outputs": [],
+                    }
+            elif direct_oracle_golden:
                 # Direct full-program grade: oracle output vs the capsule's semantic golden.  For float
                 # this is the independent golden.yaml; for an explicit whole-program integer kernel it
                 # is the independently recomputed operation golden.  In both cases the measured answer
@@ -4401,7 +4434,7 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # reported as a numeric mismatch whose count cannot move -- measured at six wasted rounds.
             _absent_detail = ((_absent_output_detail(onrep, sim_name, gold, res["outputs"])
                                or _unwritten_output_detail(onrep, sim_name))
-                              if direct_oracle_golden else None)
+                              if direct_oracle_golden and onrep is not None else None)
             _mismatch_reason = _absent_detail or (
                 f"on {sim_name}, your emitted artifact does not compute the declared operation within tolerance"
                 if policy.get("compare") == "tolerance_float"

@@ -20,12 +20,12 @@ from merlin.common.paths import merlin_dir
 # ---- FAULT 1: oracle routing is contract-derived, never a silent gemmini fallback ----------------
 
 def test_bare_oracle_adapters_self_routes_from_the_contract():
-    # atlas (external_backend) -> the program-oracle LADDER: fast functional (L2, loop tier) + cycle-exact
-    # cosim (L3, gold checkpoint), NOT verilator; gemmini -> spike/verilator.
+    # atlas (external_backend) -> model-backed numeric L2 + elaborated-RTL L3 certification;
+    # gemmini -> spike/verilator.
     atlas = CR.oracle_adapters("atlas")
     assert {"L2", "L3"} <= set(atlas) <= {"L2", "L3", "L4"}   # program-oracle ladder (+ additive L4 vsim)
-    assert "program_functional_adapter" in getattr(atlas["L2"], "__qualname__", "")   # fast loop tier
-    assert "program_oracle_adapter" in getattr(atlas["L3"], "__qualname__", "")        # cosim gold tier
+    assert "program_oracle_adapter" in getattr(atlas["L2"], "__qualname__", "")
+    assert "program_verilator_adapter" in getattr(atlas["L3"], "__qualname__", "")
     if "L4" in atlas:                                          # RTL-certified verilator tier, if registered
         assert "program_verilator_adapter" in getattr(atlas["L4"], "__qualname__", "")
     gem = CR.oracle_adapters("gemmini")
@@ -47,7 +47,7 @@ def test_run_capsule_default_is_contract_routed_not_gemmini_default():
     ref = CR.oracle_adapters("atlas")
     assert set(a3) == set(ref)                           # same tier routing (closures differ by identity)
     assert {k: v.__qualname__ for k, v in a3.items()} == {k: v.__qualname__ for k, v in ref.items()}
-    assert "program_oracle" in getattr(a3["L3"], "__qualname__", "")
+    assert "program_verilator" in getattr(a3["L3"], "__qualname__", "")
     # default_adapters is retained for the explicitly-gemmini perf-bench, but is NOT the atlas route
     assert "program_oracle" not in getattr(CR.default_adapters()["L3"], "__qualname__", "")
 
