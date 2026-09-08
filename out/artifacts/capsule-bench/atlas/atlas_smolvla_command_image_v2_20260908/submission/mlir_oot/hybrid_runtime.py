@@ -12,6 +12,7 @@ import math
 
 from .frontend import _str_attr
 from .full_graph import _partition_class, _tensor_dtype, _tensor_shape
+from .host_semantics import HostSemanticLane, signature_sha256
 
 
 _PROVEN_ALIAS_SEMANTICS = frozenset({"view", "unsqueeze"})
@@ -179,6 +180,7 @@ def build_hybrid_schedule(
 ) -> dict:
     """Build a complete deterministic schedule skeleton and fail-closed readiness verdict."""
     regions, top_level_ops = _region_inventory(workload)
+    host_lane = HostSemanticLane(workload)
     by_region = {row["region_id"]: row for row in regions}
     observed_classes = Counter(row["category"] for row in regions)
     if dict(sorted(observed_classes.items())) != full_inventory["regions_by_partition_class"]:
@@ -216,20 +218,32 @@ def build_hybrid_schedule(
                 "reason": reason,
             })
         elif row["category"] == "host_required":
-            executable = row["region_id"] in bounded_host_regions
+            signature = host_lane.signature_for(row["region_id"])
+            executable = signature is not None
             if not executable:
                 missing_host.append(row["region_id"])
-            events.append({
+            event = {
                 "capture_op_index": row["first_op_index"],
                 "kind": "host_region",
                 "region_id": row["region_id"],
                 "semantic": row["semantic"],
-                "status": ("bounded_host_semantics_qualified" if executable
+                "status": ("extracted_host_semantics_qualified" if executable
                            else "missing_host_semantics"),
                 "executable": executable,
-                "reason": ("implemented by the retained bounded host bridge" if executable else
-                           row["category_reason"]),
-            })
+                "reason": (
+                    "complete pointwise signature accepted by the generic host lane"
+                    if executable else host_lane.rejections.get(
+                        row["region_id"], row["category_reason"]
+                    )
+                ),
+            }
+            if signature is not None:
+                # Bind the event to the complete extracted signature without
+                # duplicating tens of thousands of affine-map lines in the
+                # schedule.  The digest is over canonical JSON and is rebuilt
+                # from the source capture on every schedule generation.
+                event["operation_signature_sha256"] = signature_sha256(signature)
+            events.append(event)
 
     missing_partitions = []
     boundaries: list[dict] = []
@@ -322,7 +336,16 @@ def build_hybrid_schedule(
         "unqualified_accelerator_partitions": len(missing_partitions),
         "unrealized_layout_bridges": blocking_aliases,
     }
+    missing_host_by_semantic = Counter(by_region[region_id]["semantic"] for region_id in missing_host)
     runnable = not any(failures.values())
+    prior_bounded = sum(
+        row["category"] == "host_required" and row["region_id"] in bounded_host_regions
+        for row in regions
+    )
+    qualified_by_semantic = Counter(
+        program.semantic for region_id, program in host_lane.programs.items()
+        if by_region.get(region_id, {}).get("category") == "host_required"
+    )
     return {
         "schema": "atlas_hybrid_capture_schedule_v1",
         "status": "e2e_runnable" if runnable else "e2e_blocked_fail_closed",
@@ -336,7 +359,13 @@ def build_hybrid_schedule(
             "structural_accelerator_partitions": len(partition_plan["partitions"]),
             "qualified_accelerator_partitions": len(qualified_partitions),
             "semantic_host_required_regions": host_count,
-            "bounded_host_regions_implemented": host_count - len(missing_host),
+            "host_signature_regions_implemented": host_count - len(missing_host),
+            "host_signature_regions_by_semantic": dict(sorted(qualified_by_semantic.items())),
+            "previous_bounded_host_regions_implemented": prior_bounded,
+            "previous_missing_host_semantics": host_count - prior_bounded,
+            "missing_host_semantics_reduction": (
+                (host_count - prior_bounded) - len(missing_host)
+            ),
             "layout_bridge_candidates": alias_count,
             "proven_metadata_aliases": aliases["metadata_alias"],
             "strided_broadcast_bridges": aliases["strided_broadcast_requires_descriptor"],
@@ -345,6 +374,7 @@ def build_hybrid_schedule(
         },
         "fail_closed": {
             **failures,
+            "missing_host_semantics_by_semantic": dict(sorted(missing_host_by_semantic.items())),
             "missing_host_region_ids": missing_host,
             "unqualified_partition_ids": missing_partitions,
         },

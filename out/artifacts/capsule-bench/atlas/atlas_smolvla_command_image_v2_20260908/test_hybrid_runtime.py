@@ -7,7 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
+import pytest
+
+from submission.mlir_oot.frontend import parse_verified
 from submission.mlir_oot.hybrid_runtime import allocate_intervals
+from submission.mlir_oot.host_semantics import HostSemanticLane, UnsupportedHostRegion
 
 
 ROOT = Path(__file__).resolve().parent
@@ -16,6 +21,12 @@ PLAN_ROOT = ROOT / "whole_capture_plan"
 
 def load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def real_lane() -> HostSemanticLane:
+    capture = ROOT.parents[4] / "out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir"
+    return HostSemanticLane(parse_verified(capture.read_text(encoding="utf-8")))
 
 
 def test_interval_allocator_respects_inclusive_lifetimes_and_reuses_storage() -> None:
@@ -39,17 +50,29 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     assert schedule["status"] == "e2e_blocked_fail_closed"
     assert schedule["runnable_e2e"] is False
     assert schedule["coverage"] == {
-        "bounded_host_regions_implemented": 22,
+        "host_signature_regions_by_semantic": {
+            "add": 215,
+            "compare": 4,
+            "div": 56,
+            "dtype_cast": 472,
+            "mul": 536,
+            "select": 45,
+            "sub": 68,
+        },
+        "host_signature_regions_implemented": 1396,
         "layout_bridge_candidates": 2033,
         "materialized_copy_bridges": 112,
+        "missing_host_semantics_reduction": 1374,
         "partition_host_region_overlap": ["conv_0"],
+        "previous_bounded_host_regions_implemented": 22,
+        "previous_missing_host_semantics": 2408,
         "proven_metadata_aliases": 1675,
         "qualified_accelerator_partitions": 3,
         "semantic_host_required_regions": 2430,
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
-    assert schedule["fail_closed"]["missing_host_semantics"] == 2408
+    assert schedule["fail_closed"]["missing_host_semantics"] == 1034
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
     assert schedule["conversion_boundaries"] == {
@@ -64,6 +87,18 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     }
     assert len(schedule["events"]) == 6104
     assert [row["event_index"] for row in schedule["events"]] == list(range(6104))
+    qualified_host = [
+        row for row in schedule["events"]
+        if row["kind"] == "host_region" and row["executable"]
+    ]
+    assert len(qualified_host) == 1396
+    assert all(len(row["operation_signature_sha256"]) == 64 for row in qualified_host)
+    rejected_select = next(
+        row for row in schedule["events"]
+        if row.get("region_id") == "select_0"
+    )
+    assert rejected_select["executable"] is False
+    assert "operation_signature_sha256" not in rejected_select
     assert schedule["device_activation_arena"]["allocation_count"] == 391
     assert schedule["device_activation_arena"]["reuse_count"] > 0
     assert schedule["device_activation_arena"]["peak_bytes"] < (
@@ -82,6 +117,81 @@ def test_bounded_real_chain_replays_host_semantics_and_retains_scoped_evidence()
     )
     assert chain["retained_results"][1]["dispatches"] == 3
     assert "not whole-model execution" in chain["claim"]
+
+
+def test_real_host_chain_is_capture_discovered_fresh_and_dependency_carrying() -> None:
+    chain = load(PLAN_ROOT / "hybrid_schedule.json")["generic_host_chain"]
+    assert chain["status"] == "fresh_numeric_execution_exactly_replayed"
+    assert chain["selection"].startswith("longest consecutive qualified capture-region run")
+    assert chain["region_count"] == 9
+    assert chain["dependency_edges"] == 8
+    assert chain["semantics"] == [
+        "compare", "dtype_cast", "mul", "add", "sub",
+        "dtype_cast", "mul", "sub", "select",
+    ]
+    assert len(chain["fresh_inputs"]) == 2
+    assert all(row["finite"] for row in chain["outputs"])
+    assert chain["outputs"][0]["true_elements"] == 171
+    assert chain["replay_hashes_equal"] is True
+    assert "not whole-model E2E" in chain["claim"]
+
+
+def test_generic_host_lane_executes_exact_affine_broadcast_not_numpy_shape_guessing() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%a: tensor<2x1xf32>, %b: tensor<1x3xf32>) -> tensor<2x3xf32> {
+        %empty = tensor.empty() : tensor<2x3xf32>
+        %result = linalg.generic {
+          indexing_maps = [
+            affine_map<(d0, d1) -> (d0, 0)>,
+            affine_map<(d0, d1) -> (0, d1)>,
+            affine_map<(d0, d1) -> (d0, d1)>],
+          iterator_types = ["parallel", "parallel"]
+        } ins(%a, %b : tensor<2x1xf32>, tensor<1x3xf32>)
+          outs(%empty : tensor<2x3xf32>)
+          attrs = {prov.region_id = "add_synthetic", prov.op = "add",
+                   prov.family = "elementwise", prov.aten = "aten.add.Tensor"} {
+        ^bb0(%lhs: f32, %rhs: f32, %old: f32):
+          %sum = arith.addf %lhs, %rhs : f32
+          linalg.yield %sum : f32
+        } -> tensor<2x3xf32>
+        return %result : tensor<2x3xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    program = lane.programs["add_synthetic"]
+    values = {
+        program.generic.inputs[0]: np.array([[1.0], [4.0]], dtype=np.float32),
+        program.generic.inputs[1]: np.array([[10.0, 20.0, 30.0]], dtype=np.float32),
+    }
+    actual = lane.execute("add_synthetic", values)
+    np.testing.assert_array_equal(
+        actual,
+        np.array([[11.0, 21.0, 31.0], [14.0, 24.0, 34.0]], dtype=np.float32),
+    )
+    assert program.signature["operand_maps"][0][1] == {"kind": "constant", "value": 0}
+
+
+def test_real_div_uses_its_extracted_cross_axis_broadcast(real_lane: HostSemanticLane) -> None:
+    program = real_lane.programs["div_0"]
+    lhs = (np.arange(113, dtype=np.float32) + 2).reshape(1, 113, 1)
+    rhs = (np.arange(32, dtype=np.float32) + 1).reshape(1, 1, 32)
+    actual = real_lane.execute(
+        "div_0", {program.generic.inputs[0]: lhs, program.generic.inputs[1]: rhs}
+    )
+    np.testing.assert_array_equal(actual, lhs / rhs)
+
+
+def test_select_provenance_does_not_qualify_a_slice_as_pointwise_where(
+    real_lane: HostSemanticLane,
+) -> None:
+    assert real_lane.signature_for("select_0") is None
+    assert "non-pointwise scaffold" in real_lane.rejections["select_0"]
+    try:
+        real_lane.execute("select_0", {})
+    except UnsupportedHostRegion:
+        pass
+    else:
+        raise AssertionError("a provenance-only tensor slice must fail closed")
 
 
 def test_hybrid_schedule_is_byte_stable_across_rebuilds() -> None:

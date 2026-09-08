@@ -7,6 +7,8 @@ import json
 import sys
 from pathlib import Path
 
+import numpy as np
+
 
 ROOT = Path(__file__).resolve().parent
 REPO = ROOT.parents[4]
@@ -16,6 +18,7 @@ sys.path.insert(0, str(ROOT / "submission"))
 
 from mlir_oot.frontend import parse_verified  # noqa: E402
 from mlir_oot.hybrid_runtime import build_hybrid_schedule  # noqa: E402
+from mlir_oot.host_semantics import HostSemanticLane, array_sha256  # noqa: E402
 from run_capture_partition import (  # noqa: E402
     PARTITIONS,
     _load_capture_values,
@@ -107,14 +110,78 @@ def bounded_chain_witness() -> tuple[dict, set[str]]:
     }, set(bridge_regions))
 
 
+def generic_host_chain_witness(workload) -> dict:
+    """Execute a capture-discovered, dependency-carrying pointwise chain twice."""
+    lane = HostSemanticLane(workload)
+    region_ids = lane.discover_contiguous_chain()
+    first_values = lane.seed_external_values(region_ids)
+    seeds = [
+        {
+            "ordinal": index,
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+            "sha256": array_sha256(value),
+        }
+        for index, value in enumerate(first_values.values())
+    ]
+    first_outputs = []
+    for region_id in region_ids:
+        value = lane.execute(region_id, first_values)
+        output_record = {
+            "region_id": region_id,
+            "semantic": lane.programs[region_id].semantic,
+            "shape": list(value.shape),
+            "dtype": str(value.dtype),
+            "sha256": array_sha256(value),
+            "finite": bool(value.dtype == np.bool_ or np.all(np.isfinite(value))),
+        }
+        if value.dtype == np.bool_:
+            output_record["true_elements"] = int(np.count_nonzero(value))
+        first_outputs.append(output_record)
+
+    second_values = lane.seed_external_values(region_ids)
+    second_hashes = []
+    for region_id in region_ids:
+        second_hashes.append(array_sha256(lane.execute(region_id, second_values)))
+    first_hashes = [row["sha256"] for row in first_outputs]
+    if second_hashes != first_hashes:
+        raise ValueError("fresh host semantic chain is not deterministic")
+
+    produced = set()
+    dependency_edges = 0
+    for region_id in region_ids:
+        program = lane.programs[region_id]
+        dependency_edges += sum(value in produced for value in program.generic.inputs)
+        produced.update(value for op in program.operations for value in op.results)
+    return {
+        "schema": "atlas_real_capture_host_semantic_chain_v1",
+        "status": "fresh_numeric_execution_exactly_replayed",
+        "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+        "selection": (
+            "longest consecutive qualified capture-region run with an SSA dependency and "
+            "at most 1000000 external input elements"
+        ),
+        "region_ids": region_ids,
+        "semantics": [lane.programs[region_id].semantic for region_id in region_ids],
+        "region_count": len(region_ids),
+        "dependency_edges": dependency_edges,
+        "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+        "fresh_inputs": seeds,
+        "outputs": first_outputs,
+        "replay_hashes_equal": True,
+    }
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
     plan = load(PLAN_ROOT / "partition_plan.json")
     inventory = load(ROOT / "full_capture_partition_inventory.json")
+    workload = parse_verified(source)
     chain, bounded_regions = bounded_chain_witness()
+    host_chain = generic_host_chain_witness(workload)
     schedule = build_hybrid_schedule(
-        parse_verified(source), plan, inventory,
+        workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
         bounded_host_regions=bounded_regions,
         alignment=32,
@@ -125,6 +192,7 @@ def main() -> int:
         "sha256": hashlib.sha256(source.encode()).hexdigest(),
     })
     schedule["bounded_chain"] = chain
+    schedule["generic_host_chain"] = host_chain
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -147,6 +215,7 @@ def main() -> int:
         },
         "event_count": len(schedule["events"]),
         "bounded_chain": chain,
+        "generic_host_chain": host_chain,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),

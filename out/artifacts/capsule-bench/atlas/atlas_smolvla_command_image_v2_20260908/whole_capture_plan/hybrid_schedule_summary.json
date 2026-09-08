@@ -84,12 +84,24 @@
     "qualified": 12
   },
   "coverage": {
-    "bounded_host_regions_implemented": 22,
+    "host_signature_regions_by_semantic": {
+      "add": 215,
+      "compare": 4,
+      "div": 56,
+      "dtype_cast": 472,
+      "mul": 536,
+      "select": 45,
+      "sub": 68
+    },
+    "host_signature_regions_implemented": 1396,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
+    "missing_host_semantics_reduction": 1374,
     "partition_host_region_overlap": [
       "conv_0"
     ],
+    "previous_bounded_host_regions_implemented": 22,
+    "previous_missing_host_semantics": 2408,
     "proven_metadata_aliases": 1675,
     "qualified_accelerator_partitions": 3,
     "semantic_host_required_regions": 2430,
@@ -109,13 +121,186 @@
   },
   "event_count": 6104,
   "fail_closed": {
-    "missing_host_semantics": 2408,
+    "missing_host_semantics": 1034,
+    "missing_host_semantics_by_semantic": {
+      "arange": 63,
+      "aten_min_dim": 8,
+      "bitwise": 16,
+      "bucketize": 2,
+      "cat": 95,
+      "convolution_im2col_matmul": 1,
+      "cos": 57,
+      "cumsum": 4,
+      "elementwise": 3,
+      "embedding": 2,
+      "fill": 50,
+      "gelu": 12,
+      "index_gather": 1,
+      "index_put": 1,
+      "layer_norm": 25,
+      "mask_gather": 1,
+      "minmax": 2,
+      "pow": 123,
+      "reduce_mean": 66,
+      "reduce_sum": 3,
+      "rsqrt": 66,
+      "select": 2,
+      "sigmoid": 33,
+      "sin": 57,
+      "slice": 129,
+      "slice_scatter": 112,
+      "softmax": 44,
+      "split": 56
+    },
     "unqualified_accelerator_partitions": 388,
     "unrealized_layout_bridges": 358
   },
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "d9053e03196c84fb4b942666aaf48cad3acdc14e0c8217837e0a49961b097728"
+    "sha256": "8af7f676e056502fac5da25da17e0d0853ad1ab91bceeff731f364b3be6a122d"
+  },
+  "generic_host_chain": {
+    "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+    "dependency_edges": 8,
+    "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
+    "fresh_inputs": [
+      {
+        "dtype": "int64",
+        "ordinal": 0,
+        "sha256": "6c8cb9add08f672c4a525c2b8fe76d11c9403587d4ceb10af4f3ce40d9461e02",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "int64",
+        "ordinal": 1,
+        "sha256": "9598c6903d8af21c8a80e6e5f53ed0e6646e153bc2a8ae560cd5f12adf2dd307",
+        "shape": [
+          360
+        ]
+      }
+    ],
+    "outputs": [
+      {
+        "dtype": "bool",
+        "finite": true,
+        "region_id": "compare_2",
+        "semantic": "compare",
+        "sha256": "215e3a8e99cb68cf0fa5d6d385f62cc558894c87524255d5b0df7faec29afa09",
+        "shape": [
+          360
+        ],
+        "true_elements": 171
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "dtype_cast_242",
+        "semantic": "dtype_cast",
+        "sha256": "5ed0947cf8962fc8ec4727a969c52459f07be56100367191546730058f869384",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "mul_293",
+        "semantic": "mul",
+        "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "add_198",
+        "semantic": "add",
+        "sha256": "f0a5b7795cf95e99f598aa76652af3f8e9da8342b3edd12f70e77348c8b5d53d",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "int64",
+        "finite": true,
+        "region_id": "sub_33",
+        "semantic": "sub",
+        "sha256": "702506c1bf12b56ce8b03738fa9cbbf9e62c8e2953b3a90384918370f77030e4",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "dtype_cast_243",
+        "semantic": "dtype_cast",
+        "sha256": "3c82bffc26acd8fa9ccbfd42099cdcf7e4f746de0a2fc965e8a98051792fc502",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "mul_294",
+        "semantic": "mul",
+        "sha256": "0c9e01e63bd78e35e28465f6214a2a23ae4450678ffd5ecefedbb0ba07232a0f",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "sub_34",
+        "semantic": "sub",
+        "sha256": "02492f76c6cfb2e3cf4cfe4de13ebbb4b17ccf5ad468f4d904e4c0710a577a19",
+        "shape": [
+          360
+        ]
+      },
+      {
+        "dtype": "float64",
+        "finite": true,
+        "region_id": "select_30",
+        "semantic": "select",
+        "sha256": "24761f4a10fb82b2b8600babbcea0bd0c5e7c6e50f1b8638bb46f0478b0e4651",
+        "shape": [
+          360
+        ]
+      }
+    ],
+    "region_count": 9,
+    "region_ids": [
+      "compare_2",
+      "dtype_cast_242",
+      "mul_293",
+      "add_198",
+      "sub_33",
+      "dtype_cast_243",
+      "mul_294",
+      "sub_34",
+      "select_30"
+    ],
+    "replay_hashes_equal": true,
+    "schema": "atlas_real_capture_host_semantic_chain_v1",
+    "selection": "longest consecutive qualified capture-region run with an SSA dependency and at most 1000000 external input elements",
+    "semantics": [
+      "compare",
+      "dtype_cast",
+      "mul",
+      "add",
+      "sub",
+      "dtype_cast",
+      "mul",
+      "sub",
+      "select"
+    ],
+    "status": "fresh_numeric_execution_exactly_replayed"
   },
   "runnable_e2e": false,
   "schema": "atlas_hybrid_capture_schedule_summary_v1",

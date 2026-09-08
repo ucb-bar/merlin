@@ -65,13 +65,25 @@ Importantly, the inventory's 2,033 layout-bridge candidates are not all aliases.
 The executable proof classifies 1,675 `view`/`unsqueeze` regions as metadata
 aliases, while 246 `expand` regions still need a strided descriptor and 112
 `copy` regions require materialization. There are separately 2,430 semantic
-host-required regions. The existing real p0243-to-p0244 host bridge implements
-22 of those host regions and five layout regions; its 27-region replay exactly
-reproduces the saved p0244 activation hash. The neighboring device evidence is
-retained, assertion-clean RTL evidence and was not rerun by this builder.
+host-required regions. A new fail-closed generic host lane accepts 1,396 of
+them from their complete extracted pointwise/cast signature, including exact
+affine constant-zero broadcasting. It distinguishes 45 conditional
+`aten.where` selects from two same-named slice/reshape regions, which remain
+rejected. Relative to the prior scoped-bridge baseline of 2,408 missing host
+regions, the exact missing count is now 1,034, a reduction of 1,374. The
+existing real p0243-to-p0244 bridge still replays 27 regions and exactly
+reproduces the saved p0244 activation hash, but the schedule no longer treats
+scoped provenance membership alone as executable semantic evidence. The
+neighboring device evidence is retained, assertion-clean RTL evidence and was
+not rerun by this builder.
+
+The builder also finds, rather than names, a nine-region consecutive real
+capture chain spanning compare/cast/arithmetic/select, seeds two fresh inputs,
+executes all eight SSA dependencies, and obtains identical per-region hashes on
+a second run. This is fresh host numeric evidence only.
 
 Consequently the hybrid schedule remains explicitly `e2e_blocked_fail_closed`:
-2,408 host semantic regions, 388 accelerator partitions, and 358 layout bridges
+1,034 host semantic regions, 388 accelerator partitions, and 358 layout bridges
 remain unresolved. See `HYBRID_RUNTIME_REPORT.md` and
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
 is added.
