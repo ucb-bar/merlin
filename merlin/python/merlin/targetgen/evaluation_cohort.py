@@ -83,7 +83,7 @@ def engine_preflight(te: TargetExperiment, stage_name: str) -> dict[str, Any]:
 
 
 def materialize_evaluation_cohort(
-    dest: str | Path, te: TargetExperiment, stage_name: str,
+    dest: str | Path, te: TargetExperiment, stage_name: str, candidate: str | Path,
 ) -> dict[str, Any]:
     """Create one descriptor-declared frozen-candidate cohort at ``dest``.
 
@@ -92,6 +92,10 @@ def materialize_evaluation_cohort(
     """
     stage = te.evaluation_cohort(stage_name)
     dest = Path(dest)
+    candidate = Path(candidate)
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ValueError(f"frozen evaluation candidate is not a regular directory: {candidate}")
+    candidate_digest = _tree_sha256(candidate)
     if dest.exists() and any(dest.iterdir()):
         raise ValueError(f"evaluation destination is not empty: {dest}")
     dest.mkdir(parents=True, exist_ok=True)
@@ -160,6 +164,8 @@ def materialize_evaluation_cohort(
         "oracle_engine": stage["oracle_engine"],
         "descriptor": str(te.path.relative_to(repo_root())),
         "descriptor_sha256": te.descriptor_sha256,
+        "candidate": str(candidate.resolve()),
+        "candidate_tree_sha256": candidate_digest,
         "capsules": sorted(source_records, key=lambda row: row["name"]),
         "n_capsules": len(written),
         "engine_preflight": preflight,
@@ -170,7 +176,9 @@ def materialize_evaluation_cohort(
     return record
 
 
-def validate_evaluation_cohort(root: str | Path, te: TargetExperiment) -> dict[str, Any]:
+def validate_evaluation_cohort(
+    root: str | Path, te: TargetExperiment, candidate: str | Path,
+) -> dict[str, Any]:
     root = Path(root)
     record_path = root / ".evaluation_cohort.json"
     record = json.loads(record_path.read_text(encoding="utf-8"))
@@ -178,6 +186,9 @@ def validate_evaluation_cohort(root: str | Path, te: TargetExperiment) -> dict[s
         raise ValueError(f"unsupported evaluation cohort record: {record_path}")
     if record.get("target") != te.target or record.get("descriptor_sha256") != te.descriptor_sha256:
         raise ValueError("evaluation cohort does not belong to the loaded target descriptor")
+    candidate = Path(candidate)
+    if _tree_sha256(candidate) != record.get("candidate_tree_sha256"):
+        raise ValueError("frozen evaluation candidate content digest mismatch")
     stage = te.evaluation_cohort(str(record.get("stage")))
     names = sorted(path.name for path in root.iterdir() if path.is_dir())
     if names != sorted(stage["include_capsules"]):
@@ -204,6 +215,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", required=True)
     parser.add_argument("--stage", required=True)
     parser.add_argument("--dest", required=True)
+    parser.add_argument("--candidate", required=True,
+                        help="frozen compiler package evaluated by this stage")
     parser.add_argument("--replace-empty", action="store_true",
                         help="remove an existing empty destination before materializing")
     args = parser.parse_args(argv)
@@ -214,8 +227,8 @@ def main(argv: list[str] | None = None) -> int:
     dest = Path(args.dest)
     if args.replace_empty and dest.is_dir() and not any(dest.iterdir()):
         dest.rmdir()
-    record = materialize_evaluation_cohort(dest, te, args.stage)
-    validate_evaluation_cohort(dest, te)
+    record = materialize_evaluation_cohort(dest, te, args.stage, args.candidate)
+    validate_evaluation_cohort(dest, te, args.candidate)
     print(json.dumps(record, indent=2, sort_keys=True))
     if not record["engine_preflight"]["ok"]:
         print("evaluation cohort materialized, but engine preflight failed; refusing to call it runnable")

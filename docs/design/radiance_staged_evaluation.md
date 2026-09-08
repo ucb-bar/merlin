@@ -33,13 +33,15 @@ the proper derived-workload score.
 ```bash
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
   --target radiance --stage derived_gsim \
+  --candidate out/artifacts/targets/radiance/<frozen-package> \
   --dest out/artifacts/capsule-bench/radiance/<run>/derived_gsim
 ```
 
 The command exits 2 if the selected GSIM executable is unavailable, is not the descriptor-requested
 engine, or lacks a receipt binding its bytes to the elaborated FIRRTL.  A populated cohort is therefore
-not automatically runnable or certified.  Once preflight is green, grade the frozen package against that
-single materialized root with `merlin.targetgen.capsule_grade`.
+not automatically runnable or certified.  The cohort manifest also seals the complete candidate tree;
+validation fails if any compiler byte changes between convergence and GSIM.  Once preflight is green,
+grade that frozen package against the single materialized root with `merlin.targetgen.capsule_grade`.
 
 ## Stage 3: independent kernel-library comparison
 
@@ -50,6 +52,7 @@ embedding, patch, and fused-operation workloads.  It is also materialized with m
 ```bash
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
   --target radiance --stage kernel_library_comparison \
+  --candidate out/artifacts/targets/radiance/<same-frozen-package> \
   --dest out/artifacts/capsule-bench/radiance/<run>/kernel_library_comparison
 ```
 
