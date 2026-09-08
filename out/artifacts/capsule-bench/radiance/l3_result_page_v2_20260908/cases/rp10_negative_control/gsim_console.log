@@ -1,0 +1,269 @@
+[gsim-emu] zero-init 587928 register words
+[gsim-probe post-reset] rocket_pc=0x0 muon_c0t0_currPC=0x10000000 muon_minstret[c0t0=0 c0t1=0 c1t0=0 c1t1=0] muon_be_reset=1
+[gsim-emu] reset done, running (max_cycles=120000)
+[gsim-fetch cyc=1] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=1
+[gsim-fetch cyc=2] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=1
+[gsim-fetch cyc=3] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+warning: tohost and fromhost symbols not in ELF; can't communicate with target
+[gsim-fetch cyc=4] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=5] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=6] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=7] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=8] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=9] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=10] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=11] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=12] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=13] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=14] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=15] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=16] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=17] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=18] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=19] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=20] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=21] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=22] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=23] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=24] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=25] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=26] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=27] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=28] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=29] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=30] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=31] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=32] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=33] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=34] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=35] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=36] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=37] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=38] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=39] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=40] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=41] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=42] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=43] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=44] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=45] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=46] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=47] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=48] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=49] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=50] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=51] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=52] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=53] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=54] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=55] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=56] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=57] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=58] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=59] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=60] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=61] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=62] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=63] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=64] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=65] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=66] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=67] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=68] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=69] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=70] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=71] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=72] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=73] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=74] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=75] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=76] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=77] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=78] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=79] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=80] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=81] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=82] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=83] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=84] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=85] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=86] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=87] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=88] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=89] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=90] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=91] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=92] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=93] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=94] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=95] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=96] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=97] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=98] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=99] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=100] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=101] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=102] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=103] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=104] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=105] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=106] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=107] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=108] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=109] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=110] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=111] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=112] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=113] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=114] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=115] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=116] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=117] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=118] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=119] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=120] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=121] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=122] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=123] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=124] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=125] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=126] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=127] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=128] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=129] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=130] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=131] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=132] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=133] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=134] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=135] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=136] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=137] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=138] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=139] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=140] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=141] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=142] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=143] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=144] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=145] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=146] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=147] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=148] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=149] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=150] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=151] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=152] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=153] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=154] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=155] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=156] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=157] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=158] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=159] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-fetch cyc=160] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x7e40e7d4a7c be_reset=0
+[gsim-probe tick] rocket_pc=0x100b8 muon_c0t0_currPC=0x10000018 muon_minstret[c0t0=0 c0t1=0 c1t0=0 c1t1=0] muon_be_reset=0
+[gsim-ar] #0 addr=0x80000000
+[gsim-ar] #1 addr=0x110000000
+[gsim-ar] #2 addr=0x800000c0
+[gsim-ar] #3 addr=0x110000020
+[gsim-ar] #4 addr=0x8007ffe0
+[gsim-ar] #5 addr=0x110005000
+[gsim-ar] #6 addr=0x110005020
+[gsim-ar] #7 addr=0x800000e0
+[gsim-ar] #8 addr=0x1100050c0
+[gsim-ar] #9 addr=0x110000040
+[gsim-ar] #10 addr=0x110000060
+[gsim-ar] #11 addr=0x110002000
+[gsim-ar] #12 addr=0x110002020
+[gsim-ar] #13 addr=0x110002040
+[gsim-ar] #14 addr=0x110002060
+[gsim-ar] #15 addr=0x110002080
+[gsim-ar] #16 addr=0x110000080
+[gsim-ar] #17 addr=0x1100020c0
+[gsim-ar] #18 addr=0x1100020e0
+[gsim-ar] #19 addr=0x110004340
+[gsim-ar] #20 addr=0x110002100
+[gsim-ar] #21 addr=0x17effffc0
+[gsim-ar] #22 addr=0x17effffe0
+[gsim-ar] #23 addr=0x110002120
+[gsim-ar] #24 addr=0x110002140
+[gsim-ar] #25 addr=0x110002160
+[gsim-ar] #26 addr=0x110002180
+[gsim-ar] #27 addr=0x1100021a0
+[gsim-ar] #28 addr=0x1100021c0
+[gsim-ar] #29 addr=0x17efff7c0
+[gsim-ar] #30 addr=0x17efff7e0
+[gsim-ar] #31 addr=0x1100021e0
+[gsim-ar] #32 addr=0x110002200
+[gsim-ar] #33 addr=0x17efff800
+[gsim-ar] #34 addr=0x17efff820
+[gsim-ar] #35 addr=0x110002220
+[gsim-ar] #36 addr=0x110002240
+[gsim-ar] #37 addr=0x110002260
+[gsim-ar] #38 addr=0x110002280
+[gsim-ar] #39 addr=0x1100022a0
+[gsim-probe tick] rocket_pc=0x800000f2 muon_c0t0_currPC=0x100025b8 muon_minstret[c0t0=182 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000d6 muon_c0t0_currPC=0x10002c50 muon_minstret[c0t0=390 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000e4 muon_c0t0_currPC=0x100032d8 muon_minstret[c0t0=602 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000f2 muon_c0t0_currPC=0x10003970 muon_minstret[c0t0=811 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000d6 muon_c0t0_currPC=0x10003ff8 muon_minstret[c0t0=1022 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000e4 muon_c0t0_currPC=0x10004418 muon_minstret[c0t0=1285 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000f2 muon_c0t0_currPC=0x10004558 muon_minstret[c0t0=1947 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000d6 muon_c0t0_currPC=0x100045d8 muon_minstret[c0t0=2589 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000e4 muon_c0t0_currPC=0x10004638 muon_minstret[c0t0=3224 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000162 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=3656 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c4 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=3816 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000050 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=3976 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000076 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4136 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000054 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4296 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4456 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4616 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4776 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=4936 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5096 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5256 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5416 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5576 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5736 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=5896 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6056 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6216 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6376 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6536 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6696 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=6856 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7016 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7176 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7336 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7496 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7656 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7816 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=7976 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8136 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8296 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8456 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8616 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8776 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=8936 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9096 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9256 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9416 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9576 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9736 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=9896 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10056 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10216 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10376 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10536 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10696 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=10856 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=11016 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=11176 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=11336 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=11496 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+[gsim-probe final] rocket_pc=0x800000c6 muon_c0t0_currPC=0x10004338 muon_minstret[c0t0=11496 c0t1=38 c1t0=38 c1t1=38] muon_be_reset=0
+
+[gsim-emu] FINISHED: cycles=120000 wall=41.05s (2923 cyc/s) done=0 exit_code=0
+[gsim-stats] dram_aw=0 dram_w=0 dram_ar=423 writes>=0x110000000=0 writes_resultpage=0
+[gsim-stats] last_aw=0x0 last_ar=0x80000260 max_ar=0x17effffe0 r_fires=1692 b_fires=0 cvfpu_accepts=2048 uart_chars=0

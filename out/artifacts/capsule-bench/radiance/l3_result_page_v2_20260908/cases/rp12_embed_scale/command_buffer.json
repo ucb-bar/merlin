@@ -1,0 +1,36 @@
+{
+  "abi_version": "0.1",
+  "target": "radiance",
+  "backend": "xdsl_scalar_llvm",
+  "tensors": {
+    "X": {
+      "shape": [
+        16,
+        16
+      ],
+      "dtype": "f32",
+      "role": "input"
+    },
+    "Y0": {
+      "shape": [
+        16,
+        16
+      ],
+      "dtype": "f32",
+      "role": "output"
+    }
+  },
+  "commands": [
+    {
+      "opcode": "VECTOR_MAP",
+      "operands": {
+        "src0": "X",
+        "dst": "Y0"
+      },
+      "attributes": {
+        "op": "embed_scale",
+        "causal": false
+      }
+    }
+  ]
+}

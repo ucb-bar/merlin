@@ -1,0 +1,19 @@
+{
+  "schema": "merlin.muon-result-page.v1",
+  "status": {
+    "symbol": "merlin_result_status",
+    "muon_address": 268448832,
+    "soc_address": 4563416128
+  },
+  "outputs": [
+    {
+      "name": "Y0",
+      "symbol": "merlin_result_0",
+      "elements": 256,
+      "dtype": "f32",
+      "muon_address": 268447808,
+      "soc_address": 4563415104
+    }
+  ],
+  "soc_fuse_offset": 4294967296
+}

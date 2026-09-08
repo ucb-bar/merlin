@@ -1,0 +1,48 @@
+{
+  "abi_version": "0.1",
+  "target": "radiance",
+  "backend": "xdsl_scalar_llvm",
+  "tensors": {
+    "A0": {
+      "shape": [
+        2,
+        16,
+        16
+      ],
+      "dtype": "fp16",
+      "role": "input"
+    },
+    "V": {
+      "shape": [
+        2,
+        16,
+        1
+      ],
+      "dtype": "fp16",
+      "role": "input"
+    },
+    "Y0": {
+      "shape": [
+        2,
+        16,
+        1
+      ],
+      "dtype": "fp16",
+      "role": "output"
+    }
+  },
+  "commands": [
+    {
+      "opcode": "VECTOR_MAP",
+      "operands": {
+        "src0": "A0",
+        "src1": "V",
+        "dst": "Y0"
+      },
+      "attributes": {
+        "op": "gemv_batched",
+        "causal": false
+      }
+    }
+  ]
+}
