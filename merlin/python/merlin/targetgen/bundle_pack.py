@@ -142,6 +142,11 @@ class PackPlan:
     abi_order: tuple[str, ...] = ()
     #: One row per declared carried state: which seed feeds which working copy from which output.
     carried: tuple[dict[str, Any], ...] = ()
+    #: Tensors the program plan DECLARES as the program's outputs, in its own order. Recorded
+    #: because the alternative is a heuristic: matching a reference's element count picks whichever
+    #: tensor happens to have that many, and tiny_llama has two with exactly 256,000 (its output
+    #: `Y0` and an intermediate `t464`). The heuristic agreed here; agreeing is not deriving.
+    output_bindings: tuple[str, ...] = ()
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -150,6 +155,7 @@ class PackPlan:
                 "row_pitch_elements": self.row_pitch_elements, "alignment": self.alignment,
                 "absent_indices": list(self.absent_indices),
                 "abi_order": list(self.abi_order), "carried": [dict(c) for c in self.carried],
+                "output_bindings": list(self.output_bindings),
                 "n_const": len(self.const), "n_mutable": len(self.mutable),
                 "const": [t.to_dict() for t in self.const],
                 "mutable": [t.to_dict() for t in self.mutable],
@@ -511,6 +517,17 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             out.mutable, out.mutable_bytes = rows, cursor
 
     out.abi_order = out_abi_order
+    bound = (declared or {}).get("output_bindings") if isinstance(declared, Mapping) else None
+    if isinstance(bound, Sequence) and not isinstance(bound, (str, bytes)):
+        named = tuple(str(name) for name in bound if isinstance(name, str) and name)
+        write_names = {t.tensor for t in out.mutable if t.role == "argument"}
+        missing = [name for name in named if name not in write_names]
+        if missing:
+            raise BundlePackError(
+                f"the program plan declares output(s) {missing[:8]} that this plan lays out as no "
+                f"write argument; grading one of them would read whichever tensor is at that "
+                f"offset instead")
+        out.output_bindings = named
     if carried_by_tensor:
         seeds = {t.tensor: t for t in out.const if t.role == "seed"}
         working = {t.tensor: t for t in out.mutable if t.tensor in carried_by_tensor}

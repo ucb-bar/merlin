@@ -1373,3 +1373,39 @@ class TestALanguageModelsRankingIsPerTokenNotGlobal:
         assert "MERLIN_TOP1 step=0 row=0 got=1 want=0" in out
         # And the global-argmax check would have PASSED this, which is the point.
         assert "MERLIN_TOP1 step=0 row=3 got=3 want=3" in out
+
+
+class TestOnlyTheHARNESSDecidesWhatIsPrinted:
+    """The gate declares what is graded; the harness decides what is printed.
+
+    Both deciding meant a caller could not RAISE the budget for a cheap simulator: the gate's own
+    fixed cap silently won and a diagnostic run produced `dumps_values=False lines=0`. Measured on
+    tiny_llama, whose 256,000 elements are over the gate's per-step cap -- so no budget, however
+    large, could have got its values out.
+    """
+
+    def _plan(self, elements):
+        return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
+                                    "Y0": {"shape": [elements], "dtype": "f32"}},
+                        "params": {},
+                        "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
+                                                {"tensor": "Y0", "access": "write"}]}},
+                       row_pitch_elements=16)
+
+    def _gate(self, elements):
+        return BG.gate_for(model="m", datapath="w8a8", reference_kind="w8a8_execution",
+                           comparison="tolerance_and_topk", atol=1e-5, rtol=1e-5,
+                           output_elements=elements, expected_argmax=0,
+                           scope_note="device-vs-host-compiler agreement")
+
+    def test_a_raised_budget_CAN_dump_what_the_gates_own_cap_would_refuse(self):
+        gate = self._gate(256000)
+        assert gate.prints_values is False, "the gate's per-step cap says no -- that is the trap"
+        h = BH.render_bundle_harness(self._plan(256000), gate, entry_symbol="k",
+                                     output_tensor="Y0", console_line_budget=300000)
+        assert h["dumps_values"] is True and h["total_value_lines"] == 256000
+
+    def test_the_default_budget_still_refuses_it(self):
+        h = BH.render_bundle_harness(self._plan(256000), self._gate(256000), entry_symbol="k",
+                                     output_tensor="Y0")
+        assert h["dumps_values"] is False and h["total_value_lines"] == 0

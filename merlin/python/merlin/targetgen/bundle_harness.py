@@ -438,7 +438,12 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     if console_line_budget < 0:
         raise BundleHarnessError("console_line_budget cannot be negative")
     total_value_lines = steps * graded_elements
-    dump_values = gate.prints_values and total_value_lines <= console_line_budget
+    # THE HARNESS's budget is the authority, because printing is a substrate question. The gate's
+    # own `prints_values` answers a per-step version of it against a fixed constant, and letting
+    # both decide meant a caller could not RAISE the budget for a cheap simulator -- the gate's cap
+    # silently won and the run produced no dump. The gate declares what is GRADED; the harness
+    # decides what is PRINTED.
+    dump_values = total_value_lines <= console_line_budget
     gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype,
                           step_expression="merlin_step_index", from_trajectory=steps > 1,
                           dump_values=dump_values, line_budget=console_line_budget)
