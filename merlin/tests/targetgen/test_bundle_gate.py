@@ -1120,6 +1120,23 @@ class TestTheConsoleBudgetIsATotalNotAPerStepFigure:
         gate = self._gate(1600, 10)
         h = BH.render_bundle_harness(self._plan(1600), gate, entry_symbol="k", output_tensor="Y0")
         assert h["console_line_budget"] == BH.CONSOLE_LINE_BUDGET
+    def test_the_budget_is_a_SUBSTRATE_property_and_can_be_raised(self):
+        """Console throughput belongs to the substrate, not the bundle: a FireSim console was
+        measured at single-digit characters per microsecond, spike's is a host pipe. So a cheap
+        simulator run may dump what a hardware run must not."""
+        gate = self._gate(1600, 10)
+        plan = self._plan(1600)
+        hardware = BH.render_bundle_harness(plan, gate, entry_symbol="k", output_tensor="Y0")
+        assert hardware["dumps_values"] is False
+        cheap = BH.render_bundle_harness(plan, gate, entry_symbol="k", output_tensor="Y0",
+                                         console_line_budget=32768)
+        assert cheap["dumps_values"] is True and cheap["total_value_lines"] == 16000
+        assert cheap["console_line_budget"] == 32768
+
+    def test_a_negative_budget_is_refused(self):
+        with pytest.raises(BH.BundleHarnessError):
+            BH.render_bundle_harness(self._plan(100), self._gate(100, 10), entry_symbol="k",
+                                     output_tensor="Y0", console_line_budget=-1)
 
 
 class TestATOLERANCEMustBeDerivableNotMerelyDeclaredEarly:
@@ -1244,3 +1261,115 @@ class TestATOLERANCEMustBeDerivableNotMerelyDeclaredEarly:
         assert spread.elements == 16000
         assert spread.max_absolute > 1e-4, "the floor must exceed the tolerance it refuted"
         assert spread.cosine > 0.999, "and the two references are otherwise in close agreement"
+
+
+
+class TestALanguageModelsRankingIsPerTokenNotGlobal:
+    """One argmax over TinyLlama's (1, 8, 32000) = 256,000 logits agrees with the reference whenever
+    the single largest logit anywhere lands in the same place, and says nothing about the other
+    seven positions. The result of an LM IS the per-token ranking, so the rows are declared and each
+    is ranked separately.
+    """
+
+    def _plan(self, elements):
+        return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
+                                    "Y0": {"shape": [elements], "dtype": "f32"}},
+                        "params": {},
+                        "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
+                                                {"tensor": "Y0", "access": "write"}]}},
+                       row_pitch_elements=16)
+
+    def _gate(self, elements, rows, **kw):
+        base = dict(model="tiny_llama", datapath="w8a8", reference_kind="w8a8_execution",
+                    comparison="tolerance_and_topk", atol=1e-5, rtol=1e-5,
+                    output_elements=elements, rows=rows,
+                    scope_note="whether the device reproduced the host compiler")
+        base.update(kw)
+        return BG.gate_for(**base)
+
+    def test_a_single_row_gate_is_unchanged(self):
+        gate = self._gate(8, 1)
+        assert gate.rows == 1
+        h = BH.render_bundle_harness(self._plan(8), gate, entry_symbol="k", output_tensor="Y0")
+        assert "MERLIN_TOP1" in h["gate"]
+
+    def test_each_declared_row_is_ranked_separately(self):
+        gate = self._gate(256000, 8)
+        assert gate.to_dict()["elements_per_row"] == 32000
+        h = BH.render_bundle_harness(self._plan(256000), gate, entry_symbol="k",
+                                     output_tensor="Y0")
+        assert "for (int r = 0; r < 8; ++r)" in h["gate"]
+        assert "r * 32000" in h["gate"]
+        assert "merlin_rows_disagreeing" in h["gate"]
+        assert 'MERLIN_TOP1 step=%d row=%d got=%d want=%d' in h["gate"]
+
+    def test_the_verdict_requires_EVERY_row_to_agree(self):
+        gate = self._gate(256000, 8)
+        h = BH.render_bundle_harness(self._plan(256000), gate, entry_symbol="k",
+                                     output_tensor="Y0")
+        assert "merlin_argmax_ok = (merlin_rows_disagreeing == 0)" in h["gate"]
+
+    def test_elements_that_do_not_divide_into_rows_are_refused(self):
+        with pytest.raises(BG.GateError, match="ragged split"):
+            self._gate(255999, 8)
+
+    def test_a_literal_argmax_with_several_rows_is_refused(self):
+        """A literal describes ONE ranking; declaring rows says there are several."""
+        with pytest.raises(BG.GateError, match="describes ONE ranking"):
+            self._gate(256000, 8, expected_argmax=42)
+
+    def test_zero_rows_is_refused(self):
+        with pytest.raises(BG.GateError, match="at least one ranking row"):
+            self._gate(256000, 0)
+
+    @pytest.mark.skipif(_CC is None, reason="no C compiler on this host")
+    def test_a_single_ROW_disagreement_fails_the_gate(self, tmp_path):
+        """The defect a global argmax misses: seven rows right, one wrong."""
+        rows, per_row = 4, 5
+        n = rows * per_row
+        gate = self._gate(n, rows)
+        h = BH.render_bundle_harness(self._plan(n), gate, entry_symbol="k", output_tensor="Y0")
+        # Reference: row r has its maximum at position r. The stub reproduces that, except under
+        # MERLIN_MUTATE it moves ONE row's peak while leaving the global maximum where it was.
+        ref = []
+        for r in range(rows):
+            row = [0.0] * per_row
+            row[r] = 1.0 + r          # ascending, so the GLOBAL max is in the last row
+            ref.extend(row)
+        stub = ["const float merlin_reference[%d] = {%s};" % (n, ",".join(f"{v!r}f" for v in ref)),
+                "const unsigned char merlin_const_blob_start[64];",
+                "unsigned char merlin_mutable_blob[4096];",
+                "static const float SRC[%d] = {%s};" % (n, ",".join(f"{v!r}f" for v in ref)),
+                "void k(void *a, void *b) {",
+                "  (void)a; float *o = (float *)b;",
+                "  for (int i = 0; i < %d; ++i) o[i] = SRC[i];" % n,
+                "#if MERLIN_MUTATE",
+                "  o[0] = 0.0f; o[1] = 0.5f;   /* row 0's peak moves; the global max is untouched */",
+                "#endif",
+                "}"]
+        (tmp_path / "stub.c").write_text("\n".join(stub) + "\n", encoding="utf-8")
+        (tmp_path / "h.c").write_text(
+            "#include <stdio.h>\n" + h["declarations"]
+            + "\nint main(void) {\n" + h["call"] + "\n  return merlin_gate_check();\n}\n",
+            encoding="utf-8")
+
+        def build_and_run(mutate):
+            binary = tmp_path / f"rows{mutate}"
+            build = subprocess.run(
+                [_CC, "-O1", f"-DMERLIN_MUTATE={mutate}", "-Wall", "-Wextra", "-Werror",
+                 "-Wno-gcc-install-dir-libstdcxx", "-o", str(binary),
+                 str(tmp_path / "h.c"), str(tmp_path / "stub.c")], capture_output=True, text=True)
+            assert build.returncode == 0, build.stderr[:2000]
+            run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+            return run.returncode, run.stdout
+
+        rc, out = build_and_run(0)
+        assert "MERLIN_GATE_EXPECT rows=4 disagreeing=0" in out, out[:800]
+        assert rc == 0
+
+        rc, out = build_and_run(1)
+        assert "MERLIN_GATE_EXPECT rows=4 disagreeing=1" in out, out[:800]
+        assert rc != 0, "one row disagreeing must fail the gate"
+        assert "MERLIN_TOP1 step=0 row=0 got=1 want=0" in out
+        # And the global-argmax check would have PASSED this, which is the point.
+        assert "MERLIN_TOP1 step=0 row=3 got=3 want=3" in out

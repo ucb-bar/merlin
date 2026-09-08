@@ -185,6 +185,12 @@ class CorrectnessGate:
     #: The expected argmax, when the model has a single stable one (ResNet-50's is 258). None means
     #: the gate checks argmax AGREEMENT with the reference instead of a literal.
     expected_argmax: int | None = None
+    #: Independent ranking rows in the graded output. A language model's result IS the ranking, and
+    #: it is per TOKEN: one global argmax over TinyLlama's (1, 8, 32000) = 256,000 logits agrees
+    #: with the reference whenever the single largest logit anywhere happens to land in the same
+    #: place, and says nothing about the other seven positions. So the rows are declared and each
+    #: is ranked separately.
+    rows: int = 1
     steps: int = 1
     session_key: str = ""
     scope_note: str = ""
@@ -211,7 +217,9 @@ class CorrectnessGate:
                 "comparison": self.comparison,
                 "comparison_licence": COMPARISONS[self.comparison],
                 "atol": self.atol, "rtol": self.rtol,
-                "output_elements": self.output_elements, "prints_values": self.prints_values,
+                "output_elements": self.output_elements, "rows": self.rows,
+                "elements_per_row": self.output_elements // self.rows,
+                "prints_values": self.prints_values,
                 "console_dump_cap": CONSOLE_DUMP_CAP,
                 "expected_argmax": self.expected_argmax, "steps": self.steps,
                 "session_key": self.session_key, "scope_note": self.scope_note,
@@ -221,7 +229,7 @@ class CorrectnessGate:
 
 def gate_for(*, model: str, datapath: str, reference_kind: str, comparison: str,
              atol: float, rtol: float, output_elements: int,
-             expected_argmax: int | None = None, steps: int = 1,
+             expected_argmax: int | None = None, rows: int = 1, steps: int = 1,
              session_key: str = "", scope_note: str = "",
              channel: str = "correctness",
              available_references: Mapping[str, bool] | None = None) -> CorrectnessGate:
@@ -245,6 +253,17 @@ def gate_for(*, model: str, datapath: str, reference_kind: str, comparison: str,
         raise GateError("a gate over no output elements checks nothing")
     if steps < 1:
         raise GateError("a gate must grade at least one step")
+    if rows < 1:
+        raise GateError("a gate must grade at least one ranking row")
+    if output_elements % rows:
+        raise GateError(
+            f"{model}: {output_elements} element(s) do not divide into {rows} ranking row(s); a "
+            f"row-wise argmax over a ragged split would rank across a row boundary")
+    if rows > 1 and expected_argmax is not None:
+        raise GateError(
+            f"{model}: a literal expected_argmax describes ONE ranking, but {rows} rows were "
+            f"declared. Per-row agreement with the reference is the check that means something "
+            f"for a multi-row output")
     if channel not in CHANNELS:
         raise GateError(f"channel {channel!r} is not one of {sorted(CHANNELS)}; a gate that does "
                         f"not say which claim it makes invites its number being read as the other")
@@ -313,7 +332,7 @@ def gate_for(*, model: str, datapath: str, reference_kind: str, comparison: str,
     return CorrectnessGate(
         model=model, datapath=datapath, reference_kind=reference_kind, comparison=comparison,
         atol=atol, rtol=rtol, output_elements=output_elements, expected_argmax=expected_argmax,
-        steps=steps, session_key=session_key, scope_note=scope_note, channel=channel)
+        rows=rows, steps=steps, session_key=session_key, scope_note=scope_note, channel=channel)
 
 
 # ---------------------------------------------------------------------------------------------

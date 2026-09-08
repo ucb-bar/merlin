@@ -65,6 +65,12 @@ class BundleHarnessError(ValueError):
     """The harness cannot be rendered, and the message says what is missing."""
 
 
+#: DEFAULT total value lines a run may print. A DEFAULT, because console throughput is a property
+#: of the SUBSTRATE, not of the bundle: a FireSim console was measured at single-digit characters
+#: per microsecond, while spike's is a host pipe. So a caller running a cheap simulator for a
+#: diagnostic raises it, and the same bundle built for hardware does not -- which is why it is a
+#: parameter of :func:`render_bundle_harness` rather than a constant it reads.
+#:
 #: Total value lines a run may print. `CorrectnessGate.prints_values` decides on the PER-STEP
 #: element count, which is the right question for a one-shot program and the wrong one for a
 #: session: SmolVLA's 1,600 elements are under the 4,096 cap, but ten steps is 16,000 lines. The
@@ -205,7 +211,8 @@ def render_session_loop(plan: PackPlan, *, steps: int, call: str,
 
 def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
                 step_expression: str = "0", from_trajectory: bool = False,
-                dump_values: bool | None = None) -> str:
+                dump_values: bool | None = None,
+                line_budget: int = CONSOLE_LINE_BUDGET) -> str:
     """The C for one declared gate. Every branch prints what it checked, not just a verdict.
 
     ``step_expression`` selects this invocation's slice of the reference. For a trajectory the
@@ -278,7 +285,7 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
         lines += [
             f'printf("MERLIN_GATE_MODE digest_and_argmax elements=%d steps=%d '
             f'line_budget=%d\\n",',
-            f"       {n}, {int(gate.steps)}, {CONSOLE_LINE_BUDGET});",
+            f"       {n}, {int(gate.steps)}, {int(line_budget)});",
         ]
     lines += [
         'printf("MERLIN_GATE_RESULT bad=%d nonfinite=%d argmax=%d digest=%016llx\\n",',
@@ -290,14 +297,29 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
             f"const int merlin_argmax_ok = (merlin_argmax == {int(gate.expected_argmax)});",
         ]
     else:
+        per_row = n // max(int(gate.rows), 1)
         lines += [
-            "/* No literal argmax: the gate checks AGREEMENT with the reference's own argmax, which",
-            "   is the right shape for a language model -- the ranking is the result. */",
-            "int merlin_ref_argmax = 0;",
-            f"for (int i = 0; i < {n}; ++i)",
-            "  if (merlin_want[i] > merlin_want[merlin_ref_argmax]) merlin_ref_argmax = i;",
-            'printf("MERLIN_GATE_EXPECT argmax=%d\\n", merlin_ref_argmax);',
-            "const int merlin_argmax_ok = (merlin_argmax == merlin_ref_argmax);",
+            "/* No literal argmax: the gate checks AGREEMENT with the reference's own ranking. For a",
+            "   language model that ranking is PER TOKEN -- one argmax over every logit in the",
+            "   output agrees whenever the single largest lands in the same place and says nothing",
+            "   about the other rows -- so each declared row is ranked separately. */",
+            f"int merlin_rows_disagreeing = 0;",
+            f"for (int r = 0; r < {int(gate.rows)}; ++r) {{",
+            f"  const int merlin_base = r * {per_row};",
+            "  int merlin_row_argmax = 0, merlin_row_ref = 0;",
+            f"  for (int i = 1; i < {per_row}; ++i) {{",
+            "    if (merlin_out[merlin_base + i] > merlin_out[merlin_base + merlin_row_argmax])",
+            "      merlin_row_argmax = i;",
+            "    if (merlin_want[merlin_base + i] > merlin_want[merlin_base + merlin_row_ref])",
+            "      merlin_row_ref = i;",
+            "  }",
+            "  if (merlin_row_argmax != merlin_row_ref) ++merlin_rows_disagreeing;",
+            '  printf("MERLIN_TOP1 step=%d row=%d got=%d want=%d\\n", merlin_step, r,',
+            "         merlin_row_argmax, merlin_row_ref);",
+            "}",
+            f'printf("MERLIN_GATE_EXPECT rows=%d disagreeing=%d\\n", {int(gate.rows)},',
+            "       merlin_rows_disagreeing);",
+            "const int merlin_argmax_ok = (merlin_rows_disagreeing == 0);",
         ]
     # RETURNED AS A FUNCTION, because the profile harness takes its validation as a single C
     # EXPRESSION evaluated immediately after the closing cycle read and BEFORE the metric. An
@@ -335,7 +357,8 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
                           counter_bracket: object = None,
                           reset_after_warm: str | None = None,
                           const_blob_base: int | None = None,
-                          near_additional_bytes: int = 0) -> dict[str, Any]:
+                          near_additional_bytes: int = 0,
+                          console_line_budget: int = CONSOLE_LINE_BUDGET) -> dict[str, Any]:
     """``{"declarations", "call", "validate", "gate"}`` C fragments for one bundle's harness.
 
     ``declarations`` already contains the gate as ``merlin_gate_check()`` and ``validate`` is a call
@@ -412,11 +435,13 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
               if steps > 1 else None)
     # THE CONSOLE BUDGET IS A TOTAL. `gate.prints_values` asks about one step's elements, which is
     # the right question for a one-shot program and the wrong one for a session.
+    if console_line_budget < 0:
+        raise BundleHarnessError("console_line_budget cannot be negative")
     total_value_lines = steps * graded_elements
-    dump_values = gate.prints_values and total_value_lines <= CONSOLE_LINE_BUDGET
+    dump_values = gate.prints_values and total_value_lines <= console_line_budget
     gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype,
                           step_expression="merlin_step_index", from_trajectory=steps > 1,
-                          dump_values=dump_values)
+                          dump_values=dump_values, line_budget=console_line_budget)
     const_declaration = (
         [f"/* The const blob is NOT a symbol here: it lives at the fixed absolute address",
          f"   {CONST_BASE_MACRO}, supplied as a compile-time literal so every reference to it",
@@ -480,7 +505,7 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
         "pc_relative_reach_bytes": PC_RELATIVE_REACH_BYTES,
         "dumps_values": dump_values,
         "total_value_lines": total_value_lines if dump_values else 0,
-        "console_line_budget": CONSOLE_LINE_BUDGET,
+        "console_line_budget": console_line_budget,
         "gate_declaration": gate.to_dict(),
     }
 
