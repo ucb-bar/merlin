@@ -48,6 +48,27 @@ def test_unknown_op_fails_closed():
         CSrc.build_loader_src({"op": "not_a_real_op", "M": 16, "K": 16})
 
 
+def test_elementwise_loader_preserves_explicit_captured_rank_and_rejects_bad_shapes():
+    src = CSrc.build_loader_src({"op": "add", "shape": [1, 113, 1], "dtype": "fp32", "seed": 7})
+    assert src.count("_r(1, 113, 1)") == 2
+    compile(src, "<loader:add-rank3>", "exec")
+    for bad in ([], [1, 0, 1], [1, True, 1], "1x113x1"):
+        with pytest.raises(ValueError, match="non-empty sequence of positive integers"):
+            CSrc.build_loader_src({"op": "add", "shape": bad, "dtype": "fp32", "seed": 7})
+
+
+def test_fused_capsule_metadata_preserves_authored_model_derived_role():
+    class Art:
+        inputs = [[[0.0]], [[1.0]]]
+
+    cap = CSrc._fused_capsule_yaml(
+        {"name": "app_add", "kind": "layer", "op": "add", "source_role": "model_derived",
+         "source_reference": "sha256 capture region", "out": "Y0"},
+        _float_binding(), Art(), ["A", "B"])
+    assert cap["source_role"] == "model_derived"
+    assert cap["source_reference"] == "sha256 capture region"
+
+
 _M2M = CSrc.PytorchRefSource()
 _needs_m2m = pytest.mark.skipif(not _M2M.available(),
                                 reason="m2m venv (torch) unavailable; set MERLIN_M2M_PYTHON/MERLIN_M2M_DIR")

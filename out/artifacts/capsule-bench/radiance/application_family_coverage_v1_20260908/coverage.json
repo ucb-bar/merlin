@@ -1,0 +1,697 @@
+{
+  "audit_wall_seconds": 22.045,
+  "capture_census": {
+    "classified_regions": 13046,
+    "families": {
+      "attention": 84,
+      "contraction": 1457,
+      "elementwise_map": 5780,
+      "movement": 3469,
+      "normalization": 1341,
+      "reduction": 915,
+      "unclassified": 140
+    },
+    "operations_by_family": {
+      "attention": {
+        "sdpa": 84
+      },
+      "contraction": {
+        "addmm": 178,
+        "batch_matmul": 192,
+        "convolution_im2col_matmul": 108,
+        "int_matmul": 22,
+        "matmul": 951,
+        "resize": 6
+      },
+      "elementwise_map": {
+        "add": 823,
+        "arange": 188,
+        "bitwise": 36,
+        "compare": 11,
+        "copy": 336,
+        "cos": 171,
+        "div": 183,
+        "dtype_cast": 1372,
+        "elementwise": 9,
+        "gelu": 48,
+        "iota": 1,
+        "mul": 1533,
+        "pow": 369,
+        "rsqrt": 198,
+        "sigmoid": 84,
+        "silu": 33,
+        "sin": 171,
+        "sub": 202,
+        "tanh": 12
+      },
+      "movement": {
+        "embedding": 6,
+        "expand": 616,
+        "fill": 968,
+        "index_gather": 3,
+        "select": 90,
+        "transpose": 1786
+      },
+      "normalization": {
+        "layer_norm": 945,
+        "softmax": 396
+      },
+      "reduction": {
+        "reduce": 708,
+        "reduce_mean": 198,
+        "reduce_sum": 9
+      },
+      "unclassified": {
+        "aten_min_dim": 24,
+        "bucketize": 6,
+        "cat": 3,
+        "cumsum": 12,
+        "generic": 77,
+        "lstm": 9,
+        "mask_gather": 3,
+        "minmax": 6
+      }
+    },
+    "per_capture": {
+      "lstmnetvit_fp8_consistent": {
+        "exact_add_f32_1x113x1": 0,
+        "families": {
+          "contraction": 77,
+          "elementwise_map": 91,
+          "movement": 133,
+          "normalization": 102,
+          "reduction": 28
+        },
+        "operations_by_family": {
+          "contraction": {
+            "addmm": 12,
+            "batch_matmul": 8,
+            "convolution_im2col_matmul": 33,
+            "matmul": 22,
+            "resize": 2
+          },
+          "elementwise_map": {
+            "add": 36,
+            "div": 5,
+            "gelu": 4,
+            "mul": 31,
+            "sigmoid": 9,
+            "tanh": 6
+          },
+          "movement": {
+            "expand": 16,
+            "fill": 28,
+            "transpose": 89
+          },
+          "normalization": {
+            "layer_norm": 90,
+            "softmax": 12
+          },
+          "reduction": {
+            "reduce": 28
+          }
+        },
+        "regions": 431,
+        "sha256": "8e4658e6862ef3d0d4f22b41d515075ebf7959cae92c294b340e21b712cda0af"
+      },
+      "lstmnetvit_int8_consistent": {
+        "exact_add_f32_1x113x1": 0,
+        "families": {
+          "contraction": 77,
+          "elementwise_map": 69,
+          "movement": 111,
+          "normalization": 102,
+          "reduction": 28
+        },
+        "operations_by_family": {
+          "contraction": {
+            "addmm": 12,
+            "batch_matmul": 8,
+            "convolution_im2col_matmul": 33,
+            "matmul": 22,
+            "resize": 2
+          },
+          "elementwise_map": {
+            "add": 36,
+            "div": 5,
+            "gelu": 4,
+            "mul": 9,
+            "sigmoid": 9,
+            "tanh": 6
+          },
+          "movement": {
+            "expand": 16,
+            "fill": 28,
+            "transpose": 67
+          },
+          "normalization": {
+            "layer_norm": 90,
+            "softmax": 12
+          },
+          "reduction": {
+            "reduce": 28
+          }
+        },
+        "regions": 387,
+        "sha256": "6aff54bf9ef82e53b2b4120a22128a40e3190f0e3ffd6dd011494d2175b30668"
+      },
+      "lstmnetvit_int8_w8a8_consistent": {
+        "exact_add_f32_1x113x1": 0,
+        "families": {
+          "contraction": 71,
+          "elementwise_map": 105,
+          "movement": 95,
+          "normalization": 102,
+          "reduction": 28,
+          "unclassified": 9
+        },
+        "operations_by_family": {
+          "contraction": {
+            "convolution_im2col_matmul": 33,
+            "int_matmul": 22,
+            "matmul": 14,
+            "resize": 2
+          },
+          "elementwise_map": {
+            "add": 30,
+            "div": 5,
+            "dtype_cast": 22,
+            "gelu": 4,
+            "mul": 44
+          },
+          "movement": {
+            "expand": 22,
+            "fill": 6,
+            "transpose": 67
+          },
+          "normalization": {
+            "layer_norm": 90,
+            "softmax": 12
+          },
+          "reduction": {
+            "reduce": 28
+          },
+          "unclassified": {
+            "lstm": 9
+          }
+        },
+        "regions": 410,
+        "sha256": "0157558629defb14bf5f8b7b8931fba22c198d2211c19d5f1759a4db052f5bd0"
+      },
+      "smolvla_denoise_step_fp32_app": {
+        "exact_add_f32_1x113x1": 33,
+        "families": {
+          "attention": 84,
+          "contraction": 369,
+          "elementwise_map": 1652,
+          "movement": 888,
+          "normalization": 321,
+          "reduction": 277,
+          "unclassified": 95
+        },
+        "operations_by_family": {
+          "attention": {
+            "sdpa": 84
+          },
+          "contraction": {
+            "convolution_im2col_matmul": 3,
+            "matmul": 366
+          },
+          "elementwise_map": {
+            "add": 214,
+            "arange": 62,
+            "bitwise": 4,
+            "compare": 3,
+            "copy": 112,
+            "cos": 57,
+            "div": 56,
+            "dtype_cast": 406,
+            "elementwise": 3,
+            "gelu": 12,
+            "iota": 1,
+            "mul": 377,
+            "pow": 123,
+            "rsqrt": 66,
+            "silu": 33,
+            "sin": 57,
+            "sub": 66
+          },
+          "movement": {
+            "embedding": 2,
+            "expand": 70,
+            "fill": 302,
+            "index_gather": 1,
+            "transpose": 513
+          },
+          "normalization": {
+            "layer_norm": 225,
+            "softmax": 96
+          },
+          "reduction": {
+            "reduce": 208,
+            "reduce_mean": 66,
+            "reduce_sum": 3
+          },
+          "unclassified": {
+            "aten_min_dim": 8,
+            "bucketize": 2,
+            "cat": 1,
+            "cumsum": 4,
+            "generic": 77,
+            "mask_gather": 1,
+            "minmax": 2
+          }
+        },
+        "regions": 3686,
+        "sha256": "eda935e53d0a55c05fdcc57ae3e0e76bb48a68e80b731c00f762c6b0d4eef6d6"
+      },
+      "smolvla_fp32_consistent": {
+        "exact_add_f32_1x113x1": 33,
+        "families": {
+          "contraction": 470,
+          "elementwise_map": 1893,
+          "movement": 1121,
+          "normalization": 357,
+          "reduction": 277,
+          "unclassified": 18
+        },
+        "operations_by_family": {
+          "contraction": {
+            "addmm": 154,
+            "batch_matmul": 88,
+            "convolution_im2col_matmul": 3,
+            "matmul": 225
+          },
+          "elementwise_map": {
+            "add": 215,
+            "arange": 63,
+            "bitwise": 16,
+            "compare": 4,
+            "copy": 112,
+            "cos": 57,
+            "div": 56,
+            "dtype_cast": 472,
+            "elementwise": 3,
+            "gelu": 12,
+            "mul": 536,
+            "pow": 123,
+            "rsqrt": 66,
+            "sigmoid": 33,
+            "sin": 57,
+            "sub": 68
+          },
+          "movement": {
+            "embedding": 2,
+            "expand": 246,
+            "fill": 302,
+            "index_gather": 1,
+            "select": 45,
+            "transpose": 525
+          },
+          "normalization": {
+            "layer_norm": 225,
+            "softmax": 132
+          },
+          "reduction": {
+            "reduce": 208,
+            "reduce_mean": 66,
+            "reduce_sum": 3
+          },
+          "unclassified": {
+            "aten_min_dim": 8,
+            "bucketize": 2,
+            "cat": 1,
+            "cumsum": 4,
+            "mask_gather": 1,
+            "minmax": 2
+          }
+        },
+        "regions": 4136,
+        "sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c"
+      },
+      "smolvla_int8_consistent": {
+        "exact_add_f32_1x113x1": 33,
+        "families": {
+          "contraction": 393,
+          "elementwise_map": 1970,
+          "movement": 1121,
+          "normalization": 357,
+          "reduction": 277,
+          "unclassified": 18
+        },
+        "operations_by_family": {
+          "contraction": {
+            "batch_matmul": 88,
+            "convolution_im2col_matmul": 3,
+            "matmul": 302
+          },
+          "elementwise_map": {
+            "add": 292,
+            "arange": 63,
+            "bitwise": 16,
+            "compare": 4,
+            "copy": 112,
+            "cos": 57,
+            "div": 56,
+            "dtype_cast": 472,
+            "elementwise": 3,
+            "gelu": 12,
+            "mul": 536,
+            "pow": 123,
+            "rsqrt": 66,
+            "sigmoid": 33,
+            "sin": 57,
+            "sub": 68
+          },
+          "movement": {
+            "embedding": 2,
+            "expand": 246,
+            "fill": 302,
+            "index_gather": 1,
+            "select": 45,
+            "transpose": 525
+          },
+          "normalization": {
+            "layer_norm": 225,
+            "softmax": 132
+          },
+          "reduction": {
+            "reduce": 208,
+            "reduce_mean": 66,
+            "reduce_sum": 3
+          },
+          "unclassified": {
+            "aten_min_dim": 8,
+            "bucketize": 2,
+            "cat": 1,
+            "cumsum": 4,
+            "mask_gather": 1,
+            "minmax": 2
+          }
+        },
+        "regions": 4136,
+        "sha256": "2f6025bd28a91676cbd5ad970edea613dcc765cc1d3b261b2e04d80949b8876f"
+      }
+    },
+    "total_regions": 13186,
+    "unclassified_regions": 140
+  },
+  "fail_closed": {
+    "application_regions_physically_qualified_by_this_audit": 0,
+    "families_with_no_search_capsule_after_wire": {
+      "attention": 84,
+      "movement": 3469,
+      "normalization": 1341,
+      "reduction": 915
+    },
+    "note": "family representation is a census, not a qualification claim. Only the wired probe's exact program may inherit its L2 receipt; no GSIM result is physical RTL evidence.",
+    "unclassified_regions": 140
+  },
+  "other_non_contraction_disposition": {
+    "attention": {
+      "occurrences": 84,
+      "reason": "not admitted by Radiance's effective capability map; no honest standalone must_accelerate claim",
+      "wired": false
+    },
+    "movement": {
+      "occurrences": 3469,
+      "reason": "not admitted by Radiance's effective capability map; a must_accelerate capsule would be false",
+      "wired": false
+    },
+    "normalization": {
+      "occurrences": 1341,
+      "reason": "not admitted by Radiance's effective capability map; existing neutral writers describe host work here",
+      "wired": false
+    },
+    "reduction": {
+      "occurrences": 915,
+      "reason": "not admitted by Radiance's effective capability map; existing reduce_sum synthesis cannot establish accelerator eligibility",
+      "wired": false
+    },
+    "unclassified": {
+      "occurrences": 140,
+      "reason": "capture semantics do not resolve a family; retained as unclassified",
+      "wired": false
+    }
+  },
+  "schema": "radiance_application_family_coverage_v1",
+  "scope": {
+    "applications": [
+      "smolvla_fp32_consistent",
+      "smolvla_int8_consistent",
+      "smolvla_denoise_step_fp32_app",
+      "lstmnetvit_fp8_consistent",
+      "lstmnetvit_int8_consistent",
+      "lstmnetvit_int8_w8a8_consistent"
+    ],
+    "authority": "only workload_spec.applications in the Radiance target descriptor",
+    "descriptor": "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml",
+    "descriptor_sha256": "4dfcaeecacf357bbfa4e4678bbea729141328dc120e27ee5f48fe0c0ad1ce184",
+    "excluded_as_application_evidence": "all kernel_library_comparison / PR-kernel capsules"
+  },
+  "search_comparison": {
+    "capsules": {
+      "SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "85b603bdafdbbdd29e68b57cf7f2ea3901c1a7153bac15cc68cf4403be902f6b",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "6ab6271de97a13b387662c66a0cce8d70b637d27a23ece33adf5936d564afeba",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "6f5623392c6632f19f835cee319efed8cda4bb6caadbc7b103b25988d0ee4894",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "5f38d57633ebd74c22f141cc4453c4cb55b7b5a40a2e597203bafc4d0443cb36",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "38d9504144a9fd692f8c76471eb23ba0cdee362ca4c975cdd23cdfed5dcf394f",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "7da1b7a6a2df650dd1d616d4448839eac5948950f421c5ec19e1ebe08872fede",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "0cad78efdf40571696f9101ab9676a61a8b21560587f23ed59b0d5f20b865f81",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "cd3915a5883edef5ec3dc17cd27b00b1a9c937a2775874126673d3288be87d60",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "87bd554b784761f4dfd5b3c8d595e46abd9f1d3bce721f119a8d7b8bdf5fc0e9",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "41c80ba419ede5a46563592b6f428205d71d6dcce1cf1ed91c6bcb65200fd7bb",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "1d525e583930b4764b5163ba2532548955656b8436240aa908842e628438f846",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "05da2eb056f5b676d52a2fbb74fa4cde170b72ce8ca8d68873a4d57d5e14b9f3",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "5ed9e36dd19d6d4bed540df439a798c3d5415e1288969ee122e49fd562415571",
+        "source_role": "model_derived"
+      },
+      "SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2": {
+        "family": "contraction",
+        "operation": "matmul",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "c04e0557e9e6220e9324885e876752736e6423fb37b08a7e6f6fe26424f5f80a",
+        "source_role": "model_derived"
+      },
+      "SY_app_elementwise_add_f32_rank3_1x113x1_l2": {
+        "family": "elementwise_map",
+        "operation": "add",
+        "required_oracle_tiers": [
+          "L0",
+          "L1",
+          "L2"
+        ],
+        "sha256": "a1078f39666f146cc42b819f5ffc0b72becf7eb6c42fbc9d677865ef0d92ea35",
+        "source_role": "model_derived"
+      }
+    },
+    "post_wire_15_capsules": [
+      "SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2",
+      "SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2",
+      "SY_app_elementwise_add_f32_rank3_1x113x1_l2"
+    ],
+    "post_wire_family_counts": {
+      "contraction": 14,
+      "elementwise_map": 1
+    },
+    "post_wire_missing_family_occurrences": {
+      "attention": 84,
+      "movement": 3469,
+      "normalization": 1341,
+      "reduction": 915
+    },
+    "pre_wire_14_capsules": [
+      "SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2",
+      "SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2",
+      "SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2",
+      "SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2"
+    ],
+    "pre_wire_classified_occurrences_in_a_represented_family": 1457,
+    "pre_wire_family_counts": {
+      "contraction": 14
+    },
+    "pre_wire_fraction_of_classified_in_a_represented_family": 0.111682,
+    "pre_wire_missing_family_occurrences": {
+      "attention": 84,
+      "elementwise_map": 5780,
+      "movement": 3469,
+      "normalization": 1341,
+      "reduction": 915
+    }
+  },
+  "wired_probe": {
+    "capsule": "SY_app_elementwise_add_f32_rank3_1x113x1_l2",
+    "capture_anchor": {
+      "application": "smolvla_fp32_consistent",
+      "fqn": "model.vlm_with_expert.vlm.model.text_model.layers.0.input_layernorm",
+      "model_mlir_sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c",
+      "region_id": "add_100",
+      "region_index": 888
+    },
+    "captured_shape": [
+      1,
+      113,
+      1
+    ],
+    "dtype": "f32",
+    "exact_occurrences_in_declared_captures": 99,
+    "family": "elementwise_map",
+    "l2_receipt": "l2_receipt.json",
+    "operation": "add",
+    "qualification_scope": "one exact f32 rank-3 add program at L2; this does not qualify other elementwise operations, shapes, dtypes, families, or physical RTL"
+  }
+}

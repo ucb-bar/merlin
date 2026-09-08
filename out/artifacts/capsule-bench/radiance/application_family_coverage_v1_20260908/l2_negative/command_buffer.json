@@ -1,0 +1,56 @@
+{
+  "abi_version": "0.1",
+  "target": "radiance",
+  "tensors": {
+    "arg0": {
+      "shape": [
+        1,
+        113,
+        1
+      ],
+      "dtype": "f32",
+      "role": "input"
+    },
+    "arg1": {
+      "shape": [
+        1,
+        113,
+        1
+      ],
+      "dtype": "f32",
+      "role": "input"
+    },
+    "out": {
+      "shape": [
+        1,
+        113,
+        1
+      ],
+      "dtype": "f32",
+      "role": "output"
+    }
+  },
+  "commands": [
+    {
+      "opcode": "VECTOR_MAP",
+      "operands": {
+        "lhs": "arg0",
+        "rhs": "arg1",
+        "dst": "out"
+      },
+      "attributes": {
+        "combine": "add"
+      }
+    }
+  ],
+  "outputs": [
+    "out"
+  ],
+  "interface": "linalg_positional",
+  "arg_order": [
+    "arg0",
+    "arg1",
+    "out"
+  ],
+  "operand_naming": "positional"
+}

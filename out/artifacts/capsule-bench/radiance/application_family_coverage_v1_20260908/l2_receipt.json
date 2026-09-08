@@ -1,0 +1,38 @@
+{
+  "schema": "radiance_application_elementwise_l2_pair_v1",
+  "capsule": "SY_app_elementwise_add_f32_rank3_1x113x1_l2",
+  "scope": "one exact f32 rank-3 add program at tensor<1x113x1xf32>",
+  "positive": {
+    "status": "pass",
+    "elements": 113,
+    "mismatch_count": 0,
+    "cycles": 176330,
+    "build_s": 0.586,
+    "sim_active_s": 0.954,
+    "receipt": "l2_positive/receipt.json",
+    "receipt_sha256": "c94c74c1f9cac52b217ca279204b4f8cc78038721343e1612616c634b11f23e7"
+  },
+  "negative_control": {
+    "status": "fail",
+    "expected_value_perturbation": "output[0] + 100",
+    "mismatch_count": 1,
+    "cycles": 176330,
+    "build_s": 0.058,
+    "sim_active_s": 0.977,
+    "receipt": "l2_negative/receipt.json",
+    "receipt_sha256": "41f2000f3d03b9e8e0cf2a05a6b26df663a93e392dc4369467b651579cff231a"
+  },
+  "same_public_command_buffer_sha256": "60c3252041affbe33afc1f23fef91f7861a3ec00c00945f35356add2a3ecaf64",
+  "same_lowered_llvm_mlir_sha256": "733b3c92c886d0e7c2d8e197cb26e523e449362c38644757d501b242191f6baa",
+  "oracle": {
+    "tier": "L2",
+    "kind": "cyclotron_perf_model",
+    "derived_from_rtl": false
+  },
+  "not_claimed": [
+    "GSIM qualification",
+    "physical RTL qualification",
+    "qualification of the other 5,681 elementwise-map occurrences",
+    "qualification of another operation, shape, dtype, or family"
+  ]
+}

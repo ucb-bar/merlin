@@ -117,7 +117,7 @@ def test_radiance_search_and_evaluation_cohorts_are_staged_and_disjoint():
     derived_names = set(derived_gsim["include_capsules"])
     kernel_names = set(kernel_comparison["include_capsules"])
 
-    assert len(search) == len(derived_names) == 14
+    assert len(search) == len(derived_names) == 15
     assert search | derived_names | kernel_names <= set(docs)
     # The GSIM evaluation is intentionally the *same* derived workload set, not reduced lookalikes.
     assert search == derived_names
@@ -130,4 +130,4 @@ def test_radiance_search_and_evaluation_cohorts_are_staged_and_disjoint():
     assert kernel_comparison["after"] == "derived_gsim_pass"
     assert derived_gsim["oracle_tier"] == kernel_comparison["oracle_tier"] == "L3"
     assert derived_gsim["oracle_engine"] == kernel_comparison["oracle_engine"] == "gsim"
-    assert len(te.effective_exclusions(docs)) == len(docs) - 14
+    assert len(te.effective_exclusions(docs)) == len(docs) - 15

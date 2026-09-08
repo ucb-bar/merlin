@@ -198,7 +198,7 @@ class Model(nn.Module):
     def forward(self, a, b):
         return a + b
 def get_model_and_inputs():
-    return Model(), (_r({M}, {K}), _r({M}, {K}))
+    return Model(), (_r({shape_args}), _r({shape_args}))
 ''',
     "reduce_sum": '''
 class Model(nn.Module):
@@ -349,6 +349,12 @@ def build_loader_src(spec: dict) -> str:
     op = spec["op"]
     if op not in _OP_BODIES:
         raise KeyError(f"capsule_source has no PyTorch template for op {op!r} (have {supported_ops()})")
+    raw_shape = spec.get("shape")
+    if raw_shape is None:
+        raw_shape = [spec.get("M", 16), spec.get("K", 16)]
+    if (not isinstance(raw_shape, (list, tuple)) or not raw_shape
+            or any(isinstance(d, bool) or not isinstance(d, int) or d < 1 for d in raw_shape)):
+        raise ValueError(f"capsule shape must be a non-empty sequence of positive integers, got {raw_shape!r}")
     fields = {
         "op": op, "dtype": spec.get("dtype", "fp32"), "seed": int(spec.get("seed", 0)),
         "M": spec.get("M", 16), "K": spec.get("K", 16), "N": spec.get("N", 16),
@@ -358,6 +364,9 @@ def build_loader_src(spec: dict) -> str:
         "B": spec.get("B", 2), "cap": spec.get("cap", 50.0),
         "Cin": spec.get("Cin", 1), "Himg": spec.get("Himg", 8), "Wimg": spec.get("Wimg", 8),
         "P": spec.get("P", 2),
+        # Elementwise programs preserve the captured rank. Most synthetic probes use the historic
+        # MxK form; an application-derived probe may instead carry its exact static shape.
+        "shape_args": ", ".join(str(int(d)) for d in raw_shape),
     }
     # A QUANTIZED capture needs a weight PARAMETER for the scheme to bind to (see _PARAMETRIC_LINEAR).
     # Only the contraction ops have a meaningful weight; asking for a quantized elementwise op is a
@@ -696,6 +705,8 @@ def _capture_spec(entry: dict, binding) -> dict:
         N = M                                    # Q@K^T scores are [M,M]; K rows == M (matches the builder)
     spec = {"op": op, "dtype": binding.operand_dtype, "seed": _entry_seed(entry["name"]),
             "M": M, "K": K, "N": N}
+    if "shape" in entry:
+        spec["shape"] = list(entry["shape"])
     # WHICH QUANTIZATION the captured PROGRAM should carry, when the entry names one. The dtype default
     # for int8 is weight-only, which emits a float matmul over dequantized weights -- correct for a
     # model ladder, wrong for a capsule meant to exercise an integer datapath, and not fixable by
@@ -742,7 +753,8 @@ def _fused_capsule_yaml(entry: dict, binding, art, names: list[str]) -> dict:
               for i, nm in enumerate(names)]
     return {
         "name": entry["name"], "kind": entry.get("kind", "model_slice"),
-        "source_role": "pytorch_model_slice", "source_reference": entry.get("source_reference", ""),
+        "source_role": entry.get("source_role", "pytorch_model_slice"),
+        "source_reference": entry.get("source_reference", ""),
         "label": entry.get("label", "public"), "interface_mlir": "capsule.interface.mlir",
         "inputs": inputs,
         "operation": {"op": entry["op"], "attributes": {"out": out_name, "arg_order": names,
