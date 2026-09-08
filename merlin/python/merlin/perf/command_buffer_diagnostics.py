@@ -7,6 +7,8 @@ a warm measured run supplies counters.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
@@ -16,7 +18,93 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def representation_activity(command_buffer: Mapping[str, Any]) -> dict[str, Any]:
+def _canonical_digest(value: object) -> str | None:
+    try:
+        body = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    except (TypeError, ValueError):
+        return None
+    return hashlib.sha256(body.encode()).hexdigest()
+
+
+def emitted_encoding_activity(command_buffer: Mapping[str, Any],
+                              evidence: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Return exact transition activity only from a bound, content-addressed verifier receipt."""
+    unknown = {
+        "status": "UNKNOWN",
+        "count": None,
+        "materialized_count": None,
+        "physical_read_bytes": None,
+        "physical_write_bytes": None,
+        "physical_bytes": None,
+        "reason": (
+            "verify conversions in the emitted artifact; representation declarations are intent, "
+            "not execution"
+        ),
+    }
+    if not isinstance(evidence, Mapping):
+        return unknown
+    receipt = evidence.get("receipt_sha256")
+    body = dict(evidence)
+    body.pop("receipt_sha256", None)
+    if (evidence.get("schema") != "physical_transition_evidence_v1"
+            or evidence.get("status") != "verified"
+            or not isinstance(receipt, str)
+            or receipt != _canonical_digest(body)
+            or evidence.get("command_buffer_sha256") != _canonical_digest(command_buffer)):
+        return {**unknown, "reason": (
+            "physical-transition evidence is absent, unresolved, changed, or bound to another "
+            "command buffer"
+        )}
+
+    rows = evidence.get("transitions")
+    activity = evidence.get("encoding_activity")
+    if (not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)) or not rows
+            or not isinstance(activity, Mapping) or activity.get("status") != "verified"):
+        return {**unknown, "reason": "verified evidence contains no complete transition activity"}
+    read_bytes = write_bytes = 0
+    identities: list[str] = []
+    for row in rows:
+        if not isinstance(row, Mapping):
+            return {**unknown, "reason": "verified evidence contains a malformed transition row"}
+        ident = row.get("id")
+        load = row.get("load_payload_bytes")
+        store = row.get("store_payload_bytes")
+        if (not isinstance(ident, str) or not ident or ident in identities
+                or row.get("status") != "verified" or row.get("materialized") is not True
+                or row.get("execution_multiplicity_verified") is not True
+                or type(load) is not int or load < 0 or type(store) is not int or store < 0):
+            return {**unknown, "reason": "transition rows do not prove unique materialized activity"}
+        identities.append(ident)
+        read_bytes += load
+        write_bytes += store
+    expected = {
+        "executed_transition_count": len(rows),
+        "materialized_transition_count": len(rows),
+        "physical_read_bytes": read_bytes,
+        "physical_write_bytes": write_bytes,
+        "physical_bytes": read_bytes + write_bytes,
+    }
+    if any(activity.get(name) != value for name, value in expected.items()):
+        return {**unknown, "reason": "encoding-activity totals disagree with verified transition rows"}
+    return {
+        "status": "verified",
+        "count": len(rows),
+        "materialized_count": len(rows),
+        "physical_read_bytes": read_bytes,
+        "physical_write_bytes": write_bytes,
+        "physical_bytes": read_bytes + write_bytes,
+        "transition_ids": identities,
+        "evidence_sha256": receipt,
+        "lowered_sha256": evidence.get("lowered_sha256"),
+        "source_sha256": evidence.get("source_sha256"),
+        "basis": activity.get("basis"),
+        "calibration_source_schema": "phase2_analytical_feature_calibration_v1",
+    }
+
+
+def representation_activity(command_buffer: Mapping[str, Any], *,
+                            physical_transition_evidence: Mapping[str, Any] | None = None
+                            ) -> dict[str, Any]:
     """Inventory boundary encodings and representation-affecting commands without guessing."""
     raw_tensors = command_buffer.get("tensors")
     raw_commands = command_buffer.get("commands")
@@ -71,10 +159,11 @@ def representation_activity(command_buffer: Mapping[str, Any]) -> dict[str, Any]
             and not isinstance(raw_commands, (str, bytes))):
         missing.append("command sequence is absent")
     missing.extend(malformed)
-    missing.extend((
-        "command-buffer order does not declare per-resource busy intervals",
-        "encoding directives do not prove the emitted instruction stream performed each conversion",
-    ))
+    encoding = emitted_encoding_activity(command_buffer, physical_transition_evidence)
+    missing.append("command-buffer order does not declare per-resource busy intervals")
+    if encoding["status"] != "verified":
+        missing.append(
+            "encoding directives do not prove the emitted instruction stream performed each conversion")
     params = _mapping(command_buffer.get("params"))
     raw_placement = params.get("lane_placement")
     placement_rows = (raw_placement if isinstance(raw_placement, Sequence)
@@ -106,12 +195,7 @@ def representation_activity(command_buffer: Mapping[str, Any]) -> dict[str, Any]
             "latency_hiding_efficiency": None,
             "reason": "command-buffer order has no resource timeline; use a target event adapter or warm counters",
         },
-        "emitted_encoding_transitions": {
-            "status": "UNKNOWN",
-            "count": None,
-            "declared_directives": len(directives),
-            "reason": "verify conversions in the emitted instruction trace; declarations are intent, not execution",
-        },
+        "emitted_encoding_transitions": {**encoding, "declared_directives": len(directives)},
         "placement": {
             "status": "declared" if placement_rows else "UNKNOWN",
             "region_count": sum(lane_counts.values()) if placement_rows else None,

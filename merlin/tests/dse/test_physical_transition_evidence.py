@@ -1,5 +1,6 @@
 """Actual typed LLVM copy evidence, independent of candidate packages or targets."""
 import hashlib
+import json
 from io import StringIO
 
 import pytest
@@ -74,10 +75,26 @@ def test_typed_padding_copy_counts_actual_bytes(dtype, stride):
     assert result['status'] == 'verified', result
     row = result['transitions'][0]
     assert row['load_payload_bytes'] == row['store_payload_bytes'] == 3*dtype.bitwidth//8
+    assert row['physical_bytes'] == 6*dtype.bitwidth//8
+    assert row['materialized'] is True
+    assert row['execution_multiplicity_verified'] is True
     assert row['destination_storage_bytes'] == 3*stride*dtype.bitwidth//8
     assert row['bit_preserving_copy']
     assert result['cycles'] is result['dram_bytes'] is None
     assert len(result['command_buffer_sha256']) == 64
+    assert result['encoding_activity'] == {
+        'status': 'verified',
+        'executed_transition_count': 1,
+        'materialized_transition_count': 1,
+        'physical_read_bytes': 3*dtype.bitwidth//8,
+        'physical_write_bytes': 3*dtype.bitwidth//8,
+        'physical_bytes': 6*dtype.bitwidth//8,
+        'basis': ('exact emitted CFG multiplicity, typed load/store dataflow and proved physical '
+                  'address functions'),
+    }
+    content_address = result.pop('receipt_sha256')
+    canonical = json.dumps(result, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    assert content_address == hashlib.sha256(canonical.encode()).hexdigest()
 
 
 @pytest.mark.parametrize('mutation', ['source_edge', 'charge', 'consumer_missing', 'consumer_wrong',
@@ -135,4 +152,9 @@ def test_no_markers_and_no_declarations_is_not_declared():
     for op in data[1].walk():
         op.attributes.clear()
     data[2]['params']['global_program_plan']['physical_transitions'] = []
-    assert verify(data)['status'] == 'not_declared'
+    result = verify(data)
+    assert result['status'] == 'not_declared'
+    assert result['encoding_activity']['status'] == 'UNKNOWN'
+    assert result['encoding_activity']['executed_transition_count'] is None
+    assert result['encoding_activity']['physical_bytes'] is None
+    assert len(result['receipt_sha256']) == 64

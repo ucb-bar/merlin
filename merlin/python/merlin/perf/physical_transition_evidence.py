@@ -42,6 +42,64 @@ def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _finalize(result: dict[str, Any]) -> dict[str, Any]:
+    """Attach a content address and expose only artifact-verified encoding activity.
+
+    A transition declaration is an emitter obligation, not evidence that the emitted program
+    realizes it.  Consequently ``not_declared``, ``UNKNOWN`` and ``refused`` all retain unknown
+    executed counts and bytes.  The exact totals below exist only after :func:`_verify_one` has
+    checked the emitted CFG, typed load/store dataflow, address functions, allocation extents and
+    dynamic access multiplicity for every transition.
+    """
+    transitions = result.get("transitions")
+    rows = transitions if isinstance(transitions, list) else []
+    verified = result.get("status") == "verified" and bool(rows) and all(
+        isinstance(row, Mapping) and row.get("status") == "verified" for row in rows)
+    read_bytes = write_bytes = 0
+    if verified:
+        for row in rows:
+            load = row.get("load_payload_bytes")
+            store = row.get("store_payload_bytes")
+            if (type(load) is not int or load < 0 or type(store) is not int or store < 0
+                    or row.get("materialized") is not True
+                    or row.get("execution_multiplicity_verified") is not True):
+                verified = False
+                break
+            read_bytes += load
+            write_bytes += store
+    result["encoding_activity"] = ({
+        "status": "verified",
+        "executed_transition_count": len(rows),
+        "materialized_transition_count": len(rows),
+        "physical_read_bytes": read_bytes,
+        "physical_write_bytes": write_bytes,
+        "physical_bytes": read_bytes + write_bytes,
+        "basis": (
+            "exact emitted CFG multiplicity, typed load/store dataflow and proved physical "
+            "address functions"
+        ),
+    } if verified else {
+        "status": "UNKNOWN",
+        "executed_transition_count": None,
+        "materialized_transition_count": None,
+        "physical_read_bytes": None,
+        "physical_write_bytes": None,
+        "physical_bytes": None,
+        "reason": (
+            "encoding declarations do not prove materialization; every emitted transition must "
+            "pass artifact verification"
+        ),
+    })
+    body = dict(result)
+    body.pop("receipt_sha256", None)
+    result["receipt_sha256"] = _sha(_canonical(body))
+    return result
+
+
 def _tag(operation, name):
     attribute = operation.attributes.get(name)
     return getattr(attribute, "data", None)
@@ -220,8 +278,11 @@ def _verify_one(transition, source_ops, function, activity):
               "consumer can read converted storage before copy completion")
     return {"id": ident, "status": "verified", "source_edge": dict(edge), "dtype": dtype,
             "element_bytes": width, "logical_shape": list(shape), "allocations": allocation_rows,
-            "load_payload_bytes": expected["scalar_load_payload"], "store_payload_bytes": expected["scalar_store_payload"],
+            "load_payload_bytes": expected["scalar_load_payload"],
+            "store_payload_bytes": expected["scalar_store_payload"],
             "destination_storage_bytes": expected["destination_storage"],
+            "physical_bytes": expected["scalar_load_payload"] + expected["scalar_store_payload"],
+            "materialized": True, "execution_multiplicity_verified": True,
             "owned_operation_indices": [positions[op] for op in copies],
             "consumer_load_operation_indices": [positions[op] for op in consumers],
             "source_allocation_binding": "compiler-declared source identity; source arithmetic not independently proved",
@@ -238,7 +299,7 @@ def verify_physical_transitions(*, source_text: str, lowered_text: str,
               "numeric_equivalence": "copy bits only; arbitrary producer/consumer/model semantics unproved",
               "cycles": None, "dram_bytes": None, "full_model_executed": False}
     try:
-        result["command_buffer_sha256"] = _sha(json.dumps(command_buffer, sort_keys=True, separators=(",", ":"), allow_nan=False))
+        result["command_buffer_sha256"] = _sha(_canonical(command_buffer))
         context = make_context()
         context.load_dialect(LLVM)
         module = parse_mlir_text(lowered_text, context)
@@ -260,7 +321,8 @@ def verify_physical_transitions(*, source_text: str, lowered_text: str,
         _need(all(isinstance(ident, str) and bool(ident.strip()) for ident in ids) and len(set(ids)) == len(ids), "malformed/duplicate transition identities")
         _need(marked == set(ids), "declared transition identities and actual LLVM markers do not exactly match")
         if not declarations:
-            return {**result, "status": "not_declared"}
+            result["status"] = "not_declared"
+            return _finalize(result)
         _need(plan.get("source_sha256") == result["source_sha256"], "transition plan is not bound to the exact source")
         source = parse_mlir_text(source_text)
         functions = [op for op in source.body.block.ops if op.name == "func.func" and op.body.blocks]
@@ -282,4 +344,4 @@ def verify_physical_transitions(*, source_text: str, lowered_text: str,
         result.update(status="UNKNOWN" if isinstance(error, _Unsupported) else "refused", problems=[str(error)])
     except Exception as error:
         result.update(status="UNKNOWN", problems=[f"unsupported analysis: {type(error).__name__}: {error}"])
-    return result
+    return _finalize(result)

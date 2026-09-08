@@ -3363,6 +3363,19 @@ def analyze_whole_model_emission(
                     "status": "UNKNOWN",
                     "reason": f"host global-plan verifier failed: {type(exc).__name__}: {exc}",
                 }
+        # The first command-buffer pass intentionally treats representation declarations as UNKNOWN.
+        # Only now, after the host has inspected and identity-bound the lowered artifact, may its
+        # exact materialized transition count and typed load/store bytes replace that unknown.
+        from merlin.perf.command_buffer_diagnostics import representation_activity  # noqa: PLC0415
+        for arm, buffer, proof in (
+                ("baseline", baseline_buffer, baseline_plan),
+                ("candidate", candidate_buffer, diagnostics["verified_global_plan_emission"])):
+            row = diagnostics["arms"].get(arm)
+            if isinstance(row, dict):
+                row["representation_activity"] = representation_activity(
+                    buffer,
+                    physical_transition_evidence=(proof.get("physical_transition_evidence")
+                                                  if isinstance(proof, Mapping) else None))
         # Cache source-owned STATIC instruction presence while parsed IR is already
         # available. Reduced-source actions must not reparse the complete model.
         def task_instructions(text, raw_buffer, buffer, module, trace, proof, *, baseline_arm=False):
