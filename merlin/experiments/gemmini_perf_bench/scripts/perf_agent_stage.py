@@ -3664,6 +3664,60 @@ def build_action_registry(candidate: Path,
     return tuple(actions)
 
 
+#: Refusal reasons the host DECLARES safe to hand back to the agent, each paired with what the agent
+#: should do about it. Fail-closed and airtight by construction: a match forwards THIS FILE'S string,
+#: never the exception's own text, so an evaluator message can never carry a hidden shape, a capsule
+#: path or a golden value across the boundary even if it is worded to look procedural.
+#:
+#: THE DEFECT THIS FIXES, measured on the v15 run. The agent called `qualify-changed-region` three
+#: times, spending 1,566 s of a 3,600 s authoring budget, and every call returned rc=125 with the
+#: single word `(ValueError)` or `(TimeoutError)`. The host had recorded the real causes into a
+#: host-private directory: once "candidate changed: recompile its full graph and global plan" and
+#: twice a wall-budget timeout. The first is purely PROCEDURAL -- it says the agent must re-run the
+#: analysis action before qualifying, which it would have done had it been told. Instead it retried
+#: the identical call twice more. `changed_region_semantic_qualification` is one of the two standing
+#: promotion blockers, and this is why it never cleared.
+#:
+#: Each entry is (substring to look for in the host's own message, what the agent is told).
+AGENT_VISIBLE_REFUSAL_REASONS: tuple[tuple[str, str], ...] = (
+    ("candidate changed: recompile its full graph and global plan",
+     "the candidate's bytes changed since the last analysis; re-run the whole-model analysis "
+     "action before qualifying a changed region"),
+    ("exceeded its wall budget",
+     "this action exceeded its wall budget; it did not fail, it ran out of time, so retrying it "
+     "unchanged will spend the budget again"),
+    ("is unavailable",
+     "the host did not install a provider for this action in this run; no retry will make it "
+     "available"),
+    ("compiler edit authority or input integrity refused candidate execution",
+     "the candidate falls outside the frozen compiler edit authority; revert the out-of-scope edit "
+     "before invoking a host action"),
+    ("a corpus microbenchmark sweep is not a global iteration",
+     "this action is not available in global mode; use the whole-model analysis action instead"),
+    ("a calibration probe must reduce the full-model repetition count",
+     "the probe must repeat its mechanism fewer times than the full model does"),
+    ("probe mechanism differs in representation, resource, capacity, or edge domain",
+     "the probe does not emit the same mechanism signature as the full model, so it cannot "
+     "calibrate it"),
+    ("stale graph, global plan, compiler, or target evidence",
+     "the probe was extracted against evidence that has since changed; re-analyze, then re-extract"),
+)
+
+
+def agent_visible_refusal(lead: str, exc: BaseException) -> str:
+    """The refusal text an action returns to the agent: a DECLARED remediation, or just the type.
+
+    See :data:`AGENT_VISIBLE_REFUSAL_REASONS` for why this exists and what may cross the boundary.
+    When nothing matches, the result is byte-identical to what these actions returned before, so the
+    default is unchanged and only declared cases gain a reason.
+    """
+    detail = str(exc)
+    for needle, remediation in AGENT_VISIBLE_REFUSAL_REASONS:
+        if needle in detail:
+            return f"{lead} ({type(exc).__name__}): {remediation}"
+    return f"{lead} ({type(exc).__name__})"
+
+
 def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, call_index: Any) -> None:
     """Write the full reason for a host-side refusal where the HOST can read it.
 
@@ -5184,7 +5238,7 @@ class _Broker:
             except Exception as exc:
                 _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": f"paired context comparison refused ({type(exc).__name__})",
+                          "stderr": agent_visible_refusal("paired context comparison refused", exc),
                           "elapsed_s": round(time.monotonic()-started, 3)}
         elif action_name == CONTROLLED_CONTEXT_ACTION:
             try:
@@ -5197,7 +5251,7 @@ class _Broker:
             except Exception as exc:
                 _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": f"controlled source-prefix profile refused ({type(exc).__name__})",
+                          "stderr": agent_visible_refusal("controlled source-prefix profile refused", exc),
                           "elapsed_s": round(time.monotonic()-started, 3)}
         elif action_name in {SOURCE_CONTRACTION_PREPARATION_ACTION, SOURCE_CONTRACTION_QUALIFICATION_ACTION}:
             try:
@@ -5223,7 +5277,7 @@ class _Broker:
             except Exception as exc:
                 _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": f"source contraction action refused ({type(exc).__name__})",
+                          "stderr": agent_visible_refusal("source contraction action refused", exc),
                           "elapsed_s": round(time.monotonic()-started, 3)}
         elif action_name == SOURCE_CONVOLUTION_PREPARATION_ACTION:
             try:
@@ -5236,7 +5290,7 @@ class _Broker:
             except Exception as exc:
                 _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": f"source-convolution preparation refused ({type(exc).__name__})",
+                          "stderr": agent_visible_refusal("source-convolution preparation refused", exc),
                           "elapsed_s": round(time.monotonic()-started, 3)}
         elif action_name == CHANGED_REGION_ACTION:
             try:
@@ -5249,7 +5303,7 @@ class _Broker:
             except Exception as exc:
                 _record_host_refusal(self, exc, round_index=self.feedback_round, call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": f"changed-region semantic qualification refused ({type(exc).__name__})",
+                          "stderr": agent_visible_refusal("changed-region semantic qualification refused", exc),
                           "elapsed_s": round(time.monotonic() - started, 3)}
         elif action_name == OCCUPANCY_PROFILE_ACTION:
             try:
@@ -5275,8 +5329,8 @@ class _Broker:
                 _record_host_refusal(self, exc, round_index=self.feedback_round,
                                      call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": ("reduced global profile refused by the host-owned evaluator "
-                                     f"({type(exc).__name__})"),
+                          "stderr": agent_visible_refusal(
+                              "reduced global profile refused by the host-owned evaluator", exc),
                           "elapsed_s": round(time.monotonic() - started, 3)}
         elif action_name == ANALYSIS_ACTION:
             try:
@@ -5332,8 +5386,8 @@ class _Broker:
                 _record_host_refusal(self, exc, round_index=self.feedback_round,
                                      call_index=call_index)
                 result = {"returncode": 125, "stdout": "",
-                          "stderr": ("development GSIM feedback refused by the host-owned "
-                                     f"evaluator ({type(exc).__name__})"),
+                          "stderr": agent_visible_refusal(
+                              "development GSIM feedback refused by the host-owned evaluator", exc),
                           "elapsed_s": round(time.monotonic() - started, 3)}
         else:
             command = inner_command(
@@ -7312,9 +7366,60 @@ def telemetry_preflight(*, model: str, price_table: Path | None = None,
     }
 
 
+def authored_round_status(*, agent_exit_code: int, audit_clean: object,
+                          refusals: Sequence[str]) -> dict[str, Any]:
+    """Whether one authoring round counts as authored, and WHY -- phase 1's rule, stated once.
+
+    THE DEFECT THIS REPLACES. The global campaign admitted a round only on ``rc == 0``, so a round
+    the harness killed at its own declared deadline was ``refused``; the sequence then raised, the
+    checkpoint was re-consumed, and **the round's compiler edits were discarded**. Measured on the
+    v15 run: 2 of 3 paid rounds retained nothing and both restarted from the initial seed candidate.
+    Phase 1 has never behaved that way -- it admits the same exit as ``stopped_by`` on exactly the
+    evidence a clean round already had to produce (``perf_agent_stage`` round loop, ``rc ==
+    ROUND_DEADLINE_EXIT and refusal is None and audit["clean"]``).
+
+    A budget is not a crash. The deadline exit is admitted ONLY alongside a clean audit and no
+    refusals, so every other non-zero exit stays refused: a segfault, an out-of-memory kill and a
+    driver error are all still failures, and none of them is a declared budget being spent.
+
+    Returns the status and the reason rather than a bare boolean, because "refused" and "authored at
+    the deadline" are different results and a report that shows them as the same one is how the last
+    campaign's three rounds looked identical.
+    """
+    clean = audit_clean is True
+    reasons = list(refusals or ())
+    exit_code = int(agent_exit_code)
+    if exit_code == 0 and clean and not reasons:
+        return {"status": "authored", "stopped_by": None,
+                "why": "the round completed with a clean audit and no refusals"}
+    if exit_code == ROUND_DEADLINE_EXIT and clean and not reasons:
+        return {"status": "authored", "stopped_by": "round_deadline",
+                "why": ("the round reached its declared deadline with a clean audit and no "
+                        "refusals; the budget is the run's declared size and spending it is the "
+                        "expected end of a search that did not converge first")}
+    return {"status": "refused", "stopped_by": None,
+            "why": ("the round exited "
+                    f"{exit_code} with audit_clean={clean} and {len(reasons)} refusal(s)")}
+
+
 def _round_telemetry(stage_root: Path, round_index: int, *, model: str,
                      agent_exit_code: int) -> dict[str, Any]:
-    """Validate and hash the driver's raw, timestamped and summary artifacts for one round."""
+    """Validate and hash the driver's raw, timestamped and summary artifacts for one round.
+
+    A DEADLINE EXIT IS A BUDGET, NOT A BROKEN INSTRUMENT. Two of the checks below can never be met by
+    a round the harness itself killed at its deadline: ``round_NN.final.txt`` is written by the driver
+    only when it emits a final assistant message, and ``summary.timed_out`` is then true. Treating
+    those as malformed telemetry cost this campaign 2 of its 3 paid rounds -- each refused here, which
+    made the round non-authored, which discarded its compiler edits and restarted the next round from
+    the initial seed. Phase 1 has always admitted the same exit as ``stopped_by`` on exactly the
+    evidence a clean round already produced.
+
+    So a deadline exit yields COMPLETE telemetry with ``deadline_reached: True`` and the absent final
+    message NAMED, and every other integrity check is unchanged and still fatal. The distinction being
+    drawn is between "the record is a lie" -- a rewritten sidecar, a discontinuous sequence, counts
+    that disagree -- and "the record is honest and the round ran out of time". The first must refuse;
+    the second is a result.
+    """
     from datetime import datetime  # noqa: PLC0415
     from merlin.targetgen import experiment_tokens as ET  # noqa: PLC0415
 
@@ -7327,8 +7432,17 @@ def _round_telemetry(stage_root: Path, round_index: int, *, model: str,
         "prompt": rounds / f"round_{round_index:02d}.prompt.txt",
         "final": rounds / f"round_{round_index:02d}.final.txt",
     }
-    for label, path in paths.items():
+    # The driver writes the final message itself, at the end of its turn; a round killed at the
+    # deadline has no end of turn. Absent-and-explained, never absent-and-assumed.
+    deadline = int(agent_exit_code) == ROUND_DEADLINE_EXIT
+    absent: dict[str, str] = {}
+    for label, path in list(paths.items()):
         if path.is_symlink() or not path.is_file():
+            if label == "final" and deadline:
+                absent[label] = (f"{path.name} is absent because the round reached its deadline "
+                                 f"before the driver emitted a final message")
+                del paths[label]
+                continue
             raise StageGateError(f"Codex round {round_index} lacks real {label} telemetry: {path}")
     try:
         raw_lines = paths["raw"].read_text(encoding="utf-8").splitlines()
@@ -7354,10 +7468,14 @@ def _round_telemetry(stage_root: Path, round_index: int, *, model: str,
             if wrapper.get("event") != event or "unparsed" in wrapper:
                 raise StageGateError(f"Codex round {round_index} sidecar changed raw event {sequence}")
     summary = json.loads(paths["summary"].read_text(encoding="utf-8"))
+    # `timed_out` is REQUIRED to agree with the exit code in both directions, rather than merely
+    # relaxed: a round that reports a timeout without the deadline exit, or the deadline exit without
+    # a reported timeout, has a summary that disagrees with what happened, and that is the malformed
+    # case this gate is for.
     if (not isinstance(summary, Mapping) or summary.get("billing_mode") != "subscription_notional"
             or summary.get("exit_code") != agent_exit_code
             or summary.get("usage_complete") is not True
-            or summary.get("timed_out") is not False
+            or summary.get("timed_out") is not deadline
             or not isinstance(summary.get("wall_s"), (int, float))
             or float(summary["wall_s"]) <= 0):
         raise StageGateError(f"Codex round {round_index} usage/timing summary is incomplete")
@@ -7371,7 +7489,15 @@ def _round_telemetry(stage_root: Path, round_index: int, *, model: str,
     for path in paths.values():
         path.chmod(0o444)
     return {
+        # Stated positively so a consumer never has to read the ABSENCE of a refusal as completeness;
+        # the caller's failure path writes `complete: False` with a reason, and these two are the only
+        # two shapes.
+        "complete": True,
         "event_count": len(raw_lines), "summary": dict(summary), "accounting": accounting,
+        "deadline_reached": deadline,
+        # Named, never omitted: an absent key reads as "this artifact does not apply", and only an
+        # explicit entry says "it is missing and here is why that is admissible".
+        "absent_artifacts": dict(absent),
         "artifacts": {label: {"path": str(path), "sha256": _sha256_file(path),
                               "bytes": path.stat().st_size}
                       for label, path in paths.items()},

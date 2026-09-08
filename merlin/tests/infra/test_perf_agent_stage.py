@@ -2797,3 +2797,177 @@ def test_the_linear_alias_prices_as_the_contraction_it_is():
                       "attributes": {}}],
         "outputs": ["Y0"]}
     assert work_from_command_buffer(command_buffer).exact_macs == macs
+
+
+class TestAuthoredRoundStatus:
+    """A budget is not a crash — the rule that cost the v15 campaign 2 of its 3 paid rounds."""
+
+    def test_a_clean_completed_round_is_authored(self):
+        got = PAS.authored_round_status(agent_exit_code=0, audit_clean=True, refusals=[])
+        assert got["status"] == "authored" and got["stopped_by"] is None
+
+    def test_a_clean_deadline_round_is_authored_and_says_the_budget_ended_it(self):
+        got = PAS.authored_round_status(
+            agent_exit_code=PAS.ROUND_DEADLINE_EXIT, audit_clean=True, refusals=[])
+        assert got["status"] == "authored" and got["stopped_by"] == "round_deadline"
+        assert "declared deadline" in got["why"]
+
+    def test_a_deadline_round_with_a_dirty_audit_is_still_refused(self):
+        got = PAS.authored_round_status(
+            agent_exit_code=PAS.ROUND_DEADLINE_EXIT, audit_clean=False, refusals=[])
+        assert got["status"] == "refused"
+
+    def test_a_deadline_round_carrying_a_refusal_is_still_refused(self):
+        got = PAS.authored_round_status(
+            agent_exit_code=PAS.ROUND_DEADLINE_EXIT, audit_clean=True, refusals=["no probe"])
+        assert got["status"] == "refused" and "1 refusal" in got["why"]
+
+    @pytest.mark.parametrize("rc", [1, 2, 137, -9, 139])
+    def test_every_other_nonzero_exit_stays_refused(self, rc):
+        """A segfault, an OOM kill and a driver error are failures, not declared budgets.
+
+        137 is specifically the one that matters: a FireSim job on this host died with
+        COMMAND_EXIT_CODE=137 (SIGKILL/OOM) and its artifact recorded it as a hardware stall.
+        """
+        got = PAS.authored_round_status(agent_exit_code=rc, audit_clean=True, refusals=[])
+        assert got["status"] == "refused"
+
+    def test_a_truthy_non_true_audit_value_does_not_pass(self):
+        """`audit.get("clean")` returning a non-empty dict must not read as a clean audit."""
+        got = PAS.authored_round_status(agent_exit_code=0, audit_clean={"clean": "yes"},
+                                        refusals=[])
+        assert got["status"] == "refused"
+
+
+class TestRoundTelemetryAtTheDeadline:
+    """The other half of the same defect: the telemetry gate itself refused a deadline round.
+
+    ``round_NN.final.txt`` is written by the driver only when it emits a final assistant message,
+    and ``summary.timed_out`` is then true — so a round killed at its deadline failed two
+    independent checks and was recorded as malformed telemetry rather than as a spent budget.
+    """
+
+    @staticmethod
+    def _stage(tmp_path, *, exit_code, timed_out, final=True):
+        import json as _json
+        rounds = tmp_path / "rounds"
+        rounds.mkdir(parents=True)
+        event = {"type": "token_count", "info": {"total_token_usage": {"input_tokens": 10}}}
+        raw = rounds / "round_00.codex_events.raw.jsonl"
+        raw.write_text(_json.dumps(event) + "\n", encoding="utf-8")
+        (rounds / "round_00.codex_events.timestamped.jsonl").write_text(
+            _json.dumps({"seq": 1, "arrived_at": "2026-09-08T00:00:00+00:00", "event": event})
+            + "\n", encoding="utf-8")
+        (rounds / "round_00.codex_summary.json").write_text(_json.dumps({
+            "billing_mode": "subscription_notional", "exit_code": exit_code,
+            "usage_complete": True, "timed_out": timed_out, "wall_s": 1200.0}), encoding="utf-8")
+        (rounds / "round_00.codex_stderr.log").write_text("", encoding="utf-8")
+        (rounds / "round_00.prompt.txt").write_text("task", encoding="utf-8")
+        if final:
+            (rounds / "round_00.final.txt").write_text("done", encoding="utf-8")
+        return tmp_path
+
+    @staticmethod
+    def _stub_accounting(monkeypatch):
+        from merlin.targetgen import experiment_tokens as ET
+        monkeypatch.setattr(ET, "parse_agent_transcript", lambda *a, **k: {
+            "available": True, "usage_complete": True, "tokens_total": 10})
+
+    def test_a_deadline_round_yields_complete_telemetry_and_names_the_absent_final(
+            self, tmp_path, monkeypatch):
+        self._stub_accounting(monkeypatch)
+        stage = self._stage(tmp_path, exit_code=PAS.ROUND_DEADLINE_EXIT, timed_out=True,
+                            final=False)
+        got = PAS._round_telemetry(stage, 0, model="m", agent_exit_code=PAS.ROUND_DEADLINE_EXIT)
+        assert got["complete"] is True and got["deadline_reached"] is True
+        assert "final" in got["absent_artifacts"]
+        assert "reached its deadline" in got["absent_artifacts"]["final"]
+        assert "final" not in got["artifacts"], "an absent artifact must not be hashed"
+
+    def test_a_completed_round_is_unchanged_and_reports_no_deadline(self, tmp_path, monkeypatch):
+        self._stub_accounting(monkeypatch)
+        stage = self._stage(tmp_path, exit_code=0, timed_out=False)
+        got = PAS._round_telemetry(stage, 0, model="m", agent_exit_code=0)
+        assert got["complete"] is True and got["deadline_reached"] is False
+        assert got["absent_artifacts"] == {} and "final" in got["artifacts"]
+
+    def test_a_completed_round_missing_its_final_message_is_still_refused(
+            self, tmp_path, monkeypatch):
+        """The relaxation is scoped to the deadline exit; it is not a general excuse."""
+        self._stub_accounting(monkeypatch)
+        stage = self._stage(tmp_path, exit_code=0, timed_out=False, final=False)
+        with pytest.raises(PAS.StageGateError, match="lacks real final telemetry"):
+            PAS._round_telemetry(stage, 0, model="m", agent_exit_code=0)
+
+    def test_a_summary_that_disagrees_with_the_exit_code_is_refused_in_both_directions(
+            self, tmp_path, monkeypatch):
+        """`timed_out` must AGREE with the exit code, not merely be permitted."""
+        self._stub_accounting(monkeypatch)
+        claims_timeout = self._stage(tmp_path / "a", exit_code=0, timed_out=True)
+        with pytest.raises(PAS.StageGateError, match="usage/timing summary is incomplete"):
+            PAS._round_telemetry(claims_timeout, 0, model="m", agent_exit_code=0)
+        hides_timeout = self._stage(tmp_path / "b", exit_code=PAS.ROUND_DEADLINE_EXIT,
+                                    timed_out=False, final=False)
+        with pytest.raises(PAS.StageGateError, match="usage/timing summary is incomplete"):
+            PAS._round_telemetry(hides_timeout, 0, model="m",
+                                 agent_exit_code=PAS.ROUND_DEADLINE_EXIT)
+
+    def test_a_rewritten_sidecar_is_still_fatal_at_the_deadline(self, tmp_path, monkeypatch):
+        """The distinction is honest-and-out-of-time versus a record that is a lie."""
+        self._stub_accounting(monkeypatch)
+        stage = self._stage(tmp_path, exit_code=PAS.ROUND_DEADLINE_EXIT, timed_out=True,
+                            final=False)
+        (stage / "rounds" / "round_00.codex_events.timestamped.jsonl").write_text(
+            json.dumps({"seq": 1, "arrived_at": "2026-09-08T00:00:00+00:00",
+                        "event": {"type": "something_else"}}) + "\n", encoding="utf-8")
+        with pytest.raises(PAS.StageGateError, match="sidecar changed raw event"):
+            PAS._round_telemetry(stage, 0, model="m", agent_exit_code=PAS.ROUND_DEADLINE_EXIT)
+
+
+class TestAgentVisibleRefusal:
+    """A refusal the agent cannot read is a refusal the agent cannot act on.
+
+    Measured on the v15 run: three `qualify-changed-region` calls, 1,566 s of a 3,600 s authoring
+    budget, every one returning the single word `(ValueError)` or `(TimeoutError)`. The host had
+    recorded the real causes into a host-private directory. The first was purely procedural --
+    "candidate changed: recompile its full graph and global plan" -- i.e. the agent needed to re-run
+    one action first, and would have, had it been told.
+    """
+
+    def test_a_declared_procedural_reason_reaches_the_agent_as_a_remediation(self):
+        got = PAS.agent_visible_refusal(
+            "changed-region semantic qualification refused",
+            ValueError("candidate changed: recompile its full graph and global plan"))
+        assert "ValueError" in got
+        assert "re-run the whole-model analysis action" in got
+
+    def test_a_declared_budget_reason_says_retrying_unchanged_will_not_help(self):
+        got = PAS.agent_visible_refusal(
+            "changed-region semantic qualification refused",
+            TimeoutError("changed-region semantic qualification exceeded its wall budget"))
+        assert "ran out of time" in got and "retrying it unchanged" in got
+
+    def test_the_forwarded_text_is_THIS_FILE_S_string_never_the_exceptions_own(self):
+        """The airtight property: an evaluator message cannot carry data across even if it matches.
+
+        A message worded to look procedural while also naming a hidden shape must not leak the
+        shape, and it cannot, because nothing from the exception is ever concatenated in.
+        """
+        got = PAS.agent_visible_refusal(
+            "x refused",
+            ValueError("hidden shape K=4096: candidate changed: recompile its full graph and "
+                       "global plan; golden.yaml says 123"))
+        assert "4096" not in got and "golden" not in got and "123" not in got
+        assert "re-run the whole-model analysis action" in got
+
+    def test_an_undeclared_reason_leaves_the_message_byte_identical_to_before(self):
+        """Fail-closed: the default is unchanged, and only declared cases gain a reason."""
+        assert PAS.agent_visible_refusal("x refused", ValueError("something new and unlisted")) \
+            == "x refused (ValueError)"
+        assert PAS.agent_visible_refusal("x refused", ValueError("")) == "x refused (ValueError)"
+
+    def test_every_declared_remediation_says_what_to_do_and_names_no_path(self):
+        for needle, remediation in PAS.AGENT_VISIBLE_REFUSAL_REASONS:
+            assert needle and remediation
+            assert "/" not in remediation and "\\" not in remediation, remediation
+            assert len(remediation) > 30, f"{needle!r} maps to a remediation that says nothing"
