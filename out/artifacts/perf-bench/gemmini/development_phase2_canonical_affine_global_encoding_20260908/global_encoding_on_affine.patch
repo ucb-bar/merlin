@@ -1,0 +1,962 @@
+--- a/compiler/mlir_oot/codegen/llvm_emit.py
++++ b/compiler/mlir_oot/codegen/llvm_emit.py
+@@ -95,8 +95,15 @@
+                 f"buffer {name!r} is neither a kernel argument nor a compiler staging buffer, so "
+                 f"the kernel has no address for it")
+         sym = f"__gemmini_stage_{len(self.globals)}"
+-        self.globals.append(
+-            llvm.GlobalOp(llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", alignment=64))
++        if buf.zero_initialized:
++            initializer = DenseIntOrFPElementsAttr.from_list(
++                TensorType(i8, [buf.nbytes]), [0] * buf.nbytes)
++            self.globals.append(llvm.GlobalOp(
++                llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", constant=True,
++                value=initializer, alignment=64))
++        else:
++            self.globals.append(
++                llvm.GlobalOp(llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", alignment=64))
+         value = self._prologue(llvm.AddressOfOp(sym, PTR))
+         self._ptr[name] = value
+         return value
+@@ -431,12 +438,13 @@
+             **{key: a[key] for key in static_keys})
+         for funct, rs1, rs2 in (config1, config2, config3, config4):
+             self.rocc(funct, self.fb.const(rs1), self.fb.const(rs2))
+-        input_name, weight_name, output_name = ins.bufs
++        input_name, weight_name, output_name, bias_name = ins.bufs
+         self.rocc(loop_conv.K_CONFIG_5,
+                   self.dram_addr(weight_name, int(a["weight_offset"])),
+                   (self.dram_addr(output_name, int(a["output_offset"]))
+                    if bool(a["write_output"]) else self.fb.const(0)))
+-        self.rocc(loop_conv.K_CONFIG_6, self.fb.const(0),
++        self.rocc(loop_conv.K_CONFIG_6,
++                  self.dram_addr(bias_name, int(a.get("bias_offset", 0))),
+                   self.dram_addr(input_name, int(a["input_offset"])))
+         self.rocc(launch[0], self.fb.const(launch[1]), self.fb.const(launch[2]))
+ 
+--- a/compiler/mlir_oot/ir/gemmini_dialect.py
++++ b/compiler/mlir_oot/ir/gemmini_dialect.py
+@@ -340,7 +340,9 @@
+     name = "gemmini.loop_conv_ws"
+ 
+     def verify_(self) -> None:
+-        _pointer_arguments(self, 3)
++        # input, weights, narrow output, and an internal read-only zero bias used to overwrite
++        # persistent accumulator rows on every warm/measured invocation.
++        _pointer_arguments(self, 4)
+         positive = (
+             "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
+             "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
+--- /dev/null
++++ b/compiler/mlir_oot/lowering/global_encoding.py
+@@ -0,0 +1,363 @@
++"""Target-neutral global tensor-encoding selection.
++
++This module deliberately knows nothing about Gemmini, ResNet, or an MLIR dialect.  A target
++adapter supplies the exact operation alternatives it can implement.  The solver then chooses one
++alternative per operation and one storage encoding per tensor boundary while accounting for all
++producers, consumers, ABI endpoints, fanout, lifetimes, adapters, and an optional arena limit.
++
++The objective is *structural materialisation bytes*.  It is not a latency predictor: operation
++alternatives state the derived buffers they would materialise, while encoding mismatches pay one
++read plus one write.  This is useful before expensive simulation because it cannot manufacture a
++cycle speedup from an unmeasured bandwidth constant.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from itertools import product
++from math import prod
++from typing import Iterable, Mapping, Sequence
++
++
++DTYPE_BYTES = {
++    "i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8,
++    "f16": 2, "bf16": 2, "f32": 4, "f64": 8,
++}
++
++
++@dataclass(frozen=True)
++class Encoding:
++    """A physical axis order and innermost-dimension alignment."""
++
++    name: str
++    axes: tuple[str, ...]
++    alignment: int = 1
++
++
++@dataclass(frozen=True)
++class TensorBoundary:
++    """One logical tensor value shared by operation endpoints."""
++
++    name: str
++    extents: Mapping[str, int]
++    dtype: str
++    logical_encoding: str
++    producer: int | None
++    consumers: tuple[int, ...] = ()
++    external_input: bool = False
++    external_output: bool = False
++
++
++@dataclass(frozen=True)
++class OperationAlternative:
++    """One exact implementation of an operation under fixed endpoint encodings."""
++
++    name: str
++    input_encodings: Mapping[str, str]
++    output_encodings: Mapping[str, str]
++    materialized_bytes: int = 0
++    exact: bool = True
++    refusal: str = ""
++    capability: str = ""
++
++
++@dataclass(frozen=True)
++class EncodingOperation:
++    index: int
++    name: str
++    kind: str
++    alternatives: tuple[OperationAlternative, ...]
++
++
++@dataclass(frozen=True)
++class EncodingProblem:
++    tensors: tuple[TensorBoundary, ...]
++    operations: tuple[EncodingOperation, ...]
++    encodings: Mapping[str, Encoding]
++    arena_capacity_bytes: int | None = None
++    exhaustive_combination_limit: int = 4096
++
++
++@dataclass
++class _Evaluated:
++    choices: tuple[OperationAlternative, ...]
++    storage: dict[str, str]
++    transforms: list[dict]
++    operation_materialized_bytes: int
++    transform_bytes: int
++    encoded_boundary_bytes: int
++    logical_boundary_bytes: int
++    peak_live_bytes: int
++    peak_live_at: int
++    live_intervals: list[dict]
++    over_capacity: bool
++
++    @property
++    def objective(self) -> tuple[int, int, int]:
++        return (
++            self.operation_materialized_bytes + self.transform_bytes,
++            self.peak_live_bytes,
++            len(self.transforms),
++        )
++
++
++def _extent_tuple(tensor: TensorBoundary, encoding: Encoding) -> tuple[int, ...]:
++    if set(encoding.axes) != set(tensor.extents):
++        raise ValueError(
++            f"encoding {encoding.name!r} axes {encoding.axes} do not cover tensor "
++            f"{tensor.name!r} axes {tuple(tensor.extents)}"
++        )
++    return tuple(int(tensor.extents[axis]) for axis in encoding.axes)
++
++
++def storage_bytes(tensor: TensorBoundary, encoding: Encoding) -> int:
++    """Physical bytes, including only explicit innermost alignment padding."""
++    shape = _extent_tuple(tensor, encoding)
++    if tensor.dtype not in DTYPE_BYTES:
++        raise ValueError(f"unknown dtype {tensor.dtype!r} for {tensor.name!r}")
++    if not shape:
++        return DTYPE_BYTES[tensor.dtype]
++    aligned_last = -(-shape[-1] // encoding.alignment) * encoding.alignment
++    return prod(shape[:-1]) * aligned_last * DTYPE_BYTES[tensor.dtype]
++
++
++def _requirements(
++    tensor: TensorBoundary,
++    choices_by_index: Mapping[int, OperationAlternative],
++) -> list[tuple[str, str, int | str]]:
++    endpoints: list[tuple[str, str, int | str]] = []
++    if tensor.external_input:
++        endpoints.append(("abi_input", tensor.logical_encoding, "input"))
++    if tensor.producer is not None:
++        alt = choices_by_index[tensor.producer]
++        endpoints.append(("producer", alt.output_encodings[tensor.name], tensor.producer))
++    for consumer in tensor.consumers:
++        alt = choices_by_index[consumer]
++        endpoints.append(("consumer", alt.input_encodings[tensor.name], consumer))
++    if tensor.external_output:
++        endpoints.append(("abi_output", tensor.logical_encoding, "output"))
++    return endpoints
++
++
++def _adapter_bytes(tensor: TensorBoundary, source: Encoding, target: Encoding) -> int:
++    if source.name == target.name:
++        return 0
++    return storage_bytes(tensor, source) + storage_bytes(tensor, target)
++
++
++def _evaluate(problem: EncodingProblem, choices: Sequence[OperationAlternative]) -> _Evaluated:
++    choices_by_index = {op.index: choice for op, choice in zip(problem.operations, choices)}
++    storage: dict[str, str] = {}
++    transforms: list[dict] = []
++    logical_bytes = 0
++    encoded_bytes = 0
++
++    for tensor in problem.tensors:
++        logical = problem.encodings[tensor.logical_encoding]
++        logical_bytes += storage_bytes(tensor, logical)
++        endpoints = _requirements(tensor, choices_by_index)
++        candidates = {tensor.logical_encoding, *(encoding for _, encoding, _ in endpoints)}
++        ranked: list[tuple[int, int, str]] = []
++        for candidate_name in sorted(candidates):
++            candidate = problem.encodings[candidate_name]
++            conversion = sum(
++                _adapter_bytes(tensor, candidate, problem.encodings[required])
++                for _, required, _ in endpoints
++            )
++            ranked.append((conversion, storage_bytes(tensor, candidate), candidate_name))
++        _, physical_bytes, selected = min(ranked)
++        storage[tensor.name] = selected
++        encoded_bytes += physical_bytes
++        for endpoint, required, owner in endpoints:
++            if selected == required:
++                continue
++            source_name, target_name = (
++                (required, selected) if endpoint in ("abi_input", "producer")
++                else (selected, required)
++            )
++            source, target = problem.encodings[source_name], problem.encodings[target_name]
++            transforms.append({
++                "tensor": tensor.name,
++                "endpoint": endpoint,
++                "owner": owner,
++                "from": source_name,
++                "to": target_name,
++                "bytes": _adapter_bytes(tensor, source, target),
++                "reason": "physical encoding required by exact endpoint",
++            })
++
++    last_operation = max((op.index for op in problem.operations), default=0)
++    intervals: list[dict] = []
++    events: dict[int, int] = {}
++    tensor_by_name = {tensor.name: tensor for tensor in problem.tensors}
++    for name, encoding_name in storage.items():
++        tensor = tensor_by_name[name]
++        start = 0 if tensor.external_input or tensor.producer is None else tensor.producer
++        end_candidates = list(tensor.consumers)
++        if tensor.external_output:
++            end_candidates.append(last_operation + 1)
++        end = max(end_candidates, default=start)
++        size = storage_bytes(tensor, problem.encodings[encoding_name])
++        intervals.append({
++            "tensor": name, "first_endpoint": start, "last_endpoint": end,
++            "encoding": encoding_name, "bytes": size,
++        })
++        events[start] = events.get(start, 0) + size
++        events[end + 1] = events.get(end + 1, 0) - size
++    live = peak = peak_at = 0
++    for point in sorted(events):
++        live += events[point]
++        if live > peak:
++            peak, peak_at = live, point
++
++    operation_bytes = sum(choice.materialized_bytes for choice in choices)
++    transform_bytes = sum(item["bytes"] for item in transforms)
++    return _Evaluated(
++        tuple(choices), storage, transforms, operation_bytes, transform_bytes,
++        encoded_bytes, logical_bytes, peak, peak_at, intervals,
++        problem.arena_capacity_bytes is not None and peak > problem.arena_capacity_bytes,
++    )
++
++
++def _choice_space(problem: EncodingProblem) -> Iterable[tuple[OperationAlternative, ...]]:
++    exact = [tuple(alt for alt in op.alternatives if alt.exact) for op in problem.operations]
++    if any(not alternatives for alternatives in exact):
++        return ()
++    combinations = prod(len(alternatives) for alternatives in exact)
++    if combinations <= problem.exhaustive_combination_limit:
++        return product(*exact)
++
++    # Large graphs normally have one dominant exact alternative per op.  Start there and perform
++    # deterministic coordinate descent.  This evaluates every alternative against the complete
++    # fanout/lifetime state, rather than making a producer-local decision.
++    current = tuple(min(alternatives, key=lambda alt: (alt.materialized_bytes, alt.name))
++                    for alternatives in exact)
++    while True:
++        incumbent = _evaluate(problem, current)
++        changed = False
++        for position, alternatives in enumerate(exact):
++            candidates = []
++            for alternative in alternatives:
++                trial = list(current)
++                trial[position] = alternative
++                evaluated = _evaluate(problem, trial)
++                penalty = (1 if evaluated.over_capacity else 0, *evaluated.objective,
++                           tuple(choice.name for choice in evaluated.choices))
++                candidates.append((penalty, tuple(trial)))
++            best = min(candidates, key=lambda item: item[0])[1]
++            if best != current:
++                current, changed = best, True
++        if not changed:
++            return (current,)
++
++
++def solve(problem: EncodingProblem) -> dict:
++    """Choose exact operation alternatives and tensor encodings, or fail closed."""
++    operation_indices = [op.index for op in problem.operations]
++    if len(operation_indices) != len(set(operation_indices)):
++        raise ValueError("operation indices must be unique")
++    known_indices = set(operation_indices)
++    known_tensors = {tensor.name for tensor in problem.tensors}
++    for tensor in problem.tensors:
++        if tensor.logical_encoding not in problem.encodings:
++            raise ValueError(f"unknown logical encoding {tensor.logical_encoding!r}")
++        if tensor.producer is not None and tensor.producer not in known_indices:
++            raise ValueError(f"unknown producer {tensor.producer} for {tensor.name}")
++        if any(consumer not in known_indices for consumer in tensor.consumers):
++            raise ValueError(f"unknown consumer for {tensor.name}")
++    for op in problem.operations:
++        for alt in op.alternatives:
++            if not set(alt.input_encodings).issubset(known_tensors):
++                raise ValueError(f"{op.name}/{alt.name} names unknown input")
++            if not set(alt.output_encodings).issubset(known_tensors):
++                raise ValueError(f"{op.name}/{alt.name} names unknown output")
++            for encoding in (*alt.input_encodings.values(), *alt.output_encodings.values()):
++                if encoding not in problem.encodings:
++                    raise ValueError(f"{op.name}/{alt.name} names unknown encoding {encoding}")
++
++    evaluated = [_evaluate(problem, choices) for choices in _choice_space(problem)]
++    feasible = [entry for entry in evaluated if not entry.over_capacity]
++    refusals = [
++        {"operation_index": op.index, "operation": op.name, "alternative": alt.name,
++         "capability": alt.capability, "reason": alt.refusal or "not_exact"}
++        for op in problem.operations for alt in op.alternatives if not alt.exact
++    ]
++    if not feasible:
++        best = min(evaluated, key=lambda entry: entry.objective) if evaluated else None
++        return {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": "refused",
++            "reason": ("arena_capacity_exceeded" if best is not None
++                       else "operation_has_no_exact_alternative"),
++            "arena_capacity_bytes": problem.arena_capacity_bytes,
++            "minimum_peak_live_bytes": None if best is None else best.peak_live_bytes,
++            "refusals": refusals,
++        }
++
++    best = min(
++        feasible,
++        key=lambda entry: (*entry.objective, tuple(choice.name for choice in entry.choices)),
++    )
++    baseline_transforms = 0
++    baseline_transform_bytes = 0
++    choices_by_index = {op.index: choice for op, choice in zip(problem.operations, best.choices)}
++    for tensor in problem.tensors:
++        logical = problem.encodings[tensor.logical_encoding]
++        for _, required, _ in _requirements(tensor, choices_by_index):
++            if required != tensor.logical_encoding:
++                baseline_transforms += 1
++                baseline_transform_bytes += _adapter_bytes(
++                    tensor, logical, problem.encodings[required])
++
++    return {
++        "schema": "target_neutral_global_encoding_v1",
++        "status": "selected",
++        "objective": {
++            "name": "structural_materialization_bytes",
++            "operation_materialized_bytes": best.operation_materialized_bytes,
++            "layout_transform_bytes": best.transform_bytes,
++            "total_bytes": best.operation_materialized_bytes + best.transform_bytes,
++            "cycle_prediction_claimed": False,
++        },
++        "operations": [
++            {"index": op.index, "name": op.name, "kind": op.kind,
++             "selected": choice.name, "capability": choice.capability,
++             "materialized_bytes": choice.materialized_bytes,
++             "selection_reason": "minimum exact global structural-materialization objective",
++             "considered_alternatives": [
++                 {"name": alternative.name, "capability": alternative.capability,
++                  "exact": alternative.exact,
++                  "materialized_bytes": alternative.materialized_bytes,
++                  "refusal": alternative.refusal}
++                 for alternative in op.alternatives
++             ]}
++            for op, choice in zip(problem.operations, best.choices)
++        ],
++        "boundaries": [
++            {"tensor": tensor.name, "dtype": tensor.dtype,
++             "logical_encoding": tensor.logical_encoding,
++             "selected_encoding": best.storage[tensor.name],
++             "logical_bytes": storage_bytes(
++                 tensor, problem.encodings[tensor.logical_encoding]),
++             "encoded_bytes": storage_bytes(
++                 tensor, problem.encodings[best.storage[tensor.name]]),
++             "producer": tensor.producer, "consumers": list(tensor.consumers),
++             "fanout": len(tensor.consumers),
++             "external_input": tensor.external_input,
++             "external_output": tensor.external_output}
++            for tensor in problem.tensors
++        ],
++        "logical_boundary_bytes": best.logical_boundary_bytes,
++        "encoded_boundary_bytes": best.encoded_boundary_bytes,
++        "layout_transforms": best.transforms,
++        "layout_transforms_inserted": len(best.transforms),
++        "layout_transforms_eliminated": baseline_transforms - len(best.transforms),
++        "layout_transform_bytes_eliminated": baseline_transform_bytes - best.transform_bytes,
++        "capacity": {
++            "arena_capacity_bytes": problem.arena_capacity_bytes,
++            "peak_live_encoded_bytes": best.peak_live_bytes,
++            "peak_live_at_operation": best.peak_live_at,
++            "fits": True,
++        },
++        "lifetimes": best.live_intervals,
++        "refusals": refusals,
++    }
+--- a/compiler/mlir_oot/lowering/native_conv_selector.py
++++ b/compiler/mlir_oot/lowering/native_conv_selector.py
+@@ -6,6 +6,7 @@
+ """
+ from __future__ import annotations
+ 
++from ..tables import loop_conv
+ from ..tables import rtl_facts as F
+ 
+ 
+@@ -53,4 +54,15 @@
+         return False, "kernel_dilation_not_representable"
+     if c.kh * c.kw * c.ci * 128 * 128 > (1 << 31) - 1:
+         return False, "native_loop_conv_accumulator_may_overflow_i32"
++    # Every native descriptor uses a zero bias load to overwrite its accumulator tile.  This
++    # makes a compiled kernel repeatable across warm and measured invocations: ``no_bias`` leaves
++    # LOOP_CONV_WS's persistent accumulator rows live and a second invocation otherwise adds the
++    # previous result.  An externally split reduction could not both initialize its first slice
++    # and retain the partial sum in the same rotating accumulator half, so fail closed unless the
++    # target-derived capacity selector keeps the complete reduction in one descriptor.
++    _b, _r, _c, _o, krows, kcols, kchs = loop_conv.auto_tile(
++        batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
++        stride=c.stride_h, kernel_dilation=c.dilation_h)
++    if (krows, kcols, kchs) != (c.kh, c.kw, c.ci):
++        return False, "native_loop_conv_reduction_not_resident"
+     return True, "selected"
+--- a/compiler/mlir_oot/lowering/plan.py
++++ b/compiler/mlir_oot/lowering/plan.py
+@@ -7,10 +7,15 @@
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
++from math import prod
+ from typing import Any
+ 
+ from ..frontend.reader import TensorDecl, Workload
+ from ..tables import rtl_facts as _F
++from .global_encoding import (
++    Encoding, EncodingOperation, EncodingProblem, OperationAlternative, TensorBoundary,
++    solve as solve_global_encodings,
++)
+ from .native_conv_selector import select_native_loop_conv
+ from .source_conv_plan import Convolution
+ 
+@@ -63,6 +68,7 @@
+     dtype: str
+     role: str                 # input | weight | bias | output | scratch
+     storage_encoding: dict[str, Any] | None = None
++    zero_initialized: bool = False
+ 
+     @property
+     def pitch(self) -> int:
+@@ -275,6 +281,11 @@
+         #: and the DECLARED shape each one was interpreted under before the view was taken
+         self._reshaped: dict[str, list[int]] = {}
+         self._as_declared: dict[str, list[int]] = {}
++        self._consumed_names = {name for node in wl.nodes for name in node.ins}
++        self.global_encoding = _plan_iface_encodings(wl)
++        self._encoding_operation = {
++            entry["name"]: entry for entry in self.global_encoding.get("operations", [])
++        }
+ 
+     # -- buffer bookkeeping ------------------------------------------------------------------
+     def declare(self, name: str, shape: list[int], dtype: str, role: str) -> Buffer:
+@@ -317,6 +328,7 @@
+             self.declare(decl.name, decl.shape, decl.dtype, decl.role)
+         for node in self.wl.nodes:
+             self._node(node)
++        self.params["global_encoding"] = self.global_encoding
+         cb = self._command_buffer()
+         return Plan(self.wl.target or "gemmini", self.buffers, self.tasks, cb,
+                     kernel_args(cb, self.tensor_order))
+@@ -454,16 +466,28 @@
+                 f"convolution's derived output extent is [{ho}, {wo}]",
+                 op="conv2d", shape=[ho, wo])
+         rows, kdim = bn * ho * wo, kh * kw * ci
+-        if weight.shape != [kdim, co]:
++        if weight.shape not in ([kdim, co], [kh, kw, ci, co]):
+             raise LoweringDeclined(
+-                f"conv2d weight {weight.shape} is not the [{kdim}, {co}] im2col packing",
++                f"conv2d weight {weight.shape} is neither [{kdim}, {co}] flattened-HWIO nor "
++                f"[{kh}, {kw}, {ci}, {co}] HWIO",
+                 op="conv2d", shape=weight.shape)
+-        out_shape = epilogue_out_shape(rows, co, e)
+-        if out_shape != node.out_shape:
++        flattened_out_shape = epilogue_out_shape(rows, co, e)
++        logical_nhwc_shape = [bn, ho, wo, co] if not e.has_pool else None
++        legal_out_shapes = [flattened_out_shape]
++        if logical_nhwc_shape is not None:
++            legal_out_shapes.append(logical_nhwc_shape)
++        if node.out_shape not in legal_out_shapes:
+             raise LoweringDeclined(
+-                f"conv2d result {node.out_shape} disagrees with the derived shape {out_shape}",
++                f"conv2d result {node.out_shape} is neither flattened {flattened_out_shape} nor "
++                f"logical NHWC {logical_nhwc_shape}",
+                 op="conv2d", shape=node.out_shape)
+-        candidate_dst = Buffer(node.name, out_shape, e.output_dtype, "output")
++        out_shape = list(node.out_shape)
++        # Values that exist only between compiler-owned operations are internal allocation
++        # objects, not new caller ABI arguments.  Keeping the logical name lets ownership,
++        # hazards, encodings and lifetimes remain auditable while the LLVM emitter gives the
++        # value internal storage.
++        result_role = "scratch" if node.name in self._consumed_names else "output"
++        candidate_dst = Buffer(node.name, out_shape, e.output_dtype, result_role)
+ 
+         # LOOP_CONV_WS consumes the interface's existing NHWC activation, flattened-HWIO
+         # [KH*KW*CI, CO] weight and flattened-NHWC [N*HO*WO, CO] result directly.  Select it
+@@ -481,8 +505,10 @@
+         native_loop_conv, _reason = select_native_loop_conv(
+             candidate, ifm, weight, candidate_dst,
+             epilogue_stages=e.stages, bias=e.bias)
++        global_choice = self._encoding_operation.get(node.name, {}).get("selected")
++        native_loop_conv = native_loop_conv and global_choice in (None, "native_loop_conv")
+         if native_loop_conv:
+-            self.declare(node.name, out_shape, e.output_dtype, "output")
++            self.declare(node.name, out_shape, e.output_dtype, result_role)
+             self.params.setdefault("convolution_lowering", {
+                 "selection_policy": "capability_geometry_layout_semantics_v1",
+                 "target_has_loop_conv": bool(_F.HAS_LOOP_CONV),
+@@ -503,7 +529,7 @@
+         self.params.setdefault("im2col_recipes", []).append(
+             {"source": ifm.name, "target": im2col.name, "kh": kh, "kw": kw, "ci": ci,
+              "stride": stride, "padding": padding, "dilation": dilation, "layout": layout})
+-        self.declare(node.name, out_shape, e.output_dtype, "output")
++        self.declare(node.name, out_shape, e.output_dtype, result_role)
+         acc = f"acc_{node.name}"
+         handle = node.ins[1]
+         if handle not in self.residents:
+@@ -703,11 +729,201 @@
+                               "backend": "mlir_oot_xdsl_gemmini",
+                               "tensors": tensors,
+                               "commands": self.commands}
++        if len(self.tasks) > 1 or any(buf.role == "intermediate"
++                                     for buf in self.buffers.values()):
++            storage_encodings: dict[str, dict[str, Any]] = {}
++            for name, buf in self.buffers.items():
++                shape = list(buf.shape)
++                pitch = row_pitch(shape[-1])
++                strides = [1] * len(shape)
++                if len(shape) > 1:
++                    strides[-2] = pitch
++                    for axis in range(len(shape) - 3, -1, -1):
++                        strides[axis] = strides[axis + 1] * shape[axis + 1]
++                encoding = {
++                    "schema": "grouped_axes_storage_v1", "logical_shape": shape,
++                    "dtype": buf.dtype, "axis_groups": [[axis] for axis in range(len(shape))],
++                    "physical_shape": shape, "strides_elements": strides,
++                    "storage_elements": prod(shape[:-1]) * pitch,
++                    "offset_elements": 0,
++                }
++                buf.storage_encoding = encoding
++                # The command-buffer storage contract covers caller-visible tensors exactly.
++                # Internal allocations carry the same encoding on the compiler Plan but are
++                # intentionally absent from both the public tensor table and kernel ABI.
++                if name in self.tensor_order:
++                    storage_encodings[name] = encoding
++            self.params["storage_encodings"] = storage_encodings
++            cb["kernel_abi"] = {
++                "kind": "whole_program",
++                "args": [
++                    {"tensor": name,
++                     "access": ("write" if self.buffers[name].role in
++                                ("output", "intermediate") else "read")}
++                    for name in self.tensor_order
++                ],
++                "outputs": [name for name in self.tensor_order
++                            if self.buffers[name].role == "output"],
++            }
++            task_rows = []
++            for task in self.tasks:
++                if isinstance(task, Convolution):
++                    kind, reads, writes = "convolution", [task.activation, task.weight], [task.dst]
++                elif isinstance(task, Contraction):
++                    kind, reads, writes = "contraction", [task.lhs, task.rhs], [task.dst]
++                    if task.epilogue.bias:
++                        reads.append(task.epilogue.bias)
++                    if task.accumulator_temporary:
++                        writes.append(task.accumulator_temporary)
++                elif isinstance(task, Movement):
++                    kind, reads, writes = "movement", [task.src], [task.dst]
++                elif isinstance(task, Transpose):
++                    kind, reads, writes = "transpose", [task.src], [task.dst]
++                elif isinstance(task, HostBiasAdd):
++                    kind, reads, writes = "host_bias_add", [task.src, task.bias], [task.dst]
++                else:  # pragma: no cover - every task family is enumerated above
++                    raise LoweringDeclined(
++                        f"global encoding has no access model for {type(task).__name__}",
++                        op="global_encoding",
++                    )
++                task_rows.append({"task_index": len(task_rows), "kind": kind,
++                                  "reads": reads, "writes": writes})
++            self.params["global_program_plan"] = {
++                "schema": "iface_whole_program_plan_v1", "tasks": task_rows,
++            }
+         if self.params:
+             cb["params"] = dict(self.params)
+         return cb
+ 
+ 
++def _plan_iface_encodings(wl: Workload) -> dict[str, Any]:
++    """Adapt public convolution nodes to the target-neutral encoding solver.
++
++    The public convolution contract already names NHWC semantics.  This adapter's important job
++    is therefore not to guess a layout: it proves that a producer's narrow NHWC buffer can remain
++    the next convolution's physical input, instead of forcing each operation through an isolated
++    flattened/im2col boundary.
++    """
++    resident: dict[str, str] = {}
++    produced_by: dict[str, int] = {}
++    consumers: dict[str, list[int]] = {}
++    conv_nodes: list[tuple[int, Any, str]] = []
++    for index, node in enumerate(wl.nodes):
++        if node.kind == "resident_pack":
++            resident[node.name] = node.ins[0]
++        if node.name:
++            produced_by[node.name] = index
++        for operand in node.ins:
++            consumers.setdefault(resident.get(operand, operand), []).append(index)
++        if node.kind == "conv2d":
++            conv_nodes.append((index, node, resident.get(node.ins[1], node.ins[1])))
++
++    if not conv_nodes:
++        return {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": "not_applicable",
++            "reason": "no_convolution_encoding_region",
++            "cycle_prediction_claimed": False,
++        }
++
++    encodings = {
++        "NHWC": Encoding("NHWC", ("N", "H", "W", "C"), _F.DIM),
++        "NCHW": Encoding("NCHW", ("N", "C", "H", "W"), _F.DIM),
++        "HWIO": Encoding("HWIO", ("H", "W", "I", "O"), _F.DIM),
++        "OIHW": Encoding("OIHW", ("O", "I", "H", "W"), _F.DIM),
++    }
++    tensor_facts: dict[str, TensorBoundary] = {}
++    operations: list[EncodingOperation] = []
++    conv_indices = {index for index, _, _ in conv_nodes}
++    for index, node, weight_name in conv_nodes:
++        ifm_name = node.ins[0]
++        ifm_decl = wl.tensors.get(ifm_name)
++        if ifm_decl is not None:
++            ifm_shape, ifm_dtype, external_input = ifm_decl.shape, ifm_decl.dtype, True
++        else:
++            producer = next((prior for prior in wl.nodes if prior.name == ifm_name), None)
++            if producer is None:
++                raise LoweringDeclined(f"global encoding cannot find {ifm_name!r}", op="conv2d")
++            ifm_shape, ifm_dtype = producer.out_shape, producer.out_dtype
++            # A value produced outside this encoding region is an explicit region input.  It has
++            # no producer in this solver problem; claiming otherwise would make an unrelated
++            # movement/elementwise op look like an unknown encoding alternative.
++            external_input = produced_by.get(ifm_name) not in conv_indices
++        kernel = [int(value) for value in node.attrs["kernel"]]
++        kh, kw, ci, co = kernel
++        stride = [int(value) for value in node.attrs.get("stride", [1, 1])]
++        padding = [int(value) for value in node.attrs.get("padding", [0, 0, 0, 0])]
++        dilation = [int(value) for value in node.attrs.get("dilation", [1, 1])]
++        if len(ifm_shape) != 4:
++            # The ordinary lowering owns the diagnostic.  This receipt simply refuses to invent
++            # an encoding for a non-NHWC rank.
++            return {
++                "schema": "target_neutral_global_encoding_v1", "status": "refused",
++                "reason": "activation_rank_is_not_four", "operation": node.name,
++                "cycle_prediction_claimed": False,
++            }
++        bn, hi, wi, actual_ci = [int(value) for value in ifm_shape]
++        ho, wo = conv_out_dims(hi, wi, kh, kw, stride, padding, dilation)
++        output_extents = {"N": bn, "H": ho, "W": wo, "C": co}
++        ifm_extents = {"N": bn, "H": hi, "W": wi, "C": actual_ci}
++        weight_extents = {"H": kh, "W": kw, "I": ci, "O": co}
++
++        tensor_facts[ifm_name] = TensorBoundary(
++            ifm_name, ifm_extents, ifm_dtype, "NHWC",
++            (produced_by.get(ifm_name)
++             if produced_by.get(ifm_name) in conv_indices else None),
++            tuple(sorted(set(c for c in consumers.get(ifm_name, []) if c in conv_indices))),
++            external_input=external_input,
++            external_output=any(c not in conv_indices for c in consumers.get(ifm_name, ())),
++        )
++        weight_decl = wl.tensors[weight_name]
++        tensor_facts[weight_name] = TensorBoundary(
++            weight_name, weight_extents, weight_decl.dtype, "HWIO", None, (index,),
++            external_input=True,
++        )
++        tensor_facts[node.name] = TensorBoundary(
++            node.name, output_extents, node.out_dtype, "NHWC", index,
++            tuple(sorted(set(c for c in consumers.get(node.name, []) if c in conv_indices))),
++            external_output=(not consumers.get(node.name)
++                             or any(c not in conv_indices for c in consumers.get(node.name, ()))),
++        )
++
++        e = _epilogue_from(node.attrs)
++        candidate = Convolution(
++            ifm_name, weight_name, node.name, bn, ci, hi, wi, co, kh, kw, ho, wo,
++            stride[0], stride[1], dilation[0], dilation[1], *padding,
++            input_layout="NHWC", weight_layout="HWIO", output_layout="NHWC",
++            output_dtype=e.output_dtype,
++        )
++        activation = Buffer(ifm_name, list(ifm_shape), ifm_dtype, "input")
++        weight = Buffer(weight_name, list(weight_decl.shape), weight_decl.dtype, "weight")
++        destination = Buffer(node.name, list(node.out_shape), node.out_dtype, "output")
++        eligible, refusal = select_native_loop_conv(
++            candidate, activation, weight, destination,
++            epilogue_stages=e.stages, bias=e.bias,
++        )
++        rows, kdim = bn * ho * wo, kh * kw * ci
++        native = OperationAlternative(
++            "native_loop_conv",
++            {ifm_name: "NHWC", weight_name: "HWIO"}, {node.name: "NHWC"},
++            materialized_bytes=0, exact=eligible, refusal="" if eligible else refusal,
++            capability="native_convolution",
++        )
++        fallback = OperationAlternative(
++            "row_streamed_im2col",
++            {ifm_name: "NHWC", weight_name: "HWIO"}, {node.name: "NHWC"},
++            # One compiler-generated im2col matrix write and one accelerator read.  This is a
++            # structural byte count, not measured DRAM traffic.
++            materialized_bytes=2 * rows * kdim * DTYPE_BYTES[ifm_dtype],
++            capability="generic_contraction",
++        )
++        operations.append(EncodingOperation(index, node.name, "conv2d", (native, fallback)))
++
++    return solve_global_encodings(EncodingProblem(
++        tuple(tensor_facts[name] for name in sorted(tensor_facts)), tuple(operations), encodings,
++    ))
++
++
+ def _as_2d(shape: list[int]) -> tuple[int, int]:
+     if len(shape) == 2:
+         return int(shape[0]), int(shape[1])
+--- a/compiler/mlir_oot/lowering/schedule.py
++++ b/compiler/mlir_oot/lowering/schedule.py
+@@ -123,10 +123,12 @@
+     def emit(self, __kind: str, __bufs: list[str] | None = None, **attrs) -> None:
+         self.instrs.append(Instr(__kind, attrs, list(__bufs or [])))
+ 
+-    def stage_buffer(self, shape: list[int], dtype: str, hint: str) -> Buffer:
++    def stage_buffer(self, shape: list[int], dtype: str, hint: str, *,
++                     zero_initialized: bool = False) -> Buffer:
+         name = f"__stage_{self._stage_id}_{hint}"
+         self._stage_id += 1
+-        buf = Buffer(name, list(shape), dtype, "scratch")
++        buf = Buffer(name, list(shape), dtype, "scratch",
++                     zero_initialized=zero_initialized)
+         self.staging[name] = buf
+         self.plan.buffers[name] = buf
+         return buf
+@@ -190,12 +192,19 @@
+                         device_writes.clear()
+                     host_writes.update(writes)
+                 else:
+-                    hazards = (reads | writes) & host_writes
++                    host_hazards = (reads | writes) & host_writes
++                    device_hazards = ((reads & device_writes)
++                                      | (writes & (device_reads | device_writes)))
++                    hazards = host_hazards | device_hazards
+                     if hazards:
+                         self.emit("fence")
+                         task_record["boundary_sync"] = {
+-                            "direction": "host_to_device", "tensors": sorted(hazards)}
++                            "direction": ("host_to_device" if host_hazards
++                                          else "device_dependency"),
++                            "tensors": sorted(hazards)}
+                         host_writes.clear()
++                        device_reads.clear()
++                        device_writes.clear()
+                     device_reads.update(reads)
+                     device_writes.update(writes)
+             if isinstance(task, Contraction):
+@@ -515,6 +524,16 @@
+         batches, porows, pocols, pochs, krows, kcols, kchs = loop_conv.auto_tile(
+             batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
+             stride=c.stride_h, kernel_dilation=c.dilation_h)
++        if (krows, kcols, kchs) != (c.kh, c.kw, c.ci):  # selector is the public fail-closed gate
++            raise LoweringDeclined(
++                "native LOOP_CONV_WS cannot retain a split reduction while also initializing "
++                "the accumulator for repeatable warm invocations", op="conv2d")
++        # LOOP_CONV_WS computes into persistent accumulator rows.  A null bias pointer skips the
++        # overwriting load, which makes a second call accumulate onto the first call's result.
++        # This internal read-only i32 BSS is zero initialized by the executable loader and is
++        # never written, so every descriptor starts from exact zero without changing the ABI.
++        zero_bias = self.stage_buffer(
++            [c.co], F.ACCUMULATOR_DTYPE, "native_zero_bias", zero_initialized=True)
+         in_stride, weight_stride, out_stride = activation.pitch, weight.pitch, dst.pitch
+         self.config_st(stride=out_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0)
+         self.config_ex(dataflow=isa.WEIGHT_STATIONARY, act=isa.NO_ACTIVATION,
+@@ -546,7 +565,8 @@
+                                              and kcol + tile_kc == c.kw
+                                              and kch + tile_kch == c.ci)
+                                     self.emit(
+-                                        "loop_conv_ws", [c.activation, c.weight, c.dst],
++                                        "loop_conv_ws",
++                                        [c.activation, c.weight, c.dst, zero_bias.name],
+                                         batch_size=c.batch, in_row_dim=c.hi,
+                                         in_col_dim=c.wi, in_channels=c.ci,
+                                         out_channels=c.co, out_row_dim=c.ho,
+@@ -561,7 +581,7 @@
+                                         plpad=0, prpad=0, pupad=0, pdpad=0,
+                                         orows=tile_or, ocols=tile_oc,
+                                         in_stride=in_stride, weight_stride=weight_stride,
+-                                        out_stride=out_stride, no_bias=True, no_pool=True,
++                                        out_stride=out_stride, no_bias=False, no_pool=True,
+                                         downsample=False, wrot180=False, input_dilated=False,
+                                         activation=isa.NO_ACTIVATION,
+                                         trans_output_1203=False, trans_weight_1203=False,
+@@ -579,6 +599,7 @@
+                                                         + orow * c.wo + ocol)
+                                                        * out_stride + poch),
+                                         write_output=final,
++                                        accumulator_initialization="read_only_zero_bias",
+                                         implementation="gemmini_loop_conv_ws")
+ 
+     def contraction(self, c: Contraction) -> None:
+--- a/compiler/mlir_oot/lowering/source_conv_model_lane.py
++++ b/compiler/mlir_oot/lowering/source_conv_model_lane.py
+@@ -153,6 +153,7 @@
+         super().__init__(module, wl)
+         self.weight_prepack = []
+         self.absorbed_by = {}
++        self.source_conv_encoding_dependencies = []
+ 
+     def _encode_buffer(self, name, logical_shape, axis_groups):
+         """One explicit contract drives both the caller ABI and device row pitches.
+@@ -468,6 +469,47 @@
+         task.source_op_indices = [self.source_indices[item]
+                                   for item in [*self.absorbed_by.get(op, []), op]]
+         self.ordered.append(task)
++        live_consumers = sorted({
++            self.source_indices[use.operation]
++            for use in spec.output.uses if use.operation in self.source_indices
++        })
++        current_output_bytes = prod((spec.batch, spec.co, spec.ho, spec.wo)) * 4
++        candidate_output_bytes = (
++            spec.batch * spec.ho * spec.wo * row_pitch(spec.co)
++        )
++        self.source_conv_encoding_dependencies.append({
++            "source_op_index": self.source_indices[op],
++            "task_index": len(self.ordered) - 1,
++            "geometry": {
++                "n": spec.batch, "ci": spec.ci, "hi": spec.hi, "wi": spec.wi,
++                "co": spec.co, "kh": spec.kh, "kw": spec.kw,
++                "ho": spec.ho, "wo": spec.wo,
++            },
++            "current": {
++                "activation_encoding": "NCHW", "weight_encoding": "CoK_dim_padded",
++                "output_encoding": "NCHW", "output_dtype": "i32",
++                "logical_output_bytes": current_output_bytes,
++            },
++            "native_requirement": {
++                "activation_encoding": "NHWC", "weight_encoding": "HWIO",
++                "output_encoding": "NHWC", "output_dtype": "i8",
++                "encoded_output_bytes": candidate_output_bytes,
++            },
++            "fanout": len(live_consumers),
++            "lifetime": {
++                "producer_source_op_index": self.source_indices[op],
++                "last_consumer_source_op_index": max(live_consumers,
++                                                     default=self.source_indices[op]),
++            },
++            "selected": "streamed_row_im2col_loop_ws",
++            "refusal": [
++                "semantic_output_dtype_i32_requires_exact_narrow_epilogue",
++                "ordered_f32_epilogue_must_be_proven_before_narrow_store",
++                "native_input_requires_nhwc_producer_or_explicit_adapter",
++                "native_weight_requires_hwio_offline_encoding",
++                "native_output_requires_nhwc_consumer_legalization",
++            ],
++        })
+ 
+     def _command_buffer(self, segments: list[HostSegment]) -> dict[str, Any]:
+         # Bind host inputs explicitly; resident packs describe accelerator work only.
+@@ -476,6 +518,67 @@
+                        "role": self.buffers[n].role} for n in self.order}
+         placement = [{"region": r.region_id, "family": r.family, "op": r.op, "dtype": r.dtype,
+                       "lane": r.lane, "reason": r.reason} for r in self.wl.regions]
++        dependencies = list(self.source_conv_encoding_dependencies)
++        current_bytes = sum(row["current"]["logical_output_bytes"] for row in dependencies)
++        candidate_bytes = sum(
++            row["native_requirement"]["encoded_output_bytes"] for row in dependencies
++        )
++
++        def peak_live(byte_path):
++            events = {}
++            for row in dependencies:
++                start = row["lifetime"]["producer_source_op_index"]
++                end = row["lifetime"]["last_consumer_source_op_index"]
++                value = row
++                for key in byte_path:
++                    value = value[key]
++                events[start] = events.get(start, 0) + int(value)
++                events[end + 1] = events.get(end + 1, 0) - int(value)
++            live = peak = peak_at = 0
++            for point in sorted(events):
++                live += events[point]
++                if live > peak:
++                    peak, peak_at = live, point
++            return peak, peak_at
++
++        logical_peak, logical_peak_at = peak_live(("current", "logical_output_bytes"))
++        encoded_peak, encoded_peak_at = peak_live(
++            ("native_requirement", "encoded_output_bytes"))
++        encoding_report = {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": "refused_exact_semantic_boundary" if dependencies else "not_applicable",
++            "selection_policy": "capability_layout_dtype_cost_lifetime_fanout_v1",
++            "cycle_prediction_claimed": False,
++            "logical_boundary_bytes": current_bytes,
++            "encoded_boundary_bytes_if_legal": candidate_bytes,
++            "potential_boundary_byte_reduction": current_bytes - candidate_bytes,
++            "layout_transforms_inserted": 0,
++            "layout_transforms_eliminated": 0,
++            "layout_transform_counts_conditional_until_epilogue_is_exact": True,
++            "capacity": {
++                "arena_capacity_bytes": None,
++                "peak_live_logical_bytes": logical_peak,
++                "peak_live_encoded_bytes_if_legal": encoded_peak,
++                "peak_live_at_source_op": encoded_peak_at,
++                "logical_peak_live_at_source_op": logical_peak_at,
++                "fits": None,
++                "reason": "whole-program DRAM capacity is not a target fact; per-tile native "
++                          "convolution capacity remains checked by the capability selector",
++            },
++            "fanout": {
++                "maximum": max((row["fanout"] for row in dependencies), default=0),
++                "boundaries": len(dependencies),
++                "multi_consumer_boundaries": sum(row["fanout"] > 1 for row in dependencies),
++            },
++            "dependencies": dependencies,
++            "refusal_histogram": ({
++                "semantic_output_dtype_i32_requires_exact_narrow_epilogue": len(dependencies),
++                "ordered_f32_epilogue_must_be_proven_before_narrow_store": len(dependencies),
++                "native_input_requires_nhwc_producer_or_explicit_adapter": len(dependencies),
++                "native_weight_requires_hwio_offline_encoding": len(dependencies),
++                "native_output_requires_nhwc_consumer_legalization": len(dependencies),
++            } if dependencies else {}),
++        }
+         return {
+             "abi_version": "0.1",
+             "target": "gemmini",
+@@ -544,6 +647,7 @@
+                     "strategy": "direct_dma_or_streamed_output_row_im2col",
+                     "full_im2col_materialized": False,
+                 },
++                "global_encoding": encoding_report,
+             },
+         }
+ 

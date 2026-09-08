@@ -1,0 +1,192 @@
+{
+  "schema": "merlin_phase2_affine_im2col_plus_target_neutral_global_encoding_v1",
+  "status": "qualified_affine_plus_generic_encoding_full_model_encoding_refused",
+  "scope": "fresh isolated child; compiler/ is the only candidate source; no shared-tree mutation, full-model Spike, L3, FireSim, queue action, or commit",
+  "lineage": {
+    "source_artifact": "development_phase2_canonical_multimodel_affine_im2col_20260908",
+    "copy_method": "cp -a followed by apply_patch-only source integration",
+    "source_compiler_tree_sha256": "8f7dae852ed8e8f80e8a67207582e8842af098d3d131f6bdba1da3680315adb6",
+    "source_compiler_tree_files": 42,
+    "candidate_compiler_tree_sha256": "624c96b345a4ed3112e8b8d5f91f05082c1709a33e7f6068f84d50a7f1d00ffc",
+    "candidate_compiler_tree_files": 43,
+    "support_merlin_tree_sha256": "0714adc43f25efb2421afc37519190f9a2b58c75ad75d7a08b9ff3537936498a",
+    "support_merlin_tree_files": 1016
+  },
+  "review_patch": {
+    "path": "global_encoding_on_affine.patch",
+    "sha256": "d58b7dd078a70e3880d417cd1c98fedf6ba9ee650d3ca9a8afdb10cad83c2b14",
+    "lines": 962,
+    "scope": "compiler source only",
+    "dry_run_applies_to_source_artifact": true
+  },
+  "preserved_mechanisms": {
+    "affine_im2col": {
+      "status": "preserved",
+      "proof": "AST source equality for _universal_valid_x_span and Emitter.emit_im2col_row",
+      "model_layer_or_shape_specific": false
+    },
+    "native_scalar": {
+      "status": "preserved",
+      "fpbuilder_sha256": "46a2651e788c34ebd07937d2f0fd6a4a661678c37bb8ceb6110eb757787c4deb"
+    },
+    "dynamic_weight_bridge": {
+      "status": "preserved_and_recompiled",
+      "default_enabled": false,
+      "contract": "symmetric_per_output_channel_roundeven_v1",
+      "source_f32_bit_equivalence": "NOT_CLAIMED",
+      "target_sha256": "a1d39869e27efe2d5f3b4be5f8cb75020746423b761e69d96e69c1ec7d015082",
+      "command_buffer_sha256": "2e1360a6a9f87047ca5fbaadef6ae942c0b694c8c181701d1053544ae3724e19",
+      "compile_wall_seconds": 2.48,
+      "compile_rss_kb": 60288
+    },
+    "native_loop_conv": {
+      "status": "preserved_and_made_warm_repeatable",
+      "selection_policy": "capability_geometry_layout_semantics_v1"
+    }
+  },
+  "global_encoding": {
+    "solver": "compiler/mlir_oot/lowering/global_encoding.py",
+    "policy": "capability, layout, exact semantics, structural materialization cost, fanout, lifetime, and optional capacity",
+    "model_or_layer_rules": false,
+    "fixed_shape_rules": false,
+    "target_specific_solver_logic": false,
+    "cycle_prediction_claimed": false,
+    "exposed": [
+      "logical and encoded boundary bytes",
+      "inserted and eliminated layout transforms",
+      "producer, consumers, and fanout",
+      "live intervals and peak-live encoded bytes",
+      "arena capacity",
+      "all considered alternatives and refusal reasons"
+    ]
+  },
+  "positive_reduced_chain": {
+    "status": "passed_exact_strict_warm",
+    "receipt": "validation/global_encoding/reduced_chain_spike/receipt.json",
+    "receipt_sha256": "697475c954ffc6054fefd2d4f8af3129b5f8fdd7c8cf14f6e2f5b4f4d96260e0",
+    "warmup_invocations": 1,
+    "measured_invocations": 1,
+    "captured_metrics": ["cycles"],
+    "spike_proxy_cycles": 102,
+    "target_performance_claim": false,
+    "outputs_checked_exact": 96,
+    "native_loop_conv_tasks": 2,
+    "im2col_tasks": 0,
+    "fallback_structural_materialized_bytes_avoided": 1032,
+    "retained_internal_boundary": "Y0 narrow i8 NHWC",
+    "caller_abi": ["IFM", "W0", "W1", "Y1"],
+    "compiler_owned_intermediates_in_caller_abi": 0,
+    "device_dependency_fences": 1,
+    "zero_initialized_accumulator_biases": 2,
+    "target_sha256": "d06abfd38f5f2b6fe8a4bccf1ce5b458006bebca556d4032d2268f22227541be",
+    "command_buffer_sha256": "54f7d1f4f0996c8c25af33ce39e60219290845ac05e4e8de0d693a8e01744bf9",
+    "elf_sha256": "cf9fdfd2e9563b916f49c881173cd5577b712623c87b220dbe27bd81c20dbacc",
+    "console_sha256": "0d35d0cd9ff8a16a272882c53bc4dec38852fbc2b115305c3939d94ca165c71c"
+  },
+  "solver_cases": {
+    "logical_nchw_encoded_nhwc_chain": {
+      "layout_transforms_eliminated": 2,
+      "layout_transforms_inserted": 2,
+      "remaining_transforms": "external ABI endpoints only"
+    },
+    "conflicting_fanout": {
+      "fanout": 2,
+      "inserted_internal_adapter_count": 1
+    },
+    "capacity_one_byte": {
+      "status": "refused",
+      "reason": "arena_capacity_exceeded"
+    }
+  },
+  "tests": {
+    "status": "passed",
+    "count": 43,
+    "seconds": 1.12,
+    "tests_tree_sha256": "d314bae7dc525ea962d0703b60602df55618e72b7ae50a3ebea087019f0db641",
+    "tests_tree_files": 14,
+    "includes": [
+      "26730 exhaustive affine span geometries",
+      "500 deterministic affine segmented-versus-naive im2col cases",
+      "global encoding retention, fanout, and capacity",
+      "native convolution capability and warm-safe split-reduction refusal",
+      "native scalar, dynamic bridge, host workspace, and resident LOOP_WS"
+    ]
+  },
+  "default_four_model_compile": {
+    "status": "passed_sequential",
+    "total_wall_seconds": 131.12,
+    "peak_sequential_rss_kb": 301656,
+    "resnet50": {
+      "wall_seconds": 31.22,
+      "rss_kb": 201904,
+      "target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+      "command_buffer_sha256": "134adf69272fd71f40d3573181144eb3e0c86347c699adcf95512eb50b5d3a3c",
+      "affine_parent_target_byte_identical": true
+    },
+    "tinyllama": {
+      "wall_seconds": 1.31,
+      "rss_kb": 54772,
+      "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5",
+      "command_buffer_sha256": "0e9611bfb0dafbdd0c2dbbd6ce73b2c8fbfc7a4a186dc0a026babe5a0a962ba8",
+      "affine_parent_target_byte_identical": true
+    },
+    "lstmnetvit": {
+      "wall_seconds": 51.28,
+      "rss_kb": 188996,
+      "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7",
+      "command_buffer_sha256": "2397fa42eff271ae72110002e2f9522e2ec474712a6529d5259bbc14730cb463",
+      "affine_parent_target_byte_identical": true
+    },
+    "smolvla": {
+      "wall_seconds": 47.31,
+      "rss_kb": 301656,
+      "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b",
+      "command_buffer_sha256": "ab9f7b1aa2f11849dbf390b95c9f0a2be236d7dd1c6f8286b0f617fe0daf1113",
+      "affine_parent_target_byte_identical": true
+    }
+  },
+  "resnet50_global_encoding": {
+    "status": "refused_exact_semantic_boundary",
+    "native_loop_conv_selected": 0,
+    "streamed_affine_im2col_fallback_selected": 53,
+    "encoding_dependencies": 53,
+    "current_logical_output_boundary_bytes": 44455936,
+    "candidate_encoded_output_boundary_bytes_if_legal": 11113984,
+    "conditional_boundary_byte_reduction": 33341952,
+    "peak_live_logical_bytes": 3211264,
+    "peak_live_encoded_bytes_if_legal": 802816,
+    "actual_inserted_layout_transforms": 0,
+    "actual_eliminated_layout_transforms": 0,
+    "blocking_dependency": "prove the exact ordered f32 epilogue equivalent to a narrow quantized boundary before changing layout or selecting native convolution"
+  },
+  "affine_full_model_transfer": {
+    "status": "transferred_by_executable_target_identity",
+    "integrated_target_byte_identical_to_affine_parent": true,
+    "baseline_cycles": 751827143,
+    "candidate_cycles": 506265226,
+    "cycles_saved": 245561917,
+    "cycle_reduction_percent": 32.66201802985451,
+    "speedup": 1.4850459885230198,
+    "correctness": "1000/1000 exact, bad=0, nonfinite=0, top1=258, checksum=c6e777c3fe0aae90",
+    "performance_role": "transferred exact local Spike comparative proxy; not FPGA evidence",
+    "full_model_spike_rerun_performed": false
+  },
+  "repeatability_defect": {
+    "status": "fixed_and_guarded",
+    "symptom": "cold native convolution was exact but the measured invocation after warmup accumulated prior accelerator state",
+    "cause": "no_bias skipped overwrite initialization of persistent accumulator rows",
+    "fix": "internal read-only constant zero bias; native split reductions fail closed",
+    "regression_contract": "one warm invocation, one measured invocation, exact output"
+  },
+  "hardware": {
+    "firesim_run_performed": false,
+    "l3_run_performed": false,
+    "queue_action_performed": false,
+    "recommendation": "affine full-model structural target is material and remains a candidate for one queued warm/measured compute-only FireSim confirmation; global encoding itself adds no full-model target delta yet"
+  },
+  "limitations": [
+    "Global encoding is exact and emitted on a reduced multi-layer chain, but frozen ResNet still refuses the narrow boundary and receives no additional encoding speedup.",
+    "The 506,265,226 full-model result is transferred local Spike evidence from the byte-identical affine parent target, not a new run and not FPGA evidence.",
+    "Spike cycles in the reduced chain validate warm semantics only; the solver does not predict cycles."
+  ]
+}
