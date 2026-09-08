@@ -1,0 +1,37 @@
+{
+  "after": {
+    "fitting_physical_layers": 391,
+    "fitting_unique_shapes": 28,
+    "maximum_words": 32458,
+    "minimum_imem_margin_words": 310,
+    "total_unique_program_words": 379142
+  },
+  "before": {
+    "fitting_physical_layers": 205,
+    "fitting_unique_shapes": 13,
+    "maximum_words": 2774543,
+    "total_unique_program_words": 11384956
+  },
+  "claim": "compile/code-size only; no simulator or numeric-correctness claim",
+  "decoded_in_range_backward_edges": 195,
+  "imem_words": 32768,
+  "ok": true,
+  "recovered_kernel_ids": [
+    "matmul_50_1440_720",
+    "matmul_50_2048_720",
+    "matmul_50_720_2048",
+    "matmul_50_720_320",
+    "matmul_50_720_720",
+    "matmul_50_720_960",
+    "matmul_50_960_720",
+    "matmul_batched_12_1024_1024_64",
+    "matmul_batched_12_1024_64_1024",
+    "matmul_batched_15_113_113_64",
+    "matmul_batched_15_113_64_113",
+    "matmul_batched_15_50_113_64",
+    "matmul_batched_15_50_163_64",
+    "matmul_batched_15_50_64_113",
+    "matmul_batched_15_50_64_163"
+  ],
+  "recovered_unique_shapes": 15
+}

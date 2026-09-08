@@ -1,0 +1,38 @@
+{
+  "schema": "atlas_smolvla_compact_loop_recovery_v1",
+  "claim": "compile/code-size only; no simulator, halt, numeric, performance, capsule-score, or whole-image claim",
+  "target": "atlas",
+  "operand_dtype": "fp8_e4m3",
+  "accumulator_dtype": "bf16",
+  "imem_words": 32768,
+  "before": {
+    "fitting_unique_shapes": 13,
+    "unique_shapes": 28,
+    "fitting_physical_layers": 205,
+    "physical_layers": 391,
+    "maximum_instruction_words": 2774543,
+    "total_unique_program_words": 11384956,
+    "source_tree_sha256": "ce5f4e543988e294360ffffbdf723e977c1b73a635c42926047ecb6719695df0",
+    "parent_capsule_score": "49/61"
+  },
+  "after": {
+    "accepted_unique_shapes": 28,
+    "fitting_unique_shapes": 28,
+    "fitting_physical_layers": 391,
+    "maximum_instruction_words": 32458,
+    "minimum_imem_margin_words": 310,
+    "total_unique_program_words": 379142,
+    "bounded_inventory_wall_seconds": 13.661828,
+    "backend_subprocess_seconds_sum": 6.247186,
+    "source_tree_sha256": "5b038a25b4f9d24349c8b28714d9650e421499764bdf3137266066b87fab9c41",
+    "codegen_sha256": "94c5c429201b298d696e08258af8eabb3c5589f160496f632353446982d248b6"
+  },
+  "delta": {
+    "recovered_unique_shapes": 15,
+    "recovered_physical_layers": 186,
+    "total_unique_program_word_reduction_ratio": 30.028
+  },
+  "capture_sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c",
+  "imem_rtl_sha256": "902abb6b294991c7f25e6178a29292e419944cd828c4fb7d883305bb8d328d7d",
+  "git_head_at_measurement": "b62eee67f6bc61faf65b11c720aa94f00dc6bbe9"
+}

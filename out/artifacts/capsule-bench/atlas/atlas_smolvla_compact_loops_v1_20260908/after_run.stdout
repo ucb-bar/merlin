@@ -1,0 +1,176 @@
+{
+  "accumulator_dtype": "bf16",
+  "all_unique_shapes_emitted": true,
+  "capture": {
+    "bytes": 4346305,
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir",
+    "sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c"
+  },
+  "claim": "compile-only; no simulator, numeric, or whole-image execution claim",
+  "control_flow_fix_present": {
+    "branch_displacement_scale_2_occurrences": 3,
+    "large_tile_compact_schedule_threshold_present": true
+  },
+  "elapsed_seconds": 13.661828,
+  "emitted_programs": {
+    "assembly_bytes_total": 7206610,
+    "assembly_gzip_bytes_total": 164440,
+    "compile_seconds_sum": 6.247186,
+    "instruction_words_max": 32458,
+    "instruction_words_min": 1396
+  },
+  "git_head": "b62eee67f6bc61faf65b11c720aa94f00dc6bbe9",
+  "instruction_memory": {
+    "derived_from": "/scratch/agustin/tmp/gsim-atlas-core/AtlasCore.h",
+    "sha256": "902abb6b294991c7f25e6178a29292e419944cd828c4fb7d883305bb8d328d7d",
+    "source_line": 18413,
+    "words": 32768
+  },
+  "limits": {
+    "per_shape_seconds": 60.0,
+    "total_seconds": 600.0
+  },
+  "notes": [
+    "Routing demands preserve every captured compute/support op; physical layers count only actual matmul kernels.",
+    "model2MLIR propagates contraction provenance onto bias/im2col support ops, so mesh-routed demand count is not a kernel count.",
+    "A successful emission proves frontend+lowering+codegen acceptance only; it does not prove halt, numeric correctness, or a single whole-model image.",
+    "Instruction-memory fit is checked independently against the generated GSIM RTL header; non-fitting kernels need compact runtime loops before hardware execution."
+  ],
+  "operand_dtype": "fp8_e4m3",
+  "package": {
+    "files": [
+      {
+        "bytes": 2519,
+        "path": "manifest.yaml",
+        "sha256": "de3515fa5facf22c88ed736b3fbbf242d6c905acbe4b0c34cc9e1e6774b252c2"
+      },
+      {
+        "bytes": 39,
+        "path": "mlir_oot/__init__.py",
+        "sha256": "046fa747db6a0abccab55b6fa440fc76a78f3ca42fcbf64b98fd114c6431fa11"
+      },
+      {
+        "bytes": 1279,
+        "path": "mlir_oot/atlas-opt",
+        "sha256": "e9cd3ab95b6063e601d7038856d37d21aed2272bbab0aad0f5e2d6e792d51f34"
+      },
+      {
+        "bytes": 9902,
+        "path": "mlir_oot/cmdbuf.py",
+        "sha256": "c2859fdc074d318aa1d0796086d14021c87b2144fd94f20a7c63c650f42f6757"
+      },
+      {
+        "bytes": 71630,
+        "path": "mlir_oot/codegen.py",
+        "sha256": "94c5c429201b298d696e08258af8eabb3c5589f160496f632353446982d248b6"
+      },
+      {
+        "bytes": 1027,
+        "path": "mlir_oot/dialect.py",
+        "sha256": "8031f9373db3f4ff18131c3543ebb2df414df9431dc4c9fbe4f3b08beac3b39f"
+      },
+      {
+        "bytes": 4345,
+        "path": "mlir_oot/encoder.py",
+        "sha256": "3b57ccb60a6c6aabac64216a681b91422df077f0eba656c8a4eda218013ddb73"
+      },
+      {
+        "bytes": 1493,
+        "path": "mlir_oot/fp8.py",
+        "sha256": "a930e16f9fa2cb08c99ed1d10712ee66f250905f936064e008e29b350d056852"
+      },
+      {
+        "bytes": 10885,
+        "path": "mlir_oot/frontend.py",
+        "sha256": "30433228aec99bccebd5a66a5f1626a170ccb1cb849c4879e6a85b033d675d98"
+      },
+      {
+        "bytes": 5368,
+        "path": "mlir_oot/lowering.py",
+        "sha256": "1d7f32af7d71dcca0d23d1cbe372aa105ef73ca7673a30d7d0cf40f1bda857e4"
+      }
+    ],
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission",
+    "tree_sha256": "5b038a25b4f9d24349c8b28714d9650e421499764bdf3137266066b87fab9c41"
+  },
+  "package_capsule_score": null,
+  "physical_contraction_layers": 391,
+  "physical_contractions_by_kind": {
+    "matmul": 303,
+    "matmul_batched": 88
+  },
+  "physical_layers_by_compile_status": {
+    "accepted": 391
+  },
+  "physical_layers_instruction_memory_fit": {
+    "true": 391
+  },
+  "routing": {
+    "by_bucket": {
+      "fallback": 3,
+      "mesh": 470,
+      "scalar_rvv": 8097
+    },
+    "by_op": {
+      "add": 215,
+      "addmm": 154,
+      "arange": 63,
+      "arith.constant": 652,
+      "arith.index_cast": 1,
+      "aten_min_dim": 8,
+      "batch_matmul": 88,
+      "bitwise": 16,
+      "bucketize": 2,
+      "cat": 1,
+      "compare": 4,
+      "convolution_im2col_matmul": 3,
+      "copy": 112,
+      "cos": 57,
+      "cumsum": 4,
+      "div": 56,
+      "dtype_cast": 472,
+      "elementwise": 3,
+      "embedding": 2,
+      "expand": 246,
+      "gelu": 12,
+      "index_gather": 1,
+      "layer_norm": 225,
+      "mask_gather": 1,
+      "matmul": 225,
+      "minmax": 2,
+      "mul": 536,
+      "pow": 123,
+      "reduce_mean": 66,
+      "reduce_sum": 3,
+      "rsqrt": 66,
+      "select": 45,
+      "sigmoid": 33,
+      "sin": 57,
+      "softmax": 132,
+      "sub": 68,
+      "tensor.collapse_shape": 1820,
+      "tensor.concat": 95,
+      "tensor.expand_shape": 1902,
+      "tensor.extract_slice": 243,
+      "tensor.insert_slice": 112,
+      "tensor.splat": 644
+    },
+    "mesh_by_op": {
+      "addmm": 154,
+      "batch_matmul": 88,
+      "convolution_im2col_matmul": 3,
+      "matmul": 225
+    },
+    "total": 8570
+  },
+  "schema": "atlas_smolvla_compile_inventory_v1",
+  "target": "atlas",
+  "tool": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+  "unique_compile_status": {
+    "accepted": 28
+  },
+  "unique_instruction_memory_fit": {
+    "true": 28
+  },
+  "unique_kernel_shapes": 28
+}

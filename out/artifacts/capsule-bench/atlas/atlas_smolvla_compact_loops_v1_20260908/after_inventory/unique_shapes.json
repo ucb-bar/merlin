@@ -1,0 +1,850 @@
+[
+  {
+    "assembly_file_bytes": 26628,
+    "assembly_gzip": "kernels/matmul_1_32_960.S.gz",
+    "assembly_gzip_bytes": 1012,
+    "assembly_gzip_sha256": "2de563361cfbc10143b0f48483a27ddf1ede30c2949ca93489d80526c8d70da1",
+    "assembly_sha256": "17f766155d847e4cabe6c3e432596b98c526dc4c14e3966733e3460cde845774",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_1_32_960.mlir"
+    ],
+    "compile_seconds": 0.214128,
+    "instruction_bytes": 5584,
+    "instruction_memory_fit": true,
+    "instruction_words": 1396,
+    "interface": "interfaces/matmul_1_32_960.mlir",
+    "interface_sha256": "bd8b655cfa77a68d679b7c79e9dd5d4dfc62bae0806b6fd299cd76113c268171",
+    "kernel_id": "matmul_1_32_960",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      1,
+      32,
+      960
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_1_32_960.txt"
+  },
+  {
+    "assembly_file_bytes": 108252,
+    "assembly_gzip": "kernels/matmul_1024_3072_768.S.gz",
+    "assembly_gzip_bytes": 2786,
+    "assembly_gzip_sha256": "522ce2b1f6cb2ea6fd450c10bcd58a9631985e0a2eebcf5d5950e7e76e497672",
+    "assembly_sha256": "d3049574d1890a77d91d3c86c6f26d0912064da341b6b423f3f7e189b6c59b56",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_1024_3072_768.mlir"
+    ],
+    "compile_seconds": 0.214165,
+    "instruction_bytes": 22768,
+    "instruction_memory_fit": true,
+    "instruction_words": 5692,
+    "interface": "interfaces/matmul_1024_3072_768.mlir",
+    "interface_sha256": "57cb95be592e600bfb0ab448b137aec212dbee28e575784e0d320953241df107",
+    "kernel_id": "matmul_1024_3072_768",
+    "kind": "matmul",
+    "layer_occurrences": 12,
+    "returncode": 0,
+    "shape": [
+      1024,
+      3072,
+      768
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_1024_3072_768.txt"
+  },
+  {
+    "assembly_file_bytes": 108252,
+    "assembly_gzip": "kernels/matmul_1024_768_3072.S.gz",
+    "assembly_gzip_bytes": 2775,
+    "assembly_gzip_sha256": "106b0caffe7fa77b7b9cd012cd587b58cb508c38ff1a5ace05579509f5bb1151",
+    "assembly_sha256": "b4b6c2e4cc5d4d03a9e54a8c90499593a7bfb5a2237aec0009ae605bb00eb881",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_1024_768_3072.mlir"
+    ],
+    "compile_seconds": 0.214195,
+    "instruction_bytes": 22768,
+    "instruction_memory_fit": true,
+    "instruction_words": 5692,
+    "interface": "interfaces/matmul_1024_768_3072.mlir",
+    "interface_sha256": "fa8dedbdeef2139bf2ada13d05cf2c5b5607004fb642759fec28d12ed339fb4b",
+    "kernel_id": "matmul_1024_768_3072",
+    "kind": "matmul",
+    "layer_occurrences": 12,
+    "returncode": 0,
+    "shape": [
+      1024,
+      768,
+      3072
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_1024_768_3072.txt"
+  },
+  {
+    "assembly_file_bytes": 108252,
+    "assembly_gzip": "kernels/matmul_1024_768_768.S.gz",
+    "assembly_gzip_bytes": 2490,
+    "assembly_gzip_sha256": "f569b78cdfd3ae67e1ad057b1a8c7a3752d375a8cecd34a6d6d7cca8f3e20538",
+    "assembly_sha256": "6be6d469bdec89d72d9b93f48c847b0c3ddbae36e3c2be64afa2fc980834878a",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_1024_768_768.mlir"
+    ],
+    "compile_seconds": 0.264273,
+    "instruction_bytes": 22768,
+    "instruction_memory_fit": true,
+    "instruction_words": 5692,
+    "interface": "interfaces/matmul_1024_768_768.mlir",
+    "interface_sha256": "d7c96458b9ef996c4d336d104468898e5676d9a2af8bbacc30126ebe2365486e",
+    "kernel_id": "matmul_1024_768_768",
+    "kind": "matmul",
+    "layer_occurrences": 48,
+    "returncode": 0,
+    "shape": [
+      1024,
+      768,
+      768
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_1024_768_768.txt"
+  },
+  {
+    "assembly_file_bytes": 190047,
+    "assembly_gzip": "kernels/matmul_113_2560_960.S.gz",
+    "assembly_gzip_bytes": 4948,
+    "assembly_gzip_sha256": "0bea123b72080b7bc27bd4233669ecbf0f52fb775a0c1b7ba27c53731796e2df",
+    "assembly_sha256": "1d78e7955c64d39f126603051e5962bf9fa755856ecc3bfe8f1179e9f7aee3e4",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_113_2560_960.mlir"
+    ],
+    "compile_seconds": 0.213993,
+    "instruction_bytes": 39988,
+    "instruction_memory_fit": true,
+    "instruction_words": 9997,
+    "interface": "interfaces/matmul_113_2560_960.mlir",
+    "interface_sha256": "736f23cff43b2af2e9865bf60829f967e4b690fe0d56dcfde7cb4145bd665b47",
+    "kernel_id": "matmul_113_2560_960",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      113,
+      2560,
+      960
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_113_2560_960.txt"
+  },
+  {
+    "assembly_file_bytes": 190047,
+    "assembly_gzip": "kernels/matmul_113_320_320.S.gz",
+    "assembly_gzip_bytes": 4481,
+    "assembly_gzip_sha256": "a373589c4da1d093ead4b5d18852f56ab4119911c38f31ddcfc15a51915f8063",
+    "assembly_sha256": "cbc9d138f5d4a3734283cf64608d673b5e941ed5ce3606c04c9407ed4153b608",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_113_320_320.mlir"
+    ],
+    "compile_seconds": 0.214338,
+    "instruction_bytes": 39988,
+    "instruction_memory_fit": true,
+    "instruction_words": 9997,
+    "interface": "interfaces/matmul_113_320_320.mlir",
+    "interface_sha256": "5fecbdb600ef7523a959d8f3cb9151f121996240287c0b08c286b80d135660d4",
+    "kernel_id": "matmul_113_320_320",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      113,
+      320,
+      320
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_113_320_320.txt"
+  },
+  {
+    "assembly_file_bytes": 190047,
+    "assembly_gzip": "kernels/matmul_113_960_2560.S.gz",
+    "assembly_gzip_bytes": 4872,
+    "assembly_gzip_sha256": "848dd6b4f6b8249f102837f5382203f0e88c02ba397893503637ab124de5ad24",
+    "assembly_sha256": "5fee7dc15387660cd23e1fada28237ba07649a4da0236915c369d9778dbd0694",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_113_960_2560.mlir"
+    ],
+    "compile_seconds": 0.21411,
+    "instruction_bytes": 39988,
+    "instruction_memory_fit": true,
+    "instruction_words": 9997,
+    "interface": "interfaces/matmul_113_960_2560.mlir",
+    "interface_sha256": "9e32954c5f8e6fae0185616d6048867b80f7dcf1e7e744fa8e2977ff7fe2532d",
+    "kernel_id": "matmul_113_960_2560",
+    "kind": "matmul",
+    "layer_occurrences": 32,
+    "returncode": 0,
+    "shape": [
+      113,
+      960,
+      2560
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_113_960_2560.txt"
+  },
+  {
+    "assembly_file_bytes": 190047,
+    "assembly_gzip": "kernels/matmul_113_960_320.S.gz",
+    "assembly_gzip_bytes": 4765,
+    "assembly_gzip_sha256": "5178b88c26001f7d92caa063587dfb654f2d19b7c327a8597e92be88f49e6141",
+    "assembly_sha256": "c31514efc616e33cbfde30394f09a909a51f0a8389644d4d2d635bcb28472ad4",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_113_960_320.mlir"
+    ],
+    "compile_seconds": 0.214068,
+    "instruction_bytes": 39988,
+    "instruction_memory_fit": true,
+    "instruction_words": 9997,
+    "interface": "interfaces/matmul_113_960_320.mlir",
+    "interface_sha256": "5ae8fc218b4e613a571cf3d2a1edf86685b2adf763a981347cf61f9b1cb7a64a",
+    "kernel_id": "matmul_113_960_320",
+    "kind": "matmul",
+    "layer_occurrences": 32,
+    "returncode": 0,
+    "shape": [
+      113,
+      960,
+      320
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_113_960_320.txt"
+  },
+  {
+    "assembly_file_bytes": 190047,
+    "assembly_gzip": "kernels/matmul_113_960_960.S.gz",
+    "assembly_gzip_bytes": 4609,
+    "assembly_gzip_sha256": "d86eb1201bebfcec2a899cb53c0e9dce7e832382b47f7a1c116b8d83bc24fb54",
+    "assembly_sha256": "454cd720058643aa3478f2e8f6e92276ce1f4f009ca30f2e89a31f41a94accad",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_113_960_960.mlir"
+    ],
+    "compile_seconds": 0.214133,
+    "instruction_bytes": 39988,
+    "instruction_memory_fit": true,
+    "instruction_words": 9997,
+    "interface": "interfaces/matmul_113_960_960.mlir",
+    "interface_sha256": "d1b9a0bc7d0f5b1dc56973fa7aab3e6e2c7c51a5befcdc141afa49b5133dac11",
+    "kernel_id": "matmul_113_960_960",
+    "kind": "matmul",
+    "layer_occurrences": 32,
+    "returncode": 0,
+    "shape": [
+      113,
+      960,
+      960
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_113_960_960.txt"
+  },
+  {
+    "assembly_file_bytes": 335093,
+    "assembly_gzip": "kernels/matmul_50_1440_720.S.gz",
+    "assembly_gzip_bytes": 8524,
+    "assembly_gzip_sha256": "5a0a7648c68f71deb3d59eefe66436bcc8faf719a656e8740bc51cef9d1d1a99",
+    "assembly_sha256": "065f15243117f6a1af2c426e25a93587a38c37dcc1dd40e6bdc92a1a9f4647ee",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_1440_720.mlir"
+    ],
+    "compile_seconds": 0.214183,
+    "instruction_bytes": 70524,
+    "instruction_memory_fit": true,
+    "instruction_words": 17631,
+    "interface": "interfaces/matmul_50_1440_720.mlir",
+    "interface_sha256": "c957613dd45b462739cca3c9ef9e633a5acde5dcd6e12fb33cba19a2035a954f",
+    "kernel_id": "matmul_50_1440_720",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      50,
+      1440,
+      720
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_1440_720.txt"
+  },
+  {
+    "assembly_file_bytes": 335093,
+    "assembly_gzip": "kernels/matmul_50_2048_720.S.gz",
+    "assembly_gzip_bytes": 8476,
+    "assembly_gzip_sha256": "56f249ecde87fdbb424073a41462bd35f8b4d0c731562e81d410df8842c88c17",
+    "assembly_sha256": "41b6adf7ca80a77b32cc5c1cbfc48b223e571661c50e464ad87a383acaebf69e",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_2048_720.mlir"
+    ],
+    "compile_seconds": 0.214204,
+    "instruction_bytes": 70524,
+    "instruction_memory_fit": true,
+    "instruction_words": 17631,
+    "interface": "interfaces/matmul_50_2048_720.mlir",
+    "interface_sha256": "0af2dfaefff3ec50437c11c09778b89154100ee7d39311aa0ef58c34f2b4a107",
+    "kernel_id": "matmul_50_2048_720",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      50,
+      2048,
+      720
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_2048_720.txt"
+  },
+  {
+    "assembly_file_bytes": 183093,
+    "assembly_gzip": "kernels/matmul_50_32_720.S.gz",
+    "assembly_gzip_bytes": 5464,
+    "assembly_gzip_sha256": "de7e4ed901c628683342ef891c2a3c794687874bb866184a54f87e599fa3c83d",
+    "assembly_sha256": "1ce75079048b06f7ef549b20b3861826568cfd577f673e04b3bb9c4f3992a71f",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_32_720.mlir"
+    ],
+    "compile_seconds": 0.21419,
+    "instruction_bytes": 38524,
+    "instruction_memory_fit": true,
+    "instruction_words": 9631,
+    "interface": "interfaces/matmul_50_32_720.mlir",
+    "interface_sha256": "ec9e985d47dcb412bb915df40f6be09fc31e033f808a645da81665a28d1ead6e",
+    "kernel_id": "matmul_50_32_720",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      50,
+      32,
+      720
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_32_720.txt"
+  },
+  {
+    "assembly_file_bytes": 239599,
+    "assembly_gzip": "kernels/matmul_50_720_2048.S.gz",
+    "assembly_gzip_bytes": 5632,
+    "assembly_gzip_sha256": "e8e53025d01ac98ed615f7cf8aaeae1c9587f2cdcf895c0c75c3795ac2587811",
+    "assembly_sha256": "9ebbe622688e419ff089eeaf837dd71d410969f1c5ff152476727175b1accb2f",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_720_2048.mlir"
+    ],
+    "compile_seconds": 0.214189,
+    "instruction_bytes": 50420,
+    "instruction_memory_fit": true,
+    "instruction_words": 12605,
+    "interface": "interfaces/matmul_50_720_2048.mlir",
+    "interface_sha256": "4ab10d81a3328fb201b37891ac1457ce176522af891378ca2a7b8da75fda20fe",
+    "kernel_id": "matmul_50_720_2048",
+    "kind": "matmul",
+    "layer_occurrences": 32,
+    "returncode": 0,
+    "shape": [
+      50,
+      720,
+      2048
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_720_2048.txt"
+  },
+  {
+    "assembly_file_bytes": 239599,
+    "assembly_gzip": "kernels/matmul_50_720_32.S.gz",
+    "assembly_gzip_bytes": 5546,
+    "assembly_gzip_sha256": "9f6c9de89d3742fa2c8913098d4e379ee172bd71cb850fca91365cdad795e6a2",
+    "assembly_sha256": "fcd4ad1aeadf18d03bd1d13f43ce74f6b417d4c193771e35b4368953146e928a",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_720_32.mlir"
+    ],
+    "compile_seconds": 0.214083,
+    "instruction_bytes": 50420,
+    "instruction_memory_fit": true,
+    "instruction_words": 12605,
+    "interface": "interfaces/matmul_50_720_32.mlir",
+    "interface_sha256": "f2164bcf47476d020b164bc7234793f71e9487cacbbc5cd810ef046d724a66e1",
+    "kernel_id": "matmul_50_720_32",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      50,
+      720,
+      32
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_720_32.txt"
+  },
+  {
+    "assembly_file_bytes": 239599,
+    "assembly_gzip": "kernels/matmul_50_720_320.S.gz",
+    "assembly_gzip_bytes": 5767,
+    "assembly_gzip_sha256": "4c2ad9e14f0e87637c315bae19de6877254cd9ba34902631788cb7c7dac766c3",
+    "assembly_sha256": "143c01c417d006573dd8f53c3bebff23c4a7cc6aa0e47c799f23885d72be308c",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_720_320.mlir"
+    ],
+    "compile_seconds": 0.26429,
+    "instruction_bytes": 50420,
+    "instruction_memory_fit": true,
+    "instruction_words": 12605,
+    "interface": "interfaces/matmul_50_720_320.mlir",
+    "interface_sha256": "bdc63029cda18943e652b17cbdb1d5a3b29fba52646cc6818867254972f24f52",
+    "kernel_id": "matmul_50_720_320",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      50,
+      720,
+      320
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_720_320.txt"
+  },
+  {
+    "assembly_file_bytes": 420973,
+    "assembly_gzip": "kernels/matmul_50_720_720.S.gz",
+    "assembly_gzip_bytes": 9360,
+    "assembly_gzip_sha256": "d33610abc92ce359929c680aa1d761afe2b0507c0e5e6b86b6ea8b74c3c8f7d8",
+    "assembly_sha256": "ed0360b8d4f4378b26e556dc52273fab2ece10f60ee2ec4cd3e753b3ffd9c2d4",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_720_720.mlir"
+    ],
+    "compile_seconds": 0.214216,
+    "instruction_bytes": 88604,
+    "instruction_memory_fit": true,
+    "instruction_words": 22151,
+    "interface": "interfaces/matmul_50_720_720.mlir",
+    "interface_sha256": "83f7e643dad38d53bee0128fb78d5759207d0c4c6a45295100ffc3a94e77529a",
+    "kernel_id": "matmul_50_720_720",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      50,
+      720,
+      720
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_720_720.txt"
+  },
+  {
+    "assembly_file_bytes": 239599,
+    "assembly_gzip": "kernels/matmul_50_720_960.S.gz",
+    "assembly_gzip_bytes": 5883,
+    "assembly_gzip_sha256": "f6c6520d8d69cdedea45be4178b9bce7b38636b74abd6e8428f4e4e0ff891918",
+    "assembly_sha256": "b85d65d36f834923a7a0cf6fd24d61bd964a1b8a7c3d6ce53b1b3461eb664bbf",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_720_960.mlir"
+    ],
+    "compile_seconds": 0.214063,
+    "instruction_bytes": 50420,
+    "instruction_memory_fit": true,
+    "instruction_words": 12605,
+    "interface": "interfaces/matmul_50_720_960.mlir",
+    "interface_sha256": "5359f11845853d8fd270def76ac4b09cb898bb91e8ae96121bb503f3ddad9747",
+    "kernel_id": "matmul_50_720_960",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      50,
+      720,
+      960
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_720_960.txt"
+  },
+  {
+    "assembly_file_bytes": 335093,
+    "assembly_gzip": "kernels/matmul_50_960_720.S.gz",
+    "assembly_gzip_bytes": 8494,
+    "assembly_gzip_sha256": "5fd3466466ac112a0e4b9ae0ac42c65c5aef76b4d1c409866126503f3d08958f",
+    "assembly_sha256": "b34d64321e6d9aa64833bb7582fc9789762d70e38a4e2c4a94ab1ae1d36c7c2c",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_50_960_720.mlir"
+    ],
+    "compile_seconds": 0.21408,
+    "instruction_bytes": 70524,
+    "instruction_memory_fit": true,
+    "instruction_words": 17631,
+    "interface": "interfaces/matmul_50_960_720.mlir",
+    "interface_sha256": "b79e4b04e6331c8bbbab5f2940076367792a34281b3a894ff06ccc967088fc04",
+    "kernel_id": "matmul_50_960_720",
+    "kind": "matmul",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      50,
+      960,
+      720
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_50_960_720.txt"
+  },
+  {
+    "assembly_file_bytes": 108252,
+    "assembly_gzip": "kernels/matmul_64_12288_960.S.gz",
+    "assembly_gzip_bytes": 2948,
+    "assembly_gzip_sha256": "fd882ea1938633a32518a4dcf57f8883208ad0eb25afbe74841de69e99941aa9",
+    "assembly_sha256": "8d3d7f2113d7146340b8e54909caa4e3f685dafa09caa9bce69607c901765df2",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_64_12288_960.mlir"
+    ],
+    "compile_seconds": 0.214114,
+    "instruction_bytes": 22768,
+    "instruction_memory_fit": true,
+    "instruction_words": 5692,
+    "interface": "interfaces/matmul_64_12288_960.mlir",
+    "interface_sha256": "cda2e1e9255eecdd62a33cec38c430f95a9bb1267d87f7ac4b8095b12641c833",
+    "kernel_id": "matmul_64_12288_960",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      64,
+      12288,
+      960
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_64_12288_960.txt"
+  },
+  {
+    "assembly_file_bytes": 108252,
+    "assembly_gzip": "kernels/matmul_768_768_1024.S.gz",
+    "assembly_gzip_bytes": 2664,
+    "assembly_gzip_sha256": "d437d6ebbd5603bddac63dad85bab7120b09872fad615ade7e20e8fa1f6f4e3f",
+    "assembly_sha256": "20a268ebdf3bfa898fa0cc58fd838c91e51c49a39e291c7cd2f87545dbb63462",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_768_768_1024.mlir"
+    ],
+    "compile_seconds": 0.213989,
+    "instruction_bytes": 22768,
+    "instruction_memory_fit": true,
+    "instruction_words": 5692,
+    "interface": "interfaces/matmul_768_768_1024.mlir",
+    "interface_sha256": "40e34ebce2f05c61f6e51d1c588424a706777f9296b707fa6841a0da3af99818",
+    "kernel_id": "matmul_768_768_1024",
+    "kind": "matmul",
+    "layer_occurrences": 1,
+    "returncode": 0,
+    "shape": [
+      768,
+      768,
+      1024
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_768_768_1024.txt"
+  },
+  {
+    "assembly_file_bytes": 108746,
+    "assembly_gzip": "kernels/matmul_batched_12_1024_1024_64.S.gz",
+    "assembly_gzip_bytes": 2690,
+    "assembly_gzip_sha256": "f8e2bc5202a6c9ea343ada0aec075336eb1d3d0164d7ca7504917c6c677fe045",
+    "assembly_sha256": "4c8f17b10634f5c6b2ba2d0bb49114a23c86ae9e2dc1e8ca4f86f009efab765f",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_12_1024_1024_64.mlir"
+    ],
+    "compile_seconds": 0.214209,
+    "instruction_bytes": 22872,
+    "instruction_memory_fit": true,
+    "instruction_words": 5718,
+    "interface": "interfaces/matmul_batched_12_1024_1024_64.mlir",
+    "interface_sha256": "2e417a2f9918e71124c8e994674d8a89b8a3e4d9310b599d165655073817dd4f",
+    "kernel_id": "matmul_batched_12_1024_1024_64",
+    "kind": "matmul_batched",
+    "layer_occurrences": 12,
+    "returncode": 0,
+    "shape": [
+      12,
+      1024,
+      1024,
+      64
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_12_1024_1024_64.txt"
+  },
+  {
+    "assembly_file_bytes": 108746,
+    "assembly_gzip": "kernels/matmul_batched_12_1024_64_1024.S.gz",
+    "assembly_gzip_bytes": 2669,
+    "assembly_gzip_sha256": "c77846055683d0b7de0affdf02ada16c31541da2fcb2bbf66ac9fdada38c6035",
+    "assembly_sha256": "947fdc660dbcad8d0f77404d66f27a2e01ffe8653a7d920cd55432df562610cc",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_12_1024_64_1024.mlir"
+    ],
+    "compile_seconds": 0.214037,
+    "instruction_bytes": 22872,
+    "instruction_memory_fit": true,
+    "instruction_words": 5718,
+    "interface": "interfaces/matmul_batched_12_1024_64_1024.mlir",
+    "interface_sha256": "284247490dab6c047ebeff36bf209d14e6b5408557759f2756c66e887893a018",
+    "kernel_id": "matmul_batched_12_1024_64_1024",
+    "kind": "matmul_batched",
+    "layer_occurrences": 12,
+    "returncode": 0,
+    "shape": [
+      12,
+      1024,
+      64,
+      1024
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_12_1024_64_1024.txt"
+  },
+  {
+    "assembly_file_bytes": 406856,
+    "assembly_gzip": "kernels/matmul_batched_15_113_113_64.S.gz",
+    "assembly_gzip_bytes": 7769,
+    "assembly_gzip_sha256": "150fc486cb552f9b84df1ba1d237a4e73ed5a570a3d7e0cf5adbcbeb09ba1d68",
+    "assembly_sha256": "48f5aff979494ae4e1f0cc63e47b3836619d5cf9c4f45656256e305062a8b876",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_113_113_64.mlir"
+    ],
+    "compile_seconds": 0.214112,
+    "instruction_bytes": 85632,
+    "instruction_memory_fit": true,
+    "instruction_words": 21408,
+    "interface": "interfaces/matmul_batched_15_113_113_64.mlir",
+    "interface_sha256": "059253aa368435a835f7121afb37a6646beee09d2757840b8806c8851865862c",
+    "kernel_id": "matmul_batched_15_113_113_64",
+    "kind": "matmul_batched",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      15,
+      113,
+      113,
+      64
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_113_113_64.txt"
+  },
+  {
+    "assembly_file_bytes": 613310,
+    "assembly_gzip": "kernels/matmul_batched_15_113_64_113.S.gz",
+    "assembly_gzip_bytes": 12299,
+    "assembly_gzip_sha256": "a63617c9c3f8de7eb2f609d722737bc3c95a7daab3faa635fc88f5c23fb48304",
+    "assembly_sha256": "0d5df52104063ed00bd01d4751d7dab334d99dea6308fbf06ad5ce16794e39a3",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_113_64_113.mlir"
+    ],
+    "compile_seconds": 0.264395,
+    "instruction_bytes": 129096,
+    "instruction_memory_fit": true,
+    "instruction_words": 32274,
+    "interface": "interfaces/matmul_batched_15_113_64_113.mlir",
+    "interface_sha256": "dd289faefca4eeb31e51eac533c8b770e0cf970dd33353fa605078b6b843049d",
+    "kernel_id": "matmul_batched_15_113_64_113",
+    "kind": "matmul_batched",
+    "layer_occurrences": 16,
+    "returncode": 0,
+    "shape": [
+      15,
+      113,
+      64,
+      113
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_113_64_113.txt"
+  },
+  {
+    "assembly_file_bytes": 413620,
+    "assembly_gzip": "kernels/matmul_batched_15_50_113_64.S.gz",
+    "assembly_gzip_bytes": 7846,
+    "assembly_gzip_sha256": "e22dc4580d4c4d8cc233b5b5d15ab17084eeb41169590d24d2a6ceaa8a3673c4",
+    "assembly_sha256": "41ebbb8e2f572d697b43924054ebc58bd6243f0b6606a65f233f91a127307180",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_50_113_64.mlir"
+    ],
+    "compile_seconds": 0.214361,
+    "instruction_bytes": 87056,
+    "instruction_memory_fit": true,
+    "instruction_words": 21764,
+    "interface": "interfaces/matmul_batched_15_50_113_64.mlir",
+    "interface_sha256": "bb63715426b62d0f3b35dc2cdaa80579b09db105cf985a5f2535a325f20a2196",
+    "kernel_id": "matmul_batched_15_50_113_64",
+    "kind": "matmul_batched",
+    "layer_occurrences": 8,
+    "returncode": 0,
+    "shape": [
+      15,
+      50,
+      113,
+      64
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_50_113_64.txt"
+  },
+  {
+    "assembly_file_bytes": 352364,
+    "assembly_gzip": "kernels/matmul_batched_15_50_163_64.S.gz",
+    "assembly_gzip_bytes": 7089,
+    "assembly_gzip_sha256": "1319ebc682f26b14aefbd26bd943054dec681073492096432e752714819995bd",
+    "assembly_sha256": "254504666e43a27b453a40f4838b36124aa1cbdbdb572c93ddf33696bf81756f",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_50_163_64.mlir"
+    ],
+    "compile_seconds": 0.214218,
+    "instruction_bytes": 74160,
+    "instruction_memory_fit": true,
+    "instruction_words": 18540,
+    "interface": "interfaces/matmul_batched_15_50_163_64.mlir",
+    "interface_sha256": "929dabbd6b3b5562c1730215cf47a31a91ec065b8addbcb28640326ab0ba357d",
+    "kernel_id": "matmul_batched_15_50_163_64",
+    "kind": "matmul_batched",
+    "layer_occurrences": 8,
+    "returncode": 0,
+    "shape": [
+      15,
+      50,
+      163,
+      64
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_50_163_64.txt"
+  },
+  {
+    "assembly_file_bytes": 616806,
+    "assembly_gzip": "kernels/matmul_batched_15_50_64_113.S.gz",
+    "assembly_gzip_bytes": 12350,
+    "assembly_gzip_sha256": "837f63880b7372bf86af9ccadc1cb90b3ae7acd507aff216b337b9326d2ddcd6",
+    "assembly_sha256": "7a6a829bc625e852a03360bfcebe4bb39f1d646fa381a4a86bd883e26af994a0",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_50_64_113.mlir"
+    ],
+    "compile_seconds": 0.264469,
+    "instruction_bytes": 129832,
+    "instruction_memory_fit": true,
+    "instruction_words": 32458,
+    "interface": "interfaces/matmul_batched_15_50_64_113.mlir",
+    "interface_sha256": "4e5730c743eb05adf2d217fdb1f06a4a356bda086dbe23c5a494ed3735e94a00",
+    "kernel_id": "matmul_batched_15_50_64_113",
+    "kind": "matmul_batched",
+    "layer_occurrences": 8,
+    "returncode": 0,
+    "shape": [
+      15,
+      50,
+      64,
+      113
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_50_64_113.txt"
+  },
+  {
+    "assembly_file_bytes": 500298,
+    "assembly_gzip": "kernels/matmul_batched_15_50_64_163.S.gz",
+    "assembly_gzip_bytes": 10232,
+    "assembly_gzip_sha256": "fa2c328bf19e86a081afd3fc0d44920bbdad223f8ba9523d2e85ccf84b2025eb",
+    "assembly_sha256": "861c24edb0e3f868c28c38cdaccde792924bb21f3e06e6e7a19d25351caa05cf",
+    "command": [
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/submission/mlir_oot/atlas-opt",
+      "--emit-target-artifact",
+      "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_compact_loops_v1_20260908/after_inventory/interfaces/matmul_batched_15_50_64_163.mlir"
+    ],
+    "compile_seconds": 0.264381,
+    "instruction_bytes": 105304,
+    "instruction_memory_fit": true,
+    "instruction_words": 26326,
+    "interface": "interfaces/matmul_batched_15_50_64_163.mlir",
+    "interface_sha256": "2b6a45b557f077dec023ac72121c715e5b40f15346e5eee267b8775e04f1ce85",
+    "kernel_id": "matmul_batched_15_50_64_163",
+    "kind": "matmul_batched",
+    "layer_occurrences": 8,
+    "returncode": 0,
+    "shape": [
+      15,
+      50,
+      64,
+      163
+    ],
+    "status": "accepted",
+    "stderr": "",
+    "stderr_file": "stderr/matmul_batched_15_50_64_163.txt"
+  }
+]

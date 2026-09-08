@@ -1,0 +1,55 @@
+artifact_type: mlir_oot_target_backend
+target: atlas
+language: python
+recovery_status: compile_and_imem_fit_only
+unproven_claims: [simulator_halt, numeric_correctness, whole_model_image]
+authoring:
+  mode: agent_generated_from_rtl_facts
+  author: Codex
+  generated_by_agent: true
+integrity_exempt: false
+entrypoints:
+  tool: mlir_oot/atlas-opt
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-atlas", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-atlas", "--emit-target-artifact", "{input_mlir}"]
+  emit_analysis_bundle:
+    argv: ["{tool}", "--convert-iface-to-atlas", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+components:
+  parse: [mlir_oot/]
+  lower_interface_to_target: [mlir_oot/]
+  emit_command_buffer: [mlir_oot/]
+  lower_target_to_llvm: [mlir_oot/]
+  emit_analysis_bundle: [mlir_oot/]
+optimization_surfaces:
+  - id: tile-schedule
+    scope: heuristic
+    path: mlir_oot/lowering.py
+    symbol: TileScheduler.choose
+    effects: [tiling, movement, residency, issue]
+    mechanism: derive a complete M/N/K tile schedule from the parsed extents and 32x32 mesh
+    emitted_delta: tile count and per-tile DMA/MXU operations vary monotonically with all extents
+    validation: shape-coverage probes followed by functional capsule grading
+    abandonment: any uncovered multi-tile axis, illegal edge tile, or numeric regression
+  - id: compact-tail-loops
+    scope: shape-specialized-runtime-loop
+    path: mlir_oot/codegen.py
+    symbol: _emit_fp8_matmul_loop_region
+    effects: [instruction_memory, tail_padding, partial_store]
+    mechanism: loop over full M/N/K tiles while emitting K-tail and N-tail bodies once
+    validation: bounded 28-shape SmolVLA compile inventory and decoded control-flow checks
+    abandonment: any non-fitting shape, out-of-range control edge, or simulator mismatch
+  - id: runtime-batch-loop
+    scope: shape-specialized-runtime-loop
+    path: mlir_oot/codegen.py
+    symbol: _emit_batched_matmul
+    effects: [instruction_memory, batch_addressing]
+    mechanism: retain tensor bases in scalar registers and reuse one emitted batch body
+    validation: B=1/B=15 code-size invariance and bounded 28-shape compile inventory
+    abandonment: any non-fitting shape, out-of-range control edge, or simulator mismatch
