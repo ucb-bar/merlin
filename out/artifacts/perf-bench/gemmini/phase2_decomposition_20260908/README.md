@@ -1,5 +1,9 @@
 # Phase 2 decomposition — gemmini, 2026-09-08
 
+> The campaign-level analysis — where the budget went, what each
+> instrument is licensed to conclude, and what none of it can decide — is at
+> `../phase2_analysis_20260908/README.md`. This file is the change-level view.
+
 Phase 2 optimizes the **compiler**, for a fleet of workloads. Every row below names the instrument
 that surfaced the opportunity and the measurement that decided it. `decomposition.json` beside this
 file carries the machine-readable form, including the per-attempt deltas.
