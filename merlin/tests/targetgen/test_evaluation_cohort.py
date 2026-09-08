@@ -65,6 +65,14 @@ def test_evaluation_materialization_refuses_stale_files(tmp_path, monkeypatch):
         materialize_evaluation_cohort(out, te, "derived_gsim", candidate)
 
 
+def test_evaluation_materialization_refuses_empty_candidate(tmp_path):
+    te = load_target_experiment(RADIANCE)
+    candidate = tmp_path / "empty-candidate"
+    candidate.mkdir()
+    with pytest.raises(ValueError, match="has no files"):
+        materialize_evaluation_cohort(tmp_path / "derived-gsim", te, "derived_gsim", candidate)
+
+
 def test_evaluation_validation_detects_capsule_mutation(tmp_path, monkeypatch):
     te = load_target_experiment(RADIANCE)
     monkeypatch.setattr(

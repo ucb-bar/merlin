@@ -95,6 +95,8 @@ def materialize_evaluation_cohort(
     candidate = Path(candidate)
     if candidate.is_symlink() or not candidate.is_dir():
         raise ValueError(f"frozen evaluation candidate is not a regular directory: {candidate}")
+    if not any(path.is_file() for path in candidate.rglob("*")):
+        raise ValueError(f"frozen evaluation candidate has no files: {candidate}")
     candidate_digest = _tree_sha256(candidate)
     if dest.exists() and any(dest.iterdir()):
         raise ValueError(f"evaluation destination is not empty: {dest}")
@@ -187,6 +189,8 @@ def validate_evaluation_cohort(
     if record.get("target") != te.target or record.get("descriptor_sha256") != te.descriptor_sha256:
         raise ValueError("evaluation cohort does not belong to the loaded target descriptor")
     candidate = Path(candidate)
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ValueError(f"frozen evaluation candidate is unavailable: {candidate}")
     if _tree_sha256(candidate) != record.get("candidate_tree_sha256"):
         raise ValueError("frozen evaluation candidate content digest mismatch")
     stage = te.evaluation_cohort(str(record.get("stage")))
