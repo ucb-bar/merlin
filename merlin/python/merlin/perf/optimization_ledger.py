@@ -154,6 +154,12 @@ class Attempt:
     blocked_by: str = ""
     evidence: str = ""                # where a reader can check it: a path, a commit, a receipt
     iteration: int | None = None
+    #: The MECHANISM text of an earlier attempt this one resolves. A ledger is append-only history,
+    #: so a `blocked` row stays in the record -- but a reader scanning verdicts would otherwise see a
+    #: blocker that no longer holds. Naming what was resolved keeps both facts: it WAS blocked, and
+    #: it is not any more. Matched exactly against `mechanism`, and a name that matches nothing is
+    #: reported as a problem rather than ignored, because a typo would silently un-resolve it.
+    resolves: str = ""
 
     def problems(self) -> tuple[str, ...]:
         """Why this row may not be reported as it stands. Empty when it is sound."""
@@ -169,13 +175,17 @@ class Attempt:
                 out.append(f"verdict {self.verdict!r} asserts a measurement but names no instrument")
         if self.verdict == "blocked" and not self.blocked_by:
             out.append("verdict 'blocked' must say what blocks it")
+        if self.resolves and self.verdict in ("blocked", "unmeasured"):
+            out.append(f"verdict {self.verdict!r} cannot resolve an earlier attempt; only a "
+                       f"measured verdict can retire a blocker")
         return tuple(out)
 
     def to_dict(self) -> dict[str, Any]:
         return {"mechanism": self.mechanism, "scope": self.scope, "found_by": self.found_by,
                 "verdict": self.verdict, "hypothesis": self.hypothesis,
                 "blocked_by": self.blocked_by, "evidence": self.evidence,
-                "iteration": self.iteration, "deltas": [d.to_dict() for d in self.deltas],
+                "iteration": self.iteration, "resolves": self.resolves,
+                "deltas": [d.to_dict() for d in self.deltas],
                 "problems": list(self.problems())}
 
     @classmethod
@@ -197,7 +207,8 @@ class Attempt:
                    found_by=str(row.get("found_by") or ""), verdict=str(row.get("verdict") or ""),
                    hypothesis=str(row.get("hypothesis") or ""), deltas=deltas,
                    blocked_by=str(row.get("blocked_by") or ""),
-                   evidence=str(row.get("evidence") or ""), iteration=iteration)
+                   evidence=str(row.get("evidence") or ""), iteration=iteration,
+                   resolves=str(row.get("resolves") or ""))
 
 
 @dataclass
@@ -213,10 +224,30 @@ class Ledger:
 
     def problems(self) -> tuple[str, ...]:
         out: list[str] = []
+        known = {a.mechanism for a in self.attempts}
         for index, attempt in enumerate(self.attempts):
             out.extend(f"attempt {index} ({attempt.mechanism}): {why}"
                        for why in attempt.problems())
+            if attempt.resolves and attempt.resolves not in known:
+                out.append(f"attempt {index} ({attempt.mechanism}): resolves "
+                           f"{attempt.resolves!r}, which matches no recorded attempt -- a typo here "
+                           f"would silently leave a retired blocker looking live")
         return tuple(out)
+
+    def resolved(self) -> dict[str, str]:
+        """``{resolved mechanism: the mechanism that retired it}``, for rows no longer live."""
+        out: dict[str, str] = {}
+        known = {a.mechanism for a in self.attempts}
+        for attempt in self.attempts:
+            if attempt.resolves and attempt.resolves in known:
+                out[attempt.resolves] = attempt.mechanism
+        return out
+
+    def live_blockers(self) -> tuple[Attempt, ...]:
+        """Blocked attempts nothing later resolved. What a reader should actually act on."""
+        retired = set(self.resolved())
+        return tuple(a for a in self.attempts
+                     if a.verdict == "blocked" and a.mechanism not in retired)
 
     def by_verdict(self) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -255,6 +286,8 @@ class Ledger:
         return {"schema": "merlin_optimization_ledger_v1", "target": self.target,
                 "n_attempts": len(self.attempts), "by_verdict": self.by_verdict(),
                 "by_scope": self.by_scope(), "instruments": self.instruments(),
+                "resolved": self.resolved(),
+                "n_live_blockers": len(self.live_blockers()),
                 "problems": list(self.problems()),
                 "attempts": [a.to_dict() for a in self.attempts]}
 
@@ -301,9 +334,13 @@ class Ledger:
         rows = [f"== optimization ledger: {self.target} ({len(self.attempts)} attempts)",
                 f"{'verdict':{verdict_w}} {'scope':{scope_w}} {'found_by':{found_w}} mechanism"]
         order = {v: i for i, v in enumerate(VERDICTS)}
+        retired = self.resolved()
         for attempt in sorted(self.attempts, key=lambda a: order.get(a.verdict, 99)):
+            mark = " [RETIRED]" if attempt.mechanism in retired else ""
             rows.append(f"{attempt.verdict:{verdict_w}} {attempt.scope:{scope_w}} "
-                        f"{attempt.found_by:{found_w}} {attempt.mechanism}")
+                        f"{attempt.found_by:{found_w}} {attempt.mechanism}{mark}")
+            if mark:
+                rows.append(f"{indent}  RETIRED BY: {retired[attempt.mechanism]}")
             for delta in attempt.deltas:
                 ratio = "" if delta.ratio is None else f"  ({delta.ratio:.3f}x)"
                 rows.append(f"{indent}  {delta.workload}: {delta.metric} "
