@@ -13,6 +13,8 @@ out/artifacts/perf-bench/gemmini/development_bf62_target_neutral_epilogue_fusion
 Its compiler tree SHA-256 is
 `0b1e14e9b61dd3a4eb3472a87702cc53c5a05b98198c08cec3bfbce85363db8a`.
 Run both `verify.py` and `verify_native_scalar_epilogue.py` before use.
+The small reviewable compiler delta is preserved in `native_scalar_epilogue_q534.patch`; the
+curated hardware receipt is `native_scalar_epilogue_q534_receipt.json`.
 
 The first substantial Phase-2 optimization replaces per-element software reconstruction of
 round-to-nearest-even and float-to-signed-integer conversion with their standard target-neutral LLVM

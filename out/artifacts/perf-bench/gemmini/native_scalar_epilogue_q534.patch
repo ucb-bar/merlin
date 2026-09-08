@@ -1,0 +1,115 @@
+--- a/mlir_oot/codegen/fpbuilder.py
++++ b/mlir_oot/codegen/fpbuilder.py
+@@ -13,11 +13,42 @@
+ from __future__ import annotations
+ 
+ from xdsl.dialects import llvm
+-from xdsl.dialects.builtin import Float32Type, FloatAttr, i16, i32, i64
++from xdsl.dialects.builtin import Float32Type, FloatAttr, IntegerType, i16, i32, i64
+ from xdsl.ir import SSAValue
++from xdsl.irdl import IRDLOperation, irdl_op_definition, operand_def, result_def
+ 
+ F32 = Float32Type()
+ 
++
++@irdl_op_definition
++class FPToSIOp(IRDLOperation):
++    """LLVM's ordinary floating-point to signed-integer conversion.
++
++    The pinned xDSL LLVM dialect omits this operation class, even though the
++    downstream MLIR/LLVM toolchain implements ``llvm.fptosi``. Keeping the
++    standard LLVM operation in target-neutral IR lets each CPU backend select
++    its native conversion instead of expanding IEEE fields by hand.
++    """
++
++    name = "llvm.fptosi"
++    value = operand_def()
++    result = result_def()
++
++    def __init__(self, value: SSAValue, result_type: IntegerType):
++        super().__init__(operands=[value], result_types=[result_type])
++
++
++@irdl_op_definition
++class RoundEvenOp(IRDLOperation):
++    """The standard LLVM round-to-integer, ties-to-even intrinsic."""
++
++    name = "llvm.intr.roundeven"
++    value = operand_def()
++    result = result_def()
++
++    def __init__(self, value: SSAValue):
++        super().__init__(operands=[value], result_types=[value.type])
++
+ #: exp() range reduction.  `MAGIC` is 1.5 * 2**23: adding it to a float smaller than 2**22
+ #: forces the fractional bits out through round-to-nearest-even, so the mantissa's low bits
+ #: hold the rounded integer.  That is how the exponent is extracted without an fp->int op.
+@@ -244,47 +275,22 @@
+         return self.fb.add(llvm.SIToFPOp(v, F32)).results[0]
+ 
+     def fptosi(self, x: SSAValue) -> SSAValue:
+-        """`(i64) x`, truncated TOWARD ZERO, built from the IEEE-754 fields of `x`.
++        """`(i64) x`, truncated toward zero by standard LLVM semantics.
+ 
+-        There is no `fptosi` in the LLVM dialect this package builds with, and the kernel is
+-        branch-free, so the conversion is arithmetic on the bit pattern:
+-        `|x| = mantissa * 2**(exponent - 23)`, and a truncation is the shift that drops the
+-        fractional bits.  Exact for every value an i64 can hold.
++        Values reaching this bridge are range-checked by the source program
++        (quantization clamps before narrowing). Emitting the target-neutral
++        operation exposes a native conversion to the selected CPU backend and
++        avoids rebuilding it from many integer operations per tensor element.
+         """
+-        fb = self.fb
+-        wide = fb.add(llvm.SExtOp(self.bits(x), i64)).results[0]
+-        sign = fb.ashr_i(wide, 63)                                     # 0 or -1
+-        exp = fb.sub_i(fb.and_i(fb.ashr_i(wide, 23), fb.const(0xFF)), fb.const(127))
+-        mant = fb.or_i(fb.and_i(wide, fb.const(0x7FFFFF)), fb.const(0x800000))
+-        # left shift when the exponent is past the mantissa's 23 fractional bits, right shift
+-        # otherwise; both amounts are clamped so no shift is wider than the i64 they act on.
+-        left = fb.smin(fb.max0(fb.sub_i(exp, fb.const(23))), fb.const(39))
+-        right = fb.smin(fb.max0(fb.sub_i(fb.const(23), exp)), fb.const(63))
+-        magnitude = fb.lshr_v(fb.shl_v(mant, left), right)
+-        return fb.sub_i(fb.xor_i(magnitude, sign), sign)               # negate iff sign == -1
++        return self.fb.add(FPToSIOp(x, i64)).results[0]
+ 
+     def round_near_even(self, x: SSAValue) -> SSAValue:
+-        """`x` rounded to the nearest integer, ties to EVEN, still an f32.
++        """Round to an integral float, ties to even, with the LLVM intrinsic.
+ 
+-        This is the ISA header's own `ROUND_NEAR_EVEN` (`gemmini_params.h`), which is the
+-        rounding the accumulator's scale unit applies before the readout clamps -- so the
+-        generated CPU-lane readout and the hardware store path agree element for element.
+-
+-        Branch-free, per R1.4: adding and then subtracting 2**23 (SIGNED LIKE `x`, so the sum
+-        never crosses zero) forces the IEEE round-to-nearest-even at the ulp of 1.0.  The
+-        magnitude matters -- with `|x| < 2**23` the sum lands in `[2**23, 2**24)`, where the f32
+-        ulp is EXACTLY 1, which is what makes the add round to an integer.  (The more familiar
+-        1.5 * 2**23 constant only holds for `|x| < 2**22`; checked against the header's own
+-        ROUND_NEAR_EVEN over 184k values, it disagrees on ~3% of them and this does not.)
+-        Every f32 with `|x| >= 2**23` is ALREADY an integer, so the two cases are BLENDED on the
+-        exponent (an integer compare of the IEEE bit patterns, whose order matches numeric order
+-        for non-negative floats) rather than branched on.
++        The intrinsic exactly represents the source operation across targets;
++        no fast-math flags, reassociation, or approximation is used.
+         """
+-        magic = self.copysign(self.fconst(8388608.0), x)           # 2**23, signed like x
+-        rounded = self.fsub(self.fadd(x, magic), magic)
+-        small = self.ashr32(
+-            self.sub32(self.bits(self.fabs(x)), self.i32c(0x4B000000)), 31)
+-        return self.unbits(self.blend32(small, self.bits(rounded), self.bits(x)))
++        return self.fb.add(RoundEvenOp(x)).results[0]
+ 
+     # -- storage formats ---------------------------------------------------------------------
+     def round_bf16(self, x: SSAValue) -> SSAValue:
+--- a/mlir_oot/lowering/plan.py
++++ b/mlir_oot/lowering/plan.py
+@@ -12,7 +12,7 @@
+ from ..frontend.reader import TensorDecl, Workload
+ from ..tables import rtl_facts as _F
+ 
+-DTYPE_BYTES = {"i8": 1, "i16": 2, "i32": 4, "i64": 8,
++DTYPE_BYTES = {"i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8,
+                "f16": 2, "bf16": 2, "f32": 4}
+ 
+ #: opcodes the ABI treats as a whole-op command for the kernel argument order
