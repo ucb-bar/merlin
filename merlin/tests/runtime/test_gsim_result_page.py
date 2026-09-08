@@ -49,6 +49,31 @@ def test_result_page_harness_streams_through_fixed_acknowledged_mailbox() -> Non
     assert harness.results == [{"name": "Y", "elements": 65, "dtype": "f32"}]
 
 
+def test_compact_result_page_checks_all_words_but_publishes_two_word_summary() -> None:
+    harness = H.build_external_kernel_main(
+        [_arg("X", 65)], [_arg("Y", 65)], kernel_symbol="kernel", model=MODEL,
+        compact_expected={"Y": [0.0] * 65}, compact_policy={"compare": "exact"},
+        compact_symbol_tag="n_test", compact_result_page=True,
+    )
+
+    assert "for(uint32_t _i=0;_i<65u;++_i)" in harness.source
+    assert "merlin_result_mailbox[0]=_merlin_checked" in harness.source
+    assert "merlin_result_mailbox[1]=_merlin_bad" in harness.source
+    assert "merlin_result_status[1]=2u" in harness.source
+    assert "_base<65u" not in harness.source
+    assert '_ps("MERLIN_NUMERIC ")' not in harness.source
+    assert '_ps("OUT Y' not in harness.source
+    assert harness.results == [{"name": "Y", "elements": 65, "dtype": "f32"}]
+
+
+def test_compact_result_page_requires_private_expected_bounds() -> None:
+    with pytest.raises(ValueError, match="requires compact_expected"):
+        H.build_external_kernel_main(
+            [_arg("X", 1)], [_arg("Y", 1)], kernel_symbol="kernel", model=MODEL,
+            compact_result_page=True,
+        )
+
+
 def test_sequence_tokens_exclude_stale_ready_and_ack_interleavings() -> None:
     """A token from either adjacent transaction cannot authorize this one.
 
@@ -148,6 +173,24 @@ def test_private_expected_change_changes_only_the_trusted_carrier() -> None:
     assert "MERLIN_MAILBOX_WORDS 32u" in negative
 
 
+def test_compact_carrier_rejects_partial_or_malformed_summary() -> None:
+    manifest = {
+        "status": {"soc_address": 0x110004000},
+        "mailbox": {"soc_address": 0x110004040, "words": 32},
+        "outputs": [{"name": "Y", "elements": 1_048_576, "dtype": "f32"}],
+    }
+    source = RP.render_compact_carrier(manifest, expected_elements=1_048_576)
+
+    assert "count != 2u" in source
+    assert "checked != 1048576u" in source
+    assert "bad > checked" in source
+    assert "if (!malformed && bad == 0u) pass_loop()" in source
+    assert "expected_0" not in source
+
+    with pytest.raises(ValueError, match="positive uint32"):
+        RP.render_compact_carrier(manifest, expected_elements=0)
+
+
 def test_inline_source_large_numeric_output_uses_private_static_storage() -> None:
     source = H.build_program(
         "void kernel(const void *x, void *y) {}", [_arg("X", 1)], [_arg("Y", 2048)],
@@ -243,3 +286,87 @@ def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
     assert result["numeric_verdict"]["status"] == status
     assert result["numeric_verdict"]["elements_checked"] == 1
     assert not result.get("completion_only")
+
+
+@pytest.mark.parametrize(("final_pc", "status"), [(0x86, "pass"), (0xC6, "fail")])
+def test_gsim_compact_opt_in_uses_local_comparator_and_summary_carrier(
+        final_pc, status, monkeypatch, tmp_path) -> None:
+    cb = {
+        "target": "synthetic",
+        "_oracle_expected_outputs": {"Y": [1.0]},
+        "_oracle_numeric_policy": {"compare": "exact"},
+        "_oracle_l2_cycles": 25_000,
+        "_oracle_gsim_cycle_policy": {
+            "source": "sealed_predecessor_tier", "multiplier": 8,
+            "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+        },
+    }
+    compiled = {}
+    carriers = []
+    monkeypatch.setenv("MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "1")
+    monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
+    monkeypatch.setattr(MO, "gsim_status", lambda target: (True, "stub"))
+    from merlin.targetgen import gsim_emulator as GE
+    monkeypatch.setattr(GE, "emulator_path", lambda *a, **k: tmp_path / "emu")
+    monkeypatch.setattr(MU, "is_mlir_artifact", lambda src: True)
+
+    def compile_stub(*args, **kwargs):
+        compiled.update(kwargs)
+        return tmp_path / "kernel.elf"
+
+    monkeypatch.setattr(MU, "compile_mlir_forkfree", compile_stub)
+    monkeypatch.setattr(H, "args_from_cb", lambda cb: ([], [_arg("Y", 1)]))
+    monkeypatch.setattr(RP, "manifest_from_elf", lambda *a, **k: {
+        "status": {"soc_address": 0x110004000},
+        "mailbox": {"soc_address": 0x110004040, "words": 32},
+        "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
+    })
+    monkeypatch.setattr(RP, "render_compact_carrier", lambda *a, **k: carriers.append(k) or "carrier")
+    monkeypatch.setattr(MU, "fuse_soc_elf", lambda *a, **k: tmp_path / "kernel.soc.elf")
+    monkeypatch.setattr(RP, "symbol_addresses", lambda *a, **k: {
+        "merlin_numeric_pass": 0x86, "merlin_numeric_fail": 0xC6})
+    monkeypatch.setattr(MO, "flops_from_cb", lambda cb: 0)
+    monkeypatch.setattr(
+        __import__("subprocess"), "run", lambda *a, **k: SimpleNamespace(returncode=0))
+    console = f"[gsim-probe final] rocket_pc=0x{final_pc:x}\n"
+    monkeypatch.setattr(MU, "_read_console", lambda log: (console, len(console), False))
+
+    result = MO.gsim_muon_adapter("synthetic")(cb, "llvm.func @kernel()", tmp_path, 60)
+
+    assert compiled["result_page"] is False
+    assert compiled["compact_expected"] == {"Y": [1.0]}
+    assert compiled["compact_result_page"] is True
+    assert carriers == [{"expected_elements": 1}]
+    assert result["numeric_verdict"]["status"] == status
+    assert result["numeric_verdict"]["trust_scope"] == \
+        "frozen_non_adversarial_derived_evaluation_only"
+    assert result["bounded_observation"] == {
+        "source": "sealed_l2_cycles", "max_cycles": 200_000,
+        "l2_cycles": 25_000, "l2_multiplier": 8,
+        "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+        "compute_floor_cycles": None, "performance_measurement": False,
+    }
+
+
+def test_gsim_cycle_budget_fails_closed_on_invalid_l2_hint(monkeypatch) -> None:
+    monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
+    with pytest.raises(MU.MuonUnavailable, match="positive integer"):
+        MO._gsim_cycle_budget({"_oracle_l2_cycles": 0,
+                               "_oracle_gsim_cycle_policy": {
+                                   "source": "sealed_predecessor_tier", "multiplier": 8,
+                                   "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+                               }}, target="synthetic", flops=1)
+
+
+def test_gsim_cycle_budget_rejects_unbound_policy(monkeypatch) -> None:
+    monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
+    with pytest.raises(MU.MuonUnavailable, match="descriptor-derived"):
+        MO._gsim_cycle_budget({"_oracle_l2_cycles": 25_000}, target="synthetic", flops=1)
+
+
+def test_gsim_cycle_budget_override_precedes_l2_hint(monkeypatch) -> None:
+    monkeypatch.setenv("MERLIN_MUON_GSIM_MAXCYCLES", "321")
+    value, record = MO._gsim_cycle_budget(
+        {"_oracle_l2_cycles": 25_000}, target="synthetic", flops=1)
+    assert value == 321
+    assert record == {"source": "explicit_override", "max_cycles": 321}

@@ -160,6 +160,15 @@ grading:
       after: search_l2_pass
       oracle_tier: L3
       oracle_engine: gsim
+      # Correctness-only observation budget. The exact Stage-1 count is sealed per capsule and the
+      # Stage-2 adapter computes max(minimum, L2*multiplier, compute_floor*floor_multiplier). Exhausting
+      # this bound is UNAVAILABLE, never a numeric verdict. The explicit multiplier absorbs the timing-
+      # model/GSIM fidelity gap; it is experiment policy, not a claimed performance relationship.
+      cycle_budget:
+        source: sealed_predecessor_tier
+        multiplier: 8
+        minimum_cycles: 120000
+        compute_floor_multiplier: 2
       require_source_roles: [model_derived]
       include_capsules:
         - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2

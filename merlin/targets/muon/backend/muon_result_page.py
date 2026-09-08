@@ -28,6 +28,7 @@ MAILBOX_SYMBOL = "merlin_result_mailbox"
 MAILBOX_WORDS = 32
 PASS_SYMBOL = "merlin_numeric_pass"
 FAIL_SYMBOL = "merlin_numeric_fail"
+COMPACT_SUMMARY_WORDS = 2
 
 
 def _sequence_token(base: int, sequence: int) -> int:
@@ -236,6 +237,60 @@ int main(void) {{
   STATUS[6] = checksum;
   __asm__ volatile("fence rw,rw" ::: "memory");
   if (bad == 0) pass_loop();
+  fail_loop();
+}}
+"""
+
+
+def render_compact_carrier(manifest: dict[str, Any], *, expected_elements: int) -> str:
+    """Generate a Rocket carrier for a trusted Muon-side full-output comparison.
+
+    The Muon harness still compares every produced element with runner-owned bounds, but publishes only
+    ``(elements_checked, mismatch_count)``.  This is intentionally a weaker, explicit non-adversarial
+    protocol than :func:`render_carrier`: the submitted kernel and trusted comparator share the Muon
+    address space.  The changing READY/ACK token and exact element count keep stale, partial, malformed,
+    and truncated summaries fail-closed while avoiding one coherent transaction per 32 output words.
+    """
+    if not isinstance(expected_elements, int) or isinstance(expected_elements, bool) \
+            or expected_elements <= 0 or expected_elements > 0xFFFFFFFF:
+        raise ValueError("compact result carrier requires a positive uint32 element count")
+    status = int((manifest.get("status") or {})["soc_address"])
+    mailbox = manifest.get("mailbox") or {}
+    if int(mailbox.get("words", 0)) != MAILBOX_WORDS:
+        raise ValueError(f"result manifest must declare a {MAILBOX_WORDS}-word mailbox")
+    mailbox_address = int(mailbox["soc_address"])
+    return f"""/* Generated compact summary carrier; trusted/non-adversarial evaluation only. */
+#include <stdint.h>
+#define STATUS ((volatile uint32_t *)0x{status:x}ULL)
+#define MAILBOX ((volatile uint32_t *)0x{mailbox_address:x}ULL)
+#define MERLIN_RESULT_READY(sequence) (0x{RESULT_READY:08x}u ^ (sequence))
+#define MERLIN_RESULT_ACK(sequence) (0x{RESULT_ACK:08x}u ^ (sequence))
+
+__attribute__((noreturn, noinline, aligned(64))) static void pass_loop(void) {{
+  __asm__ volatile(".globl {PASS_SYMBOL}\\n{PASS_SYMBOL}:\\nwfi\\nj {PASS_SYMBOL}");
+  __builtin_unreachable();
+}}
+__attribute__((noreturn, noinline, aligned(64))) static void fail_loop(void) {{
+  __asm__ volatile(".globl {FAIL_SYMBOL}\\n{FAIL_SYMBOL}:\\nwfi\\nj {FAIL_SYMBOL}");
+  __builtin_unreachable();
+}}
+
+int main(void) {{
+  const uint32_t sequence = 1u;
+  while (STATUS[0] != MERLIN_RESULT_READY(sequence))
+    __asm__ volatile("fence r,r" ::: "memory");
+  __asm__ volatile("fence r,rw" ::: "memory");
+  const uint32_t count = STATUS[1];
+  const uint32_t checked = MAILBOX[0];
+  const uint32_t bad = MAILBOX[1];
+  const uint32_t malformed = count != {COMPACT_SUMMARY_WORDS}u ||
+      checked != {expected_elements}u || bad > checked;
+  __asm__ volatile("fence rw,rw" ::: "memory");
+  STATUS[2] = MERLIN_RESULT_ACK(sequence);
+  STATUS[5] = bad;
+  STATUS[6] = checked;
+  __asm__ volatile("fence rw,rw" ::: "memory");
+  if (!malformed && bad == 0u) pass_loop();
   fail_loop();
 }}
 """

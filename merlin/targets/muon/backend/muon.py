@@ -823,7 +823,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                           *, target: str = "radiance", num_warps: int = 1,
                           result_page: bool = False,
                           compact_expected: dict | None = None,
-                          compact_policy: dict | None = None) -> Path:
+                          compact_policy: dict | None = None,
+                          compact_result_page: bool = False) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
     COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
     gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
@@ -848,6 +849,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                   if not str(key).startswith("_oracle_")}
     if result_page and compact_expected is not None:
         raise MuonError("result_page and compact_expected are mutually exclusive")
+    if compact_result_page and compact_expected is None:
+        raise MuonError("compact_result_page requires compact_expected")
     _cache_inputs = {"mlir": lowered_mlir_text, "cb": _kernel_cb, "num_warps": num_warps}
     if result_page:
         _cache_inputs["result_page"] = True
@@ -859,6 +862,7 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         _cache_inputs["compact_numeric"] = {
             "expected": compact_expected,
             "policy": compact_policy or {},
+            "result_page": compact_result_page,
         }
     _key = _build_cache_key("muon-mlir-forkfree", target, _cache_inputs)
     _hit = _bc.reuse(work, _key)
@@ -890,6 +894,7 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     harness = muon_harness.external_main_from_cb(
         cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page,
         compact_expected=compact_expected, compact_policy=compact_policy,
+        compact_result_page=compact_result_page,
         # Generated only after the submitted MLIR has been lowered and its
         # object compiled above.  A kernel that named the old predictable
         # expected symbol therefore retains an unresolved reference.

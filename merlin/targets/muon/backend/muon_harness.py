@@ -120,6 +120,28 @@ def _result_publish_lines(result_arrays: list[tuple[str, dict]]) -> list[str]:
     return lines
 
 
+def _compact_result_publish_lines(total: int) -> list[str]:
+    """Publish the trusted comparator's two-word summary through the result mailbox."""
+    from . import muon_result_page as _rp
+
+    return [
+        f"  {_rp.MAILBOX_SYMBOL}[0]=_merlin_checked;",
+        f"  {_rp.MAILBOX_SYMBOL}[1]=_merlin_bad;",
+        f"  {_rp.STATUS_SYMBOL}[1]={_rp.COMPACT_SUMMARY_WORDS}u;",
+        "  /* Release the complete full-output comparison before READY(1). */",
+        '__asm__ volatile("fence rw,rw" ::: "memory");',
+        f"  {_rp.STATUS_SYMBOL}[0]=(0x{_rp.RESULT_READY:08x}u^1u);",
+        f"  while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^1u)){{"
+        '__asm__ volatile("fence r,r" ::: "memory");}',
+        '  __asm__ volatile("fence r,rw" ::: "memory");',
+        f"  if(_merlin_checked!={int(total)}u||_merlin_bad>_merlin_checked)"
+        ' for(;;)__asm__ volatile("nop" ::: "memory");',
+        # Keep Muon live until the bounded observer samples Rocket's retained
+        # pass/fail PC, matching the full-mailbox protocol.
+        '  for(;;)__asm__ volatile("nop" ::: "memory");',
+    ]
+
+
 def _blob_bytes(arg: TensorArg) -> bytes:
     """``arg`` as raw little-endian 32-bit words -- the same u32 image ``_emit_fill`` would store."""
     out = bytearray()
@@ -147,7 +169,7 @@ def _words_blob(words: list[int]) -> bytes:
 
 def _compact_numeric_support(
     outputs: list[TensorArg], expected: dict[str, Any], policy: dict[str, Any] | None,
-    *, symbol_tag: str,
+    *, symbol_tag: str, console_verdict: bool = True,
 ) -> tuple[list[str], list[str], dict[str, bytes], int]:
     """Trusted, integer-only post-kernel comparison for the Cyclotron L2 path.
 
@@ -211,11 +233,12 @@ def _compact_numeric_support(
             ]
         total += count
     declarations += [f"extern const uint32_t {symbol}[];" for symbol in sorted(blobs)]
-    checks += [
-        '  _ps("MERLIN_NUMERIC ");',
-        '  _ps(_merlin_bad?"FAIL ":"PASS ");',
-        "  _pu(_merlin_checked);_pc(' ');_pu(_merlin_bad);_pc('\\n');",
-    ]
+    if console_verdict:
+        checks += [
+            '  _ps("MERLIN_NUMERIC ");',
+            '  _ps(_merlin_bad?"FAIL ":"PASS ");',
+            "  _pu(_merlin_checked);_pc(' ');_pu(_merlin_bad);_pc('\\n');",
+        ]
     return declarations, checks, blobs, total
 
 
@@ -1075,6 +1098,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                                compact_expected: dict[str, Any] | None = None,
                                compact_policy: dict[str, Any] | None = None,
                                compact_symbol_tag: str | None = None,
+                               compact_result_page: bool = False,
                                launch: dict[str, Any] | None = None,
                                resource_claims: dict[str, Any] | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
@@ -1087,6 +1111,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     blobs the caller must assemble into the link."""
     if result_page and compact_expected is not None:
         raise ValueError("result_page and compact_expected are mutually exclusive")
+    if compact_result_page and compact_expected is None:
+        raise ValueError("compact_result_page requires compact_expected")
     ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
     blobs: dict[str, bytes] = {}
     statics: list[str] = []
@@ -1096,7 +1122,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         arr = f"_in_{a.name}"
         inner += _emit_input(arr, a, blobs)
         call_ptrs.append(f"(const void*){arr}")
-    result_decls, result_specs = _result_declarations(out_args) if result_page else ([], [])
+    result_decls, result_specs = (
+        _result_declarations(out_args) if (result_page or compact_result_page) else ([], []))
     result_arrays: list[tuple[str, dict]] = []
     for index, o in enumerate(out_args):
         arr = f"_out_{o.name}"
@@ -1116,8 +1143,9 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         # one.  compile_mlir_forkfree supplies it only after compiling/fixing
         # the submitted object; direct tests may inject a deterministic tag.
         compact_symbol_tag = compact_symbol_tag or f"n{secrets.token_hex(16)}"
-        compact_decls, compact_checks, compact_blobs, _ = _compact_numeric_support(
-            out_args, compact_expected, compact_policy, symbol_tag=compact_symbol_tag)
+        compact_decls, compact_checks, compact_blobs, compact_total = _compact_numeric_support(
+            out_args, compact_expected, compact_policy, symbol_tag=compact_symbol_tag,
+            console_verdict=not compact_result_page)
         blobs.update(compact_blobs)
 
     # Blob and .bss symbols are file-scope, so they must be declared before main.
@@ -1151,6 +1179,9 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         body.append("  _pc('\\n');")
     if result_page:
         body += _result_publish_lines(result_arrays)
+    elif compact_result_page:
+        body += compact_checks
+        body += _compact_result_publish_lines(compact_total)
     elif compact_expected is not None:
         body += compact_checks
         body.append('  _ps("DONE\\n");')
@@ -1158,7 +1189,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         body.append('  _ps("DONE\\n");')
     body += ["  return 0;", "}"]
     return Harness(source="\n".join(body) + "\n", blobs=blobs,
-                   results=(result_specs if result_page else
+                   results=(result_specs if (result_page or compact_result_page) else
                             [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype}
                              for o in out_args] if compact_expected is not None else None))
 
@@ -1383,7 +1414,8 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                           result_page: bool = False,
                           compact_expected: dict[str, Any] | None = None,
                           compact_policy: dict[str, Any] | None = None,
-                          compact_symbol_tag: str | None = None) -> Harness | None:
+                          compact_symbol_tag: str | None = None,
+                          compact_result_page: bool = False) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1399,6 +1431,7 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                                       result_page=result_page, compact_expected=compact_expected,
                                       compact_policy=compact_policy,
                                       compact_symbol_tag=compact_symbol_tag,
+                                      compact_result_page=compact_result_page,
                                       launch=(cb.get("kernel_abi") or {}).get("launch"),
                                       resource_claims=cb.get("resources"))
 

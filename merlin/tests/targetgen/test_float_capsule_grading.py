@@ -204,6 +204,37 @@ def test_float_run_capsule_accepts_declared_result_page_verdict(
     schemas.validate(result, "capsule_result", contract="merlin/contract")
 
 
+def test_evaluation_stage_passes_sealed_l2_cycles_only_to_oracle_view(
+        tmp_path, monkeypatch) -> None:
+    cb = _stub_front_half(monkeypatch)
+    cap = copy.deepcopy(load_capsule(ATLAS_AT2, contract="merlin/contract"))
+    cap["evaluation_stage"] = {
+        "predecessor_l2_cycles": 218_162,
+        "cycle_budget": {
+            "source": "sealed_predecessor_tier", "multiplier": 8,
+            "minimum_cycles": 120_000, "compute_floor_multiplier": 2,
+        },
+    }
+    gold = CG.golden(cap)
+    seen = []
+
+    def onboard(bound_cb, llvm_text, workdir, timeout):
+        seen.append(bound_cb)
+        return {"outputs": copy.deepcopy(gold), "cycles": 123,
+                "oracle": {"kind": "rtl-test", "derived_from_rtl": True}}
+
+    tiers = [tier for tier in cap.get("required_oracle_tiers", []) if tier not in ("L0", "L1")]
+    result = CR.run_capsule(
+        cap, "unused-package", runs_root=tmp_path, run_id="AT2_sealed_l2_cycles",
+        config=_atlas_config(cap), oracle_adapters={tier: onboard for tier in tiers})
+
+    assert result["status"] == "pass"
+    assert seen and all(bound["_oracle_l2_cycles"] == 218_162 for bound in seen)
+    assert all(bound["_oracle_gsim_cycle_policy"] == cap["evaluation_stage"]["cycle_budget"]
+               for bound in seen)
+    assert "_oracle_l2_cycles" not in cb
+
+
 def test_float_run_capsule_not_run_is_not_pass(tmp_path, monkeypatch):
     """A required RTL oracle that is absent -> incomplete, never pass — even though the integer L0/L1
     floor is legitimately skipped for the float datapath."""

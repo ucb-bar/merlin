@@ -650,6 +650,15 @@ def main(argv=None):
                "execution_digest": _qc._execution_digest_from_result(cr),
                "barrier_tier": bar_used,
                "barrier_declared": barrier_tier, "barrier_status": bar}
+        # A post-search physical stage needs a per-capsule observation bound, not one corpus-wide
+        # default. Preserve the cycle count from the tier that actually supplied this row's barrier
+        # verdict. This is measurement metadata, not answer-bearing data, and is sealed with the score.
+        _barrier_record = (d.get("tiers") or {}).get(bar_used) or {}
+        _barrier_cycles = (_barrier_record.get("cycles")
+                           if isinstance(_barrier_record, dict) else None)
+        if isinstance(_barrier_cycles, int) and not isinstance(_barrier_cycles, bool) \
+                and _barrier_cycles > 0:
+            row["barrier_cycles"] = _barrier_cycles
         # A STATED DECLINE IS THE MOST ACTIONABLE THING THIS REPORT CAN CARRY, so it rides the row
         # whether or not the capsule passed, and ahead of the numeric block. Without it a declined
         # capsule reads exactly like one whose arithmetic is wrong -- an output of zeros and a

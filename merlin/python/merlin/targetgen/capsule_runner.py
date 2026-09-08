@@ -4312,6 +4312,23 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 oracle_cb = dict(cb)
                 oracle_cb["_oracle_expected_outputs"] = gold
                 oracle_cb["_oracle_numeric_policy"] = policy
+                # A frozen post-search stage carries the exact cycle count measured for THIS capsule at
+                # its sealed predecessor tier. Pass it only on the private runner-to-oracle view: it is
+                # observation-budget provenance, not compiler input and not part of the submitted CB.
+                _stage = capsule.get("evaluation_stage") or {}
+                _l2_cycles = (_stage.get("predecessor_l2_cycles")
+                              if isinstance(_stage, dict) else None)
+                if _l2_cycles is not None:
+                    if (not isinstance(_l2_cycles, int) or isinstance(_l2_cycles, bool)
+                            or _l2_cycles <= 0):
+                        raise ValueError(
+                            "evaluation_stage.predecessor_l2_cycles must be a positive integer")
+                    oracle_cb["_oracle_l2_cycles"] = _l2_cycles
+                    _cycle_policy = _stage.get("cycle_budget")
+                    if not isinstance(_cycle_policy, dict):
+                        raise ValueError(
+                            "evaluation_stage with predecessor cycles requires cycle_budget policy")
+                    oracle_cb["_oracle_gsim_cycle_policy"] = dict(_cycle_policy)
                 res = adapter(oracle_cb, llvm_text, paths.generated, timeout)
             except _PODidNotHalt as e:
                 # The oracle RAN and returned a verdict: the program never halted. That is the AGENT's

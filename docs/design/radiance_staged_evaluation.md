@@ -56,7 +56,8 @@ neither coverage nor a gap.  The machine-readable census and L2 receipt are unde
 
 Run the paid loop only on the descriptor's sixteen-member `search_cohort`.  A score can open Stage 2
 only when its per-capsule evidence names exactly those sixteen members (including the exact add and
-multiply), every row records an L2 numeric pass and an execution digest, and the suite reports 16/16.
+multiply), every row records an L2 numeric pass, execution digest, and positive measured barrier-cycle
+count, and the suite reports 16/16.
 Seal that score with the candidate and source-tree digests; the seal must live outside the candidate.
 
 The self-check runner defaults to the repository's default target when no descriptor is supplied, so
@@ -85,7 +86,8 @@ PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort 
   --create-search-pass-seal out/artifacts/capsule-bench/radiance/<run>/search_l2_pass.json
 ```
 
-The command refuses 15/16, a missing or extra capsule, a non-L2 row, a missing execution digest, a
+The command refuses 15/16, a missing or extra capsule, a non-L2 row, a missing execution digest or
+measured cycle count, a
 non-model-derived source, a stale score, or a candidate/source tree changed after the run.  Creating the
 seal does not certify unrepresented operation families or an E2E model.  The candidate digest excludes
 only Python interpreter byproducts (`__pycache__`, `.pyc`, `.pyo`), so importing the frozen package during
@@ -115,9 +117,26 @@ resolved at runtime rather than copied into this document.  The cohort manifest 
 candidate tree and the Stage-1 seal.  Validation fails if any compiler, score, capsule source, emulator,
 or receipt byte changes between convergence and grading.
 
+The seal also binds each capsule's measured L2 cycles. Materialization copies that exact value and the
+descriptor's observation policy into the corresponding Stage-2 capsule. The GSIM cap is computed as
+`max(120000, 8 * sealed_L2_cycles, 2 * static_compute_floor)`. This is a fail-closed correctness-run
+budget, not a GSIM/Cyclotron performance equivalence: reaching the cap is unavailable and cannot become
+a pass. A manual `MERLIN_MUON_GSIM_L2_CYCLES` remains only for focused diagnostic replay; the staged
+cohort never depends on it.
+
+There are two numeric transports. The default independent Rocket carrier receives every result through
+the 32-word mailbox; the largest current capsule has 1,048,576 outputs and therefore needs 32,768
+READY/ACK transactions. With `MERLIN_MUON_TRUSTED_COMPACT_NUMERIC=1`, the runner-owned Muon harness
+instead checks every full-shape output against its post-submission private bounds and sends only
+`(elements_checked, mismatch_count)` through one mailbox transaction. Rocket validates the exact count
+and reaches a retained pass/fail PC, which remains the GSIM verdict. This path is explicitly limited to
+the frozen non-adversarial derived evaluation because the submitted kernel and trusted comparator share
+the Muon address space; it is not general adversarial anti-cheat evidence.
+
 Grade the frozen package against only that materialized root:
 
 ```bash
+MERLIN_MUON_TRUSTED_COMPACT_NUMERIC=1 \
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.capsule_grade \
   --target radiance \
   --package out/runs/radiance/capsule-bench/<run>/submission \

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import hashlib
 from pathlib import Path
@@ -84,8 +85,9 @@ def _passing_search_score(path: Path, te) -> None:
         "all_pass": True,
         "per_capsule": [
             {"capsule": name, "pass": True, "barrier_tier": "L2",
-             "barrier_status": "pass", "execution_digest": hashlib.sha256(name.encode()).hexdigest()}
-            for name in names
+             "barrier_status": "pass", "barrier_cycles": 1000 + index,
+             "execution_digest": hashlib.sha256(name.encode()).hexdigest()}
+            for index, name in enumerate(names)
         ],
     }))
 
@@ -123,6 +125,12 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
             "after": "search_l2_pass",
             "required_oracle_tier": "L3",
             "oracle_engine": "gsim",
+            "predecessor_l2_cycles": 1000 + sorted(
+                te.evaluation_cohort("derived_gsim")["include_capsules"]).index(name),
+            "cycle_budget": {
+                "source": "sealed_predecessor_tier", "multiplier": 8,
+                "minimum_cycles": 120000, "compute_floor_multiplier": 2,
+            },
         }
     assert validate_evaluation_cohort(out, te, candidate) == record
 
@@ -142,6 +150,19 @@ def test_derived_gsim_requires_exact_l2_pass_seal_and_leaves_no_tree(tmp_path, m
     doc["per_capsule"] = doc["per_capsule"][:-1]
     score.write_text(json.dumps(doc))
     with pytest.raises(ValueError, match="do not exactly cover"):
+        create_search_pass_seal(tmp_path / "search-pass.json", te, candidate, score)
+
+
+def test_search_pass_seal_requires_measured_cycles_for_every_capsule(tmp_path):
+    te = load_target_experiment(RADIANCE)
+    candidate = _candidate(tmp_path)
+    score = tmp_path / "search-score.json"
+    _passing_search_score(score, te)
+    doc = json.loads(score.read_text())
+    doc["per_capsule"][0].pop("barrier_cycles")
+    score.write_text(json.dumps(doc))
+
+    with pytest.raises(ValueError, match="no positive measured L2 barrier cycle count"):
         create_search_pass_seal(tmp_path / "search-pass.json", te, candidate, score)
 
 
@@ -165,6 +186,25 @@ def test_search_pass_seal_freezes_candidate_and_score(tmp_path):
 
     (candidate / "schedule.mlir").write_text("module { func.func private @changed() }\n")
     with pytest.raises(ValueError, match="candidate content digest mismatch"):
+        validate_search_pass_seal(seal, te, candidate)
+
+
+def test_search_pass_v1_and_cycle_map_mutation_are_rejected(tmp_path):
+    te = load_target_experiment(RADIANCE)
+    candidate = _candidate(tmp_path)
+    seal = _search_seal(tmp_path, te, candidate)
+    original = json.loads(seal.read_text())
+
+    stale = dict(original, schema="descriptor_search_pass_v1")
+    seal.write_text(json.dumps(stale))
+    with pytest.raises(ValueError, match="unsupported search pass seal"):
+        validate_search_pass_seal(seal, te, candidate)
+
+    tampered = copy.deepcopy(original)
+    first = sorted(tampered["l2_cycles"])[0]
+    tampered["l2_cycles"][first] += 1
+    seal.write_text(json.dumps(tampered))
+    with pytest.raises(ValueError, match="differs from its hash-bound score evidence"):
         validate_search_pass_seal(seal, te, candidate)
 
 

@@ -55,6 +55,75 @@ def _timing(build_s: float, sim_s: float) -> dict:
     return {"build_s": round(build_s, 3), "sim_active_s": round(sim_s, 3), "oracle_wait_s": 0.0}
 
 
+def _gsim_cycle_budget(cb: dict, *, target: str, flops: int | None) -> tuple[int, dict[str, Any]]:
+    """Resolve a positive GSIM cap, preferring a per-capsule L2 measurement.
+
+    The L2-derived cap is an observation bound, never a correctness verdict: exhausting it remains
+    unavailable.  An explicit GSIM override keeps its historical precedence.  Until the staged-cohort
+    materializer carries the sealed L2 value into ``_oracle_l2_cycles``, a one-capsule launcher may provide
+    ``MERLIN_MUON_GSIM_L2_CYCLES``; absence retains the legacy cap rather than inventing a measurement.
+    """
+    explicit = os.environ.get("MERLIN_MUON_GSIM_MAXCYCLES")
+
+    def positive(value: Any, label: str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise muon.MuonUnavailable(f"{label} must be a positive integer, got {value!r}") from exc
+        if parsed <= 0:
+            raise muon.MuonUnavailable(f"{label} must be a positive integer, got {value!r}")
+        return parsed
+
+    if explicit is not None:
+        value = positive(explicit, "MERLIN_MUON_GSIM_MAXCYCLES")
+        return value, {"source": "explicit_override", "max_cycles": value}
+
+    l2_raw = cb.get("_oracle_l2_cycles")
+    policy = cb.get("_oracle_gsim_cycle_policy")
+    sealed = l2_raw is not None
+    if l2_raw is None:
+        # Diagnostic-only seam for a focused one-capsule replay. Staged evaluation never relies on it:
+        # its materialized capsule supplies both the sealed count and descriptor policy above.
+        l2_raw = os.environ.get("MERLIN_MUON_GSIM_L2_CYCLES")
+    if l2_raw is None:
+        return 2_000_000, {"source": "legacy_default", "max_cycles": 2_000_000}
+    l2_cycles = positive(l2_raw, "sealed per-capsule L2 cycles")
+    if sealed:
+        if not isinstance(policy, dict) or policy.get("source") != "sealed_predecessor_tier":
+            raise muon.MuonUnavailable(
+                "sealed per-capsule L2 cycles require a descriptor-derived GSIM cycle policy")
+        factor = positive(policy.get("multiplier"), "GSIM cycle policy multiplier")
+        minimum = positive(policy.get("minimum_cycles"), "GSIM cycle policy minimum_cycles")
+        floor_factor = positive(policy.get("compute_floor_multiplier"),
+                                "GSIM cycle policy compute_floor_multiplier")
+    else:
+        factor = positive(os.environ.get("MERLIN_MUON_GSIM_L2_CYCLE_FACTOR", "8"),
+                          "MERLIN_MUON_GSIM_L2_CYCLE_FACTOR")
+        minimum = 120_000
+        floor_factor = 2
+    scaled = l2_cycles * factor
+    compute_floor = None
+    if isinstance(flops, int) and flops > 0:
+        try:
+            peak = int(muon._rtl_machine_capacity(target)["peak_flops_per_cycle"])
+            if peak > 0:
+                compute_floor = (flops + peak - 1) // peak
+                scaled = max(scaled, compute_floor * floor_factor)
+        except Exception:  # noqa: BLE001 -- the sealed L2 observation remains a valid bounded basis
+            compute_floor = None
+    value = max(minimum, scaled)
+    return value, {
+        "source": ("sealed_l2_cycles" if sealed else "manual_diagnostic_l2_cycles"),
+        "max_cycles": value,
+        "l2_cycles": l2_cycles,
+        "l2_multiplier": factor,
+        "minimum_cycles": minimum,
+        "compute_floor_multiplier": floor_factor,
+        "compute_floor_cycles": compute_floor,
+        "performance_measurement": False,
+    }
+
+
 def _compact_numeric_from_console(console: str, *, expected_elements: int) -> dict[str, Any]:
     """Parse the trusted Cyclotron harness's explicit compact verdict.
 
@@ -339,15 +408,26 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
         expected = cb.get("_oracle_expected_outputs")
         numeric_policy = cb.get("_oracle_numeric_policy")
         numeric_readback = isinstance(expected, dict) and bool(expected)
+        compact_opt_in = os.environ.get(
+            "MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "").strip().lower() in (
+                "1", "true", "yes", "on")
+        compact_numeric = compact_opt_in and numeric_readback and muon.is_mlir_artifact(kernel_src)
         derived = _mh.args_from_cb(cb) if numeric_readback else None
         if numeric_readback and derived is None:
             raise muon.MuonUnavailable(
                 "GSIM numeric readback requested but the harness cannot derive declared outputs")
+        if compact_opt_in and numeric_readback and not compact_numeric:
+            raise muon.MuonUnavailable(
+                "trusted compact GSIM numeric validation requires an instrumentable MLIR artifact")
         # Build the graded ELF identically to the Verilator/cyclotron adapters (fork-free thesis path when
         # the artifact is LLVM-dialect MLIR; otherwise the runner-owned harness + oracle compile).
         if muon.is_mlir_artifact(kernel_src):
             elf, toolchain = muon.compile_mlir_forkfree(
-                kernel_src, cb, workdir, target=target, result_page=numeric_readback), "fork-free"
+                kernel_src, cb, workdir, target=target,
+                result_page=numeric_readback and not compact_numeric,
+                compact_expected=expected if compact_numeric else None,
+                compact_policy=numeric_policy if compact_numeric else None,
+                compact_result_page=compact_numeric), "fork-free"
         else:
             program = _mh.program_from_cb(
                 cb, kernel_src, muon._model_for(target), result_page=numeric_readback)
@@ -364,15 +444,19 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             manifest_path = Path(workdir) / "result_page.json"
             manifest_path.write_text(json.dumps(result_manifest, indent=2) + "\n", encoding="utf-8")
             carrier = Path(workdir) / "result_carrier.c"
-            carrier.write_text(_rp.render_carrier(result_manifest, expected, numeric_policy),
-                               encoding="utf-8")
+            elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])
+            carrier_source = (
+                _rp.render_compact_carrier(result_manifest, expected_elements=elements)
+                if compact_numeric else
+                _rp.render_carrier(result_manifest, expected, numeric_policy))
+            carrier.write_text(carrier_source, encoding="utf-8")
             soc = muon.fuse_soc_elf(Path(elf), Path(workdir), carrier_source=carrier)
             outcome_symbols = _rp.symbol_addresses(
                 soc, (_rp.PASS_SYMBOL, _rp.FAIL_SYMBOL))
         else:
             soc = muon.fuse_soc_elf(Path(elf), Path(workdir))
         t1 = time.perf_counter()
-        maxcyc = os.environ.get("MERLIN_MUON_GSIM_MAXCYCLES", "2000000")
+        maxcyc, cycle_budget = _gsim_cycle_budget(cb, target=target, flops=flops)
 
         def _unlimited_stack() -> None:
             try:
@@ -418,6 +502,8 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
                     f"{_rp.PASS_SYMBOL} nor {_rp.FAIL_SYMBOL}; the cycle cap is not a numeric verdict. "
                     f"tail:\n{console[-600:]}")
             elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])
+            witness = ("final_rocket_pc_over_trusted_muon_post_kernel_comparator"
+                       if compact_numeric else "final_rocket_pc")
             return {
                 "outputs": {},
                 "cycles": None,
@@ -435,13 +521,15 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
                     "status": outcome,
                     "elements_checked": elements,
                     "policy": dict(numeric_policy or {}),
-                    "witness": "final_rocket_pc",
+                    "witness": witness,
                     "pass_symbol": f"0x{outcome_symbols[_rp.PASS_SYMBOL]:x}",
                     "fail_symbol": f"0x{outcome_symbols[_rp.FAIL_SYMBOL]:x}",
+                    **({"trust_scope": "frozen_non_adversarial_derived_evaluation_only",
+                        "transport": "two_word_checked_mismatch_summary"}
+                       if compact_numeric else {}),
                 },
                 "result_page": result_manifest,
-                "bounded_observation": {"max_cycles": int(maxcyc),
-                                        "performance_measurement": False},
+                "bounded_observation": cycle_budget,
             }
         # GSIM completion contract (the radiance kernels self-verify against their embedded golden, then
         # go idle on PASS or spin on FAIL):

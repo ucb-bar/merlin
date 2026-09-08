@@ -145,7 +145,24 @@ def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
             valid_digest = False
         if not valid_digest:
             problems.append(f"{name} has no execution digest")
+        cycles = row.get("barrier_cycles")
+        if not isinstance(cycles, int) or isinstance(cycles, bool) or cycles <= 0:
+            problems.append(f"{name} has no positive measured L2 barrier cycle count")
     return problems
+
+
+def _sealed_predecessor_cycle_policy(stage: dict[str, Any]) -> dict[str, Any]:
+    """Validated descriptor policy for turning one sealed predecessor count into an L3 cap."""
+    policy = stage.get("cycle_budget")
+    if not isinstance(policy, dict) or policy.get("source") != "sealed_predecessor_tier":
+        raise ValueError("post-search evaluation requires cycle_budget.source=sealed_predecessor_tier")
+    out = {"source": "sealed_predecessor_tier"}
+    for key in ("multiplier", "minimum_cycles", "compute_floor_multiplier"):
+        value = policy.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise ValueError(f"post-search evaluation cycle_budget.{key} must be a positive integer")
+        out[key] = value
+    return out
 
 
 def create_search_pass_seal(
@@ -175,7 +192,7 @@ def create_search_pass_seal(
     if problems:
         raise ValueError("search pass evidence rejected: " + "; ".join(problems))
     record = {
-        "schema": "descriptor_search_pass_v1",
+        "schema": "descriptor_search_pass_v2",
         "claim_scope": "admitted_search_covering_set_not_e2e_readiness",
         "target": te.target,
         "policy": te.graded_cohort_policy,
@@ -187,6 +204,8 @@ def create_search_pass_seal(
         "score": str(score_path.resolve()),
         "score_sha256": score_sha256,
         "capsules": source_records,
+        "l2_cycles": {str(row["capsule"]): int(row["barrier_cycles"])
+                      for row in score_doc["per_capsule"]},
         "n_capsules": len(names),
         "n_passed": len(names),
     }
@@ -201,7 +220,7 @@ def validate_search_pass_seal(
     path, candidate = Path(path), Path(candidate)
     seal_sha256 = _file_sha256(path, what="search pass seal")
     record = json.loads(path.read_text(encoding="utf-8"))
-    if record.get("schema") != "descriptor_search_pass_v1":
+    if record.get("schema") != "descriptor_search_pass_v2":
         raise ValueError(f"unsupported search pass seal: {path}")
     if (record.get("target") != te.target or record.get("descriptor_sha256") != te.descriptor_sha256
             or record.get("policy") != te.graded_cohort_policy):
@@ -223,6 +242,12 @@ def validate_search_pass_seal(
     expected_n = len(expected_records)
     if record.get("n_capsules") != expected_n or record.get("n_passed") != expected_n:
         raise ValueError("search pass seal is not an exact all-pass")
+    cycle_names = record.get("l2_cycles")
+    if (not isinstance(cycle_names, dict) or sorted(cycle_names) !=
+            sorted(row["name"] for row in expected_records)
+            or any(not isinstance(value, int) or isinstance(value, bool) or value <= 0
+                   for value in cycle_names.values())):
+        raise ValueError("search pass seal lacks exact positive per-capsule L2 cycles")
     score_path = Path(str(record.get("score", "")))
     if _file_sha256(score_path, what="sealed search score") != record.get("score_sha256"):
         raise ValueError("search score evidence digest mismatch")
@@ -230,6 +255,10 @@ def validate_search_pass_seal(
     problems = _search_score_problems(score_doc, [row["name"] for row in expected_records])
     if problems:
         raise ValueError("sealed search score no longer proves the pass: " + "; ".join(problems))
+    score_cycles = {str(row["capsule"]): int(row["barrier_cycles"])
+                    for row in score_doc["per_capsule"]}
+    if record.get("l2_cycles") != score_cycles:
+        raise ValueError("search pass seal L2 cycle map differs from its hash-bound score evidence")
     return {**record, "seal": str(path.resolve()), "seal_sha256": seal_sha256}
 
 
@@ -480,12 +509,14 @@ def materialize_evaluation_cohort(
         if tuple(stage["include_capsules"]) != tuple(te.graded_include):
             raise ValueError(
                 f"evaluation stage {stage_name!r} does not contain exactly the search cohort")
+        cycle_policy = _sealed_predecessor_cycle_policy(stage)
     else:
         if search_pass_seal is not None:
             raise ValueError(
                 f"evaluation stage {stage_name!r} does not directly consume a search-pass seal")
         predecessor = _predecessor_pass_evidence(
             te, stage_name, candidate, predecessor_cohort, predecessor_score)
+        cycle_policy = None
     preflight = engine_preflight(te, stage_name)
     if preflight.get("ok") is not True:
         raise ValueError(
@@ -555,6 +586,10 @@ def materialize_evaluation_cohort(
             "required_oracle_tier": required_tier,
             "oracle_engine": stage["oracle_engine"],
         }
+        if search_evidence is not None:
+            doc["evaluation_stage"]["predecessor_l2_cycles"] = int(
+                search_evidence["l2_cycles"][name])
+            doc["evaluation_stage"]["cycle_budget"] = cycle_policy
         path.write_text(yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
     record = {
@@ -573,6 +608,8 @@ def materialize_evaluation_cohort(
         "n_capsules": len(written),
         "engine_preflight": preflight,
     }
+    if cycle_policy is not None:
+        record["cycle_budget"] = cycle_policy
     if search_evidence is not None:
         record["search_pass_evidence"] = {
             "seal": search_evidence["seal"],
@@ -585,6 +622,7 @@ def materialize_evaluation_cohort(
             "n_passed": search_evidence["n_passed"],
             "required_oracle_tier": search_evidence["required_oracle_tier"],
             "claim_scope": search_evidence["claim_scope"],
+            "l2_cycles": search_evidence["l2_cycles"],
         }
     if predecessor is not None:
         record["predecessor_pass_evidence"] = predecessor
@@ -624,6 +662,15 @@ def validate_evaluation_cohort(
         marker = doc.get("evaluation_stage") or {}
         if marker.get("name") != record["stage"] or marker.get("oracle_engine") != stage["oracle_engine"]:
             raise ValueError(f"{name} carries the wrong evaluation-stage marker")
+        if str(stage["after"]) == "search_l2_pass":
+            expected_cycles = ((record.get("search_pass_evidence") or {}).get("l2_cycles") or {}).get(name)
+            if (not isinstance(expected_cycles, int) or isinstance(expected_cycles, bool)
+                    or expected_cycles <= 0
+                    or marker.get("predecessor_l2_cycles") != expected_cycles):
+                raise ValueError(f"{name} carries no exact sealed predecessor L2 cycle count")
+            if marker.get("cycle_budget") != _sealed_predecessor_cycle_policy(stage) \
+                    or record.get("cycle_budget") != _sealed_predecessor_cycle_policy(stage):
+                raise ValueError(f"{name} carries the wrong sealed-cycle observation policy")
     expected_digest = record.get("materialized_tree_sha256")
     # The manifest itself was deliberately absent when its digest was calculated.
     actual_digest = _tree_sha256(root, exclude=frozenset({record_path.name}))
