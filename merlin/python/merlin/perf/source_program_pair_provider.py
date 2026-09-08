@@ -127,11 +127,18 @@ class SourceProgramPairProvider:
             return left
 
         try:
+            comparison_binding = prepared.get("comparison_binding") or {}
+            portfolio_member = (comparison_binding.get("selection")
+                                if comparison_binding.get("schema")
+                                == "selected_portfolio_source_program_pair_v1" else None)
             pair = bind_source_program_pair(candidate=candidate, experiment=experiment,
-                                            comparison_arm=prepared["comparison_arm"])
+                                            comparison_arm=prepared["comparison_arm"],
+                                            portfolio_member=portfolio_member,
+                                            max_source_bytes=prepared.get("max_source_bytes", 2_000_000))
             source, extraction, oracle, case, payloads, expected = _validated_inputs(prepared, pair)
             _record_task_route_presence(result, candidate=candidate, experiment=experiment, pair=pair, prepared=prepared)
-            initial = experiment.current_probe_binding(candidate)
+            initial = document_digest(pair.comparison_binding)
+            initial_controller_binding = experiment.current_probe_binding(candidate)
             result.update(full_model_artifact_binding=_binding(pair), source_sha256=pair.source_sha256,
                 probe_source_sha256=text_digest(source), logical_dispatch_digest=pair.graph_sha256,
                 selected_case=case["case"], unexecuted_cases=[c["case"] for c in oracle["cases"][1:]],
@@ -237,8 +244,13 @@ class SourceProgramPairProvider:
                     raise ValueError("host target environment changed while executing source arm")
                 remaining()
             final_pair = bind_source_program_pair(candidate=candidate, experiment=experiment,
-                                                  comparison_arm=prepared["comparison_arm"])
-            if (_binding(final_pair) != _binding(pair) or experiment.current_probe_binding(candidate) != initial
+                                                  comparison_arm=prepared["comparison_arm"],
+                                                  portfolio_member=portfolio_member,
+                                                  max_source_bytes=prepared.get(
+                                                      "max_source_bytes", 2_000_000))
+            if (_binding(final_pair) != _binding(pair)
+                    or document_digest(final_pair.comparison_binding) != initial
+                    or experiment.current_probe_binding(candidate) != initial_controller_binding
                     or document_digest(prepared) != result["preparation_sha256"]):
                 raise ValueError("complete source pair changed during execution")
             engines = [result["arms"][arm]["command"]["engine_provenance"] for arm in ("before", "after")]

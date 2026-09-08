@@ -31,26 +31,46 @@ def _entry(module, entry):
 
 def _contract(op):
     """Recognize the complete typed multiply/add recurrence, not provenance tags."""
-    if op.name not in {"linalg.matmul", "linalg.generic"} or len(op.operands) != 3 or len(op.results) != 1:
-        raise ValueError("selected operation is not a rank-two integer contraction")
+    if (op.name not in {"linalg.matmul", "linalg.batch_matmul", "linalg.generic"}
+            or len(op.operands) != 3 or len(op.results) != 1):
+        raise ValueError("selected operation is not an integer contraction")
     try:
         op.verify()
     except Exception as error:
         raise ValueError("source contraction does not verify") from error
     values = [*op.operands, *op.results]
-    if any(not isinstance(value.type, TensorType) or len(value.type.get_shape()) != 2
-           or str(value.type.get_element_type()) not in {"i8", "i16", "i32", "i64"} for value in values):
-        raise ValueError("contraction requires exact static rank-two signless integer tensors")
+    if any(not isinstance(value.type, TensorType)
+           or str(value.type.get_element_type()) not in {"i8", "i16", "i32", "i64"}
+           or any(type(extent) is not int or extent <= 0 for extent in value.type.get_shape())
+           for value in values):
+        raise ValueError("contraction requires exact static signless integer tensors")
     shapes = [tuple(value.type.get_shape()) for value in values]
-    (m, k), (kk, n), output, result = shapes
-    if min(m, k, kk, n) <= 0 or kk != k or output != (m, n) or result != output or values[2].type != values[3].type:
+    lhs, rhs, output, result = shapes
+    output_rank = len(output)
+    if (output_rank < 2 or result != output or values[2].type != values[3].type
+            or len(lhs) not in {2, output_rank} or len(rhs) not in {2, output_rank}):
         raise ValueError("contraction tensor domains or initialized output types disagree")
+    batch, m, n = output[:-2], output[-2], output[-1]
+    lhs_batched, rhs_batched = len(lhs) == output_rank, len(rhs) == output_rank
+    if ((lhs_batched and lhs[:-2] != batch) or (rhs_batched and rhs[:-2] != batch)
+            or lhs[-2] != m or rhs[-1] != n or lhs[-1] != rhs[-2]):
+        raise ValueError("contraction tensor domains or initialized output types disagree")
+    k = lhs[-1]
     maps = [item.data for item in op.get_indexing_maps()]
-    if (len(maps) != 3 or any(amap.num_symbols or amap.num_dims != 3 for amap in maps)
+    iterator_rank = output_rank + 1
+    batch_dims = tuple(range(output_rank - 2))
+    m_dim, n_dim, k_dim = output_rank - 2, output_rank - 1, output_rank
+    expected_maps = [
+        [*batch_dims, m_dim, k_dim] if lhs_batched else [m_dim, k_dim],
+        [*batch_dims, k_dim, n_dim] if rhs_batched else [k_dim, n_dim],
+        [*batch_dims, m_dim, n_dim],
+    ]
+    if (len(maps) != 3 or any(amap.num_symbols or amap.num_dims != iterator_rank for amap in maps)
             or any(not all(isinstance(expr, AffineDimExpr) for expr in amap.results) for amap in maps)
-            or [[expr.position for expr in amap.results] for amap in maps] != [[0, 2], [2, 1], [0, 1]]
-            or [item.data.value for item in op.get_iterator_types()] != ["parallel", "parallel", "reduction"]):
-        raise ValueError("contraction requires canonical m,n,k affine maps and iterator order")
+            or [[expr.position for expr in amap.results] for amap in maps] != expected_maps
+            or [item.data.value for item in op.get_iterator_types()]
+            != [*(["parallel"] * output_rank), "reduction"]):
+        raise ValueError("contraction requires canonical batch...,m,n,k affine maps and iterator order")
     if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
         raise ValueError("contraction has unsupported scalar control flow")
     block = op.regions[0].block
@@ -90,13 +110,19 @@ def _contract(op):
 
     if {input_of(value) for value in multiply.operands} != set(block.args[:2]) or visited != set(operations):
         raise ValueError("contraction product/accumulator def-use is noncanonical or contains extra work")
-    return {"maps": maps, "n_in": 2, "iteration_shape": (m, n, k),
-            "parallel_dimensions": [0, 1], "reduction_dimensions": [2]}, (m, k, n)
+    return {"maps": maps, "n_in": 2, "iteration_shape": (*batch, m, n, k),
+            "parallel_dimensions": list(range(output_rank)),
+            "reduction_dimensions": [output_rank]}, {
+                "batch_shape": batch, "m": m, "k": k, "n": n,
+                "lhs_batched": lhs_batched, "rhs_batched": rhs_batched,
+                "output_rank": output_rank, "iteration_rank": iterator_rank,
+            }
 
 
 def extract_source_contraction(source_text: str, source_op_index: int, *, entry: str,
                                max_m: int, max_n: int, max_k: int,
-                               max_macs: int = 100000) -> tuple[str, dict]:
+                               max_macs: int = 100000,
+                               max_batch_extent: int = 2) -> tuple[str, dict]:
     """Clone one source operation with host-selected bounds, preserving named/generic spelling.
 
     Bounds are safety limits, not inferred target tile geometry. The caller must
@@ -104,6 +130,7 @@ def extract_source_contraction(source_text: str, source_op_index: int, *, entry:
     """
     if (not isinstance(entry, str) or not entry or type(source_op_index) is not int
             or any(type(value) is not int or not 1 <= value <= 4096 for value in (max_m, max_n, max_k))
+            or type(max_batch_extent) is not int or not 1 <= max_batch_extent <= 16
             or type(max_macs) is not int or not 1 <= max_macs <= 100000
             or len(source_text.encode()) > 2_000_000):
         raise ValueError("invalid bounded source contraction request")
@@ -113,17 +140,32 @@ def extract_source_contraction(source_text: str, source_op_index: int, *, entry:
         raise ValueError("contraction source index is outside the explicit entry")
     operation = ops[source_op_index]
     info, geometry = _contract(operation)
-    m, k, n = (min(old, bound) for old, bound in zip(geometry, (max_m, max_k, max_n)))
-    if m*k*n > max_macs or (m, k, n) == geometry:
+    m, k, n = (min(geometry[name], bound)
+               for name, bound in (("m", max_m), ("k", max_k), ("n", max_n)))
+    reduced_batch = tuple(min(extent, max_batch_extent) for extent in geometry["batch_shape"])
+    reduced_bounds = (*reduced_batch, m, n, k)
+    source_bounds = (*geometry["batch_shape"], geometry["m"], geometry["n"], geometry["k"])
+    macs = prod(reduced_batch) * m * k * n
+    if macs > max_macs or reduced_bounds == source_bounds:
         raise ValueError("contraction witness must strictly reduce source work within the host MAC budget")
+    reduced_operand_shapes = [tuple(
+        reduced_bounds[expr.position] for expr in amap.results) for amap in info["maps"]]
     element_widths = [int(str(value.type.get_element_type())[1:]) for value in operation.operands]
-    if sum(prod(shape)*width//8 for shape, width in zip(((m,k),(k,n),(m,n)), element_widths)) > 65536:
+    if sum(prod(shape)*width//8 for shape, width in zip(
+            reduced_operand_shapes, element_widths, strict=True)) > 65536:
         raise ValueError("contraction witness exceeds the logical operand byte budget")
-    text, record = _clone_bounded_reduction(source_text, function, operation, info, (m,n,k), entry=entry)
+    text, record = _clone_bounded_reduction(
+        source_text, function, operation, info, reduced_bounds, entry=entry)
     record.update(schema="actual_source_contraction_witness_v1", mechanism="integer_contraction",
                   entry=entry, source_op_index=source_op_index, source_op_name=operation.name,
-                  source_geometry_mkn=list(geometry), probe_geometry_mkn=[m,k,n],
-                  max_macs=max_macs, probe_macs=m*k*n,
+                  source_geometry_mkn=[geometry["m"], geometry["k"], geometry["n"]],
+                  probe_geometry_mkn=[m,k,n], source_batch_shape=list(geometry["batch_shape"]),
+                  probe_batch_shape=list(reduced_batch),
+                  source_output_rank=geometry["output_rank"],
+                  source_iteration_rank=geometry["iteration_rank"],
+                  operand_batching={"lhs": "batched" if geometry["lhs_batched"] else "broadcast",
+                                    "rhs": "batched" if geometry["rhs_batched"] else "broadcast"},
+                  max_macs=max_macs, max_batch_extent=max_batch_extent, probe_macs=macs,
                   input_shapes=[row["shape"] for row in record["inputs"]],
                   input_dtypes=[row["dtype"] for row in record["inputs"]],
                   output_shape=record["output"]["shape"], output_dtype=record["output"]["dtype"],
@@ -157,9 +199,15 @@ def evaluate_source_contraction(source_text: str, extraction: dict, inputs: Sequ
     if (extraction["input_shapes"] != [list(array.shape) for array in expected]
             or extraction["input_dtypes"] != [str(value.type.get_element_type()) for value in function.body.block.args]):
         raise ValueError("contraction reference input metadata changed")
-    operation = next(op for op in function.body.block.ops if op.name in {"linalg.matmul", "linalg.generic"})
+    operation = next(op for op in function.body.block.ops
+                     if op.name in {"linalg.matmul", "linalg.batch_matmul", "linalg.generic"})
     _, geometry = _contract(operation)
-    if list(geometry) != extraction["probe_geometry_mkn"] or prod(geometry) != extraction["probe_macs"]:
+    actual_mkn = [geometry["m"], geometry["k"], geometry["n"]]
+    actual_macs = prod(geometry["batch_shape"]) * geometry["m"] * geometry["k"] * geometry["n"]
+    if (actual_mkn != extraction["probe_geometry_mkn"]
+            or list(geometry["batch_shape"]) != extraction.get("probe_batch_shape", [])
+            or geometry["iteration_rank"] != extraction.get("source_iteration_rank", 3)
+            or actual_macs != extraction["probe_macs"]):
         raise ValueError("contraction reference work metadata changed")
     if str(operation.results[0].type.get_element_type()) != extraction["output_dtype"]:
         raise ValueError("contraction reference output dtype metadata changed")

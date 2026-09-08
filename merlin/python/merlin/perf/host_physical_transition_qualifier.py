@@ -104,9 +104,12 @@ def has_physical_transition(artifact):
 
 
 class ChangedRegionQualifierDispatch:
-    def __init__(self, *, physical, legacy):
-        self.physical, self.legacy = physical, legacy
+    def __init__(self, *, physical, legacy, lane_migration=None):
+        self.physical, self.legacy, self.lane_migration = physical, legacy, lane_migration
         self.abi_provenance = physical.abi_provenance
+        if (lane_migration is not None
+                and lane_migration.abi_provenance != self.abi_provenance):
+            raise ValueError("changed-region providers disagree on host ABI provenance")
 
     def __call__(self, *, candidate, experiment, timeout_s, portfolio_member=None):
         selected = None
@@ -121,6 +124,12 @@ class ChangedRegionQualifierDispatch:
             # A missing/rejected copy witness must not become an unrelated legacy pass.
             return self.physical(candidate=candidate, experiment=experiment, timeout_s=timeout_s,
                                  portfolio_member=selected["selection"] if selected else None)
+        from .lane_migration_qualifier import has_contraction_lane_migration
+        if has_contraction_lane_migration(*artifacts):
+            if self.lane_migration is None:
+                raise ValueError("contraction lane migration has no bounded numerical qualifier")
+            return self.lane_migration(candidate=candidate, experiment=experiment, timeout_s=timeout_s,
+                                       portfolio_member=selected["selection"] if selected else None)
         return self.legacy(candidate=candidate, experiment=experiment, timeout_s=timeout_s,
                            portfolio_member=selected["selection"] if selected else None)
 

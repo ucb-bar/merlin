@@ -187,6 +187,67 @@ def test_changed_current_binding_never_returns_prepared(tmp_path, monkeypatch):
     assert prepare(tmp_path, experiment)["status"] == "UNKNOWN"
 
 
+def test_explicit_host_to_contraction_route_is_reproduced_by_short_arms(tmp_path, monkeypatch):
+    experiment, _, _ = fixture(tmp_path, monkeypatch)
+    before = experiment.previous_artifacts(None)
+    P.program_plan(before["command_buffer"])["tasks"][0]["kind"] = "host"
+    before["command_buffer_text"] = json.dumps(before["command_buffer"], indent=2) + "\n"
+    before["candidate_command_buffer_sha256"] = text_digest(before["command_buffer_text"])
+    proof = experiment.iterations[0]["analysis"]["diagnostics"]["verified_global_plan_emission"]
+    proof["candidate_command_buffer_sha256"] = before["candidate_command_buffer_sha256"]
+    proof["plan_digest"] = document_digest(P.program_plan(before["command_buffer"]))
+    compile_before = experiment.compile_previous_probe_candidate
+    def host_short(*args, **kwargs):
+        result = compile_before(*args, **kwargs)
+        P.program_plan(result["command_buffer"])["tasks"][0]["kind"] = "host"
+        return result
+    experiment.compile_previous_probe_candidate = host_short
+    result = prepare(tmp_path, experiment,
+        expected_route_transition=("host", "contraction"))
+    assert result["status"] == "prepared", result
+    assert result["expected_route_transition"] == ["host", "contraction"]
+    assert {arm: row["declared_route"] for arm, row in result["arms"].items()} == {
+        "before": "host", "after": "contraction"}
+
+
+def test_selected_secondary_member_binds_source_pair_without_primary_artifacts(tmp_path, monkeypatch):
+    experiment, _, _ = fixture(tmp_path, monkeypatch)
+    before, after = experiment.previous_artifacts(None), experiment.current_artifacts(None)
+    selection = {"portfolio_index": 2, "capsule": "secondary"}
+    selected = {"selection": selection,
+        "previous": {"artifacts": before, "analysis": experiment.iterations[0]["analysis"],
+                     "member_binding": {"arm": "previous", "source_sha256": text_digest(SOURCE)}},
+        "current": {"artifacts": after, "analysis": experiment.iterations[1]["analysis"],
+                    "member_binding": {"arm": "current", "source_sha256": text_digest(SOURCE)}}}
+    experiment.selected_changed_portfolio_context = lambda _candidate, supplied: (
+        selected if supplied == selection else pytest.fail("substituted member"))
+    experiment.current_artifacts = lambda _: pytest.fail("primary current artifact read")
+    experiment.previous_artifacts = lambda _: pytest.fail("primary prior artifact read")
+    result = prepare(tmp_path, experiment, portfolio_member=selection)
+    assert result["status"] == "prepared", result
+    assert result["comparison_binding"] == {
+        "schema": "selected_portfolio_source_program_pair_v1", "selection": selection,
+        "previous": selected["previous"]["member_binding"],
+        "current": selected["current"]["member_binding"]}
+
+
+def test_lane_migration_allows_prior_short_route_to_already_be_contraction(tmp_path, monkeypatch):
+    experiment, _, _ = fixture(tmp_path, monkeypatch)
+    before = experiment.previous_artifacts(None)
+    P.program_plan(before["command_buffer"])["tasks"][0]["kind"] = "host"
+    before["command_buffer_text"] = json.dumps(before["command_buffer"], indent=2) + "\n"
+    before["candidate_command_buffer_sha256"] = text_digest(before["command_buffer_text"])
+    proof = experiment.iterations[0]["analysis"]["diagnostics"]["verified_global_plan_emission"]
+    proof["candidate_command_buffer_sha256"] = before["candidate_command_buffer_sha256"]
+    proof["plan_digest"] = document_digest(P.program_plan(before["command_buffer"]))
+    result = prepare(tmp_path, experiment,
+        expected_route_transition=("host", "contraction"),
+        expected_short_route_transition=(None, "contraction"))
+    assert result["status"] == "prepared", result
+    assert result["arms"]["before"]["full_model_declared_route"] == "host"
+    assert result["arms"]["before"]["declared_route"] == "contraction"
+
+
 @pytest.mark.parametrize("mutation",[None,"unproved","source","llvm","buffer","compiler","declared_proof"])
 def test_separate_initializer_admission_keeps_declared_refusal_and_requires_exact_pins(tmp_path,monkeypatch,mutation):
     from merlin.perf import source_initializer_elision

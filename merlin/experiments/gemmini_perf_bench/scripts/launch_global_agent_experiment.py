@@ -697,9 +697,17 @@ def main(argv: list[str] | None = None) -> int:
             raise
     else:
         native_abi = native_abi_adapter.derive_native_witness_abi(target=target.target)
+        lane_migration = None
+        if source_pair_provider is not None:
+            from merlin.perf.lane_migration_qualifier import LaneMigrationContractionQualifier
+            lane_migration = LaneMigrationContractionQualifier(
+                target=target.target, runtime_provider=source_pair_provider,
+                abi_provenance=native_abi["abi_provenance"],
+                output=stage_root / "lane_migration_witnesses")
         semantic_provider = ChangedRegionQualifierDispatch(
             physical=HostPhysicalTransitionQualifier(**native_abi, output=stage_root / "physical_transition_witnesses"),
-            legacy=HostChangedRegionQualifier(**native_abi, output=stage_root / "semantic_witnesses"))
+            legacy=HostChangedRegionQualifier(**native_abi, output=stage_root / "semantic_witnesses"),
+            lane_migration=lane_migration)
     primitive_adapter_name = backend.__name__ + "." + target.target + "_primitive_probe"
     try:
         adapter = importlib.import_module(primitive_adapter_name)

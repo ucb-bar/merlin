@@ -33,6 +33,31 @@ linalg.yield %v:{output}
     return f"module {{func.func @work({inputs})->tensor<3x4x{output}>{{\n{prefix}{operation}\nfunc.return %r:tensor<3x4x{output}>\n}}}}"
 
 
+def rank_general_source(*, batch=(2, 3), lhs_broadcast=False, rhs_broadcast=False):
+    dims = [f"b{i}" for i in range(len(batch))]
+    domain = ",".join([*dims, "m", "n", "k"])
+    batch_text = "x".join(map(str, batch))
+    lhs_shape = "4x6" if lhs_broadcast else f"{batch_text}x4x6"
+    rhs_shape = "6x5" if rhs_broadcast else f"{batch_text}x6x5"
+    output_shape = f"{batch_text}x4x5"
+    lhs_map = "m,k" if lhs_broadcast else ",".join([*dims, "m", "k"])
+    rhs_map = "k,n" if rhs_broadcast else ",".join([*dims, "k", "n"])
+    output_map = ",".join([*dims, "m", "n"])
+    iterator_types = ",".join([*["\"parallel\""] * (len(batch) + 2), "\"reduction\""])
+    return f'''module {{func.func @work(%a:tensor<{lhs_shape}xi8>,%b:tensor<{rhs_shape}xi8>,%c:tensor<{output_shape}xi32>)->tensor<{output_shape}xi32>{{
+%r=linalg.generic {{indexing_maps=[affine_map<({domain})->({lhs_map})>,affine_map<({domain})->({rhs_map})>,affine_map<({domain})->({output_map})>],iterator_types=[{iterator_types}]}}
+ins(%a,%b:tensor<{lhs_shape}xi8>,tensor<{rhs_shape}xi8>) outs(%c:tensor<{output_shape}xi32>) {{
+^bb0(%x:i8,%y:i8,%acc:i32):
+%xx=arith.extsi %x:i8 to i32
+%yy=arith.extsi %y:i8 to i32
+%p=arith.muli %xx,%yy:i32
+%v=arith.addi %p,%acc:i32
+linalg.yield %v:i32
+}}->tensor<{output_shape}xi32>
+func.return %r:tensor<{output_shape}xi32>
+}}}}'''
+
+
 def extract(text, index=0, **kwargs):
     return extract_source_contraction(text,index,entry="work",max_m=2,max_n=3,max_k=5,**kwargs)
 
@@ -140,3 +165,28 @@ def test_named_mixed_width_unverified_body_is_not_guessed():
     # this spelling. Do not silently invent the missing source semantics.
     with pytest.raises(ValueError,match="verify"):
         extract(source(output="i32"))
+
+
+@pytest.mark.parametrize("batch", [(7,), (2, 3)])
+@pytest.mark.parametrize("lhs_broadcast,rhs_broadcast", [(False, False), (True, False), (False, True)])
+def test_rank_general_contraction_preserves_batch_and_broadcast_semantics(
+        batch, lhs_broadcast, rhs_broadcast):
+    original = rank_general_source(
+        batch=batch, lhs_broadcast=lhs_broadcast, rhs_broadcast=rhs_broadcast)
+    probe, record = extract_source_contraction(
+        original, 0, entry="work", max_m=2, max_n=3, max_k=4,
+        max_batch_extent=2, max_macs=1000)
+    assert record["source_iteration_rank"] == len(batch) + 3
+    assert record["probe_batch_shape"] == [min(value, 2) for value in batch]
+    assert record["operand_batching"] == {
+        "lhs": "broadcast" if lhs_broadcast else "batched",
+        "rhs": "broadcast" if rhs_broadcast else "batched",
+    }
+    values = []
+    for index, (shape, dtype) in enumerate(zip(
+            record["input_shapes"], record["input_dtypes"], strict=True)):
+        fill = (1, 2, 5)[index]
+        values.append(np.full(shape, fill, dtype="int" + dtype[1:]))
+    result = evaluate_source_contraction(probe, record, values)
+    np.testing.assert_array_equal(result, np.full(
+        record["output_shape"], 5 + 4 * 2, dtype=np.int32))

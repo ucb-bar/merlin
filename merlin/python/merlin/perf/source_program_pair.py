@@ -76,7 +76,8 @@ class SourceProgramPair:
 
 
 def bind_source_program_pair(*, candidate: Path, experiment: Any,
-                             comparison_arm: str, max_source_bytes: int = 2_000_000) -> SourceProgramPair:
+                             comparison_arm: str, max_source_bytes: int = 2_000_000,
+                             portfolio_member: Mapping[str, Any] | None = None) -> SourceProgramPair:
     """Reuse both exact full-model proofs without granting numerical or timing authority.
 
     The caller owns the action deadline and must recheck the current controller
@@ -87,8 +88,19 @@ def bind_source_program_pair(*, candidate: Path, experiment: Any,
         raise ValueError("select optimization_baseline or previous explicitly")
     if type(max_source_bytes) is not int or max_source_bytes <= 0:
         raise ValueError("source extraction requires a positive byte bound")
-    after_raw = experiment.current_artifacts(candidate)
-    diag = experiment.iterations[-1]["analysis"]["diagnostics"]
+    selected = None
+    if portfolio_member is not None:
+        if comparison_arm != "previous":
+            raise ValueError("portfolio source pairs currently require the preceding revision")
+        if not callable(getattr(experiment, "selected_changed_portfolio_context", None)):
+            raise ValueError("portfolio source pair requires member-aware experiment accessors")
+        selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+        before_context, after_context = selected["previous"], selected["current"]
+        after_raw = after_context["artifacts"]
+        diag = after_context["analysis"]["diagnostics"]
+    else:
+        after_raw = experiment.current_artifacts(candidate)
+        diag = experiment.iterations[-1]["analysis"]["diagnostics"]
     graph_sha = diag["captured_logical_graph"]["logical_dispatch_digest"]
     if comparison_arm == "optimization_baseline":
         before_raw = experiment.optimization_baseline_artifacts(candidate)
@@ -106,12 +118,19 @@ def bind_source_program_pair(*, candidate: Path, experiment: Any,
             raise ValueError("optimization baseline lacks exact cached host-policy-bound plan proof; "
                              "run static proof preparation, not a probe-time full verification")
     else:
-        if len(experiment.iterations) < 2:
+        if selected is None and len(experiment.iterations) < 2:
             raise ValueError("previous comparison requires a preceding analyzed iteration")
-        before_raw = experiment.previous_artifacts(candidate)
-        binding = experiment.previous_probe_binding(candidate).to_dict()
+        before_raw = (before_context["artifacts"] if selected is not None
+                      else experiment.previous_artifacts(candidate))
+        binding = ({"schema": "selected_portfolio_source_program_pair_v1",
+                    "selection": selected["selection"],
+                    "previous": before_context["member_binding"],
+                    "current": after_context["member_binding"]}
+                   if selected is not None else experiment.previous_probe_binding(candidate).to_dict())
         compile_before = experiment.compile_previous_probe_candidate
-        before_proof = experiment.iterations[-2]["analysis"]["diagnostics"].get("verified_global_plan_emission")
+        before_proof = ((before_context["analysis"].get("diagnostics") or {}).get(
+            "verified_global_plan_emission") if selected is not None else
+            experiment.iterations[-2]["analysis"]["diagnostics"].get("verified_global_plan_emission"))
     artifacts = {"before": artifact_record(before_raw, baseline=comparison_arm == "optimization_baseline"),
                  "after": artifact_record(after_raw)}
     source = artifacts["after"]["interface"].read_text()

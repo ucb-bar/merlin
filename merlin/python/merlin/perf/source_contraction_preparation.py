@@ -12,6 +12,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 from time import monotonic
+from typing import Any, Mapping
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from .compiler_plan_evidence import verify_compiler_global_plan
@@ -111,7 +112,7 @@ def _short_source_index(text, entry):
     if len(functions) != 1:
         raise ValueError("short source entry is not unique")
     selected = [index for index, op in enumerate(op for op in functions[0].body.block.ops if op.name != "func.return")
-                if op.name in {"linalg.matmul", "linalg.generic"}]
+                if op.name in {"linalg.matmul", "linalg.batch_matmul", "linalg.generic"}]
     if len(selected) != 1:
         raise ValueError("short source must contain exactly one selected contraction")
     return selected[0]
@@ -148,7 +149,12 @@ def _typed_cases(probe, extraction, remaining):
 
 def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: str,
                                source_op_index: int, entry: str, max_m: int, max_n: int, max_k: int,
-                               output: Path, max_macs: int = 100000, timeout_s: float = 60) -> dict:
+                               output: Path, max_macs: int = 100000, timeout_s: float = 60,
+                               max_batch_extent: int = 2,
+                               expected_route_transition: tuple[str, str] | None = None,
+                               expected_short_route_transition: tuple[str | None, str | None] | None = None,
+                               portfolio_member: Mapping[str, Any] | None = None,
+                               max_source_bytes: int = 2_000_000) -> dict:
     """Prepare normal-entrypoint arms under one caller-charged <=60-second deadline.
 
     Selection is explicit and host-bound; no predecessor/baseline substitution,
@@ -158,15 +164,36 @@ def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: s
         raise ValueError("select optimization_baseline or previous explicitly")
     if (not isinstance(entry, str) or not entry or type(source_op_index) is not int or source_op_index < 0
             or any(type(value) is not int or not 1 <= value <= 4096 for value in (max_m, max_n, max_k))
+            or type(max_batch_extent) is not int or not 1 <= max_batch_extent <= 16
+            or type(max_source_bytes) is not int or not 1 <= max_source_bytes <= 16_000_000
             or type(max_macs) is not int or not 1 <= max_macs <= 100000):
         raise ValueError("source contraction selection and bounds must be explicit and valid")
+    if (expected_route_transition is not None
+            and (type(expected_route_transition) is not tuple
+                 or len(expected_route_transition) != 2
+                 or any(route not in {"host", "contraction"}
+                        for route in expected_route_transition)
+                 or expected_route_transition[0] == expected_route_transition[1])):
+        raise ValueError("source contraction route transition must name two distinct supported lanes")
+    if (expected_short_route_transition is not None
+            and (type(expected_short_route_transition) is not tuple
+                 or len(expected_short_route_transition) != 2
+                 or any(route not in {None, "host", "contraction"}
+                        for route in expected_short_route_transition))):
+        raise ValueError("short contraction routes must be supported lanes or explicit wildcards")
     if isinstance(timeout_s, bool) or not math.isfinite(timeout_s) or not 0 < timeout_s <= 60:
         raise ValueError("source contraction preparation requires a finite <=60s budget")
     started = monotonic()
     deadline = started+timeout_s
     record = {"schema": "source_contraction_preparation_v1", "status": "UNKNOWN",
         "comparison_arm": comparison_arm, "source_op_index": source_op_index, "entry": entry,
-        "host_bounds": {"max_m": max_m, "max_n": max_n, "max_k": max_k, "max_macs": max_macs},
+        "host_bounds": {"max_m": max_m, "max_n": max_n, "max_k": max_k,
+                        "max_macs": max_macs, "max_batch_extent": max_batch_extent},
+        "max_source_bytes": max_source_bytes,
+        "expected_route_transition": list(expected_route_transition)
+            if expected_route_transition is not None else ["contraction", "contraction"],
+        "expected_short_route_transition": list(expected_short_route_transition)
+            if expected_short_route_transition is not None else None,
         "arms": {}, "simulator_executed": False, "full_model_executed": False,
         "full_model_recompiled": False, "full_model_proofs_recomputed": False,
         "numerical_qualification": "UNPROVEN", "runtime_admitted": False, "global_speedup_proven": False,
@@ -182,19 +209,27 @@ def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: s
         return left
 
     try:
-        initial_binding = experiment.current_probe_binding(candidate)
-        pair = bind_source_program_pair(candidate=candidate, experiment=experiment, comparison_arm=comparison_arm)
+        pair = bind_source_program_pair(candidate=candidate, experiment=experiment,
+            comparison_arm=comparison_arm, portfolio_member=portfolio_member,
+            max_source_bytes=max_source_bytes)
+        initial_binding = document_digest(pair.comparison_binding)
+        initial_controller_binding = experiment.current_probe_binding(candidate)
         remaining()
         full_owners = {arm: pair.owners[arm].get(source_op_index, {}) for arm in ("before", "after")}
-        if any(owner.get("kind") != "contraction" for owner in full_owners.values()):
-            raise ValueError("selected source must have verified contraction ownership in both complete-model arms")
+        expected_routes = dict(zip(
+            ("before", "after"), expected_route_transition or ("contraction", "contraction"), strict=True))
+        expected_short_routes = dict(zip(("before", "after"),
+            expected_short_route_transition or tuple(expected_routes.values()), strict=True))
+        if any(full_owners[arm].get("kind") != route for arm, route in expected_routes.items()):
+            raise ValueError("selected source does not have the required verified route in both complete-model arms")
         record.update(source_sha256=pair.source_sha256, logical_dispatch_digest=pair.graph_sha256,
             comparison_binding=pair.comparison_binding, full_model_source_owner=full_owners,
             full_model_artifact_binding={arm: {key: artifact[key] for key in (
                 "compiler_sha256", "lowered_sha256", "command_buffer_sha256")}
                 for arm, artifact in pair.artifacts.items()})
         probe, extraction = extract_source_contraction(pair.source, source_op_index, entry=entry,
-            max_m=max_m, max_n=max_n, max_k=max_k, max_macs=max_macs)
+            max_m=max_m, max_n=max_n, max_k=max_k, max_macs=max_macs,
+            max_batch_extent=max_batch_extent)
         remaining()
         short_index = _short_source_index(probe, entry)
         record.update(extraction=extraction, probe_source_op_index=short_index)
@@ -248,9 +283,13 @@ def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: s
                         "declared_proof_sha256": document_digest(proof)}
                     if any(short_admission.get(key) != value for key, value in expected_admission.items()):
                         raise ValueError("short initializer execution admission has stale source/artifact/proof bindings")
-            if (owner.get("kind") != "contraction" or (proof.get("status") != "verified"
+            actual_route = owner.get("kind")
+            if ((expected_short_routes[arm] is not None
+                    and actual_route != expected_short_routes[arm])
+                    or actual_route not in {"host", "contraction"}
+                    or (proof.get("status") != "verified"
                     and (short_admission or {}).get("status") != "source_bound_numerical_probe")):
-                raise ValueError(arm+" reduced source/task/CFG ownership does not reproduce the selected contraction")
+                raise ValueError(arm+" reduced source/task/CFG ownership does not reproduce the selected route")
             entries = plan.get("entry_bindings", [])
             if (len(entries) != len(extraction["inputs"]) or len(set(entries)) != len(entries)
                     or len(plan.get("output_bindings", [])) != 1
@@ -261,7 +300,9 @@ def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: s
                 "command_buffer_canonical_sha256": cb_sha, "command_buffer_sha256": cb_sha,
                 "command_buffer_serialization": "canonical host serialization saved byte-exactly, not original compiler raw formatting",
                 "lowered_path": str(lowered_path), "command_buffer_path": str(cb_path),
-                "source_task_cfg_proof": proof, "source_owner": owner, "declared_route": "contraction",
+                "source_task_cfg_proof": proof, "source_owner": owner,
+                "declared_route": actual_route,
+                "full_model_declared_route": expected_routes[arm],
                 "input_tensors": entries, "output_bindings": plan["output_bindings"],
                 "actual_target_instruction_semantics": "UNVERIFIED: requires target adapter"}
             if short_admission is not None:
@@ -287,8 +328,11 @@ def prepare_source_contraction(*, candidate: Path, experiment, comparison_arm: s
         oracle = _typed_cases(probe, extraction, remaining)
         oracle_path = work/"independent_oracle.json"
         oracle_path.write_text(json.dumps(oracle, sort_keys=True, indent=2)+"\n")
-        current_pair = bind_source_program_pair(candidate=candidate, experiment=experiment, comparison_arm=comparison_arm)
-        if (experiment.current_probe_binding(candidate) != initial_binding
+        current_pair = bind_source_program_pair(candidate=candidate, experiment=experiment,
+            comparison_arm=comparison_arm, portfolio_member=portfolio_member,
+            max_source_bytes=max_source_bytes)
+        if (experiment.current_probe_binding(candidate) != initial_controller_binding
+                or document_digest(current_pair.comparison_binding) != initial_binding
                 or current_pair.source_sha256 != pair.source_sha256
                 or document_digest(current_pair.comparison_binding) != document_digest(pair.comparison_binding)
                 or any(current_pair.artifacts[arm][key] != pair.artifacts[arm][key]
