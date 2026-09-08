@@ -41,6 +41,154 @@ experimental_families:
   - path: kernels/flash_attention_mx_fp6
     reason: final-tile store stalls and does not complete RTL simulation
 
+# Compiler-facing registry.  These rows identify reusable schedule strategies from semantic workload
+# facts.  A match selects a lowering candidate; it does NOT extend the source library's numeric
+# qualification to a new implementation or shape.  Hardware features are supplied by introspection or
+# the target contract at the call site -- the selector does not manufacture them.  The two experimental
+# rows are present so every family has an auditable decision, but are unconditionally disabled by the
+# selector based on experimental_families above.
+compiler_selection:
+  schema: semantic_kernel_family_registry_v1
+  rules:
+    - family: kernels/gemm_mxgemmini_ws_downproj_fp4
+      semantic_ops: [matmul]
+      dtypes: [mxfp4]
+      shape: {M: {eq: 256}, N: {eq: 64}, K: {multiple_of: 32}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 90
+    - family: kernels/gemm_mxgemmini_ws
+      semantic_ops: [matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 256}, N: {eq: 64}, K: {multiple_of: 32}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 80
+    - family: kernels/gemm_mxgemmini
+      semantic_ops: [matmul]
+      dtypes: [mxfp4, mxfp6, mxfp8]
+      shape: {M: {multiple_of: 16}, N: {multiple_of: 16}, K: {multiple_of: 32}}
+      requires_hardware: [mx_mesh, block_e8m0]
+      priority: 40
+    - family: kernels/gemm_mxgemmini_ws_restream
+      semantic_ops: [matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 256}, N: {eq: 64}, K: {multiple_of: 32}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 10
+    - family: kernels/gemv_batched_fp8_m32
+      semantic_ops: [batched_matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 32}, K: {eq: 2048}, N: {eq: 128}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 80
+    - family: kernels/gemv_batched_fp8_m64
+      semantic_ops: [batched_matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 64}, K: {eq: 2048}, N: {eq: 128}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 80
+    - family: kernels/gemv_batched_fp8_m128
+      semantic_ops: [batched_matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 128}, K: {eq: 2048}, N: {eq: 128}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 80
+    - family: kernels/gemv_batched_fp4_m128
+      semantic_ops: [batched_matmul]
+      dtypes: [mxfp4]
+      shape: {M: {eq: 128}, K: {eq: 2048}, N: {eq: 128}}
+      requires_hardware: [mx_mesh, block_e8m0, shared_memory]
+      priority: 80
+    - family: kernels/flash_attention_mx_gqa
+      semantic_ops: [attention_gqa_causal]
+      dtypes: [mxfp8]
+      shape: {Sq: {eq: 64}, Sk: {eq: 256}, D: {eq: 64}, QH: {eq: 8}, KVH: {eq: 2}}
+      requires_hardware: [mx_mesh, block_e8m0, simt, shared_memory, exp]
+      priority: 100
+    - family: kernels/rmsnorm_qkv_fused
+      semantic_ops: [rmsnorm_matmul]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 64}, K: {eq: 256}, N: {eq: 64}}
+      requires_hardware: [mx_mesh, block_e8m0, simt, shared_memory]
+      priority: 100
+    - family: kernels/rope_qkv_fused
+      semantic_ops: [matmul_rope]
+      dtypes: [mxfp4]
+      shape: {M: {eq: 64}, K: {eq: 2048}, N: {eq: 64}}
+      requires_hardware: [mx_mesh, block_e8m0, simt, mesh_to_shared_memory]
+      priority: 100
+    - family: kernels/simt_quant
+      semantic_ops: [block_quantize]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 64}, N: {eq: 512}}
+      requires_hardware: [simt]
+      priority: 90
+    - family: kernels/qkv_bias
+      semantic_ops: [matmul_bias]
+      dtypes: [mxfp8]
+      shape: {M: {eq: 64}, K: {eq: 1536}, N: {eq: 2048}}
+      requires_hardware: [mx_mesh, block_e8m0, simt]
+      priority: 90
+    - family: kernels/geglu
+      semantic_ops: [geglu]
+      dtypes: [bf16, fp32]
+      shape: {M: {min: 1}, N: {multiple_of: 16}}
+      requires_hardware: [simt, exp]
+      priority: 80
+    - family: kernels/logit_softcap
+      semantic_ops: [softcap]
+      dtypes: [fp32]
+      shape: {rows: {min: 1}, cols: {multiple_of: 16}}
+      requires_hardware: [simt, tanh]
+      priority: 80
+    - family: kernels/rmsnorm_gemma
+      semantic_ops: [rmsnorm_offset_gamma]
+      dtypes: [fp32]
+      shape: {rows: {min: 1}, cols: {multiple_of: 16}}
+      requires_hardware: [simt]
+      priority: 80
+    - family: kernels/embed_scale
+      semantic_ops: [scaled_embedding_gather]
+      dtypes: [fp32]
+      shape: {tokens: {min: 1}, hidden: {multiple_of: 16}}
+      requires_hardware: [simt, gather]
+      priority: 80
+    - family: kernels/gemma_4norm
+      semantic_ops: [decoder_four_norm]
+      dtypes: [fp32]
+      shape: {rows: {min: 1}, cols: {multiple_of: 16}}
+      requires_hardware: [simt]
+      priority: 80
+    - family: kernels/layernorm
+      semantic_ops: [layernorm]
+      dtypes: [fp32]
+      shape: {rows: {min: 1}, cols: {multiple_of: 16}}
+      requires_hardware: [simt]
+      priority: 80
+    - family: kernels/patch_embed
+      semantic_ops: [patch_embed]
+      dtypes: [fp32]
+      shape: {channels: {eq: 3}, patch_h: {eq: 16}, patch_w: {eq: 16}, out_channels: {multiple_of: 16}}
+      requires_hardware: [simt, shared_memory]
+      priority: 80
+    - family: kernels/bias_add
+      semantic_ops: [bias_add]
+      dtypes: [fp32]
+      shape: {rows: {min: 1}, cols: {multiple_of: 16}}
+      requires_hardware: [simt]
+      priority: 80
+    - family: kernels/flash_attention_mx_gemma
+      semantic_ops: [attention_gqa_softcap_window]
+      dtypes: [mxfp8]
+      shape: {Sq: {eq: 64}, Sk: {eq: 256}, D: {eq: 256}, QH: {eq: 8}, KVH: {eq: 4}}
+      requires_hardware: [mx_mesh, block_e8m0, simt, shared_memory, exp, tanh]
+      priority: 100
+    - family: kernels/flash_attention_mx_fp6
+      semantic_ops: [quantized_matmul]
+      dtypes: [mxfp6]
+      shape: {M: {multiple_of: 16}, N: {multiple_of: 16}, K: {multiple_of: 32}}
+      requires_hardware: [mx_mesh, block_e8m0, simt, shared_memory]
+      priority: 100
+
 prohibited_uses:
   - copying kernel bodies into a submission
   - linking or calling the reference library from a submission
