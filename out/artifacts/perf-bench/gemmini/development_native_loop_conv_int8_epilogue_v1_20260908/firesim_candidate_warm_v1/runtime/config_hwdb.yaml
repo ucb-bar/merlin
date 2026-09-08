@@ -1,0 +1,4 @@
+resnet50_merlin_warm_measured_full_gemmini_u250_pinned:
+    bitstream_tar: file:///scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/firesim_candidate_warm_v1/firesim.tar.gz
+    deploy_quintuplet_override: null
+    custom_runtime_config: null

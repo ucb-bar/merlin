@@ -1,0 +1,431 @@
+
+=== [firesim-queue] phase=STAGING job_id=536 ===
+hwdb snapshot /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/firesim_candidate_warm_v1/runtime/config_hwdb.yaml sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 -> /run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml
+staged /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/firesim_candidate_warm_v1/resnet50_merlin53_tvmhost_warm.elf -> /scratch/firesim_queue/jobs/536/deploy_overlay/workloads/merlin-resnet50-native-loopconv-5703184cf70ea0e1/merlin-resnet50-native-loopconv-5703184cf70ea0e1.elf
+
+=== [firesim-queue] phase=INFRASETUP job_id=536 ===
+hwdb verify phase=before_leading_kill sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 path=/run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml
+
+=== [firesim-queue] phase=LEADING_KILL job_id=536 ===
+FireSim Manager. Docs: https://docs.fires.im
+Running: kill
+
+run_farm_hosts_dict defaultdict(<class 'list'>, {'localhost': [(<runtools.run_farm.Inst object at 0x7c18ff3cc340>, None)]})
+set_server_hardware_config 0 None
+xilinx_alveo_u250/
+xilinx_alveo_u250/metadata
+xilinx_alveo_u250/firesim.bit
+xilinx_alveo_u250/firesim.mcs
+[localhost] Killing FPGA simulation for slot: 0.
+Warning: run() received nonzero return code 1 while executing ' pkill -SIGKILL FireSim-xilinx_'!
+Confirming exit...
+Warning: run() received nonzero return code 1 while executing 'screen -ls'!
+screenoutput No Sockets found in /run/screen/S-jack.
+The full log of this run is:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-41-45-kill-5AE5NZM60H47KM1M.log
+hwdb verify phase=before_infrasetup sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 path=/run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml
+
+=== [firesim-queue] phase=INFRASETUP job_id=536 ===
+FireSim Manager. Docs: https://docs.fires.im
+Running: infrasetup
+
+run_farm_hosts_dict defaultdict(<class 'list'>, {'localhost': [(<runtools.run_farm.Inst object at 0x72ce1bf24340>, None)]})
+set_server_hardware_config 0 None
+[localhost] Checking if host instance is up...
+xilinx_alveo_u250/
+xilinx_alveo_u250/metadata
+xilinx_alveo_u250/firesim.bit
+xilinx_alveo_u250/firesim.mcs
+Building FPGA software driver for xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config
+[localhost] run: make PLATFORM=xilinx_alveo_u250 TARGET_PROJECT=firesim TARGET_PROJECT_MAKEFRAG=/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/../../../generators/firechip/chip/src/main/makefrag/firesim DESIGN=FireSim TARGET_CONFIG=FireSimGemminiRocketConfig PLATFORM_CONFIG=BaseXilinxAlveoU250Config xilinx_alveo_u250
+[localhost] out: make: Nothing to be done for 'xilinx_alveo_u250'.
+[localhost] out: 
+get_local_driver_dir xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L ../sim/output/xilinx_alveo_u250/xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config/FireSim-xilinx_alveo_u250 /tmp/tmpfqdt481s/
+[localhost] out: sending incremental file list
+[localhost] out: FireSim-xilinx_alveo_u250
+[localhost] out: 
+[localhost] out: sent 4.42M bytes  received 35 bytes  2.95M bytes/sec
+[localhost] out: total size is 12.54M  speedup is 2.84
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/riscv-tools/lib/libriscv.so /tmp/tmpfqdt481s/libriscv.so
+[localhost] out: sending incremental file list
+[localhost] out: libriscv.so
+[localhost] out: 
+[localhost] out: sent 31.09M bytes  received 35 bytes  62.17M bytes/sec
+[localhost] out: total size is 177.32M  speedup is 5.70
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libdwarf.so.1.0.0 /tmp/tmpfqdt481s/libdwarf.so.1
+[localhost] out: sending incremental file list
+[localhost] out: libdwarf.so.1.0.0
+[localhost] out: 
+[localhost] out: sent 199.64K bytes  received 35 bytes  399.34K bytes/sec
+[localhost] out: total size is 486.20K  speedup is 2.43
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libelf-0.187.so /tmp/tmpfqdt481s/libelf.so.1
+[localhost] out: sending incremental file list
+[localhost] out: libelf-0.187.so
+[localhost] out: 
+[localhost] out: sent 50.99K bytes  received 35 bytes  102.06K bytes/sec
+[localhost] out: total size is 117.87K  speedup is 2.31
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libz.so.1.2.13 /tmp/tmpfqdt481s/libz.so.1
+[localhost] out: sending incremental file list
+[localhost] out: libz.so.1.2.13
+[localhost] out: 
+[localhost] out: sent 59.72K bytes  received 35 bytes  119.50K bytes/sec
+[localhost] out: total size is 112.80K  speedup is 1.89
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libstdc++.so.6.0.34 /tmp/tmpfqdt481s/libstdc++.so.6
+[localhost] out: sending incremental file list
+[localhost] out: libstdc++.so.6.0.34
+[localhost] out: 
+[localhost] out: sent 7.27M bytes  received 35 bytes  14.53M bytes/sec
+[localhost] out: total size is 21.30M  speedup is 2.93
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libgmp.so.10.5.0 /tmp/tmpfqdt481s/libgmp.so.10
+[localhost] out: sending incremental file list
+[localhost] out: libgmp.so.10.5.0
+[localhost] out: 
+[localhost] out: sent 348.26K bytes  received 35 bytes  696.58K bytes/sec
+[localhost] out: total size is 749.06K  speedup is 2.15
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: rsync -pthrvz -L /scratch/jack/chipyard/.conda-env/lib/libgcc_s.so.1 /tmp/tmpfqdt481s/libgcc_s.so.1
+[localhost] out: sending incremental file list
+[localhost] out: libgcc_s.so.1
+[localhost] out: 
+[localhost] out: sent 357.80K bytes  received 35 bytes  715.68K bytes/sec
+[localhost] out: total size is 902.64K  speedup is 2.52
+[localhost] out: 
+[localhost] local: pwd
+[localhost] run: find . -mindepth 1 -maxdepth 1 -printf "%P
+" | xargs tar -czvf /scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/../sim/output/xilinx_alveo_u250/xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config/driver-bundle.tar.gz
+[localhost] out: libgcc_s.so.1
+[localhost] out: libstdc++.so.6
+[localhost] out: libgmp.so.10
+[localhost] out: libriscv.so
+[localhost] out: libelf.so.1
+[localhost] out: libz.so.1
+[localhost] out: FireSim-xilinx_alveo_u250
+[localhost] out: libdwarf.so.1
+[localhost] out: 
+[localhost] Copying FPGA simulation infrastructure for slot: 0.
+[localhost] Unloading XDMA Driver Kernel Module.
+[localhost] Flash all FPGA Slots.
+[localhost] Copying FPGA flashing scripts for 0
+[localhost] Determine BDF for 0
+[localhost] Flashing FPGA Slot: 0 (42:00.0) with bitstream: /scratch/firesim_queue/jobs/536/simulation/sim_slot_0/xilinx_alveo_u250/firesim.bit
+[localhost] XDMA Driver Kernel Module already loaded.
+[localhost] Change permissions on FPGA slot
+[localhost] Determine BDF for 0
+[localhost] Changing permissions on FPGA Slot: 0 (bdf:42:00.0)
+The full log of this run is:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-42-10-infrasetup-EW3HVH98J9GJ5FXB.log
+hwdb verify phase=before_runworkload sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 path=/run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml
+
+=== [firesim-queue] phase=RUNNING job_id=536 ===
+FireSim Manager. Docs: https://docs.fires.im
+Running: runworkload
+
+run_farm_hosts_dict defaultdict(<class 'list'>, {'localhost': [(<runtools.run_farm.Inst object at 0x704f14f24340>, None)]})
+set_server_hardware_config 0 None
+Creating the directory: /scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+xilinx_alveo_u250/
+xilinx_alveo_u250/metadata
+xilinx_alveo_u250/firesim.bit
+xilinx_alveo_u250/firesim.mcs
+xilinx_alveo_u250/
+xilinx_alveo_u250/metadata
+xilinx_alveo_u250/firesim.bit
+xilinx_alveo_u250/firesim.mcs
+[localhost] Checking if host instance is up...
+start_simulations_instance 1
+[localhost] Starting FPGA simulation for slot: 0.
+[localhost] Determine BDF for 0
+[2J
+FireSim Simulation Status @ 2026-09-08 12:44:14.208467
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:44:24.529916
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:44:34.810514
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:44:45.089009
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:44:55.629712
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:45:05.908651
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:45:16.185611
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[2J
+FireSim Simulation Status @ 2026-09-08 12:45:26.475716
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [33mTrue [0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+1/1 simulations are still running.
+--------------------------------------------------------------------------------
+[localhost] Slot 0, Job merlin-resnet50-native-loopconv-5703184cf70ea0e10 completed!
+[2J
+FireSim Simulation Status @ 2026-09-08 12:45:37.110260
+--------------------------------------------------------------------------------
+This workload's output is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+This run's log is located in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+This status will update every 10s.
+--------------------------------------------------------------------------------
+Instances
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Terminated: [33mFalse[0m
+--------------------------------------------------------------------------------
+Simulated Switches
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Pipes
+--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+Simulated Nodes/Jobs
+--------------------------------------------------------------------------------
+Hostname/IP: localhost | Job: merlin-resnet50-native-loopconv-5703184cf70ea0e10 | Sim running: [32mFalse[0m
+--------------------------------------------------------------------------------
+Summary
+--------------------------------------------------------------------------------
+1/1 instances are still running.
+0/1 simulations are still running.
+--------------------------------------------------------------------------------
+FireSim Simulation Exited Successfully. See results in:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/results-workload/2026-09-08--12-43-50-merlin-resnet50-native-loopconv-5703184cf70ea0e1-q536/
+The full log of this run is:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-43-50-runworkload-RTONUAU7W108A70U.log
+
+=== [firesim-queue] phase=TEARDOWN job_id=536 ===
+hwdb verify phase=before_trailing_kill sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 path=/run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml
+
+=== [firesim-queue] phase=TEARDOWN job_id=536 ===
+FireSim Manager. Docs: https://docs.fires.im
+Running: kill
+
+run_farm_hosts_dict defaultdict(<class 'list'>, {'localhost': [(<runtools.run_farm.Inst object at 0x7ba011f14340>, None)]})
+set_server_hardware_config 0 None
+xilinx_alveo_u250/
+xilinx_alveo_u250/metadata
+xilinx_alveo_u250/firesim.bit
+xilinx_alveo_u250/firesim.mcs
+[localhost] Killing FPGA simulation for slot: 0.
+Warning: run() received nonzero return code 1 while executing ' pkill -SIGKILL FireSim-xilinx_'!
+Confirming exit...
+Warning: run() received nonzero return code 1 while executing 'screen -ls'!
+screenoutput No Sockets found in /run/screen/S-jack.
+The full log of this run is:
+/scratch/firesim_queue/jobs/536/chipyard/sims/firesim/deploy/logs/2026-09-08--12-45-40-kill-FG662UUC5TJ3CRNS.log
+hwdb verify phase=after_trailing_kill sha256=1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1 path=/run/user/2630/firesim-queue-hwdb-d4122e42eebcbab3/job-536.yaml

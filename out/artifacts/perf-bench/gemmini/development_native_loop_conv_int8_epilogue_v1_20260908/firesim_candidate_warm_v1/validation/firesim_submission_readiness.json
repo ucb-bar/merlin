@@ -1,0 +1,43 @@
+{
+  "schema": "merlin_native_loopconv_hybrid_firesim_readiness_v1",
+  "status": "hardware_qualified_candidate_complete",
+  "safe_to_submit": false,
+  "promoted": true,
+  "qualification_scope": "one complete untimed warm ResNet-50 inference followed by one measured inference on the pinned Universal Gemmini U250 image",
+  "local_gates": {
+    "compiler_tests": "23_passed",
+    "one_layer_native_spike": "192_of_192_exact",
+    "whole_model_local_spike": "1000_of_1000_exact",
+    "top1": 258,
+    "nonfinite": 0
+  },
+  "ownership": {
+    "merlin_native_loop_conv": 53,
+    "tvm_runner_residual_blocks": 20,
+    "tvm_runner_dense": 1,
+    "tvm_runner_pooling_and_arena": true
+  },
+  "elf_sha256": "5703184cf70ea0e11e5a9730502c48bb86485d111255a036b5481b82c80915f3",
+  "bitstream_sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1",
+  "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config",
+  "required_driver_sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade",
+  "queue_only": true,
+  "queue_owned_lifecycle": [
+    "firesim kill",
+    "firesim infrasetup",
+    "firesim runworkload",
+    "firesim kill"
+  ],
+  "firesim": {
+    "status": "passed",
+    "queue_job_id": 536,
+    "return_code": 0,
+    "terminal_wall_seconds": 260.1,
+    "measured_cycles": 555991472,
+    "logits_checked": 1000,
+    "mismatches": 0,
+    "top1": 258,
+    "receipt": "validation/firesim_queue_job_536_success.json"
+  },
+  "resubmission_block_reason": "Queue job 536 completed and is sealed; do not resubmit the unchanged ELF."
+}

@@ -1,0 +1,1423 @@
+{
+  "schema_version": "2.0",
+  "generator": {
+    "name": "merlin.targetgen.rtl.circt_introspect",
+    "version": "rtl-introspect-v7-elaborated-features",
+    "method": "mlc RTL discovery (target-agnostic: mesh, scratchpad, accumulator, timing(31/116 modules), funct, register_layouts(2), elaborated_features(derived)) + chipyard FIRRTL grep/HW-port fallback"
+  },
+  "inputs": {
+    "target": "gemmini",
+    "hw_mlir": "gemmini_soc.hw.mlir",
+    "hw_sha": "missing",
+    "hw_sha256": "missing",
+    "core_hw_mlir": "Gemmini_core_hw.mlir",
+    "core_hw_sha": "4dc2f2f9b78cc623",
+    "core_hw_sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+    "fir_sha": "fc1d1e715883a50e",
+    "fir_sha256": "fc1d1e715883a50e059a73026796dac7ee2e13f774b3f04f35e9ded933061070",
+    "isa_sha": "812cba090cf85b2b",
+    "extractor_sha": "63c17a2300c4f464",
+    "extractor_sha256": "63c17a2300c4f464f073ecc470ea90515b6a3b97cabf0e34d2b91d7f01577f3b"
+  },
+  "facts": {
+    "target": "gemmini",
+    "source": {
+      "kind": "firrtl",
+      "config": "GemminiRocketConfig",
+      "fir": "chipyard.harness.TestHarness.GemminiRocketConfig.fir",
+      "hierarchy": "top_module_hierarchy.json",
+      "fir_path": "/scratch2/agustin/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir"
+    },
+    "arrays": [
+      {
+        "name": "mesh",
+        "rows": 16,
+        "cols": 16,
+        "source": "mlc_discovery",
+        "container": "Mesh",
+        "element": "Tile",
+        "instances": 256,
+        "element_variants": [
+          [
+            "Tile",
+            256
+          ]
+        ],
+        "mac_idiom": {
+          "muls": 1,
+          "adds": 7,
+          "regs": 3
+        },
+        "corroborated": true
+      }
+    ],
+    "memories": [
+      {
+        "name": "scratchpad",
+        "bytes": 262144,
+        "depth": 4096,
+        "source": "mlc_discovery"
+      },
+      {
+        "name": "accumulator",
+        "bytes": 65536,
+        "depth": 512,
+        "source": "mlc_discovery"
+      }
+    ],
+    "datapaths": [
+      {
+        "name": "input",
+        "dtype": "i8",
+        "evidence": "scratchpad smem UInt<8>"
+      },
+      {
+        "name": "accumulator",
+        "dtype": "i32",
+        "evidence": "AccumulatorMem SInt<32>"
+      }
+    ],
+    "interfaces": [
+      {
+        "name": "rocc_cmd",
+        "evidence": "module ReservationStation (RoCC decode/dispatch)"
+      },
+      {
+        "name": "dma_tlb",
+        "evidence": "module FrontendTLB"
+      },
+      {
+        "name": "funct_decode_table",
+        "legal_funct": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          126
+        ],
+        "names": {
+          "0": "CONFIG_CMD",
+          "1": "LOAD2_CMD",
+          "2": "LOAD_CMD",
+          "3": "STORE_CMD",
+          "4": "COMPUTE_AND_FLIP_CMD",
+          "5": "COMPUTE_AND_STAY_CMD",
+          "6": "PRELOAD_CMD",
+          "7": "FLUSH_CMD",
+          "8": "LOOP_WS",
+          "9": "LOOP_WS_CONFIG_BOUNDS",
+          "10": "LOOP_WS_CONFIG_ADDRS_AB",
+          "11": "LOOP_WS_CONFIG_ADDRS_DC",
+          "12": "LOOP_WS_CONFIG_STRIDES_AB",
+          "13": "LOOP_WS_CONFIG_STRIDES_DC",
+          "14": "LOAD3_CMD",
+          "15": "LOOP_CONV_WS",
+          "16": "LOOP_CONV_WS_CONFIG_1",
+          "17": "LOOP_CONV_WS_CONFIG_2",
+          "18": "LOOP_CONV_WS_CONFIG_3",
+          "19": "LOOP_CONV_WS_CONFIG_4",
+          "20": "LOOP_CONV_WS_CONFIG_5",
+          "21": "LOOP_CONV_WS_CONFIG_6",
+          "22": "CLKGATE_EN",
+          "23": "STORE_SPAD_CMD",
+          "24": "LOOP_WS_CONFIG_SPAD_AB",
+          "126": "COUNTER_OP"
+        },
+        "hw_source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+        "method": "decoder_icmp_fanout(mlc)",
+        "evidence": "union of comb.icmp-eq 7-bit decode signals in module ReservationStation (29 comparisons) -> 26 legal opcodes; vs header: phantom=[25] missing=[126]",
+        "names_recovered_from_outside_block": {
+          "126": "COUNTER_OP"
+        },
+        "header_only_functs": [
+          25
+        ],
+        "decoder_only_functs": [
+          126
+        ],
+        "custom_opcode": 123,
+        "funct3": 3
+      },
+      {
+        "name": "register_bundle_layouts",
+        "bundles": {
+          "ConfigMvoutRs1": {
+            "width": 64,
+            "fields": {
+              "cmd_type": {
+                "offset": 0,
+                "width": 2
+              },
+              "activation": {
+                "offset": 2,
+                "width": 2
+              },
+              "pool_stride": {
+                "offset": 4,
+                "width": 2
+              },
+              "pool_size": {
+                "offset": 6,
+                "width": 2
+              },
+              "upad": {
+                "offset": 8,
+                "width": 2
+              },
+              "lpad": {
+                "offset": 10,
+                "width": 2
+              },
+              "pool_out_dim": {
+                "offset": 24,
+                "width": 8
+              },
+              "porows": {
+                "offset": 32,
+                "width": 8
+              },
+              "pocols": {
+                "offset": 40,
+                "width": 8
+              },
+              "orows": {
+                "offset": 48,
+                "width": 8
+              },
+              "ocols": {
+                "offset": 56,
+                "width": 8
+              }
+            }
+          },
+          "ConfigExRs2": {
+            "width": 64,
+            "fields": {
+              "in_shift": {
+                "offset": 0,
+                "width": 32
+              },
+              "relu6_shift": {
+                "offset": 32,
+                "width": 16
+              },
+              "c_stride": {
+                "offset": 48,
+                "width": 16
+              }
+            }
+          }
+        },
+        "source": "/scratch2/agustin/chipyard/generators/gemmini/src/main/scala/gemmini/GemminiISA.scala",
+        "method": "chisel_bundle_reverse_declaration_order",
+        "evidence": "GemminiISA.scala: 2 fully-derived packed Bundle layout(s); field widths from the file's val declarations"
+      },
+      {
+        "name": "elaborated_rtl_features",
+        "features": {
+          "max_pool": true
+        },
+        "status": "derived",
+        "source": "/scratch2/agustin/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir",
+        "source_sha256": "fc1d1e715883a50e059a73026796dac7ee2e13f774b3f04f35e9ded933061070",
+        "method": "structural FIRRTL pooling_is_enabled boolean build gate",
+        "evidence": "/scratch2/agustin/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.GemminiRocketConfig/chipyard.harness.TestHarness.GemminiRocketConfig.fir:353464: and(UInt<1>(0h1), _pooling_is_enabled_T)",
+        "corroboration": {
+          "status": "agree",
+          "config": "GemminiRocketConfig",
+          "instantiated": "GemminiArrayConfig",
+          "has_max_pool": true,
+          "source": "/scratch2/agustin/chipyard/generators/gemmini/src/main/scala/gemmini/Configs.scala",
+          "line": 20
+        }
+      }
+    ],
+    "census": {
+      "status": "not_run",
+      "why": "no generator scope was given, so the elaboration's own provenance annotations cannot be used to tell this target's modules from the rest of the SoC"
+    },
+    "timing": [
+      {
+        "module": "Arbiter2_ScratchpadReadReq",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 3,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 3 hw.output operands in module Arbiter2_ScratchpadReadReq (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Arbiter3_UInt6",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 4,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 4 hw.output operands in module Arbiter3_UInt6 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "CounterFile",
+        "registers": 33,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 2,
+        "n_cyclic": 1,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "1 of 2 hw.output operands of module CounterFile are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "CounterController",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 5,
+        "n_cyclic": 5,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "5 of 5 hw.output operands of module CounterController are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "PE",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 2,
+        "n_cyclic": 2,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "2 of 2 hw.output operands of module PE are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "AlwaysOutTransposer",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 16,
+        "n_cyclic": 16,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "16 of 16 hw.output operands of module AlwaysOutTransposer are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "MacUnit",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module MacUnit (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "PE_256",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 2,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "2 of 10 hw.output operands of module PE_256 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Tile",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 10 hw.output operands in module Tile (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Mesh",
+        "registers": 2340,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 36,
+        "n_cyclic": 36,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "36 of 36 hw.output operands of module Mesh are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue6_TagWithIdAndTotalRows",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 4,
+        "n_cyclic": 4,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "4 of 4 hw.output operands of module Queue6_TagWithIdAndTotalRows are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "TagQueue",
+        "registers": 63,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 48,
+        "n_cyclic": 48,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "48 of 48 hw.output operands of module TagQueue are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "MeshWithDelays",
+        "registers": 1307,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 68,
+        "n_cyclic": 68,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "68 of 68 hw.output operands of module MeshWithDelays are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "MultiHeadedQueue_1",
+        "registers": 43,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 16,
+        "n_cyclic": 16,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "16 of 16 hw.output operands of module MultiHeadedQueue_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue5_ComputeCntlSignals",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 41,
+        "n_cyclic": 41,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "41 of 41 hw.output operands of module Queue5_ComputeCntlSignals are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "MultiHeadedQueue",
+        "registers": 11,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 11,
+        "n_cyclic": 11,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "11 of 11 hw.output operands of module MultiHeadedQueue are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "TransposePreloadUnroller",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module TransposePreloadUnroller are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "ExecuteController",
+        "registers": 32,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 291,
+        "n_cyclic": 291,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "291 of 291 hw.output operands of module ExecuteController are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "OptimizationBarrier_TLBEntryData_28",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 15,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 15 hw.output operands in module OptimizationBarrier_TLBEntryData_28 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "PMAChecker_2",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 8,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 8 hw.output operands in module PMAChecker_2 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "PMPChecker_s6",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 3,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 3 hw.output operands in module PMPChecker_s6 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "DTLB_2",
+        "registers": 40,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 9,
+        "n_cyclic": 9,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "9 of 9 hw.output operands of module DTLB_2 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "DecoupledTLB",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 9,
+        "n_cyclic": 1,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "1 of 9 hw.output operands of module DecoupledTLB are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "RRArbiter_4",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 8,
+        "n_cyclic": 8,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "8 of 8 hw.output operands of module RRArbiter_4 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "FrontendTLB",
+        "registers": 19,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 11,
+        "n_cyclic": 11,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "11 of 11 hw.output operands of module FrontendTLB are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue5_im2colRowSignals",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 2,
+        "n_cyclic": 1,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "1 of 2 hw.output operands of module Queue5_im2colRowSignals are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Im2Col",
+        "registers": 40,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 23,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": 1,
+        "evidence": "7 of 23 hw.output operands of module Im2Col are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "DMACommandTracker",
+        "registers": 6,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 5,
+        "n_cyclic": 5,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "5 of 5 hw.output operands of module DMACommandTracker are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue8_GemminiCmd",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 43,
+        "n_cyclic": 43,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "43 of 43 hw.output operands of module Queue8_GemminiCmd are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoadController",
+        "registers": 18,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 61,
+        "n_cyclic": 61,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "61 of 61 hw.output operands of module LoadController are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Arbiter5_RoCCCommand",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 9,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 9 hw.output operands in module Arbiter5_RoCCCommand (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Pipeline_5",
+        "registers": 22,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 13,
+        "n_cyclic": 13,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "13 of 13 hw.output operands of module Pipeline_5 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConvExecute",
+        "registers": 35,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopConvExecute are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Pipeline_2",
+        "registers": 14,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 9,
+        "n_cyclic": 9,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "9 of 9 hw.output operands of module Pipeline_2 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConvLdBias",
+        "registers": 14,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopConvLdBias are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Pipeline_3",
+        "registers": 16,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Pipeline_3 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConvLdInput",
+        "registers": 27,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopConvLdInput are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Pipeline_4",
+        "registers": 16,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Pipeline_4 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConvLdWeight",
+        "registers": 22,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopConvLdWeight are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Pipeline_6",
+        "registers": 24,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 14,
+        "n_cyclic": 14,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "14 of 14 hw.output operands of module Pipeline_6 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConvSt",
+        "registers": 28,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopConvSt are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_GemminiCmd_1",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 53,
+        "n_cyclic": 53,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "53 of 53 hw.output operands of module Queue2_GemminiCmd_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopConv",
+        "registers": 131,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 52,
+        "n_cyclic": 52,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "52 of 52 hw.output operands of module LoopConv are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulExecute",
+        "registers": 18,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module LoopMatmulExecute are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulLdA",
+        "registers": 13,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 8,
+        "n_cyclic": 8,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "8 of 8 hw.output operands of module LoopMatmulLdA are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulLdB",
+        "registers": 13,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 8,
+        "n_cyclic": 8,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "8 of 8 hw.output operands of module LoopMatmulLdB are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulLdD",
+        "registers": 12,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 6,
+        "n_cyclic": 6,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "6 of 6 hw.output operands of module LoopMatmulLdD are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulStC",
+        "registers": 18,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 7,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "7 of 7 hw.output operands of module LoopMatmulStC are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "LoopMatmulStCSpad",
+        "registers": 14,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 6,
+        "n_cyclic": 6,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "6 of 6 hw.output operands of module LoopMatmulStCSpad are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "WeightedArbiter",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 6,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 6 hw.output operands in module WeightedArbiter (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "LoopMatmul",
+        "registers": 86,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 54,
+        "n_cyclic": 54,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "54 of 54 hw.output operands of module LoopMatmul are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "ReservationStation",
+        "registers": 1992,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 120,
+        "n_cyclic": 120,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "120 of 120 hw.output operands of module ReservationStation are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "AccPipe",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 1,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module AccPipe (1 registers, no feedback on any output) = 1"
+      },
+      {
+        "module": "AccPipeShared",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 16,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 16 hw.output operands in module AccPipeShared (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Queue1_AccumulatorReadResp",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 26,
+        "n_cyclic": 26,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "26 of 26 hw.output operands of module Queue1_AccumulatorReadResp are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "TwoPortSyncMem",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 16,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 16 hw.output operands in module TwoPortSyncMem (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "AccumulatorMem",
+        "registers": 174,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 59,
+        "n_cyclic": 43,
+        "pipeline_depth": null,
+        "partial_depth": 1,
+        "evidence": "43 of 59 hw.output operands of module AccumulatorMem are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "RoundAnyRawFNToRecFN_ie6_is32_oe8_os24",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module RoundAnyRawFNToRecFN_ie6_is32_oe8_os24 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "INToRecFN_i32_e8_s24",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module INToRecFN_i32_e8_s24 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "MulAddRecFNToRaw_postMul_e8_s24_10",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 7,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 7 hw.output operands in module MulAddRecFNToRaw_postMul_e8_s24_10 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "MulAddRecFNToRaw_preMul_e8_s24_10",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 14,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 14 hw.output operands in module MulAddRecFNToRaw_preMul_e8_s24_10 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_10",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module RoundAnyRawFNToRecFN_ie8_is26_oe8_os24_10 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "RoundRawFNToRecFN_e8_s24_10",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module RoundRawFNToRecFN_e8_s24_10 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "MulAddRecFN_e8_s24_10",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module MulAddRecFN_e8_s24_10 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Pipeline_1",
+        "registers": 280,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 36,
+        "n_cyclic": 36,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "36 of 36 hw.output operands of module Pipeline_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "RecFNToIN_e8_s24_i32",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 2,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 2 hw.output operands in module RecFNToIN_e8_s24_i32 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "AccumulatorScale",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 36,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 36 hw.output operands in module AccumulatorScale (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "PixelRepeater",
+        "registers": 25,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 24,
+        "n_cyclic": 24,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "24 of 24 hw.output operands of module PixelRepeater are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "PixelRepeater_1",
+        "registers": 42,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 40,
+        "n_cyclic": 40,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "40 of 40 hw.output operands of module PixelRepeater_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_NormalizedInput",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 22,
+        "n_cyclic": 22,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "22 of 22 hw.output operands of module Queue2_NormalizedInput are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_ScratchpadMemWriteRequest",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 60,
+        "n_cyclic": 60,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "60 of 60 hw.output operands of module Queue2_ScratchpadMemWriteRequest are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_VectorScalarMultiplierReq",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 44,
+        "n_cyclic": 44,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "44 of 44 hw.output operands of module Queue2_VectorScalarMultiplierReq are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_VectorScalarMultiplierReq_1",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 89,
+        "n_cyclic": 89,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "89 of 89 hw.output operands of module Queue2_VectorScalarMultiplierReq_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue4_ScratchpadReadResp",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 4,
+        "n_cyclic": 4,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "4 of 4 hw.output operands of module Queue4_ScratchpadReadResp are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue5_ScratchpadMemReadRequest",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 50,
+        "n_cyclic": 50,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "50 of 50 hw.output operands of module Queue5_ScratchpadMemReadRequest are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue5_ScratchpadMemWriteRequest",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 50,
+        "n_cyclic": 50,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "50 of 50 hw.output operands of module Queue5_ScratchpadMemWriteRequest are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue6_ScratchpadMemWriteRequest",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 60,
+        "n_cyclic": 60,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "60 of 60 hw.output operands of module Queue6_ScratchpadMemWriteRequest are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue1_ScratchpadReadResp",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 5,
+        "n_cyclic": 5,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "5 of 5 hw.output operands of module Queue1_ScratchpadReadResp are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "ScratchpadBank",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 4,
+        "n_cyclic": 4,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "4 of 4 hw.output operands of module ScratchpadBank are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "BeatMerger",
+        "registers": 13,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 73,
+        "n_cyclic": 73,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "73 of 73 hw.output operands of module BeatMerger are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Arbiter2_TLBundleAWithInfo",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 48,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 48 hw.output operands in module Arbiter2_TLBundleAWithInfo (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Queue1_TLBundleAWithInfo",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 47,
+        "n_cyclic": 47,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "47 of 47 hw.output operands of module Queue1_TLBundleAWithInfo are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "StreamReaderCore",
+        "registers": 52,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 38,
+        "n_cyclic": 31,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "31 of 38 hw.output operands of module StreamReaderCore are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "XactTracker",
+        "registers": 225,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 17,
+        "n_cyclic": 17,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "17 of 17 hw.output operands of module XactTracker are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "StreamReader",
+        "registers": 7,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 98,
+        "n_cyclic": 98,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "98 of 98 hw.output operands of module StreamReader are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Arbiter3_TLBundleAWithInfo",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 51,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 51 hw.output operands in module Arbiter3_TLBundleAWithInfo (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Queue1_TLBundleAWithInfo_2",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 48,
+        "n_cyclic": 48,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "48 of 48 hw.output operands of module Queue1_TLBundleAWithInfo_2 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue1_TLBundleAWithInfo_3",
+        "registers": 2,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 49,
+        "n_cyclic": 49,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "49 of 49 hw.output operands of module Queue1_TLBundleAWithInfo_3 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "StreamWriter",
+        "registers": 129,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 22,
+        "n_cyclic": 21,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "21 of 22 hw.output operands of module StreamWriter are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_TLBundleA_a32d128s4k4z4u",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Queue2_TLBundleA_a32d128s4k4z4u are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_TLBundleD_a32d128s4k4z4u",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Queue2_TLBundleD_a32d128s4k4z4u are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "TLMonitor_45",
+        "registers": 21,
+        "source": "mlc_hw_graph_walk",
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "n_outputs": 0,
+        "n_cyclic": 0,
+        "evidence": "module TLMonitor_45 drives no hw.output operand: nothing to walk"
+      },
+      {
+        "module": "TLBuffer_a32d128s4k4z4u",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 16,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 16 hw.output operands in module TLBuffer_a32d128s4k4z4u (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "TLMonitor_46",
+        "registers": 21,
+        "source": "mlc_hw_graph_walk",
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "n_outputs": 0,
+        "n_cyclic": 0,
+        "evidence": "module TLMonitor_46 drives no hw.output operand: nothing to walk"
+      },
+      {
+        "module": "TLBuffer_a32d128s4k4z4u_1",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 14,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 14 hw.output operands in module TLBuffer_a32d128s4k4z4u_1 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "Queue2_TLBundleA_a32d128s5k4z4u",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Queue2_TLBundleA_a32d128s5k4z4u are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Queue2_TLBundleD_a32d128s5k4z4u",
+        "registers": 3,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 10,
+        "n_cyclic": 10,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "10 of 10 hw.output operands of module Queue2_TLBundleD_a32d128s5k4z4u are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "TLMonitor_47",
+        "registers": 21,
+        "source": "mlc_hw_graph_walk",
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "n_outputs": 0,
+        "n_cyclic": 0,
+        "evidence": "module TLMonitor_47 drives no hw.output operand: nothing to walk"
+      },
+      {
+        "module": "TLBuffer_a32d128s5k4z4u",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 20,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 20 hw.output operands in module TLBuffer_a32d128s5k4z4u (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "TLWidthWidget16_3",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 20,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 20 hw.output operands in module TLWidthWidget16_3 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "TLMonitor_43",
+        "registers": 21,
+        "source": "mlc_hw_graph_walk",
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "n_outputs": 0,
+        "n_cyclic": 0,
+        "evidence": "module TLMonitor_43 drives no hw.output operand: nothing to walk"
+      },
+      {
+        "module": "TLMonitor_44",
+        "registers": 21,
+        "source": "mlc_hw_graph_walk",
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "n_outputs": 0,
+        "n_cyclic": 0,
+        "evidence": "module TLMonitor_44 drives no hw.output operand: nothing to walk"
+      },
+      {
+        "module": "TLXbar_i2_o1_a32d128s5k4z4u",
+        "registers": 4,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 30,
+        "n_cyclic": 11,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "11 of 30 hw.output operands of module TLXbar_i2_o1_a32d128s5k4z4u are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "RRArbiter",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 17,
+        "n_cyclic": 17,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "17 of 17 hw.output operands of module RRArbiter are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "RoundAnyRawFNToRecFN_ie4_is8_oe8_os24",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module RoundAnyRawFNToRecFN_ie4_is8_oe8_os24 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "INToRecFN_i8_e8_s24",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 1,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 1 hw.output operands in module INToRecFN_i8_e8_s24 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "RecFNToIN_e8_s24_i8",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 2,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 2 hw.output operands in module RecFNToIN_e8_s24_i8 (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "ScalePipe",
+        "registers": 16,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 4,
+        "n_cyclic": 3,
+        "pipeline_depth": null,
+        "partial_depth": 4,
+        "evidence": "3 of 4 hw.output operands of module ScalePipe are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "VectorScalarMultiplier",
+        "registers": 338,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 43,
+        "n_cyclic": 43,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "43 of 43 hw.output operands of module VectorScalarMultiplier are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Pipeline",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 89,
+        "n_cyclic": 0,
+        "pipeline_depth": 0,
+        "partial_depth": null,
+        "evidence": "longest seq.firreg chain from an input port to any of 89 hw.output operands in module Pipeline (0 registers, no feedback on any output) = 0"
+      },
+      {
+        "module": "VectorScalarMultiplier_1",
+        "registers": 88,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 89,
+        "n_cyclic": 89,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "89 of 89 hw.output operands of module VectorScalarMultiplier_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "ZeroWriter",
+        "registers": 10,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 25,
+        "n_cyclic": 25,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "25 of 25 hw.output operands of module ZeroWriter are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Scratchpad",
+        "registers": 0,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 91,
+        "n_cyclic": 91,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "91 of 91 hw.output operands of module Scratchpad are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "DMACommandTracker_1",
+        "registers": 6,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 5,
+        "n_cyclic": 5,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "5 of 5 hw.output operands of module DMACommandTracker_1 are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "StoreController",
+        "registers": 20,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 61,
+        "n_cyclic": 61,
+        "pipeline_depth": null,
+        "partial_depth": null,
+        "evidence": "61 of 61 hw.output operands of module StoreController are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      },
+      {
+        "module": "Gemmini",
+        "registers": 1,
+        "source": "mlc_hw_graph_walk",
+        "n_outputs": 81,
+        "n_cyclic": 21,
+        "pipeline_depth": null,
+        "partial_depth": 0,
+        "evidence": "21 of 81 hw.output operands of module Gemmini are reached through feedback: this unit is SEQUENCED, so no finite wiring depth is its latency (needs the sequencer's own limits or a measurement)"
+      }
+    ]
+  }
+}

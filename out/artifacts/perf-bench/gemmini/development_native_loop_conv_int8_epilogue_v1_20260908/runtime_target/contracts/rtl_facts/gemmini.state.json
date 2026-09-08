@@ -1,0 +1,680 @@
+[
+  {
+    "name": "Gemmini",
+    "numStateBytes": 363289,
+    "states": [
+      {
+        "name": "clock",
+        "offset": 0,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "reset",
+        "offset": 1,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_a_ready",
+        "offset": 2,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_valid",
+        "offset": 3,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_opcode",
+        "offset": 4,
+        "numBits": 3,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_param",
+        "offset": 5,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_size",
+        "offset": 6,
+        "numBits": 4,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_source",
+        "offset": 7,
+        "numBits": 5,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_sink",
+        "offset": 8,
+        "numBits": 4,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_denied",
+        "offset": 9,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_data",
+        "offset": 16,
+        "numBits": 128,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_d_bits_corrupt",
+        "offset": 32,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_valid",
+        "offset": 33,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_funct",
+        "offset": 34,
+        "numBits": 7,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_rs2",
+        "offset": 35,
+        "numBits": 5,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_rs1",
+        "offset": 36,
+        "numBits": 5,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_xd",
+        "offset": 37,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_xs1",
+        "offset": 38,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_xs2",
+        "offset": 39,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_rd",
+        "offset": 40,
+        "numBits": 5,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_inst_opcode",
+        "offset": 41,
+        "numBits": 7,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_rs1",
+        "offset": 48,
+        "numBits": 64,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_rs2",
+        "offset": 56,
+        "numBits": 64,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_debug",
+        "offset": 64,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_cease",
+        "offset": 65,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_wfi",
+        "offset": 66,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_isa",
+        "offset": 68,
+        "numBits": 32,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_dprv",
+        "offset": 72,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_dv",
+        "offset": 73,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_prv",
+        "offset": 74,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_v",
+        "offset": 75,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sd",
+        "offset": 76,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_zero2",
+        "offset": 80,
+        "numBits": 23,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mpv",
+        "offset": 83,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_gva",
+        "offset": 84,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mbe",
+        "offset": 85,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sbe",
+        "offset": 86,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sxl",
+        "offset": 87,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_uxl",
+        "offset": 88,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sd_rv32",
+        "offset": 89,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_zero1",
+        "offset": 90,
+        "numBits": 8,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_tsr",
+        "offset": 91,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_tw",
+        "offset": 92,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_tvm",
+        "offset": 93,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mxr",
+        "offset": 94,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sum",
+        "offset": 95,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mprv",
+        "offset": 96,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_xs",
+        "offset": 97,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_fs",
+        "offset": 98,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mpp",
+        "offset": 99,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_vs",
+        "offset": 100,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_spp",
+        "offset": 101,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mpie",
+        "offset": 102,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_ube",
+        "offset": 103,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_spie",
+        "offset": 104,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_upie",
+        "offset": 105,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_mie",
+        "offset": 106,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_hie",
+        "offset": 107,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_sie",
+        "offset": 108,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_cmd_bits_status_uie",
+        "offset": 109,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_resp_ready",
+        "offset": 110,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_req_ready",
+        "offset": 111,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_valid",
+        "offset": 112,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_ae_ptw",
+        "offset": 113,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_ae_final",
+        "offset": 114,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pf",
+        "offset": 115,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_gf",
+        "offset": 116,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_hr",
+        "offset": 117,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_hw",
+        "offset": 118,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_hx",
+        "offset": 119,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_ppn",
+        "offset": 120,
+        "numBits": 44,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_d",
+        "offset": 126,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_a",
+        "offset": 127,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_g",
+        "offset": 128,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_u",
+        "offset": 129,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_x",
+        "offset": 130,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_w",
+        "offset": 131,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_r",
+        "offset": 132,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_pte_v",
+        "offset": 133,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_level",
+        "offset": 134,
+        "numBits": 2,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_resp_bits_homogeneous",
+        "offset": 135,
+        "numBits": 1,
+        "type": "input"
+      },
+      {
+        "name": "io_ptw_0_ptbr_mode",
+        "offset": 136,
+        "numBits": 4,
+        "type": "input"
+      },
+      {
+        "name": "auto_spad_id_out_a_valid",
+        "offset": 137,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_opcode",
+        "offset": 138,
+        "numBits": 3,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_param",
+        "offset": 139,
+        "numBits": 3,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_size",
+        "offset": 140,
+        "numBits": 4,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_source",
+        "offset": 141,
+        "numBits": 5,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_address",
+        "offset": 144,
+        "numBits": 32,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_mask",
+        "offset": 148,
+        "numBits": 16,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_data",
+        "offset": 160,
+        "numBits": 128,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_a_bits_corrupt",
+        "offset": 176,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "auto_spad_id_out_d_ready",
+        "offset": 177,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_cmd_ready",
+        "offset": 178,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_resp_valid",
+        "offset": 179,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_resp_bits_rd",
+        "offset": 180,
+        "numBits": 5,
+        "type": "output"
+      },
+      {
+        "name": "io_resp_bits_data",
+        "offset": 184,
+        "numBits": 64,
+        "type": "output"
+      },
+      {
+        "name": "io_busy",
+        "offset": 192,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_interrupt",
+        "offset": 193,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_ptw_0_req_valid",
+        "offset": 194,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "io_ptw_0_req_bits_bits_addr",
+        "offset": 196,
+        "numBits": 27,
+        "type": "output"
+      },
+      {
+        "name": "io_ptw_0_req_bits_bits_need_gpa",
+        "offset": 200,
+        "numBits": 1,
+        "type": "output"
+      },
+      {
+        "name": "spad/xbar/monitor/plusarg_reader/out",
+        "offset": 350500,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/xbar/monitor/plusarg_reader_1/out",
+        "offset": 350504,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/xbar/monitor_1/plusarg_reader/out",
+        "offset": 350508,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/xbar/monitor_1/plusarg_reader_1/out",
+        "offset": 350512,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer/monitor/plusarg_reader/out",
+        "offset": 350516,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer/monitor/plusarg_reader_1/out",
+        "offset": 350520,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer_1/monitor/plusarg_reader/out",
+        "offset": 350524,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer_1/monitor/plusarg_reader_1/out",
+        "offset": 350528,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer_2/monitor/plusarg_reader/out",
+        "offset": 350532,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "spad/buffer_2/monitor/plusarg_reader_1/out",
+        "offset": 350536,
+        "numBits": 32,
+        "type": "register"
+      },
+      {
+        "name": "reservation_station/plusarg_reader/out",
+        "offset": 350540,
+        "numBits": 32,
+        "type": "register"
+      }
+    ]
+  }
+]

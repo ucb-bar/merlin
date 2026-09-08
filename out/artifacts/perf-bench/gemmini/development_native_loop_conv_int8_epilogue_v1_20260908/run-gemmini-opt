@@ -1,0 +1,8 @@
+#!/bin/sh
+set -eu
+
+bundle_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+python_bin=${MERLIN_PYTHON:-python3}
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="$bundle_dir/support${PYTHONPATH:+:$PYTHONPATH}"
+exec "$python_bin" "$bundle_dir/compiler/gemmini-opt" "$@"

@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Executable shim for the gemmini out-of-tree backend (see mlir_oot/gemmini_opt.py)."""
+import sys
+from pathlib import Path
+
+# Do not leave __pycache__ behind.  The package is graded through this CLI and the QA gate digests
+# every file under the submission: bytecode written on first import is a file no `components:` entry
+# can meaningfully own, and its digest changes on every interpreter/​source change, which invalidates
+# certificates that nothing about the compiler actually changed.
+sys.dont_write_bytecode = True
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from mlir_oot.gemmini_opt import main
+
+raise SystemExit(main())

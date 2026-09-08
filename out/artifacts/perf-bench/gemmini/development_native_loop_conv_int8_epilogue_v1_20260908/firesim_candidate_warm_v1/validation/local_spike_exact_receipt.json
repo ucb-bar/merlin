@@ -1,0 +1,318 @@
+{
+  "actual_sha256": "46c7d2ac06c770b974187d24e45395468cfc1c024d149274baf9d599f3f91282",
+  "comparisons": {
+    "jack_tvm_local_spike": {
+      "comparable": false,
+      "cycles": 338090625,
+      "evidence": "/scratch/jack/experiments/universal_resnet50_gemmini_20260906/builds/tvm/spike_gate/stdout.log",
+      "hybrid_over_tvm": 1.0802199558180592,
+      "hybrid_percent_slower": 8.021995581805918,
+      "why_not_comparable": "same local Spike oracle, but Jack TVM is a cold single run while the hybrid window follows one complete untimed warm inference"
+    },
+    "merlin_q534_firesim": {
+      "comparable": false,
+      "cycles": 1537416019,
+      "evidence": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/q534_whole_model_headroom_roofline_20260908/receipt.json",
+      "q534_over_hybrid_arithmetic_ratio": 4.209650856718274,
+      "why_not_comparable": "q534 is FireSim; hybrid is functional local Spike"
+    }
+  },
+  "convolution_replacements": [
+    {
+      "index": 0,
+      "replaced": true,
+      "runner_owned_split": "host_maxpool_and_input_channel_padding"
+    },
+    {
+      "index": 1,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 2,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 3,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 4,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 5,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 6,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 7,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 8,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 9,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 10,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 11,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 12,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 13,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 14,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 15,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 16,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 17,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 18,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 19,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 20,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 21,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 22,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 23,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 24,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 25,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 26,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 27,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 28,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 29,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 30,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 31,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 32,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 33,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 34,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 35,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 36,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 37,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 38,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 39,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 40,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 41,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 42,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 43,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 44,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 45,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 46,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 47,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 48,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 49,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 50,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 51,
+      "replaced": true,
+      "runner_owned_split": null
+    },
+    {
+      "index": 52,
+      "replaced": true,
+      "runner_owned_split": null
+    }
+  ],
+  "elf": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/validation/native_aligned_resnet50_hybrid/resnet50_merlin53_tvmhost.elf",
+  "elf_sha256": "5703184cf70ea0e11e5a9730502c48bb86485d111255a036b5481b82c80915f3",
+  "firesim": "not_run",
+  "logits": 1000,
+  "max_abs_diff_i8": 0,
+  "measurement_protocol": "one_complete_untimed_warm_then_one_complete_measured_inference",
+  "merlin_compiled": {
+    "conv2d": 53,
+    "load3_bias_descriptors": 2316,
+    "loop_conv_descriptors": 3550
+  },
+  "metrics": {
+    "cycle_window_gemmini_region": 1,
+    "cycles": 365212240
+  },
+  "mismatches": 0,
+  "nonfinite": 0,
+  "qualification": "local_spike_functional_not_firesim_or_fpga",
+  "reference_sha256": "46c7d2ac06c770b974187d24e45395468cfc1c024d149274baf9d599f3f91282",
+  "reference_top1": 258,
+  "schema": "merlin53_loopconv_tvm_host_hybrid_spike_v1",
+  "status": "passed",
+  "top1": 258,
+  "tvm_runner_owned": {
+    "activation_arena_and_call_graph": 1,
+    "dense": 1,
+    "first_input_channel_padding": 1,
+    "first_maxpool": 1,
+    "global_avgpool_flatten": 1,
+    "residual_rescale_add_relu": 20
+  }
+}

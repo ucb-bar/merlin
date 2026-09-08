@@ -1,0 +1,23 @@
+{
+  "schema": "native_loopconv_int8_epilogue_status_v1",
+  "status": "full_hybrid_elf_hardware_qualified",
+  "compiler_tests": {"passed": 23, "failed": 0},
+  "one_layer_spike": {"outputs": 192, "mismatches": 0, "cycles": 66},
+  "resnet50": {
+    "native_loop_conv_layers": 53,
+    "local_spike_logits": 1000,
+    "mismatches": 0,
+    "top1": 258,
+    "warm_measured_cycles": 365212240,
+    "elf_sha256": "5703184cf70ea0e11e5a9730502c48bb86485d111255a036b5481b82c80915f3"
+  },
+  "hardware_qualification": {
+    "status": "passed",
+    "queue_job_id": 536,
+    "measured_cycles": 555991472,
+    "mismatches": 0,
+    "top1": 258,
+    "speedup_over_q534": 2.7651791374958354,
+    "speedup_over_q535": 2.368057362937394
+  }
+}

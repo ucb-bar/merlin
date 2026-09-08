@@ -1,0 +1,14 @@
+{
+  "job_id": 536,
+  "user": "agustin",
+  "priority": 10,
+  "project": "resnet50-merlin-native-loopconv53-tvmhost-warm",
+  "chipyard": "/scratch/firesim_queue/queue_chipyard_views/view.W5Mbjf",
+  "workload": "merlin-resnet50-native-loopconv-5703184cf70ea0e1",
+  "bootbinary": "merlin-resnet50-native-loopconv-5703184cf70ea0e1.elf",
+  "stage_from": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/firesim_candidate_warm_v1/resnet50_merlin53_tvmhost_warm.elf",
+  "timeout": 25200,
+  "hw_config": "resnet50_merlin_warm_measured_full_gemmini_u250_pinned",
+  "hwdb_config_artifact": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908/firesim_candidate_warm_v1/runtime/config_hwdb.yaml",
+  "hwdb_config_artifact_sha256": "1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1"
+}

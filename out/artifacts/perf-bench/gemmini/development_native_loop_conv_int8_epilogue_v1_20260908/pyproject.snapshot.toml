@@ -1,0 +1,163 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "merlin"
+version = "0.0.1"
+description = "Compiler-centered framework for HW/SW abstraction exploration"
+# >=3.11: the `telemetry` extra's sibling `aet` (via [tool.uv.sources]) requires >=3.11, and it enters
+# the universal resolution, so a >=3.10 floor made every `uv sync` fail. The runtime venv is 3.13.
+requires-python = ">=3.11"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "UCB-BAR" }]
+# PyYAML is used at runtime by the contracts/schemas/targetgen layers.
+dependencies = ["pyyaml"]
+
+[project.urls]
+Homepage = "https://github.com/ucb-bar/merlin"
+Repository = "https://github.com/ucb-bar/merlin"
+Issues = "https://github.com/ucb-bar/merlin/issues"
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-timeout", "pytest-xdist", "pyyaml", "pydantic", "rich"]
+xdsl = ["xdsl>=0.68"]
+# Compiler-pass verification (docs/design/compiler_verification.md): the static lit/FileCheck
+# layer needs only the in-tree LLVM build, but the formal layer solves with z3. z3 previously
+# arrived only as a TRANSITIVE dep of exo-lang -- an undeclared dependency whose absence turns a
+# verification into a silent skip, which is the one thing this layer must never do.
+verify = ["xdsl>=0.68", "z3-solver"]
+# targetgen contract validation (fail-closed JSON-Schema checks in targetgen.contract).
+targetgen = ["jsonschema"]
+# Board / simulator / RTL-cert flows (spike, verilator, K1, chipyard, clang-23, model2MLIR, …) have
+# NO PyPI deps — they resolve external toolchains via MERLIN_* env vars (see .env.example). This extra
+# exists as the documented install target + carries the bundled runtime-C sources' consumers; the
+# actual tools must be installed out of band.
+board = []
+# Kernel-mining extras: Exo compile-to-C ingest, a columnar feature table, evaluation plots.
+# AST structural mining (tree-sitter parses diverse kernel C without needing framework headers).
+kernels-ast = ["tree-sitter", "tree-sitter-c"]
+kernels-exo = ["exo-lang"]
+kernels-parquet = ["pyarrow"]
+kernels-plots = ["matplotlib"]
+# Agentic-experiment telemetry sink: the sibling `aet` eval-harness (token/cost/trajectory store,
+# `aet spend`/`aet plot`). Optional + imported lazily by merlin.targetgen.aet_bridge behind
+# MERLIN_AET_SINK=1, so default runs never require it. Resolved from the local sibling checkout via
+# [tool.uv.sources] below (not on PyPI), the same out-of-band model as the other in-tree tooling.
+telemetry = ["aet"]
+# Triton kernel frontend (merlin.triton): a STOCK, UNMODIFIED triton wheel used read-only to turn a
+# @triton.jit function into TTIR. No GPU is needed — only the AST->TTIR frontend runs, never
+# triton.compile()'s backend stage chain. EXACT-pinned because triton's compiler-internal API
+# (ASTSource/make_ir) is not a stable public surface and moves between minor releases; the same
+# version is asserted by merlin.triton.toolchain.PINNED_TRITON (test_triton_toolchain keeps the two
+# in agreement, so there is one place to bump and no second lock file to drift).
+triton = ["triton==3.7.1"]
+
+[project.scripts]
+merlin-opt = "merlin.xdsl_dialects.opt:main"
+merlin-verify = "merlin.verify.cli:main"
+merlin-lit-suite = "merlin.targetgen.lit_suite:main"
+kernel-index = "merlin.kernels.cli_index:main"
+kernel-extract = "merlin.kernels.cli_extract:main"
+kernel-audit = "merlin.kernels.audit:main"
+kernel-bench = "merlin.kernels.bench_ceiling:main"
+merlin-targetgen = "merlin.targetgen.cli:main"
+merlin-target-fetch = "merlin.targetgen.oot_fetch:main"
+merlin-onboard = "merlin.targetgen.onboard:main"
+merlin-target-publish = "merlin.targetgen.publish:main"
+merlin-design-pressure = "merlin.design_pressure.cli:main"
+merlin-dse = "merlin.dse.cli:main"
+merlin-dse-guidance = "merlin.dse_guidance.cli:main"
+# The mining CLIs. The `merlin-kernel-*` names are canonical: the loop mines expert kernels for ANY
+# endpoint now (the lifter keys on instruction roles, not on vector mnemonics), so a name claiming one
+# ISA had become a claim about scope that is no longer true.
+# What we understand of a target's assembly, which CCA facets it can populate, and what its
+# emitted code implies is worth trying. Repeatable because every number in it goes stale.
+merlin-asm-audit = "merlin.kernels.cli_asm:main"
+# The editable surface: every place this target can be changed, derived from the live
+# registries rather than written down once and left to drift.
+merlin-surface = "merlin.kernels.cli_surface:main"
+merlin-kernel-report = "merlin.mining.report:main"
+merlin-kernel-mine = "merlin.mining.mine:main"
+merlin-kernel-autotune = "merlin.mining.autotune:main"
+merlin-kernel-beam = "merlin.mining.beam_cli:main"
+merlin-kernel-opt = "merlin.mining.op_sweep:main"
+# Retained aliases -- the same entry points under the old names, so an out-of-tree caller keeps
+# resolving. They alias the COMMAND, not the old argument defaults: `--target` is now required on the
+# mining CLIs, because defaulting it to one target silently mislabels every run for another, and a
+# mislabelled run compares against the wrong expert corpus without saying so. A caller that relied on
+# the default fails loudly, which is the point.
+merlin-rvv-report = "merlin.mining.report:main"
+merlin-rvv-mine = "merlin.mining.mine:main"
+merlin-rvv-autotune = "merlin.mining.autotune:main"
+merlin-rvv-beam = "merlin.mining.beam_cli:main"
+merlin-rvv-opt = "merlin.mining.op_sweep:main"
+merlin-cca-route = "merlin.mining.route_report:main"
+# Offline, bit-exact bundle rewrite: store weights in the layout their consumer wants, so the
+# model stops re-laying-out weights on every inference. The analysis + rewrite already existed
+# and were tested; nothing could RUN them, so the *_pretransposed bundles on disk had been
+# hand-driven from a REPL. See merlin/python/merlin/baselines/pretranspose_cli.py for the
+# decided precedence against the conflicting `fuse_transpose_b` schedule lever.
+merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
+merlin-compile = "merlin.compile_cli:main"
+merlin-compare = "merlin.compare.cli:main"
+merlin-liveness = "merlin.liveness.cli:main"
+# Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
+# never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
+merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
+merlin-compile-kernel = "merlin.triton.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "merlin/python" }
+
+[tool.setuptools.packages.find]
+where = ["merlin/python"]
+
+# Bundled read-only data (schemas + agent prompts) copied into merlin/_data at build time by the
+# build_py hook in setup.py, so `pip install merlin` resolves them via importlib.resources with no
+# checkout. The _data dir is gitignored (regenerated per build); in-repo, data_path() reads the
+# canonical merlin/{schemas,prompts} instead.
+[tool.setuptools.package-data]
+merlin = ["_data/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["merlin/tests"]
+markers = [
+    "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
+    "integration: end-to-end tests spanning multiple subsystems or external tools",
+]
+# Per-test wall-clock ceiling (pytest-timeout, in [dev]). A test that blocks in a subprocess
+# (compile/sim/board that never returns when its external toolchain is mis/unconfigured) FAILS at
+# this bound instead of hanging the whole run — so `pytest merlin/tests` always completes. `signal`
+# fires SIGALRM in the main thread, which interrupts a blocked subprocess.wait(). Generous so real
+# heavy compiles (e.g. whole-model lowering) finish well within it; only true hangs trip it.
+timeout = 900
+timeout_method = "signal"
+
+[tool.mypy]
+cache_dir = "out/build/cache/mypy"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = ["third_party", "out", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["F821", "UP038"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["merlin"]
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.uv]
+# Default dev environment includes the dev tools and the xdsl prototyping plane.
+# Sync with:  uv sync --all-extras
+default-groups = []
+
+[tool.uv.sources]
+# `aet` (the telemetry extra) is a local sibling checkout, installed editable — not published.
+aet = { path = "../aet", editable = true }

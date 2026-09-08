@@ -1,0 +1,70 @@
+{
+  "schema": "merlin_native_loopconv_hybrid_firesim_success_v1",
+  "status": "passed",
+  "qualification": "hardware_qualified_hybrid_candidate",
+  "queue_job": {
+    "id": 536,
+    "state": "DONE",
+    "phase": "DONE",
+    "return_code": 0,
+    "terminal_wall_seconds": 260.1,
+    "priority": 10,
+    "project": "resnet50-merlin-native-loopconv53-tvmhost-warm",
+    "workload": "merlin-resnet50-native-loopconv-5703184cf70ea0e1"
+  },
+  "measurement_protocol": "one complete untimed warm inference, input restoration, then one complete measured inference",
+  "measured": {
+    "cycles": 555991472,
+    "metric": "cycles",
+    "cycle_window_gemmini_region": 1,
+    "whole_simulation_pass_cycles": 2371636997
+  },
+  "correctness": {
+    "logits_checked": 1000,
+    "mismatches": 0,
+    "max_abs_diff_i8": 0,
+    "nonfinite": 0,
+    "top1": 258,
+    "reference_top1": 258,
+    "actual_sha256": "46c7d2ac06c770b974187d24e45395468cfc1c024d149274baf9d599f3f91282",
+    "reference_sha256": "46c7d2ac06c770b974187d24e45395468cfc1c024d149274baf9d599f3f91282",
+    "reference_authority": "/scratch/jack/experiments/universal_resnet50_gemmini_20260906/builds/tvm/compile_coherence_final_20260907/host_reference.i8.bin"
+  },
+  "ownership": {
+    "merlin_native_loop_conv_layers": 53,
+    "merlin_loop_conv_descriptors": 3550,
+    "merlin_bias_load3_descriptors": 2316,
+    "tvm_runner_residual_rescale_add_relu": 20,
+    "tvm_runner_dense": 1,
+    "tvm_runner_pooling_arena_and_call_graph": true
+  },
+  "comparisons": {
+    "q534": {"cycles": 1537416019, "speedup": 2.7651791374958354, "cycle_reduction_percent": 63.8359776970686},
+    "q535": {"cycles": 1316619699, "speedup": 2.368057362937394, "cycle_reduction_percent": 57.77129322747585}
+  },
+  "artifact_identity": {
+    "elf_sha256": "5703184cf70ea0e11e5a9730502c48bb86485d111255a036b5481b82c80915f3",
+    "staged_elf_sha256": "5703184cf70ea0e11e5a9730502c48bb86485d111255a036b5481b82c80915f3",
+    "elf_identity_passed": true,
+    "uart_sha256_not_packaged": "05a393468c18888a9249401905479d7d74471b087ce0b2a509bbac12540605b9",
+    "hwdb_sha256": "1993f27d92965e5d804b40560b08febddef7f2a8387f15fcc77225edadd927f1",
+    "bitstream_archive_sha256": "a9a190b9fc26d577b1e8af0e3b46a94c8efaf2976f7fca6650236e0fd6d4eca1",
+    "required_driver_sha256": "16d49adafd8eea3051cd36330bced89fa1cec6b0fedc634043554d5f35e61ade",
+    "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config"
+  },
+  "queue_lifecycle": {
+    "order": ["firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill"],
+    "order_passed": true,
+    "hwdb_immutable": true,
+    "trailing_kill_completed": true
+  },
+  "evidence": {
+    "queue_authority": "/scratch/firesim_queue/jobs/536",
+    "uart_not_packaged": "/scratch/firesim_queue/jobs/536/simulation/sim_slot_0/uartlog",
+    "stdout": "validation/firesim_queue_job_536_stdout.log",
+    "stderr": "validation/firesim_queue_job_536_stderr.log",
+    "runworkload": "validation/firesim_queue_job_536_runworkload_full.json",
+    "runtime_config": "validation/firesim_queue_job_536_config_runtime.yaml"
+  },
+  "benchmark_integrity": "No full golden/logit vector or UART answer-bearing file is included in this artifact."
+}
