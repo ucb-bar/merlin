@@ -1,7 +1,9 @@
 """Cyclotron validates full outputs without UART-streaming every element."""
 from __future__ import annotations
 
+import json
 import struct
+import subprocess
 
 import pytest
 
@@ -219,6 +221,75 @@ def test_cyclotron_run_config_refuses_missing_or_duplicate_geometry(source) -> N
             {"cores": 1, "warps_per_core": 8, "lanes_per_warp": 16},
             timeout_cycles=20_000_000,
         )
+
+
+def test_cyclotron_exact_cycle_cap_is_unknown_not_tool_crash(monkeypatch, tmp_path) -> None:
+    elf = tmp_path / "kernel.elf"
+    elf.write_bytes(b"elf")
+    config = tmp_path / "config.toml"
+    config.write_text("""[muon]
+num_lanes = 16
+num_warps = 8
+num_cores = 1
+[sim]
+timeout = 1
+""", encoding="utf-8")
+    run = tmp_path / "performance_logs" / "run_cap"
+    run.mkdir(parents=True)
+    (run / "summary.json").write_text(json.dumps({
+        "total": {"scheduler": {"cycles": 20_000_000}},
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(MU, "config_path", lambda: config)
+    monkeypatch.setattr(MU, "cyclotron_path", lambda: tmp_path / "cyclotron")
+    monkeypatch.setattr(MU, "cyclotron_root", lambda: tmp_path)
+    monkeypatch.setattr(MU, "_rtl_machine_capacity", lambda target: {
+        "cores": 1, "warps_per_core": 8, "lanes_per_warp": 16,
+        "source": "test RTL facts",
+    })
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        args[0], 1, stdout="", stderr="Error: 0\n"))
+
+    with pytest.raises(MU.MuonUnavailable, match=(
+            "configured 20000000-cycle cap.*correctness is unknown")):
+        MU._run_cyclotron(elf, 60)
+
+
+@pytest.mark.parametrize(("returncode", "stderr", "summary_cycles"), [
+    (2, "Error: 0\n", 20_000_000),
+    (1, "a genuine simulator error\n", 20_000_000),
+    (1, "Error: 0\n", 19_999_999),
+])
+def test_cyclotron_does_not_mask_non_cap_failures(
+        monkeypatch, tmp_path, returncode, stderr, summary_cycles) -> None:
+    elf = tmp_path / "kernel.elf"
+    elf.write_bytes(b"elf")
+    config = tmp_path / "config.toml"
+    config.write_text("""[muon]
+num_lanes = 16
+num_warps = 8
+num_cores = 1
+[sim]
+timeout = 1
+""", encoding="utf-8")
+    run = tmp_path / "performance_logs" / "run_failure"
+    run.mkdir(parents=True)
+    (run / "summary.json").write_text(json.dumps({
+        "total": {"scheduler": {"cycles": summary_cycles}},
+    }), encoding="utf-8")
+
+    monkeypatch.setattr(MU, "config_path", lambda: config)
+    monkeypatch.setattr(MU, "cyclotron_path", lambda: tmp_path / "cyclotron")
+    monkeypatch.setattr(MU, "cyclotron_root", lambda: tmp_path)
+    monkeypatch.setattr(MU, "_rtl_machine_capacity", lambda target: {
+        "cores": 1, "warps_per_core": 8, "lanes_per_warp": 16,
+        "source": "test RTL facts",
+    })
+    monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: subprocess.CompletedProcess(
+        args[0], returncode, stdout="", stderr=stderr))
+
+    with pytest.raises(MU.MuonError, match=f"cyclotron exited {returncode}"):
+        MU._run_cyclotron(elf, 60)
 
 
 def test_fp_rates_use_rtl_derived_single_core_capacity(monkeypatch) -> None:

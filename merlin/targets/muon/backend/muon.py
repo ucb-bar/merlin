@@ -1090,6 +1090,30 @@ def _cyclotron_run_config(
     return "\n".join(lines) + "\n", record
 
 
+def _latest_cyclotron_summary(work: Path) -> dict | None:
+    """Read the newest timing summary emitted in one Cyclotron work directory."""
+    runs = sorted((work / "performance_logs").glob("run_*"), key=lambda p: p.name)
+    if not runs:
+        return None
+    summary_path = runs[-1] / "summary.json"
+    if not summary_path.is_file():
+        return None
+    try:
+        value = json.loads(summary_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _cyclotron_summary_cycles(summary: dict | None) -> int | None:
+    """Return the authoritative aggregate scheduler cycle count, if present."""
+    try:
+        value = summary["total"]["scheduler"]["cycles"]
+    except (KeyError, TypeError):
+        return None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 def _run_cyclotron(
     elf: Path, timeout: int, *, target: str = "radiance",
 ) -> tuple[str, int | None, dict | None]:
@@ -1122,8 +1146,9 @@ def _run_cyclotron(
     # ``config`` symlink created above, so they stay valid. Parsed structurally (no regex).
     run_cfg = work / "cyclotron.run.toml"
     capacity = _rtl_machine_capacity(target)
+    timeout_cycles = 20_000_000
     run_text, geometry_record = _cyclotron_run_config(
-        config_path().read_text(encoding="utf-8"), capacity, timeout_cycles=20_000_000)
+        config_path().read_text(encoding="utf-8"), capacity, timeout_cycles=timeout_cycles)
     run_cfg.write_text(run_text, encoding="utf-8")
     (work / "cyclotron.run.geometry.json").write_text(
         json.dumps(geometry_record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -1132,18 +1157,22 @@ def _run_cyclotron(
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
                           cwd=str(work), env=env)
     console = proc.stdout + ("\n" + proc.stderr if proc.stderr else "")
+    summary = _latest_cyclotron_summary(work)
     if proc.returncode != 0:
+        # Cyclotron's cycle watchdog has no diagnostic of its own: simulate() returns Err(0), so the
+        # Rust main prints only ``Error: 0`` and exits 1.  A timing summary whose aggregate cycle count
+        # equals THIS run's configured cap distinguishes that bounded exhaustion from a simulator crash.
+        # It is not proof that the kernel failed to halt (a valid exact-shape kernel may simply need a
+        # larger observation budget), so report correctness as unknown/unavailable rather than TOOL_CRASH
+        # or FUNCTIONAL_MISMATCH.  Require all three independent signals to avoid hiding a genuine rc=1.
+        if (proc.returncode == 1 and "Error: 0" in console
+                and _cyclotron_summary_cycles(summary) == timeout_cycles):
+            raise MuonUnavailable(
+                f"cyclotron reached its configured {timeout_cycles}-cycle cap before completion; "
+                "execution was bounded but numerical correctness is unknown "
+                "(upstream reports cycle-cap exhaustion as `Error: 0`)")
         raise MuonError(f"cyclotron exited {proc.returncode}:\n{console[-2000:]}")
     cycles = _cycles_from_console(console)
-    summary = None
-    runs = sorted((work / "performance_logs").glob("run_*"), key=lambda p: p.name)
-    if runs:
-        sj = runs[-1] / "summary.json"
-        if sj.is_file():
-            try:
-                summary = json.loads(sj.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
-                summary = None
     if summary is None:
         summary = {}
     summary["merlin_runtime_geometry"] = geometry_record
