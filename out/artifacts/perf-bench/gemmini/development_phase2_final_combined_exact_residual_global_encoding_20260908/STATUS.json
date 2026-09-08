@@ -1,0 +1,32 @@
+{
+  "artifact_status": "final_combined_exact_pass_hardware_not_rerun",
+  "compiler_tree_sha256": "48694957d14c9608960f7ac2b6cd08b72b15c55e4a11ff26e1cf952e0cd7607e",
+  "compiler_tree_files": 45,
+  "tests": "65_passed",
+  "mechanisms": {
+    "native_scalar_lowering": "preserved",
+    "affine_im2col_spans": "preserved",
+    "ordered_quantized_epilogue": "implemented_fail_closed",
+    "exact_second_tensor_residual": "implemented",
+    "global_encoding_and_lifetime_planning": "implemented_fail_closed",
+    "dynamic_weight_bridge": "preserved_explicit_opt_in"
+  },
+  "qualification": {
+    "exact_epilogue_warm_reentrant": "passed_323_outputs_56_spike_proxy_cycles",
+    "encoding_chain_warm_reentrant": "passed_96_outputs_102_spike_proxy_cycles",
+    "four_model_compile": "passed_sequentially",
+    "resnet_exact_native_epilogues": 0,
+    "resnet_exact_residuals": 15,
+    "resnet_spike": "transferred_by_target_identity_492147976_cycles_1000_exact",
+    "firesim": "not_run_for_final_combined",
+    "l3": "not_run",
+    "queue": "not_touched"
+  },
+  "latest_full_merlin_hardware_checkpoint": {
+    "name": "q535_affine_im2col",
+    "cycles": 1316619699,
+    "receipt_sha256": "399fb17188aa7da4bc1b0e61d6876ef0e2657165ac87e3da6627bb11681571c1"
+  },
+  "review_patch_sha256": "0e611e3c9c2231196653bfdb906a45843b89f8ee14f4ffbefe683116a9f2477a",
+  "evidence": "validation/final_combined_receipt.json"
+}

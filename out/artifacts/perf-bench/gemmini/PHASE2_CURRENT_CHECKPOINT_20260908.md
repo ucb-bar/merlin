@@ -4,24 +4,31 @@ Date: 2026-09-08. Branch: `feat/target-generalization`.
 
 ## Outcome now
 
-The current usable optimized compiler is the canonical multi-model assembly:
+The current usable optimized compiler is the final combined multi-model assembly:
 
 ```text
-out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908
+out/artifacts/perf-bench/gemmini/development_phase2_final_combined_exact_residual_global_encoding_20260908
 ```
 
 Its compiler tree SHA-256 is
-`8f7dae852ed8e8f80e8a67207582e8842af098d3d131f6bdba1da3680315adb6` over 42 files.
-Run `verify.py` and the 39-test suite before use. This assembly contains the q534 native-scalar
-lowering, the exact/fail-closed native `LOOP_CONV_WS` route, the default-off dynamic-weight
-contraction bridge, and the q535 generic affine-im2col lowering under one compiler identity. Its
-default ResNet target LLVM is byte-identical to the q535 hardware candidate, so the exact
-1,316,619,699-cycle result transfers by executable-target identity.
+`48694957d14c9608960f7ac2b6cd08b72b15c55e4a11ff26e1cf952e0cd7607e` over 45 files.
+Run `verify.py` before use; it binds the 65-test suite, two exact warm/reentrant witnesses, all four
+complete model compiles, the opt-in bridge, source ownership, encoding/refusal evidence, the
+review patch, and hardware lineage. This assembly contains q534 native-scalar lowering, q535
+generic affine-im2col, exact ordered non-residual epilogues, exact true two-tensor residual fusion,
+target-neutral global encoding/lifetime planning, the fail-closed native `LOOP_CONV_WS` route, and
+the default-off dynamic-weight contraction bridge under one compiler identity.
 
-The original canonical assembly remains preserved in `phase2_canonical_multimodel.patch`. The
-reviewable affine integration delta is `phase2_canonical_affine_im2col.patch` (SHA-256
-`1d97f05590b894108eaf37277a254c91e4005bcdaa170dd95f6d98b09e3302ab`), and its portable evidence
-summary is `phase2_canonical_affine_im2col_receipt.json`.
+The final ResNet target is byte-identical to the sealed residual child, not q535. Its exact local
+same-process warm/measured result therefore transfers as 492,147,976 Spike proxy cycles versus
+506,265,226 for q535's compiler (14,117,250 saved; 2.7885%; 1.028685x), with 1,000/1,000 logits
+exact. No hardware number transfers to this changed object. The latest honest full-Merlin hardware
+checkpoint remains q535 at 1,316,619,699 cycles.
+
+The final reviewable compiler delta is `final_combined_compiler.patch` (SHA-256
+`0e611e3c9c2231196653bfdb906a45843b89f8ee14f4ffbefe683116a9f2477a`). Detailed evidence is in
+`FINAL_COMBINED.md` and `validation/final_combined_receipt.json` inside the artifact. The original
+canonical and affine assemblies remain preserved separately for lineage.
 
 The standalone native-scalar source artifact remains
 `development_bf62_target_neutral_epilogue_fusion_20260908`. The small reviewable compiler delta is
@@ -106,16 +113,19 @@ bias loads, descriptor guards, and warm/reentrant tests—are eligible for integ
 Merlin's source graph.
 
 The complete ownership audit is `q536_native_loopconv_hybrid_diagnostic_20260908.md`; the portable
-machine receipt is `q536_native_loopconv_hybrid_receipt.json`. Until those reusable mechanisms pass
-the canonical four-model and exact full-model gates, q535 remains the accepted compiler result.
+machine receipt is `q536_native_loopconv_hybrid_receipt.json`. The reusable mechanisms now pass the
+combined four-model and exact local gates, but frozen PT2E ResNet still admits 0/53 exact narrow
+convolutions. q535 therefore remains the latest accepted full-Merlin hardware result.
 
 ## Invoke this compiler directly
 
 ```sh
-artifact=/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908
+artifact=/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_final_combined_exact_residual_global_encoding_20260908
 input=/absolute/path/to/model.mlir
 output_dir=/absolute/path/to/output
 mkdir -p "$output_dir"
+
+PYTHONDONTWRITEBYTECODE=1 python "$artifact/verify.py"
 
 MERLIN_PYTHON=/scratch/agustin/projects/oscar-merlin/.venv/bin/python \
   "$artifact/run-gemmini-opt" \
@@ -133,21 +143,21 @@ ABI, and hardware facts.
 
 ## Cross-model gate
 
-The same canonical snapshot compiles all four complete portfolio graphs without L3 or FireSim,
-sequentially with at most 308,860 KiB compiler RSS:
+The same final snapshot compiles all four complete portfolio graphs without L3 or FireSim,
+sequentially with at most 308,264 KiB compiler RSS:
 
-| graph | source ops | mesh regions | host regions | status |
+| graph | source ops | accelerator tasks | host tasks | status |
 | --- | ---: | ---: | ---: | --- |
-| ResNet-50 W8A8 | 1,240 | 54 | 119 | exact local + exact FireSim |
-| TinyLLaMA | 718 | 0 | 247 | compiles; all-host gap remains |
-| LSTMNetViT | 2,302 | 31 | 304 | compiles |
-| SmolVLA denoise | 11,910 | 116 | 4,934 | compiles after generic `i1` storage sizing |
+| ResNet-50 W8A8 | 1,240 | 54 | 51 | exact local; q535 is latest exact FireSim |
+| TinyLLaMA | 718 | 0 | 1 | compiles; all-host gap remains |
+| LSTMNetViT | 2,302 | 37 | 38 | compiles |
+| SmolVLA denoise | 11,910 | 116 | 117 | compiles after generic `i1` storage sizing |
 
-The non-ResNet command buffers and targets are byte-identical to the q534 scalar artifact. ResNet's
-target is byte-identical to the q535 affine-im2col hardware candidate; its command buffer differs
-from q534 only by the structured audit explaining why all 53 convolutions retain the proven
-fallback. This optimization is therefore a general lowering improvement with a measured ResNet
-benefit; it does not claim that the other models are already performance-complete.
+The non-ResNet targets remain byte-identical to the affine parent; this is a non-regression result,
+not a performance win. ResNet selects 15 exact residual formations, reducing tasks 109->105, host
+tasks 55->51, ABI pointers 393->389, and physical intermediates by 7,340,032 bytes. It still retains
+all 53 proven convolution fallbacks. The same target-neutral mechanisms and refusal rules are used
+for every model; none contains a model, layer, or fixed-shape dispatch.
 
 TinyLLaMA can additionally be compiled with the explicit default-off contract
 `--dynamic-weight-only-contract symmetric_per_output_channel_roundeven_v1`. That route moves 15
@@ -156,7 +166,7 @@ tolerance violations, maximum absolute error 0.018019676, relative L2 0.00723614
 0.999973894, and unchanged top-1 for all 8 tokens. It is not source-f32 bit equivalence, a dataset
 accuracy result, hardware execution, or a performance claim.
 
-## What q534 says to optimize next
+## What the full-model evidence says to optimize next
 
 q534 still executes 751,827,149 guest instructions and moves 1,142,808,576 read-DMA bytes plus
 54,136,736 write-DMA bytes. `loop_matmul_active` is 53,479,788 cycles and reservation-station active
@@ -182,17 +192,28 @@ occupancy—without inventing a physical roofline or composition rule.
 The portable copies are `q534_whole_model_headroom.md` and
 `q534_whole_model_headroom_receipt.json`.
 
-The macro-first order is therefore:
+The compiler now has the first three target-neutral representations: ordered quantized epilogues,
+true second-tensor residuals, and global encoding/lifetime selection. The exact epilogue witness
+removes two host tasks plus 1,292 full-width and 969 DMA bytes (13,760->56 Spike proxy cycles); the
+two-convolution encoding witness keeps an internal i8 NHWC value across two native convolutions
+(96/96 exact, 102 proxy cycles, zero im2col tasks). These prove the machinery, not ResNet gains.
 
-1. Form an exact target-neutral quantized epilogue across contraction -> per-channel affine/bias ->
-   optional ReLU -> round/clamp -> i8. Delete the host pass and the i32 boundary.
-2. Preserve/legalize the narrow NHWC/HWIO boundary so capability-selected native convolution can
-   delete row-streamed im2col. The existing safe selector refuses current i32/NCHW boundaries.
-3. Add a real second-tensor residual operation; a residual is not a bias epilogue.
-4. Add explicit, default-off dynamic-activation quantization contracts for weight-only transformer
-   contractions. Never claim source bit-equivalence where the source is f32.
-5. Only then tune tiling, queue depth, and overlap. Removing blanket fences already measured only
-   0.6277% on q530, so synchronization micro-tuning is not the first lever.
+Frozen PT2E ResNet admits 0/53 native narrow convolutions. All layers use per-channel weight scales
+and floating-point bias; the current Gemmini `LOOP_CONV` endpoint offers one scalar `CONFIG_ST`
+scale and a narrow output. Conv1's naive accumulator-bias/combined-scale fold mismatches
+143/802,816 values before pooling and 33/200,704 after pooling. The next macro-first order is:
+
+1. Add a target-neutral endpoint contract with `{narrow_i8, full_i32, accumulator_handle}` and
+   explicit completion/lifetime. On Gemmini, implement full-i32/accumulator readout so the exact
+   ordered per-channel host/RVV epilogue can follow native convolution without im2col.
+2. Admit narrow native output only after arithmetic-equivalence proof. Treat native-aligned W8A8
+   as a separate calibration/golden/accuracy/provenance contract, never a silent semantics change.
+3. Extend exact residual handling to the four deferred projection branches and close the remaining
+   source-1204 terminus only when unique ownership is provable.
+4. Continue explicit, default-off dynamic-activation contracts for weight-only transformer
+   contractions; never claim source-f32 bit equivalence.
+5. Then tune tiling, queue depth, prefetch, and overlap. Blanket fence removal measured only 0.6277%
+   on q530 and remains behind boundary/movement deletion.
 
 No further FireSim run is justified until a cheap four-model analysis shows a material new change
 to host work, boundary bytes, im2col expansion, or accelerator occupancy. Phase 1 remains frozen at

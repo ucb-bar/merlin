@@ -1,0 +1,6 @@
+{
+  "schema": "phase2_final_combined_receipt_alias_v1",
+  "status": "canonical_receipt_is_final_combined_receipt_json",
+  "canonical_receipt": "final_combined_receipt.json",
+  "canonical_receipt_sha256": "235ee8843be114bc59a8298b91f78dbe74499ba249ec1216434f999b865019cd"
+}

@@ -1,0 +1,2760 @@
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/manifest.yaml b/compiler/manifest.yaml
+--- a/compiler/manifest.yaml	2026-09-08 05:19:04.951947841 -0700
++++ b/compiler/manifest.yaml	2026-09-08 06:44:31.638574812 -0700
+@@ -288,6 +288,33 @@
+     abandonment: >-
+       Revert on unsupported ranks, layouts, initializers, batch maps, capacity, source ownership, or
+       any regression of a previously ready member.
++  - id: exact_second_tensor_residual_epilogue
++    scope: heuristic
++    path: mlir_oot/frontend/residual_epilogue.py
++    symbol: recognize_all
++    effects: [fusion, movement, encoding]
++    cca_axes: [compute.epilogue, communication.intermediate_materialized,
++      coverage.non_contraction_op_fraction]
++    mechanism: >-
++      Recognize an exact target-neutral second-tensor residual add whose input branches retain
++      source-ordered i32-to-f32 conversion, accumulator scale, per-channel scale and bias, followed
++      by optional ReLU and an ordered reciprocal-scale, round-to-nearest-even, zero-point and i8
++      clamp sink. Preserve the original affine indexing maps, including projected and constant
++      broadcasting, and make no target-instruction choice.
++    emitted_delta: >-
++      Dependency-schedule an exclusive producer branch to its residual join when legal, then emit
++      the residual epilogue in one host traversal with an optional live f32 boundary write. Delete
++      private intermediate materializations and task boundaries without reassociating floating-point
++      operations or changing accelerator commands.
++    validation: >-
++      Require positive witnesses across varied shapes, projected broadcasting and optional ReLU;
++      refuse reordered arithmetic, ordinary adds, non-roundeven quantization and fanout; compare
++      exact f32 bits and i8 values; compile the complete four-model portfolio; and run one exact
++      warm/measured full-model proxy gate only when the executable target changes.
++    abandonment: >-
++      Refuse any missing stage, non-single-use branch, unsupported indexing expression, out-of-range
++      broadcast, non-exact clamp or quantization sink, source ownership ambiguity, dependency cycle,
++      or observed numerical/portfolio regression.
+   - id: affine_window_packing_specialization
+     scope: codegen
+     path: mlir_oot/codegen/llvm_emit.py
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/codegen/llvm_emit.py b/compiler/mlir_oot/codegen/llvm_emit.py
+--- a/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 05:32:49.985213950 -0700
++++ b/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 06:50:17.577241126 -0700
+@@ -95,8 +95,15 @@
+                 f"buffer {name!r} is neither a kernel argument nor a compiler staging buffer, so "
+                 f"the kernel has no address for it")
+         sym = f"__gemmini_stage_{len(self.globals)}"
+-        self.globals.append(
+-            llvm.GlobalOp(llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", alignment=64))
++        if buf.zero_initialized:
++            initializer = DenseIntOrFPElementsAttr.from_list(
++                TensorType(i8, [buf.nbytes]), [0] * buf.nbytes)
++            self.globals.append(llvm.GlobalOp(
++                llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", constant=True,
++                value=initializer, alignment=64))
++        else:
++            self.globals.append(
++                llvm.GlobalOp(llvm.LLVMArrayType(buf.nbytes, i8), sym, "internal", alignment=64))
+         value = self._prologue(llvm.AddressOfOp(sym, PTR))
+         self._ptr[name] = value
+         return value
+@@ -338,13 +345,16 @@
+         """Lower a capacity-bounded matrix block through Gemmini's LOOP_WS sequencer."""
+         a = ins.attrs
+         a_name, b_name, c_name = ins.bufs
+-        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES["i32"]
++        c_dtype = str(a.get("c_dtype", "i32"))
++        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES[c_dtype]
+ 
+         # These are the same ordinary Gemmini configurations used by tiled_matmul_auto.  The
+         # LOOP_WS engine consumes three independent load streams: A, B and the optional i32 D.
+         configs = (
+             isa.config_ex(dataflow=isa.WEIGHT_STATIONARY, sys_act=isa.NO_ACTIVATION),
+-            isa.config_st(stride=c_byte_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0),
++            isa.config_st(stride=c_byte_stride,
++                          acc_act=int(a.get("acc_act", isa.NO_ACTIVATION)),
++                          acc_scale=float(a.get("acc_scale", 1.0))),
+             isa.config_ld(stride=int(a["a_stride"]), load_id=0),
+             isa.config_ld(stride=int(a["b_stride"]), load_id=1),
+             isa.config_ld(stride=c_byte_stride, shrunk=False, load_id=2),
+@@ -382,11 +392,14 @@
+         """
+         a = ins.attrs
+         a_name, b_name, c_name = ins.bufs
+-        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES["i32"]
++        c_dtype = str(a.get("c_dtype", "i32"))
++        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES[c_dtype]
+         configs = {
+             "ex": isa.config_ex(dataflow=isa.WEIGHT_STATIONARY, sys_act=isa.NO_ACTIVATION),
+             "st": isa.config_st(
+-                stride=c_byte_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0),
++                stride=c_byte_stride,
++                acc_act=int(a.get("acc_act", isa.NO_ACTIVATION)),
++                acc_scale=float(a.get("acc_scale", 1.0))),
+             "ld0": isa.config_ld(stride=int(a["a_stride"]), load_id=0),
+             "ld1": isa.config_ld(stride=int(a["b_stride"]), load_id=1),
+             "ld2": isa.config_ld(stride=c_byte_stride, shrunk=False, load_id=2),
+@@ -431,12 +444,16 @@
+             **{key: a[key] for key in static_keys})
+         for funct, rs1, rs2 in (config1, config2, config3, config4):
+             self.rocc(funct, self.fb.const(rs1), self.fb.const(rs2))
+-        input_name, weight_name, output_name = ins.bufs
++        input_name, weight_name, output_name = ins.bufs[:3]
++        bias_name = ins.bufs[3] if len(ins.bufs) == 4 else None
+         self.rocc(loop_conv.K_CONFIG_5,
+                   self.dram_addr(weight_name, int(a["weight_offset"])),
+                   (self.dram_addr(output_name, int(a["output_offset"]))
+                    if bool(a["write_output"]) else self.fb.const(0)))
+-        self.rocc(loop_conv.K_CONFIG_6, self.fb.const(0),
++        self.rocc(loop_conv.K_CONFIG_6,
++                  (self.dram_addr(bias_name, int(a["bias_offset"]))
++                   if bias_name is not None and not bool(a["no_bias"])
++                   else self.fb.const(0)),
+                   self.dram_addr(input_name, int(a["input_offset"])))
+         self.rocc(launch[0], self.fb.const(launch[1]), self.fb.const(launch[2]))
+ 
+@@ -657,7 +674,8 @@
+             segment.ops,
+             [(value, self.ptr(name)) for value, name in segment.inputs],
+             [(value, self.ptr(name)) for value, name in segment.outputs],
+-            getattr(segment, "source_op_indices", ()))
++            getattr(segment, "source_op_indices", ()),
++            getattr(segment, "residual_fusions", ()))
+ 
+     def emit_host_linalg(self, ins: Instr) -> None:
+         """Generate the CPU-lane program for a module placed entirely on the host lane."""
+@@ -789,3 +807,4 @@
+     module.attributes["gemmini.declined"] = StringAttr(reason)
+     module.verify()
+     return module
++
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/codegen/loop_host_linalg.py b/compiler/mlir_oot/codegen/loop_host_linalg.py
+--- a/compiler/mlir_oot/codegen/loop_host_linalg.py	2026-09-08 02:59:11.096800416 -0700
++++ b/compiler/mlir_oot/codegen/loop_host_linalg.py	2026-09-08 06:44:32.054582967 -0700
+@@ -641,7 +641,7 @@
+         }
+         return super().run(func_op)
+ 
+-    def run_segment(self, ops, inputs, outputs, source_op_indices=()):
++    def run_segment(self, ops, inputs, outputs, source_op_indices=(), residual_fusions=()):
+         self._commuted_gathers, self._commuted_source_ops = {}, set()
+         # Tensor values from a completed segment now live in their explicit boundary buffers, not in
+         # the workspace range that the next segment is about to reuse.  Scalar SSA remains valid.
+@@ -650,7 +650,77 @@
+         self._begin_storage_segment(ops, source_op_indices)
+         self._segment_ops = set(ops)
+         self._segment_outputs = {value for value, _ in outputs}
+-        return super().run_segment(ops, inputs, outputs)
++        self._fused_residual_float_ops = {
++            item.float_sink: item for item in residual_fusions}
++        self._fused_residual_quant_ops = {
++            item.quantize: item for item in residual_fusions}
++        for value, ptr in inputs:
++            if value not in self.vals:
++                self.vals[value] = self.load_arg(ptr, value.type)
++        for operation in ops:
++            self._tensor_op(operation)
++
++        output_ptrs = dict(outputs)
++        handled = set()
++        for fusion in residual_fusions:
++            if fusion.output not in output_ptrs:
++                raise LoweringDeclined(
++                    "fused residual must expose its exact i8 sink at the host boundary",
++                    op="residual_epilogue")
++            self._store_residual_outputs(
++                fusion, output_ptrs.get(fusion.exposed_float), output_ptrs[fusion.output])
++            handled.add(fusion.output)
++            if fusion.exposed_float in output_ptrs:
++                handled.add(fusion.exposed_float)
++        for value, ptr in outputs:
++            if value not in handled:
++                self.store_result(ptr, self.get(value))
++
++    def _store_residual_outputs(self, fusion, float_ptr, quantized_ptr):
++        """Evaluate a proven residual chain once and write its two live representations."""
++        float_value = self.get(fusion.exposed_float)
++        quantize = fusion.quantize
++        info = self._pointwise_info(quantize)
++        if info is None or quantize.inputs[0] is not fusion.exposed_float:
++            raise LoweringDeclined(
++                "residual quantizer changed after target-neutral formation",
++                op="residual_epilogue")
++        n_in, shape, maps, permutation, body = info
++        if (n_in != 3 or tuple(shape) != tuple(float_value.shape)
++                or elem_name(fusion.exposed_float.type.get_element_type()) != "f32"
++                or elem_name(fusion.output.type.get_element_type()) != "i8"):
++            raise LoweringDeclined(
++                "residual dual-write types or extents changed after formation",
++                op="residual_epilogue")
++        inputs = [self.get(value) for value in quantize.operands[:n_in]]
++        float_output = (self.storage(shape, "f32", float_ptr, padded=True)
++                        if float_ptr is not None else None)
++        quantized_output = self.storage(shape, "i8", quantized_ptr, padded=True)
++
++        def write(index):
++            ivs = tuple(index[permutation.index(dim)] for dim in range(len(shape)))
++            prior_ivs = self.ivs
++            try:
++                self.ivs = ivs
++                float_index = tuple(self._affine(expr, ivs) for expr in maps[0].results)
++                # This is the one evaluation of the shared source value. The f32 boundary
++                # store and the exact source quantizer both consume this same SSA result.
++                value = float_value.at(float_index)
++                args = [value]
++                for tensor, amap in zip(inputs[1:], maps[1:n_in]):
++                    args.append(tensor.at(tuple(self._affine(expr, ivs)
++                                                for expr in amap.results)))
++                quantized = self._round(
++                    self._scalar_block(body, [*args, self.zero("i8")]), "i8")
++                output_index = tuple(self._affine(expr, ivs)
++                                     for expr in maps[n_in].results)
++                if float_output is not None:
++                    float_output.write(float_index, value)
++                quantized_output.write(output_index, quantized)
++            finally:
++                self.ivs = prior_ivs
++
++        self.indices(shape, write)
+ 
+     def _lazy_copy_map(self, op):
+         """Fold a proven pure affine copy into its one same-segment consumer.
+@@ -1213,6 +1283,15 @@
+             lambda idx: src.at(tuple(iv for d, iv in enumerate(idx) if d not in dims)))
+ 
+     def _t_linalg_generic(self, op):
++        if (op in getattr(self, "_fused_residual_float_ops", {})
++                or op in getattr(self, "_fused_residual_quant_ops", {})):
++            info = self._pointwise_info(op)
++            if info is None:
++                raise LoweringDeclined(
++                    "formed residual pointwise operation changed before emission",
++                    op="residual_epilogue")
++            self._defer_pointwise(op, info)
++            return
+         if self._lazy_gather_view(op):
+             return
+         if self._lazy_copy_map(op):
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/frontend/quantized_epilogue.py b/compiler/mlir_oot/frontend/quantized_epilogue.py
+--- a/compiler/mlir_oot/frontend/quantized_epilogue.py	1969-12-31 16:00:00.000000000 -0800
++++ b/compiler/mlir_oot/frontend/quantized_epilogue.py	2026-09-08 06:23:52.624056375 -0700
+@@ -0,0 +1,373 @@
++"""Structural formation of exact contraction-to-i8 epilogues.
++
++This is a source-semantic recognizer, not a target selector.  It deliberately records the
++floating-point operation order rather than replacing it with an algebraically equivalent
++formula: two rounded ``mulf`` operations are not one multiply by a precomputed product.  Target
++lowering may therefore choose an exact fused host loop, or a native readout only when a separate
++capability proof says the target implements every recorded stage in that order.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++from xdsl.dialects.builtin import IntegerType, TensorType
++from xdsl.ir import Operation, SSAValue
++from xdsl.ir.affine import AffineDimExpr
++
++
++@dataclass(frozen=True)
++class QuantizedEpilogue:
++    """One exact, single-use i32 contraction epilogue ending at an i8 tensor."""
++
++    producer: Operation
++    operations: tuple[Operation, ...]
++    output: SSAValue
++    shape: tuple[int, ...]
++    channel_axis: int
++    per_channel_scale: SSAValue
++    per_channel_bias: SSAValue
++    accumulator_scale: SSAValue
++    output_scale_reciprocal: SSAValue
++    zero_point: SSAValue
++    relu: bool
++
++    @property
++    def stages(self) -> tuple[str, ...]:
++        stages = ["ordered_f32_acc_scale", "per_channel_scale", "per_channel_bias"]
++        if self.relu:
++            stages.append("relu")
++        stages.extend(("output_scale_reciprocal", "roundeven", "zero_point", "clamp_i8"))
++        return tuple(stages)
++
++    def receipt(self, source_indices: dict[Operation, int]) -> dict[str, Any]:
++        return {
++            "schema": "target_neutral_quantized_epilogue_v1",
++            "producer_source_op_index": source_indices[self.producer],
++            "source_op_indices": [source_indices[op] for op in self.operations],
++            "sink_source_op_index": source_indices[self.operations[-1]],
++            "shape": list(self.shape),
++            "channel_axis": self.channel_axis,
++            "stages": list(self.stages),
++            "output_dtype": "i8",
++            "numeric_contract": {
++                "float_order_preserved": True,
++                "rounding": "round_to_nearest_even",
++                "clamp": [-128, 127],
++                "reassociation": False,
++            },
++            # Target selection is deliberately absent here.  This record describes source
++            # semantics; a backend capability selector decides whether it can erase the
++            # full-width boundary or must retain the original host chain.
++            "target_selection": "deferred",
++        }
++
++
++@dataclass(frozen=True)
++class Refusal:
++    producer: Operation
++    reason: str
++    blocker: Operation | None = None
++
++    def receipt(self, source_indices: dict[Operation, int]) -> dict[str, Any]:
++        row: dict[str, Any] = {
++            "producer_source_op_index": source_indices[self.producer],
++            "reason": self.reason,
++        }
++        if self.blocker is not None and self.blocker in source_indices:
++            row["blocker_source_op_index"] = source_indices[self.blocker]
++            row["blocker_op"] = self.blocker.name
++        return row
++
++
++def _shape(value: SSAValue) -> tuple[int, ...] | None:
++    ty = value.type
++    if not isinstance(ty, TensorType):
++        return None
++    return tuple(int(dim) for dim in ty.get_shape())
++
++
++def _width(value: SSAValue) -> int | None:
++    ty = value.type
++    if not isinstance(ty, TensorType) or not isinstance(ty.element_type, IntegerType):
++        return None
++    return int(ty.element_type.width.data)
++
++
++def _maps(op: Operation) -> tuple[tuple[int, ...], ...] | None:
++    attr = op.properties.get("indexing_maps") or op.attributes.get("indexing_maps")
++    data = getattr(attr, "data", None)
++    if data is None:
++        return None
++    result = []
++    for item in data:
++        amap = getattr(item, "data", None)
++        if amap is None or amap.num_symbols:
++            return None
++        positions = []
++        for expr in amap.results:
++            if not isinstance(expr, AffineDimExpr):
++                return None
++            positions.append(int(expr.position))
++        result.append(tuple(positions))
++    return tuple(result)
++
++
++def _parallel_pointwise(op: Operation, shape: tuple[int, ...]) -> bool:
++    if op.name != "linalg.generic" or len(op.results) != 1 or _shape(op.results[0]) != shape:
++        return False
++    attrs = op.properties.get("iterator_types") or op.attributes.get("iterator_types")
++    entries = getattr(attrs, "data", ())
++    return len(entries) == len(shape) and all("parallel" in str(item) for item in entries)
++
++
++def _body(op: Operation, names: tuple[str, ...], argc: int):
++    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
++        return None
++    block = op.regions[0].blocks[0]
++    if len(block.args) != argc or tuple(item.name for item in block.ops) != names:
++        return None
++    return block, tuple(block.ops)
++
++
++def _sole_consumer(value: SSAValue) -> Operation | None:
++    uses = list(value.uses)
++    return uses[0].operation if len(uses) == 1 else None
++
++
++def _literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "arith.constant":
++        return None
++    attr = owner.properties.get("value")
++    if attr is None:
++        attr = owner.attributes.get("value")
++    raw = getattr(getattr(attr, "value", None), "data", None)
++    if raw is None:
++        raw = getattr(attr, "data", None)
++    return raw if isinstance(raw, (int, float)) else None
++
++
++def _splat_literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "tensor.splat" or not owner.operands:
++        return None
++    return _literal(owner.operands[0])
++
++
++def exact_identity_narrowing(value: QuantizedEpilogue) -> tuple[bool, str]:
++    """Prove the strict subset equal to a native identity-scale narrow readout.
++
++    This is intentionally a semantic proof, not an approximate scale combiner.  For the
++    admitted subset the source evaluates ``float(acc) * 1 * 1 + 0``, optionally applies ReLU,
++    multiplies by the reciprocal of an output scale equal to one, round-even converts, and
++    clamps to i8.  Native identity narrowing has the same result for every i32 accumulator:
++    values in the i8 range are exactly representable in f32 and values outside it saturate to
++    the same endpoint.  Runtime/per-channel values and non-identity arithmetic fail closed.
++
++    The proof is target-neutral.  It says the rich source operation can be reduced to the
++    abstract stages ``[optional relu, narrow_i8]``; target capability selection remains in the
++    lowering layer.
++    """
++    if _splat_literal(value.accumulator_scale) != 1.0:
++        return False, "accumulator_scale_is_not_proven_identity"
++    if _splat_literal(value.per_channel_scale) != 1.0:
++        return False, "per_channel_scale_is_not_proven_uniform_identity"
++    if _splat_literal(value.per_channel_bias) != 0.0:
++        return False, "per_channel_bias_is_not_proven_uniform_zero"
++    reciprocal = value.output_scale_reciprocal.owner
++    if (not isinstance(reciprocal, Operation) or reciprocal.name != "linalg.generic"
++            or len(reciprocal.operands) < 1
++            or _splat_literal(reciprocal.operands[0]) != 1.0):
++        return False, "output_scale_is_not_proven_identity"
++    if _splat_literal(value.zero_point) != 0:
++        return False, "output_zero_point_is_not_proven_zero"
++    return True, "exact_identity_narrowing"
++
++
++def _match_affine(op: Operation, source: SSAValue, shape: tuple[int, ...]):
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 3:
++        return None
++    maps = _maps(op)
++    identity = tuple(range(len(shape)))
++    if maps is None or len(maps) != 4 or maps[0] != identity or maps[1] != () or maps[3] != identity:
++        return None
++    channel = maps[2]
++    if len(channel) != 1 or op.inputs[0] is not source:
++        return None
++    found = _body(op, ("arith.sitofp", "arith.mulf", "arith.mulf", "linalg.yield"), 4)
++    if found is None:
++        return None
++    block, (cast, first, second, yielded) = found
++    if (tuple(cast.operands) != (block.args[0],)
++            or tuple(first.operands) != (cast.results[0], block.args[1])
++            or tuple(second.operands) != (first.results[0], block.args[2])
++            or tuple(yielded.operands) != (second.results[0],)):
++        return None
++    return int(channel[0]), op.inputs[1], op.inputs[2]
++
++
++def _looks_like_affine(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    """Whether the outer maps claim the affine stage whose body must be checked exactly."""
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 3 or op.inputs[0] is not source:
++        return False
++    maps = _maps(op)
++    identity = tuple(range(len(shape)))
++    return (maps is not None and len(maps) == 4 and maps[0] == identity
++            and maps[1] == () and len(maps[2]) == 1 and maps[3] == identity)
++
++
++def _match_bias(op: Operation, source: SSAValue, shape: tuple[int, ...], channel_axis: int):
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 2 or op.inputs[0] is not source:
++        return None
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, (channel_axis,), identity):
++        return None
++    found = _body(op, ("arith.addf", "linalg.yield"), 3)
++    if found is None:
++        return None
++    block, (add, yielded) = found
++    if (tuple(add.operands) != (block.args[0], block.args[1])
++            or tuple(yielded.operands) != (add.results[0],)):
++        return None
++    return op.inputs[1]
++
++
++def _match_relu(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 1 or op.inputs[0] is not source:
++        return False
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, identity):
++        return False
++    found = _body(op, ("arith.constant", "arith.maximumf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (zero, maximum, yielded) = found
++    return (_literal(zero.results[0]) == 0.0
++            and tuple(maximum.operands) == (block.args[0], zero.results[0])
++            and tuple(yielded.operands) == (maximum.results[0],))
++
++
++def _match_reciprocal(value: SSAValue) -> bool:
++    op = value.owner if isinstance(value.owner, Operation) else None
++    if op is None or op.name != "linalg.generic" or _shape(value) != () or len(op.inputs) != 1:
++        return False
++    if _maps(op) != ((), ()):
++        return False
++    found = _body(op, ("arith.constant", "arith.divf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (one, divide, yielded) = found
++    return (_literal(one.results[0]) == 1.0
++            and tuple(divide.operands) == (one.results[0], block.args[0])
++            and tuple(yielded.operands) == (divide.results[0],))
++
++
++def _match_quantize(op: Operation, source: SSAValue, shape: tuple[int, ...]):
++    if (not _parallel_pointwise(op, shape) or _width(op.results[0]) != 8
++            or len(op.inputs) != 3 or op.inputs[0] is not source):
++        return None
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, (), (), identity):
++        return None
++    reciprocal, zero_point = op.inputs[1], op.inputs[2]
++    if not _match_reciprocal(reciprocal) or _splat_literal(zero_point) != 0:
++        return None
++    found = _body(op, (
++        "arith.mulf", "math.roundeven", "arith.sitofp", "arith.addf",
++        "arith.maximumf", "arith.minimumf", "arith.fptosi", "linalg.yield"), 4)
++    if found is None:
++        return None
++    block, (scale, rounded, zp_float, added, lower, upper, convert, yielded) = found
++    if (tuple(scale.operands) != (block.args[0], block.args[1])
++            or tuple(rounded.operands) != (scale.results[0],)
++            or tuple(zp_float.operands) != (block.args[2],)
++            or tuple(added.operands) != (rounded.results[0], zp_float.results[0])
++            or lower.operands[0] is not added.results[0]
++            or upper.operands[0] is not lower.results[0]
++            or tuple(convert.operands) != (upper.results[0],)
++            or tuple(yielded.operands) != (convert.results[0],)
++            or _literal(lower.operands[1]) != -128.0
++            or _literal(upper.operands[1]) != 127.0):
++        return None
++    return reciprocal, zero_point
++
++
++def _is_dynamic_tensor_add(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 2 or source not in op.inputs:
++        return False
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, identity, identity):
++        return False
++    other = op.inputs[1] if op.inputs[0] is source else op.inputs[0]
++    if _shape(other) != shape:
++        return False
++    found = _body(op, ("arith.addf", "linalg.yield"), 3)
++    return found is not None
++
++
++def recognize(producer: Operation) -> QuantizedEpilogue | Refusal | None:
++    """Recognize the exact common chain starting at an i32 contraction result.
++
++    ``None`` means the producer does not begin this spelling.  A :class:`Refusal` means the
++    chain began exactly but reached a semantically important unsupported branch, which is useful
++    evidence rather than a silent non-match.
++    """
++    if len(producer.results) != 1 or _width(producer.results[0]) != 32:
++        return None
++    shape = _shape(producer.results[0])
++    if shape is None or len(shape) < 2:
++        return None
++    affine = _sole_consumer(producer.results[0])
++    if affine is None:
++        return None
++    affine_match = _match_affine(affine, producer.results[0], shape)
++    if affine_match is None:
++        if _looks_like_affine(affine, producer.results[0], shape):
++            return Refusal(
++                producer,
++                "ordered affine body is not exact accumulator-scale then per-channel-scale",
++                affine)
++        return None
++    channel_axis, accumulator_scale, channel_scale = affine_match
++    bias = _sole_consumer(affine.results[0])
++    if bias is None:
++        return Refusal(producer, "affine result is not single-use")
++    bias_value = _match_bias(bias, affine.results[0], shape, channel_axis)
++    if bias_value is None:
++        if _is_dynamic_tensor_add(bias, affine.results[0], shape):
++            return Refusal(producer, "dynamic second tensor/residual terminates epilogue", bias)
++        return Refusal(producer, "ordered affine is not followed by exact per-channel bias", bias)
++
++    current = bias.results[0]
++    operations = [affine, bias]
++    next_op = _sole_consumer(current)
++    if next_op is None:
++        return Refusal(producer, "bias result is not single-use")
++    relu = _match_relu(next_op, current, shape)
++    if relu:
++        operations.append(next_op)
++        current = next_op.results[0]
++        next_op = _sole_consumer(current)
++        if next_op is None:
++            return Refusal(producer, "relu result is not single-use")
++    if _is_dynamic_tensor_add(next_op, current, shape):
++        return Refusal(producer, "dynamic second tensor/residual terminates epilogue", next_op)
++    quant = _match_quantize(next_op, current, shape)
++    if quant is None:
++        return Refusal(producer, "chain does not end in exact roundeven/clamp i8 quantize", next_op)
++    reciprocal, zero_point = quant
++    operations.append(next_op)
++    return QuantizedEpilogue(
++        producer=producer,
++        operations=tuple(operations),
++        output=next_op.results[0],
++        shape=shape,
++        channel_axis=channel_axis,
++        per_channel_scale=channel_scale,
++        per_channel_bias=bias_value,
++        accumulator_scale=accumulator_scale,
++        output_scale_reciprocal=reciprocal,
++        zero_point=zero_point,
++        relu=relu,
++    )
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/frontend/residual_epilogue.py b/compiler/mlir_oot/frontend/residual_epilogue.py
+--- a/compiler/mlir_oot/frontend/residual_epilogue.py	1969-12-31 16:00:00.000000000 -0800
++++ b/compiler/mlir_oot/frontend/residual_epilogue.py	2026-09-08 06:47:14.894746459 -0700
+@@ -0,0 +1,386 @@
++"""Target-neutral formation of exact second-tensor residual epilogues.
++
++The recognizer records source operations and indexing maps; it does not choose an
++accelerator instruction.  In particular, ordered f32 multiplications, per-channel
++bias, residual broadcasting, round-to-nearest-even, and clamping remain distinct
++semantic stages.  A target may select a fused host traversal only when every
++structural proof below succeeds.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++from xdsl.dialects.builtin import IntegerType, TensorType
++from xdsl.ir import Operation, SSAValue
++from xdsl.ir.affine import AffineConstantExpr, AffineDimExpr
++
++
++@dataclass(frozen=True)
++class OrderedBranch:
++    """One i32 tensor converted through the frozen ordered affine+bias chain."""
++
++    producer: Operation
++    affine: Operation
++    bias: Operation
++    support_operations: tuple[Operation, ...]
++    output: SSAValue
++    shape: tuple[int, ...]
++    channel_axis: int
++    accumulator_scale: SSAValue
++    per_channel_scale: SSAValue
++    per_channel_bias: SSAValue
++
++    @property
++    def operations(self) -> tuple[Operation, ...]:
++        return (*self.support_operations, self.affine, self.bias)
++
++
++@dataclass(frozen=True)
++class ResidualEpilogue:
++    """Exact residual add with an optional ReLU and exact i8 quantization sink."""
++
++    residual_add: Operation
++    relu: Operation | None
++    quantize: Operation
++    output: SSAValue
++    exposed_float: SSAValue
++    shape: tuple[int, ...]
++    branches: tuple[OrderedBranch, ...]
++    residual_input_maps: tuple[tuple[int | str, ...], tuple[int | str, ...]]
++    output_scale_reciprocal: SSAValue
++    zero_point: SSAValue
++
++    @property
++    def float_sink(self) -> Operation:
++        return self.relu or self.residual_add
++
++    def receipt(self, source_indices: dict[Operation, int], deferred: tuple[int, ...] = ()) -> dict[str, Any]:
++        return {
++            "schema": "target_neutral_residual_epilogue_v1",
++            "residual_add_source_op_index": source_indices[self.residual_add],
++            "relu_source_op_index": (
++                source_indices[self.relu] if self.relu is not None else None),
++            "quantize_source_op_index": source_indices[self.quantize],
++            "shape": list(self.shape),
++            "residual_input_maps": [list(row) for row in self.residual_input_maps],
++            "ordered_i32_branches": [
++                {
++                    "producer_source_op_index": source_indices[branch.producer],
++                    "source_op_indices": sorted(
++                        source_indices[op] for op in branch.operations),
++                    "channel_axis": branch.channel_axis,
++                }
++                for branch in self.branches
++            ],
++            "deferred_branch_producers": list(deferred),
++            "stages": [
++                "ordered_branch_f32_affine_and_bias", "second_tensor_add",
++                *(["relu"] if self.relu is not None else []),
++                "output_scale_reciprocal", "roundeven", "zero_point", "clamp_i8",
++            ],
++            "numeric_contract": {
++                "source_f32_operation_order_preserved": True,
++                "broadcast_indexing_maps_preserved": True,
++                "rounding": "round_to_nearest_even",
++                "clamp": [-128, 127],
++                "reassociation": False,
++            },
++            "formed_semantics": "exact_second_tensor_residual_epilogue",
++        }
++
++
++@dataclass(frozen=True)
++class Refusal:
++    operation: Operation
++    reason: str
++
++
++def _shape(value: SSAValue) -> tuple[int, ...] | None:
++    ty = value.type
++    if not isinstance(ty, TensorType):
++        return None
++    return tuple(int(dim) for dim in ty.get_shape())
++
++
++def _width(value: SSAValue) -> int | None:
++    ty = value.type
++    if not isinstance(ty, TensorType) or not isinstance(ty.element_type, IntegerType):
++        return None
++    return int(ty.element_type.width.data)
++
++
++def _maps(op: Operation) -> tuple[tuple[int | str, ...], ...] | None:
++    attr = op.properties.get("indexing_maps")
++    if attr is None:
++        attr = op.attributes.get("indexing_maps")
++    data = getattr(attr, "data", None)
++    if data is None:
++        return None
++    result: list[tuple[int | str, ...]] = []
++    for item in data:
++        amap = getattr(item, "data", None)
++        if amap is None or amap.num_symbols:
++            return None
++        row: list[int | str] = []
++        for expr in amap.results:
++            if isinstance(expr, AffineDimExpr):
++                row.append(int(expr.position))
++            elif isinstance(expr, AffineConstantExpr):
++                row.append(f"c{int(expr.value)}")
++            else:
++                return None
++        result.append(tuple(row))
++    return tuple(result)
++
++
++def _parallel_pointwise(op: Operation, shape: tuple[int, ...]) -> bool:
++    if op.name != "linalg.generic" or len(op.results) != 1 or _shape(op.results[0]) != shape:
++        return False
++    attrs = op.properties.get("iterator_types")
++    if attrs is None:
++        attrs = op.attributes.get("iterator_types")
++    entries = getattr(attrs, "data", ())
++    return len(entries) == len(shape) and all("parallel" in str(item) for item in entries)
++
++
++def _body(op: Operation, names: tuple[str, ...], argc: int):
++    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
++        return None
++    block = op.regions[0].blocks[0]
++    operations = tuple(block.ops)
++    if len(block.args) != argc or tuple(item.name for item in operations) != names:
++        return None
++    return block, operations
++
++
++def _literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "arith.constant":
++        return None
++    attr = owner.properties.get("value")
++    if attr is None:
++        attr = owner.attributes.get("value")
++    raw = getattr(getattr(attr, "value", None), "data", None)
++    if raw is None:
++        raw = getattr(attr, "data", None)
++    return raw if isinstance(raw, (int, float)) else None
++
++
++def _splat_literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "tensor.splat" or not owner.operands:
++        return None
++    return _literal(owner.operands[0])
++
++
++def _match_reciprocal(value: SSAValue) -> bool:
++    op = value.owner if isinstance(value.owner, Operation) else None
++    if op is None or op.name != "linalg.generic" or _shape(value) != () or len(op.inputs) != 1:
++        return False
++    if _maps(op) != ((), ()):
++        return False
++    found = _body(op, ("arith.constant", "arith.divf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (one, divide, yielded) = found
++    return (_literal(one.results[0]) == 1.0
++            and tuple(divide.operands) == (one.results[0], block.args[0])
++            and tuple(yielded.operands) == (divide.results[0],))
++
++
++def _match_quantize(op: Operation, source: SSAValue, shape: tuple[int, ...]):
++    identity = tuple(range(len(shape)))
++    if (not _parallel_pointwise(op, shape) or _width(op.results[0]) != 8
++            or len(op.inputs) != 3 or op.inputs[0] is not source
++            or _maps(op) != (identity, (), (), identity)):
++        return None
++    reciprocal, zero_point = op.inputs[1], op.inputs[2]
++    if not _match_reciprocal(reciprocal) or _splat_literal(zero_point) != 0:
++        return None
++    found = _body(op, (
++        "arith.mulf", "math.roundeven", "arith.sitofp", "arith.addf",
++        "arith.maximumf", "arith.minimumf", "arith.fptosi", "linalg.yield"), 4)
++    if found is None:
++        return None
++    block, (scale, rounded, zp_float, added, lower, upper, convert, yielded) = found
++    if (tuple(scale.operands) != (block.args[0], block.args[1])
++            or tuple(rounded.operands) != (scale.results[0],)
++            or tuple(zp_float.operands) != (block.args[2],)
++            or tuple(added.operands) != (rounded.results[0], zp_float.results[0])
++            or lower.operands[0] is not added.results[0]
++            or upper.operands[0] is not lower.results[0]
++            or tuple(convert.operands) != (upper.results[0],)
++            or tuple(yielded.operands) != (convert.results[0],)
++            or _literal(lower.operands[1]) != -128.0
++            or _literal(upper.operands[1]) != 127.0):
++        return None
++    return reciprocal, zero_point
++
++
++def _match_relu(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    identity = tuple(range(len(shape)))
++    if (not _parallel_pointwise(op, shape) or len(op.inputs) != 1
++            or op.inputs[0] is not source or _maps(op) != (identity, identity)):
++        return False
++    found = _body(op, ("arith.constant", "arith.maximumf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (zero, maximum, yielded) = found
++    return (_literal(zero.results[0]) == 0.0
++            and tuple(maximum.operands) == (block.args[0], zero.results[0])
++            and tuple(yielded.operands) == (maximum.results[0],))
++
++
++def _support_for(op: Operation) -> tuple[Operation, ...] | None:
++    """Exclusive empty initializers required by one exact pointwise op."""
++    support: list[Operation] = []
++    for value in op.outputs:
++        owner = value.owner if isinstance(value.owner, Operation) else None
++        if owner is None or owner.name != "tensor.empty":
++            return None
++        if any(use.operation is not op for use in value.uses):
++            return None
++        support.append(owner)
++    return tuple(support)
++
++
++def match_ordered_branch(value: SSAValue) -> OrderedBranch | None:
++    """Walk backward from f32 branch output to an exact single-use i32 producer."""
++    shape = _shape(value)
++    bias = value.owner if isinstance(value.owner, Operation) else None
++    if shape is None or bias is None or not _parallel_pointwise(bias, shape):
++        return None
++    identity = tuple(range(len(shape)))
++    maps = _maps(bias)
++    if len(bias.inputs) != 2 or maps is None or len(maps) != 3 or maps[0] != identity or maps[2] != identity:
++        return None
++    channel_map = maps[1]
++    if len(channel_map) != 1 or not isinstance(channel_map[0], int):
++        return None
++    found = _body(bias, ("arith.addf", "linalg.yield"), 3)
++    if found is None:
++        return None
++    bias_block, (addition, yielded) = found
++    if (tuple(addition.operands) != (bias_block.args[0], bias_block.args[1])
++            or tuple(yielded.operands) != (addition.results[0],)):
++        return None
++
++    affine_value = bias.inputs[0]
++    affine = affine_value.owner if isinstance(affine_value.owner, Operation) else None
++    if affine is None or not _parallel_pointwise(affine, shape) or len(affine.inputs) != 3:
++        return None
++    affine_maps = _maps(affine)
++    if (affine_maps is None or len(affine_maps) != 4
++            or affine_maps[0] != identity or affine_maps[1] != ()
++            or affine_maps[2] != channel_map or affine_maps[3] != identity):
++        return None
++    found = _body(affine, ("arith.sitofp", "arith.mulf", "arith.mulf", "linalg.yield"), 4)
++    if found is None:
++        return None
++    affine_block, (cast, first, second, affine_yield) = found
++    if (tuple(cast.operands) != (affine_block.args[0],)
++            or tuple(first.operands) != (cast.results[0], affine_block.args[1])
++            or tuple(second.operands) != (first.results[0], affine_block.args[2])
++            or tuple(affine_yield.operands) != (second.results[0],)):
++        return None
++    producer = affine.inputs[0].owner if isinstance(affine.inputs[0].owner, Operation) else None
++    producer_uses = list(affine.inputs[0].uses)
++    affine_uses = list(affine.results[0].uses)
++    if (producer is None or _width(affine.inputs[0]) != 32
++            or len(producer_uses) != 1 or producer_uses[0].operation is not affine
++            or len(affine_uses) != 1 or affine_uses[0].operation is not bias):
++        return None
++    affine_support, bias_support = _support_for(affine), _support_for(bias)
++    if affine_support is None or bias_support is None:
++        return None
++    return OrderedBranch(
++        producer, affine, bias, (*affine_support, *bias_support), value, shape,
++        int(channel_map[0]), affine.inputs[1], affine.inputs[2], bias.inputs[1])
++
++
++def _match_residual_add(op: Operation):
++    shape = _shape(op.results[0]) if len(op.results) == 1 else None
++    if shape is None or not _parallel_pointwise(op, shape) or len(op.inputs) != 2:
++        return None
++    maps = _maps(op)
++    identity = tuple(range(len(shape)))
++    if maps is None or len(maps) != 3 or maps[2] != identity:
++        return None
++    # Each projected input index must be statically in range.  Dim projections implement
++    # ordinary broadcasting by omission; constant coordinates implement unit-axis broadcasts.
++    for value, row in zip(op.inputs, maps[:2]):
++        input_shape = _shape(value)
++        if input_shape is None or len(input_shape) != len(row):
++            return None
++        for token, extent in zip(row, input_shape):
++            if isinstance(token, int):
++                if not 0 <= token < len(shape) or shape[token] > extent:
++                    return None
++            else:
++                constant = int(token[1:])
++                if not 0 <= constant < extent:
++                    return None
++    found = _body(op, ("arith.addf", "linalg.yield"), 3)
++    if found is None:
++        return None
++    block, (addition, yielded) = found
++    if (tuple(addition.operands) != (block.args[0], block.args[1])
++            or tuple(yielded.operands) != (addition.results[0],)):
++        return None
++    return shape, maps[:2]
++
++
++def recognize(op: Operation) -> ResidualEpilogue | Refusal | None:
++    """Recognize from the second-tensor add through its exact i8 sink."""
++    residual = _match_residual_add(op)
++    if residual is None:
++        return None
++    shape, input_maps = residual
++    branches = tuple(branch for value in op.inputs
++                     if (branch := match_ordered_branch(value)) is not None)
++    # Ordinary bias additions and other binary maps also have an addf body. They are not
++    # residual candidates unless one input proves the complete i32 branch contract.
++    if not branches:
++        return None
++    add_uses = list(op.results[0].uses)
++    if len(add_uses) != 1:
++        return Refusal(op, "residual add result is not single-use")
++    current = op.results[0]
++    consumer = add_uses[0].operation
++    relu = consumer if _match_relu(consumer, current, shape) else None
++    if relu is not None:
++        current = relu.results[0]
++        consumers = [use.operation for use in current.uses]
++    else:
++        consumers = [consumer]
++    quantizers = [candidate for candidate in dict.fromkeys(consumers)
++                  if _match_quantize(candidate, current, shape) is not None]
++    if len(quantizers) != 1:
++        return Refusal(op, "residual float result has no unique exact roundeven/clamp i8 sink")
++    quantize = quantizers[0]
++    # Other users are legal: they make the f32 value an exposed block output.  The selected
++    # lowering writes it once while producing the i8 consumer in that same traversal.
++    if any(use.operation is not quantize for use in op.results[0].uses) and relu is None:
++        return Refusal(op, "unactivated residual add has a non-quantize side use")
++    quant = _match_quantize(quantize, current, shape)
++    assert quant is not None
++    for branch in branches:
++        uses = list(branch.output.uses)
++        if len(uses) != 1 or uses[0].operation is not op:
++            return Refusal(op, "ordered branch output is not exclusive to the residual add")
++    return ResidualEpilogue(
++        op, relu, quantize, quantize.results[0], current, shape, branches,
++        input_maps, quant[0], quant[1])
++
++
++def recognize_all(operations: list[Operation]) -> tuple[list[ResidualEpilogue], list[Refusal]]:
++    formed: list[ResidualEpilogue] = []
++    refused: list[Refusal] = []
++    for operation in operations:
++        result = recognize(operation)
++        if isinstance(result, ResidualEpilogue):
++            formed.append(result)
++        elif isinstance(result, Refusal):
++            refused.append(result)
++    return formed, refused
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/ir/gemmini_dialect.py b/compiler/mlir_oot/ir/gemmini_dialect.py
+--- a/compiler/mlir_oot/ir/gemmini_dialect.py	2026-09-08 03:35:42.017648219 -0700
++++ b/compiler/mlir_oot/ir/gemmini_dialect.py	2026-09-08 06:49:27.745292529 -0700
+@@ -340,7 +340,9 @@
+     name = "gemmini.loop_conv_ws"
+ 
+     def verify_(self) -> None:
+-        _pointer_arguments(self, 3)
++        # input, weights, narrow output, and an internal read-only zero bias used to overwrite
++        # persistent accumulator rows on every warm/measured invocation.
++        _pointer_arguments(self, 4)
+         positive = (
+             "batch_size", "in_row_dim", "in_col_dim", "in_channels", "out_channels",
+             "out_row_dim", "out_col_dim", "pool_out_row_dim", "pool_out_col_dim",
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/global_encoding.py b/compiler/mlir_oot/lowering/global_encoding.py
+--- a/compiler/mlir_oot/lowering/global_encoding.py	1969-12-31 16:00:00.000000000 -0800
++++ b/compiler/mlir_oot/lowering/global_encoding.py	2026-09-08 06:50:27.211424165 -0700
+@@ -0,0 +1,363 @@
++"""Target-neutral global tensor-encoding selection.
++
++This module deliberately knows nothing about Gemmini, ResNet, or an MLIR dialect.  A target
++adapter supplies the exact operation alternatives it can implement.  The solver then chooses one
++alternative per operation and one storage encoding per tensor boundary while accounting for all
++producers, consumers, ABI endpoints, fanout, lifetimes, adapters, and an optional arena limit.
++
++The objective is *structural materialisation bytes*.  It is not a latency predictor: operation
++alternatives state the derived buffers they would materialise, while encoding mismatches pay one
++read plus one write.  This is useful before expensive simulation because it cannot manufacture a
++cycle speedup from an unmeasured bandwidth constant.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass, field
++from itertools import product
++from math import prod
++from typing import Iterable, Mapping, Sequence
++
++
++DTYPE_BYTES = {
++    "i1": 1, "i8": 1, "i16": 2, "i32": 4, "i64": 8,
++    "f16": 2, "bf16": 2, "f32": 4, "f64": 8,
++}
++
++
++@dataclass(frozen=True)
++class Encoding:
++    """A physical axis order and innermost-dimension alignment."""
++
++    name: str
++    axes: tuple[str, ...]
++    alignment: int = 1
++
++
++@dataclass(frozen=True)
++class TensorBoundary:
++    """One logical tensor value shared by operation endpoints."""
++
++    name: str
++    extents: Mapping[str, int]
++    dtype: str
++    logical_encoding: str
++    producer: int | None
++    consumers: tuple[int, ...] = ()
++    external_input: bool = False
++    external_output: bool = False
++
++
++@dataclass(frozen=True)
++class OperationAlternative:
++    """One exact implementation of an operation under fixed endpoint encodings."""
++
++    name: str
++    input_encodings: Mapping[str, str]
++    output_encodings: Mapping[str, str]
++    materialized_bytes: int = 0
++    exact: bool = True
++    refusal: str = ""
++    capability: str = ""
++
++
++@dataclass(frozen=True)
++class EncodingOperation:
++    index: int
++    name: str
++    kind: str
++    alternatives: tuple[OperationAlternative, ...]
++
++
++@dataclass(frozen=True)
++class EncodingProblem:
++    tensors: tuple[TensorBoundary, ...]
++    operations: tuple[EncodingOperation, ...]
++    encodings: Mapping[str, Encoding]
++    arena_capacity_bytes: int | None = None
++    exhaustive_combination_limit: int = 4096
++
++
++@dataclass
++class _Evaluated:
++    choices: tuple[OperationAlternative, ...]
++    storage: dict[str, str]
++    transforms: list[dict]
++    operation_materialized_bytes: int
++    transform_bytes: int
++    encoded_boundary_bytes: int
++    logical_boundary_bytes: int
++    peak_live_bytes: int
++    peak_live_at: int
++    live_intervals: list[dict]
++    over_capacity: bool
++
++    @property
++    def objective(self) -> tuple[int, int, int]:
++        return (
++            self.operation_materialized_bytes + self.transform_bytes,
++            self.peak_live_bytes,
++            len(self.transforms),
++        )
++
++
++def _extent_tuple(tensor: TensorBoundary, encoding: Encoding) -> tuple[int, ...]:
++    if set(encoding.axes) != set(tensor.extents):
++        raise ValueError(
++            f"encoding {encoding.name!r} axes {encoding.axes} do not cover tensor "
++            f"{tensor.name!r} axes {tuple(tensor.extents)}"
++        )
++    return tuple(int(tensor.extents[axis]) for axis in encoding.axes)
++
++
++def storage_bytes(tensor: TensorBoundary, encoding: Encoding) -> int:
++    """Physical bytes, including only explicit innermost alignment padding."""
++    shape = _extent_tuple(tensor, encoding)
++    if tensor.dtype not in DTYPE_BYTES:
++        raise ValueError(f"unknown dtype {tensor.dtype!r} for {tensor.name!r}")
++    if not shape:
++        return DTYPE_BYTES[tensor.dtype]
++    aligned_last = -(-shape[-1] // encoding.alignment) * encoding.alignment
++    return prod(shape[:-1]) * aligned_last * DTYPE_BYTES[tensor.dtype]
++
++
++def _requirements(
++    tensor: TensorBoundary,
++    choices_by_index: Mapping[int, OperationAlternative],
++) -> list[tuple[str, str, int | str]]:
++    endpoints: list[tuple[str, str, int | str]] = []
++    if tensor.external_input:
++        endpoints.append(("abi_input", tensor.logical_encoding, "input"))
++    if tensor.producer is not None:
++        alt = choices_by_index[tensor.producer]
++        endpoints.append(("producer", alt.output_encodings[tensor.name], tensor.producer))
++    for consumer in tensor.consumers:
++        alt = choices_by_index[consumer]
++        endpoints.append(("consumer", alt.input_encodings[tensor.name], consumer))
++    if tensor.external_output:
++        endpoints.append(("abi_output", tensor.logical_encoding, "output"))
++    return endpoints
++
++
++def _adapter_bytes(tensor: TensorBoundary, source: Encoding, target: Encoding) -> int:
++    if source.name == target.name:
++        return 0
++    return storage_bytes(tensor, source) + storage_bytes(tensor, target)
++
++
++def _evaluate(problem: EncodingProblem, choices: Sequence[OperationAlternative]) -> _Evaluated:
++    choices_by_index = {op.index: choice for op, choice in zip(problem.operations, choices)}
++    storage: dict[str, str] = {}
++    transforms: list[dict] = []
++    logical_bytes = 0
++    encoded_bytes = 0
++
++    for tensor in problem.tensors:
++        logical = problem.encodings[tensor.logical_encoding]
++        logical_bytes += storage_bytes(tensor, logical)
++        endpoints = _requirements(tensor, choices_by_index)
++        candidates = {tensor.logical_encoding, *(encoding for _, encoding, _ in endpoints)}
++        ranked: list[tuple[int, int, str]] = []
++        for candidate_name in sorted(candidates):
++            candidate = problem.encodings[candidate_name]
++            conversion = sum(
++                _adapter_bytes(tensor, candidate, problem.encodings[required])
++                for _, required, _ in endpoints
++            )
++            ranked.append((conversion, storage_bytes(tensor, candidate), candidate_name))
++        _, physical_bytes, selected = min(ranked)
++        storage[tensor.name] = selected
++        encoded_bytes += physical_bytes
++        for endpoint, required, owner in endpoints:
++            if selected == required:
++                continue
++            source_name, target_name = (
++                (required, selected) if endpoint in ("abi_input", "producer")
++                else (selected, required)
++            )
++            source, target = problem.encodings[source_name], problem.encodings[target_name]
++            transforms.append({
++                "tensor": tensor.name,
++                "endpoint": endpoint,
++                "owner": owner,
++                "from": source_name,
++                "to": target_name,
++                "bytes": _adapter_bytes(tensor, source, target),
++                "reason": "physical encoding required by exact endpoint",
++            })
++
++    last_operation = max((op.index for op in problem.operations), default=0)
++    intervals: list[dict] = []
++    events: dict[int, int] = {}
++    tensor_by_name = {tensor.name: tensor for tensor in problem.tensors}
++    for name, encoding_name in storage.items():
++        tensor = tensor_by_name[name]
++        start = 0 if tensor.external_input or tensor.producer is None else tensor.producer
++        end_candidates = list(tensor.consumers)
++        if tensor.external_output:
++            end_candidates.append(last_operation + 1)
++        end = max(end_candidates, default=start)
++        size = storage_bytes(tensor, problem.encodings[encoding_name])
++        intervals.append({
++            "tensor": name, "first_endpoint": start, "last_endpoint": end,
++            "encoding": encoding_name, "bytes": size,
++        })
++        events[start] = events.get(start, 0) + size
++        events[end + 1] = events.get(end + 1, 0) - size
++    live = peak = peak_at = 0
++    for point in sorted(events):
++        live += events[point]
++        if live > peak:
++            peak, peak_at = live, point
++
++    operation_bytes = sum(choice.materialized_bytes for choice in choices)
++    transform_bytes = sum(item["bytes"] for item in transforms)
++    return _Evaluated(
++        tuple(choices), storage, transforms, operation_bytes, transform_bytes,
++        encoded_bytes, logical_bytes, peak, peak_at, intervals,
++        problem.arena_capacity_bytes is not None and peak > problem.arena_capacity_bytes,
++    )
++
++
++def _choice_space(problem: EncodingProblem) -> Iterable[tuple[OperationAlternative, ...]]:
++    exact = [tuple(alt for alt in op.alternatives if alt.exact) for op in problem.operations]
++    if any(not alternatives for alternatives in exact):
++        return ()
++    combinations = prod(len(alternatives) for alternatives in exact)
++    if combinations <= problem.exhaustive_combination_limit:
++        return product(*exact)
++
++    # Large graphs normally have one dominant exact alternative per op.  Start there and perform
++    # deterministic coordinate descent.  This evaluates every alternative against the complete
++    # fanout/lifetime state, rather than making a producer-local decision.
++    current = tuple(min(alternatives, key=lambda alt: (alt.materialized_bytes, alt.name))
++                    for alternatives in exact)
++    while True:
++        incumbent = _evaluate(problem, current)
++        changed = False
++        for position, alternatives in enumerate(exact):
++            candidates = []
++            for alternative in alternatives:
++                trial = list(current)
++                trial[position] = alternative
++                evaluated = _evaluate(problem, trial)
++                penalty = (1 if evaluated.over_capacity else 0, *evaluated.objective,
++                           tuple(choice.name for choice in evaluated.choices))
++                candidates.append((penalty, tuple(trial)))
++            best = min(candidates, key=lambda item: item[0])[1]
++            if best != current:
++                current, changed = best, True
++        if not changed:
++            return (current,)
++
++
++def solve(problem: EncodingProblem) -> dict:
++    """Choose exact operation alternatives and tensor encodings, or fail closed."""
++    operation_indices = [op.index for op in problem.operations]
++    if len(operation_indices) != len(set(operation_indices)):
++        raise ValueError("operation indices must be unique")
++    known_indices = set(operation_indices)
++    known_tensors = {tensor.name for tensor in problem.tensors}
++    for tensor in problem.tensors:
++        if tensor.logical_encoding not in problem.encodings:
++            raise ValueError(f"unknown logical encoding {tensor.logical_encoding!r}")
++        if tensor.producer is not None and tensor.producer not in known_indices:
++            raise ValueError(f"unknown producer {tensor.producer} for {tensor.name}")
++        if any(consumer not in known_indices for consumer in tensor.consumers):
++            raise ValueError(f"unknown consumer for {tensor.name}")
++    for op in problem.operations:
++        for alt in op.alternatives:
++            if not set(alt.input_encodings).issubset(known_tensors):
++                raise ValueError(f"{op.name}/{alt.name} names unknown input")
++            if not set(alt.output_encodings).issubset(known_tensors):
++                raise ValueError(f"{op.name}/{alt.name} names unknown output")
++            for encoding in (*alt.input_encodings.values(), *alt.output_encodings.values()):
++                if encoding not in problem.encodings:
++                    raise ValueError(f"{op.name}/{alt.name} names unknown encoding {encoding}")
++
++    evaluated = [_evaluate(problem, choices) for choices in _choice_space(problem)]
++    feasible = [entry for entry in evaluated if not entry.over_capacity]
++    refusals = [
++        {"operation_index": op.index, "operation": op.name, "alternative": alt.name,
++         "capability": alt.capability, "reason": alt.refusal or "not_exact"}
++        for op in problem.operations for alt in op.alternatives if not alt.exact
++    ]
++    if not feasible:
++        best = min(evaluated, key=lambda entry: entry.objective) if evaluated else None
++        return {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": "refused",
++            "reason": ("arena_capacity_exceeded" if best is not None
++                       else "operation_has_no_exact_alternative"),
++            "arena_capacity_bytes": problem.arena_capacity_bytes,
++            "minimum_peak_live_bytes": None if best is None else best.peak_live_bytes,
++            "refusals": refusals,
++        }
++
++    best = min(
++        feasible,
++        key=lambda entry: (*entry.objective, tuple(choice.name for choice in entry.choices)),
++    )
++    baseline_transforms = 0
++    baseline_transform_bytes = 0
++    choices_by_index = {op.index: choice for op, choice in zip(problem.operations, best.choices)}
++    for tensor in problem.tensors:
++        logical = problem.encodings[tensor.logical_encoding]
++        for _, required, _ in _requirements(tensor, choices_by_index):
++            if required != tensor.logical_encoding:
++                baseline_transforms += 1
++                baseline_transform_bytes += _adapter_bytes(
++                    tensor, logical, problem.encodings[required])
++
++    return {
++        "schema": "target_neutral_global_encoding_v1",
++        "status": "selected",
++        "objective": {
++            "name": "structural_materialization_bytes",
++            "operation_materialized_bytes": best.operation_materialized_bytes,
++            "layout_transform_bytes": best.transform_bytes,
++            "total_bytes": best.operation_materialized_bytes + best.transform_bytes,
++            "cycle_prediction_claimed": False,
++        },
++        "operations": [
++            {"index": op.index, "name": op.name, "kind": op.kind,
++             "selected": choice.name, "capability": choice.capability,
++             "materialized_bytes": choice.materialized_bytes,
++             "selection_reason": "minimum exact global structural-materialization objective",
++             "considered_alternatives": [
++                 {"name": alternative.name, "capability": alternative.capability,
++                  "exact": alternative.exact,
++                  "materialized_bytes": alternative.materialized_bytes,
++                  "refusal": alternative.refusal}
++                 for alternative in op.alternatives
++             ]}
++            for op, choice in zip(problem.operations, best.choices)
++        ],
++        "boundaries": [
++            {"tensor": tensor.name, "dtype": tensor.dtype,
++             "logical_encoding": tensor.logical_encoding,
++             "selected_encoding": best.storage[tensor.name],
++             "logical_bytes": storage_bytes(
++                 tensor, problem.encodings[tensor.logical_encoding]),
++             "encoded_bytes": storage_bytes(
++                 tensor, problem.encodings[best.storage[tensor.name]]),
++             "producer": tensor.producer, "consumers": list(tensor.consumers),
++             "fanout": len(tensor.consumers),
++             "external_input": tensor.external_input,
++             "external_output": tensor.external_output}
++            for tensor in problem.tensors
++        ],
++        "logical_boundary_bytes": best.logical_boundary_bytes,
++        "encoded_boundary_bytes": best.encoded_boundary_bytes,
++        "layout_transforms": best.transforms,
++        "layout_transforms_inserted": len(best.transforms),
++        "layout_transforms_eliminated": baseline_transforms - len(best.transforms),
++        "layout_transform_bytes_eliminated": baseline_transform_bytes - best.transform_bytes,
++        "capacity": {
++            "arena_capacity_bytes": problem.arena_capacity_bytes,
++            "peak_live_encoded_bytes": best.peak_live_bytes,
++            "peak_live_at_operation": best.peak_live_at,
++            "fits": True,
++        },
++        "lifetimes": best.live_intervals,
++        "refusals": refusals,
++    }
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/model_lane.py b/compiler/mlir_oot/lowering/model_lane.py
+--- a/compiler/mlir_oot/lowering/model_lane.py	2026-09-08 02:59:11.094800377 -0700
++++ b/compiler/mlir_oot/lowering/model_lane.py	2026-09-08 06:46:46.369196048 -0700
+@@ -25,6 +25,17 @@
+ 
+ from ..codegen.host_linalg import HOST_LINALG_ELEMENT_BUDGET, attr_of, estimate_cost
+ from ..frontend.linalg_reader import HOST_LANE, MESH_LANE, LinalgWorkload, place
++from ..frontend.quantized_epilogue import (
++    QuantizedEpilogue,
++    Refusal as EpilogueRefusal,
++    exact_identity_narrowing,
++    recognize as recognize_quantized_epilogue,
++)
++from ..frontend.residual_epilogue import (
++    Refusal as ResidualRefusal,
++    ResidualEpilogue,
++    recognize_all as recognize_residual_epilogues,
++)
+ from ..tables import rtl_facts as F
+ from .plan import (BLOCK_DIAGONAL_ELEM_BUDGET, Buffer, Epilogue, LoweringDeclined,
+                    Plan, kernel_args)
+@@ -38,6 +49,7 @@
+     inputs: list[tuple[SSAValue, str]] = field(default_factory=list)
+     outputs: list[tuple[SSAValue, str]] = field(default_factory=list)
+     regions: list[str] = field(default_factory=list)
++    residual_fusions: list[ResidualEpilogue] = field(default_factory=list)
+ 
+ 
+ @dataclass(frozen=True)
+@@ -381,10 +393,85 @@
+         self.im2col_recipes: list[dict[str, Any]] = []
+         self.batched_contractions: list[dict[str, Any]] = []
+         self.host_tensor_spills: dict[str, SSAValue] = {}
++        self.native_epilogues: dict[Operation, QuantizedEpilogue] = {}
++        self.epilogue_refusals: list[dict[str, Any]] = []
++        self.residual_epilogues: list[ResidualEpilogue] = []
++        self.selected_residual_epilogues: list[ResidualEpilogue] = []
++        self.residual_refusals: list[ResidualRefusal] = []
++        self.deferred_residual_ops: set[Operation] = set()
++        self.deferred_before: dict[Operation, list[Operation]] = {}
++        self.deferred_branch_producers: dict[Operation, tuple[int, ...]] = {}
+         self._scratch = 0
+         self.source_indices = {op: i for i, op in enumerate(self.block.ops)
+                                if op.name != "func.return"}
+ 
++    def prepare_residual_schedule(self, ops: list[Operation], mesh_ops: list[Operation]) -> None:
++        """Delay exclusive pure branch epilogues until their residual join.
++
++        This is ordinary dependence scheduling.  A branch may move only when its exact
++        recognizer proves single-use pure tensor operations, and only when at least one
++        independent mesh operation lies between the branch and the join.  Moving it later
++        removes an f32 boundary tensor; all source scalar operations remain ordered inside
++        the eventual fused host traversal.
++        """
++        formed, refused = recognize_residual_epilogues(ops)
++        self.residual_epilogues = formed
++        self.residual_refusals = refused
++        mesh = set(mesh_ops)
++        for formation in formed:
++            add_index = self.source_indices[formation.residual_add]
++            deferred_producers: list[int] = []
++            for branch in formation.branches:
++                if branch.producer not in mesh:
++                    continue
++                branch_ops = sorted(set(branch.operations), key=self.source_indices.__getitem__)
++                last = max(self.source_indices[item] for item in branch_ops)
++                if not any(last < self.source_indices[item] < add_index for item in mesh_ops):
++                    continue
++                if any(item in self.deferred_residual_ops for item in branch_ops):
++                    raise LoweringDeclined(
++                        "one source operation belongs to two deferred residual branches",
++                        op="residual_epilogue")
++                self.deferred_residual_ops.update(branch_ops)
++                self.deferred_before.setdefault(formation.residual_add, []).extend(branch_ops)
++                deferred_producers.append(self.source_indices[branch.producer])
++            self.deferred_branch_producers[formation.residual_add] = tuple(deferred_producers)
++
++    def append_scheduled_host_op(self, pending: list[Operation], op: Operation) -> None:
++        """Append one host op, injecting any source-proven delayed branch first."""
++        pending.extend(self.deferred_before.get(op, ()))
++        pending.append(op)
++
++    def residual_receipt(self) -> dict[str, Any]:
++        formed = []
++        for item in self.residual_epilogues:
++            formed.append(item.receipt(
++                self.source_indices,
++                self.deferred_branch_producers.get(item.residual_add, ())))
++        return {
++            "schema": "target_neutral_residual_epilogue_formations_v1",
++            "formed": formed,
++            "refused": [
++                {"source_op_index": self.source_indices[item.operation],
++                 "reason": item.reason}
++                for item in self.residual_refusals
++            ],
++            "formed_site_count": len(formed),
++            "selected_site_count": len(self.selected_residual_epilogues),
++            "selected_residual_add_source_op_indices": [
++                self.source_indices[item.residual_add]
++                for item in self.selected_residual_epilogues],
++            "selection_refusals": [
++                {"residual_add_source_op_index": self.source_indices[item.residual_add],
++                 "reason": "f32 value has another same-segment consumer; dual-write is not sufficient"}
++                for item in self.residual_epilogues
++                if item not in self.selected_residual_epilogues],
++            "deferred_branch_count": sum(
++                len(row["deferred_branch_producers"]) for row in formed),
++            "selected_lowering": "single_exact_host_loop_i8_with_optional_live_f32_write",
++            "accelerator_semantics_changed": False,
++        }
++
+     # -- buffers -----------------------------------------------------------------------------
+     def declare(self, name: str, shape, dtype: str, role: str) -> str:
+         self.buffers[name] = Buffer(name, [int(d) for d in shape] or [1], dtype, role)
+@@ -419,7 +506,15 @@
+         result_values = list(returns[0].operands)
+ 
+         mesh_ops = [op for op in ops if mesh_eligible(op, self.lane_of)]
++        self.prepare_residual_schedule(ops, mesh_ops)
+         self.absorbed_by = _exclusive_absorbed(mesh_ops)
++        self._select_exact_native_epilogues(mesh_ops)
++        for producer, formation in self.native_epilogues.items():
++            owned = self._exclusive_epilogue_owners(producer, formation)
++            prior = self.absorbed_by.setdefault(producer, [])
++            self.absorbed_by[producer] = sorted(
++                set(prior) | owned,
++                key=lambda item: list(item.parent_block().ops).index(item))
+         absorbed = {item for items in self.absorbed_by.values() for item in items}
+         # Source-native host loops no longer expand in proportion to tensor size.
+ 
+@@ -450,12 +545,14 @@
+         for op in ops:
+             if op in absorbed:
+                 continue
++            if op in self.deferred_residual_ops:
++                continue
+             if id(op) in mesh_set:
+                 schedule.append(("host", pending))
+                 pending = []
+                 schedule.append(("mesh", op))
+             else:
+-                pending.append(op)
++                self.append_scheduled_host_op(pending, op)
+         schedule.append(("host", pending))
+ 
+         # Which values each host run must LEAVE in DRAM: whatever a later mesh op reads.
+@@ -476,6 +573,9 @@
+             if kind == "mesh":
+                 self._mesh(payload, in_dram)
+                 in_dram.add(payload.results[0])
++                formation = self.native_epilogues.get(payload)
++                if formation is not None:
++                    in_dram.add(formation.output)
+                 continue
+             host_ops = carry + [op for op in payload if op.name != "func.return"]
+             host_set = set(host_ops)
+@@ -520,9 +620,19 @@
+             scalar_ssa |= {value for value in defined_set
+                            if not isinstance(value.type, TensorType)}
+             in_dram |= {v for v, _ in outputs}
++            output_values = {value for value, _ in outputs}
++            residual_fusions = [
++                item for item in self.residual_epilogues
++                if (item.residual_add in host_set
++                    and item.output in output_values
++                    and (item.exposed_float in output_values
++                         or all(use.operation is item.quantize
++                                for use in item.exposed_float.uses)))]
++            self.selected_residual_epilogues.extend(residual_fusions)
+             segments.append(HostSegment(
+                 host_ops, inputs, outputs,
+-                sorted({_region_id(op) for op in host_ops if _region_id(op)})))
++                sorted({_region_id(op) for op in host_ops if _region_id(op)}),
++                residual_fusions))
+             segments[-1].source_op_indices = [self.source_indices[op] for op in host_ops]
+             self.ordered.append(segments[-1])
+ 
+@@ -532,6 +642,51 @@
+         return Plan("gemmini", self.buffers, self.ordered, cb,
+                     kernel_args(cb, list(self.order)))
+ 
++    def _select_exact_native_epilogues(self, mesh_ops: list[Operation]) -> None:
++        """Select only source chains proven equal to abstract native i8 narrowing."""
++        for producer in mesh_ops:
++            result = recognize_quantized_epilogue(producer)
++            if isinstance(result, EpilogueRefusal):
++                row = result.receipt(self.source_indices)
++                row["stage"] = "structural_formation"
++                self.epilogue_refusals.append(row)
++                continue
++            if not isinstance(result, QuantizedEpilogue):
++                continue
++            eligible, reason = exact_identity_narrowing(result)
++            if not eligible:
++                self.epilogue_refusals.append({
++                    "producer_source_op_index": self.source_indices[producer],
++                    "reason": reason,
++                    "stage": "exact_native_equivalence",
++                })
++                continue
++            self.native_epilogues[producer] = result
++
++    def _exclusive_epilogue_owners(
++            self, producer: Operation, formation: QuantizedEpilogue) -> set[Operation]:
++        """Return the complete, single-use source slice erased by native formation.
++
++        Besides the four linalg stages, the slice owns their tensor.empty initializers,
++        scalar splats/constants, and reciprocal computation.  Backward closure is admitted only
++        when every live use is already inside the slice, preventing a constant or derived tensor
++        shared with another branch from disappearing.
++        """
++        owned = set(formation.operations)
++        changed = True
++        while changed:
++            changed = False
++            for operation in tuple(owned):
++                for operand in operation.operands:
++                    candidate = operand.owner if isinstance(operand.owner, Operation) else None
++                    if (candidate is None or candidate is producer or candidate in owned
++                            or candidate.parent_block() is not self.block):
++                        continue
++                    if all(use.operation in owned for value in candidate.results for use in value.uses):
++                        owned.add(candidate)
++                        changed = True
++        return owned
++
+     # -- one mesh contraction ----------------------------------------------------------------
+     def _mesh(self, op: Operation, in_dram: set[SSAValue]) -> None:
+         from .plan import Contraction
+@@ -540,7 +695,9 @@
+         if spec is None or not _block_diagonal_is_safe(op, spec):
+             raise LoweringDeclined("integer contraction geometry changed after placement",
+                                    op="model_lane")
+-        lhs_v, rhs_v, out_v = spec.lhs, spec.rhs, spec.output
++        lhs_v, rhs_v = spec.lhs, spec.rhs
++        formation = self.native_epilogues.get(op)
++        out_v = formation.output if formation is not None else spec.output
+         for operand in (lhs_v, rhs_v):
+             if operand not in in_dram:
+                 raise LoweringDeclined(
+@@ -577,7 +734,7 @@
+         # Integer tensor arithmetic wraps at its declared width. Native narrowed
+         # accelerator readout saturates, so preserve a full accumulator and let
+         # submitted host code truncate it. This policy follows source types.
+-        modular = int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:])
++        modular = formation is None and int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:])
+         temporary = self.declare(f"{dst}_accumulator", [m, n], F.ACCUMULATOR_DTYPE,
+                                  self.INTERMEDIATE_ROLE) if modular else None
+         handle = self.residents.get(rhs)
+@@ -593,14 +750,21 @@
+                                            "rhs": handle, "dst": acc}})
+         self.commands.append({"opcode": "COMMIT",
+                               "operands": {"src": acc, "dst": temporary or dst},
+-                              "attributes": {"epilogue": [], "output_dtype":
++                              "attributes": {"epilogue": (["relu"] if formation is not None
++                                                            and formation.relu else []), "output_dtype":
+                                              F.ACCUMULATOR_DTYPE if modular else out_dtype}})
+         self.ordered.append(
+             Contraction(contraction_lhs, rhs, dst, m, k, n,
+                         lhs_row_elems=k, rhs_row_elems=n,
+-                        epilogue=Epilogue(stages=[], output_dtype=out_dtype,
+-                                          integer_output_policy="modular"),
++                        epilogue=Epilogue(
++                            stages=(["relu"] if formation is not None and formation.relu else []),
++                            output_dtype=out_dtype,
++                            integer_output_policy=("saturate" if formation is not None
++                                                   else "modular")),
+                         accumulator_temporary=temporary))
++        if formation is not None:
++            self.of_value[spec.output] = dst
++            self.of_value[formation.output] = dst
+         self.ordered[-1].source_op_indices = [
+             *[self.source_indices[item] for item in self.absorbed_by.get(op, [])],
+             self.source_indices[op],
+@@ -683,10 +847,51 @@
+                 "host_lane_segments": [
+                     {"regions": seg.regions,
+                      "reads": [n for _, n in seg.inputs],
+-                     "writes": [n for _, n in seg.outputs]} for seg in segments],
++                     "writes": [n for _, n in seg.outputs],
++                     "residual_fusion_sites": [
++                         self.source_indices[item.residual_add]
++                         for item in seg.residual_fusions]}
++                    for seg in segments],
++                "target_neutral_quantized_epilogues": self._epilogue_receipt(),
++                "target_neutral_residual_epilogues": self.residual_receipt(),
+             },
+         }
+ 
++    def _epilogue_receipt(self) -> dict[str, Any]:
++        formed = []
++        boundary_bytes = 0
++        source_ops = 0
++        for producer, formation in self.native_epilogues.items():
++            full_width_bytes = prod(formation.shape) * 4
++            boundary_bytes += full_width_bytes
++            source_ops += len(self.absorbed_by.get(producer, ()))
++            row = formation.receipt(self.source_indices)
++            row.update({
++                "selected_lowering": "native_identity_scale_i8_readout",
++                "logical_device_to_host_boundary_eliminated": 1,
++                "full_width_intermediate_bytes_eliminated": full_width_bytes,
++                "output_dma_bytes_before": full_width_bytes,
++                "output_dma_bytes_after": full_width_bytes // 4,
++                "output_dma_bytes_eliminated": full_width_bytes * 3 // 4,
++            })
++            formed.append(row)
++        return {
++            "schema": "target_neutral_quantized_epilogue_lowering_v2",
++            "formed": formed,
++            "refused": list(self.epilogue_refusals),
++            "selected_count": len(formed),
++            "source_ops_absorbed": source_ops,
++            "full_width_intermediate_bytes_eliminated": boundary_bytes,
++            "logical_device_to_host_boundaries_eliminated": len(formed),
++            "output_dma_bytes_eliminated": boundary_bytes * 3 // 4,
++            # Physical fence count is a schedule-level fact.  A terminal result still needs the
++            # final completion fence, so formation alone must never claim one disappeared.
++            "physical_fences_eliminated": 0,
++            "numeric_contract": "exact_for_every_i32_accumulator",
++            "approximation": False,
++        }
++
+ 
+ def build(module, wl: LinalgWorkload) -> Plan:
+     return MixedBuilder(module, wl).build()
++
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/native_conv_selector.py b/compiler/mlir_oot/lowering/native_conv_selector.py
+--- a/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 04:08:23.142282950 -0700
++++ b/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 06:49:27.922295904 -0700
+@@ -6,10 +6,12 @@
+ """
+ from __future__ import annotations
+ 
++from ..tables import loop_conv
+ from ..tables import rtl_facts as F
+ 
+ 
+-def select_native_loop_conv(c, activation, weight, dst, *, epilogue_stages=(), bias=None
++def select_native_loop_conv(c, activation, weight, dst, *, epilogue_stages=(), bias=None,
++                            bias_buffer=None, acc_scale=1.0
+                             ) -> tuple[bool, str]:
+     """Return whether ``c`` is exactly representable by the pinned LOOP_CONV_WS contract."""
+     if not F.HAS_LOOP_CONV:
+@@ -20,10 +22,31 @@
+             or dst.dtype != F.OPERAND_DTYPE):
+         # LoopConvSt hardwires read_full=false; accepting i32 would silently saturate.
+         return False, "loop_conv_store_is_narrow_only"
+-    if epilogue_stages or bias is not None:
+-        # The first compiler-owned route is the exact bare-convolution subset.  Rich epilogues
+-        # remain on Contraction until their scale/activation/bias semantics are represented here.
+-        return False, "native_loop_conv_epilogue_not_yet_represented"
++    stages = list(epilogue_stages)
++    allowed = {"bias", "bias_add", "acc_scale", "relu"}
++    if any(stage not in allowed for stage in stages):
++        return False, "native_loop_conv_epilogue_not_representable"
++    ordered = ["bias" if stage == "bias_add" else stage for stage in stages]
++    rank = {"bias": 0, "acc_scale": 1, "relu": 2}
++    if len(set(ordered)) != len(ordered) or ordered != sorted(ordered, key=rank.__getitem__):
++        # LOOP_CONV initializes accumulator rows from LOAD3, then the store path scales and finally
++        # applies activation. Membership in the stage set is insufficient: silently accepting a
++        # different source order changes floating-point rounding and activation semantics.
++        return False, "native_loop_conv_epilogue_order_must_be_bias_scale_activation"
++    bias_stages = [i for i, stage in enumerate(stages) if stage in {"bias", "bias_add"}]
++    if bias_stages and (len(bias_stages) != 1 or bias_stages[0] != 0):
++        return False, "native_loop_conv_bias_must_initialize_accumulator"
++    if bool(bias_stages) != (bias is not None):
++        return False, "native_loop_conv_bias_stage_and_operand_disagree"
++    if bias is not None:
++        if bias_buffer is None or bias_buffer.dtype != F.ACCUMULATOR_DTYPE:
++            return False, "native_loop_conv_bias_must_be_i32_accumulator_units"
++        if bias_buffer.shape != [c.co]:
++            return False, "native_loop_conv_bias_shape_mismatch"
++    if "acc_scale" not in stages and float(acc_scale) != 1.0:
++        return False, "native_loop_conv_scale_without_acc_scale_stage"
++    if float(acc_scale) <= 0.0:
++        return False, "native_loop_conv_acc_scale_must_be_positive"
+     if (c.input_layout, c.weight_layout, c.output_layout) != ("NHWC", "HWIO", "NHWC"):
+         return False, "native_layout_contract_not_satisfied"
+     if c.kh != c.kw or c.stride_h != c.stride_w or c.dilation_h != c.dilation_w:
+@@ -53,4 +76,15 @@
+         return False, "kernel_dilation_not_representable"
+     if c.kh * c.kw * c.ci * 128 * 128 > (1 << 31) - 1:
+         return False, "native_loop_conv_accumulator_may_overflow_i32"
++    # Every native descriptor uses a zero bias load to overwrite its accumulator tile.  This
++    # makes a compiled kernel repeatable across warm and measured invocations: ``no_bias`` leaves
++    # LOOP_CONV_WS's persistent accumulator rows live and a second invocation otherwise adds the
++    # previous result.  An externally split reduction could not both initialize its first slice
++    # and retain the partial sum in the same rotating accumulator half, so fail closed unless the
++    # target-derived capacity selector keeps the complete reduction in one descriptor.
++    _b, _r, _c, _o, krows, kcols, kchs = loop_conv.auto_tile(
++        batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
++        stride=c.stride_h, kernel_dilation=c.dilation_h)
++    if (krows, kcols, kchs) != (c.kh, c.kw, c.ci):
++        return False, "native_loop_conv_reduction_not_resident"
+     return True, "selected"
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/plan.py b/compiler/mlir_oot/lowering/plan.py
+--- a/compiler/mlir_oot/lowering/plan.py	2026-09-08 04:11:09.216536547 -0700
++++ b/compiler/mlir_oot/lowering/plan.py	2026-09-08 07:07:17.400265001 -0700
+@@ -7,10 +7,15 @@
+ from __future__ import annotations
+ 
+ from dataclasses import dataclass, field
++from math import prod
+ from typing import Any
+ 
+ from ..frontend.reader import TensorDecl, Workload
+ from ..tables import rtl_facts as _F
++from .global_encoding import (
++    Encoding, EncodingOperation, EncodingProblem, OperationAlternative, TensorBoundary,
++    solve as solve_global_encodings,
++)
+ from .native_conv_selector import select_native_loop_conv
+ from .source_conv_plan import Convolution
+ 
+@@ -63,6 +68,7 @@
+     dtype: str
+     role: str                 # input | weight | bias | output | scratch
+     storage_encoding: dict[str, Any] | None = None
++    zero_initialized: bool = False
+ 
+     @property
+     def pitch(self) -> int:
+@@ -181,11 +187,24 @@
+ 
+ def _epilogue_from(attrs: dict[str, Any]) -> Epilogue:
+     stages = [str(s) for s in (attrs.get("epilogue") or [])]
++    normalized = ["bias" if stage == "bias_add" else stage for stage in stages]
++    if len(set(normalized)) != len(normalized):
++        raise LoweringDeclined("epilogue stages must be unique", op="epilogue")
++    bias = attrs.get("bias")
++    bias_positions = [index for index, stage in enumerate(normalized) if stage == "bias"]
++    if bool(bias) != bool(bias_positions):
++        raise LoweringDeclined(
++            "bias operand and exactly one bias epilogue stage must appear together",
++            op="epilogue")
++    if bias_positions and bias_positions != [0]:
++        raise LoweringDeclined(
++            "bias epilogue stage must initialize the accumulator before later stages",
++            op="epilogue")
+     e = Epilogue(
+         stages=stages,
+         output_dtype=str(attrs.get("output_dtype", "i32")),
+         acc_scale=float(attrs.get("acc_scale", 1.0)),
+-        bias=attrs.get("bias"),
++        bias=bias,
+     )
+     if "requant_shift" in attrs:
+         e.requant_shift = int(attrs["requant_shift"])
+@@ -275,6 +294,11 @@
+         #: and the DECLARED shape each one was interpreted under before the view was taken
+         self._reshaped: dict[str, list[int]] = {}
+         self._as_declared: dict[str, list[int]] = {}
++        self._consumed_names = {name for node in wl.nodes for name in node.ins}
++        self.global_encoding = _plan_iface_encodings(wl)
++        self._encoding_operation = {
++            entry["name"]: entry for entry in self.global_encoding.get("operations", [])
++        }
+ 
+     # -- buffer bookkeeping ------------------------------------------------------------------
+     def declare(self, name: str, shape: list[int], dtype: str, role: str) -> Buffer:
+@@ -317,6 +341,7 @@
+             self.declare(decl.name, decl.shape, decl.dtype, decl.role)
+         for node in self.wl.nodes:
+             self._node(node)
++        self.params["global_encoding"] = self.global_encoding
+         cb = self._command_buffer()
+         return Plan(self.wl.target or "gemmini", self.buffers, self.tasks, cb,
+                     kernel_args(cb, self.tensor_order))
+@@ -454,16 +479,28 @@
+                 f"convolution's derived output extent is [{ho}, {wo}]",
+                 op="conv2d", shape=[ho, wo])
+         rows, kdim = bn * ho * wo, kh * kw * ci
+-        if weight.shape != [kdim, co]:
++        if weight.shape not in ([kdim, co], [kh, kw, ci, co]):
+             raise LoweringDeclined(
+-                f"conv2d weight {weight.shape} is not the [{kdim}, {co}] im2col packing",
++                f"conv2d weight {weight.shape} is neither [{kdim}, {co}] flattened-HWIO nor "
++                f"[{kh}, {kw}, {ci}, {co}] HWIO",
+                 op="conv2d", shape=weight.shape)
+-        out_shape = epilogue_out_shape(rows, co, e)
+-        if out_shape != node.out_shape:
++        flattened_out_shape = epilogue_out_shape(rows, co, e)
++        logical_nhwc_shape = [bn, ho, wo, co] if not e.has_pool else None
++        legal_out_shapes = [flattened_out_shape]
++        if logical_nhwc_shape is not None:
++            legal_out_shapes.append(logical_nhwc_shape)
++        if node.out_shape not in legal_out_shapes:
+             raise LoweringDeclined(
+-                f"conv2d result {node.out_shape} disagrees with the derived shape {out_shape}",
++                f"conv2d result {node.out_shape} is neither flattened {flattened_out_shape} nor "
++                f"logical NHWC {logical_nhwc_shape}",
+                 op="conv2d", shape=node.out_shape)
+-        candidate_dst = Buffer(node.name, out_shape, e.output_dtype, "output")
++        out_shape = list(node.out_shape)
++        # Values that exist only between compiler-owned operations are internal allocation
++        # objects, not new caller ABI arguments.  Keeping the logical name lets ownership,
++        # hazards, encodings and lifetimes remain auditable while the LLVM emitter gives the
++        # value internal storage.
++        result_role = "scratch" if node.name in self._consumed_names else "output"
++        candidate_dst = Buffer(node.name, out_shape, e.output_dtype, result_role)
+ 
+         # LOOP_CONV_WS consumes the interface's existing NHWC activation, flattened-HWIO
+         # [KH*KW*CI, CO] weight and flattened-NHWC [N*HO*WO, CO] result directly.  Select it
+@@ -476,25 +513,40 @@
+             stride[0], stride[1], dilation[0], dilation[1],
+             padding[0], padding[1], padding[2], padding[3],
+             input_layout="NHWC", weight_layout="HWIO", output_layout="NHWC",
+-            output_dtype=e.output_dtype,
++            output_dtype=e.output_dtype, bias=e.bias, acc_scale=e.acc_scale,
++            relu="relu" in e.stages,
+         )
+         native_loop_conv, _reason = select_native_loop_conv(
+             candidate, ifm, weight, candidate_dst,
+-            epilogue_stages=e.stages, bias=e.bias)
++            epilogue_stages=e.stages, bias=e.bias,
++            bias_buffer=self.buffers.get(e.bias) if e.bias is not None else None,
++            acc_scale=e.acc_scale)
++        global_choice = self._encoding_operation.get(node.name, {}).get("selected")
++        native_loop_conv = native_loop_conv and global_choice in (None, "native_loop_conv")
+         if native_loop_conv:
+-            self.declare(node.name, out_shape, e.output_dtype, "output")
++            self.declare(node.name, out_shape, e.output_dtype, result_role)
+             self.params.setdefault("convolution_lowering", {
+                 "selection_policy": "capability_geometry_layout_semantics_v1",
+                 "target_has_loop_conv": bool(_F.HAS_LOOP_CONV),
+                 "target_has_im2col": bool(_F.HAS_IM2COL),
+             })
++            command_operands = {"ifm": ifm.name, "weight": weight_name,
++                                "dst": node.name}
++            command_attributes = {
++                "kernel": kernel, "stride": stride, "padding": padding,
++                "dilation": dilation, "layout": "nhwc", "output_dtype": e.output_dtype,
++            }
++            if e.stages:
++                command_attributes["epilogue"] = list(e.stages)
++            if "acc_scale" in e.stages:
++                command_attributes["acc_scale"] = e.acc_scale
++            if e.bias is not None:
++                command_operands["bias"] = e.bias
++                command_attributes["bias"] = e.bias
+             self.commands.append({
+                 "opcode": "CONV2D",
+-                "operands": {"ifm": ifm.name, "weight": weight_name, "dst": node.name},
+-                "attributes": {
+-                    "kernel": kernel, "stride": stride, "padding": padding,
+-                    "dilation": dilation, "layout": "nhwc", "output_dtype": e.output_dtype,
+-                },
++                "operands": command_operands,
++                "attributes": command_attributes,
+             })
+             self.tasks.append(candidate)
+             return
+@@ -503,7 +555,7 @@
+         self.params.setdefault("im2col_recipes", []).append(
+             {"source": ifm.name, "target": im2col.name, "kh": kh, "kw": kw, "ci": ci,
+              "stride": stride, "padding": padding, "dilation": dilation, "layout": layout})
+-        self.declare(node.name, out_shape, e.output_dtype, "output")
++        self.declare(node.name, out_shape, e.output_dtype, result_role)
+         acc = f"acc_{node.name}"
+         handle = node.ins[1]
+         if handle not in self.residents:
+@@ -703,11 +755,208 @@
+                               "backend": "mlir_oot_xdsl_gemmini",
+                               "tensors": tensors,
+                               "commands": self.commands}
++        if len(self.tasks) > 1 or any(buf.role == "intermediate"
++                                     for buf in self.buffers.values()):
++            storage_encodings: dict[str, dict[str, Any]] = {}
++            for name, buf in self.buffers.items():
++                shape = list(buf.shape)
++                pitch = row_pitch(shape[-1])
++                strides = [1] * len(shape)
++                if len(shape) > 1:
++                    strides[-2] = pitch
++                    for axis in range(len(shape) - 3, -1, -1):
++                        strides[axis] = strides[axis + 1] * shape[axis + 1]
++                encoding = {
++                    "schema": "grouped_axes_storage_v1", "logical_shape": shape,
++                    "dtype": buf.dtype, "axis_groups": [[axis] for axis in range(len(shape))],
++                    "physical_shape": shape, "strides_elements": strides,
++                    "storage_elements": prod(shape[:-1]) * pitch,
++                    "offset_elements": 0,
++                }
++                buf.storage_encoding = encoding
++                # The command-buffer storage contract covers caller-visible tensors exactly.
++                # Internal allocations carry the same encoding on the compiler Plan but are
++                # intentionally absent from both the public tensor table and kernel ABI.
++                if name in self.tensor_order:
++                    storage_encodings[name] = encoding
++            self.params["storage_encodings"] = storage_encodings
++            cb["kernel_abi"] = {
++                "kind": "whole_program",
++                "args": [
++                    {"tensor": name,
++                     "access": ("write" if self.buffers[name].role in
++                                ("output", "intermediate") else "read")}
++                    for name in self.tensor_order
++                ],
++                "outputs": [name for name in self.tensor_order
++                            if self.buffers[name].role == "output"],
++            }
++            task_rows = []
++            for task in self.tasks:
++                if isinstance(task, Convolution):
++                    kind, reads, writes = "convolution", [task.activation, task.weight], [task.dst]
++                    if task.bias:
++                        reads.append(task.bias)
++                elif isinstance(task, Contraction):
++                    kind, reads, writes = "contraction", [task.lhs, task.rhs], [task.dst]
++                    if task.epilogue.bias:
++                        reads.append(task.epilogue.bias)
++                    if task.accumulator_temporary:
++                        writes.append(task.accumulator_temporary)
++                elif isinstance(task, Movement):
++                    kind, reads, writes = "movement", [task.src], [task.dst]
++                elif isinstance(task, Transpose):
++                    kind, reads, writes = "transpose", [task.src], [task.dst]
++                elif isinstance(task, HostBiasAdd):
++                    kind, reads, writes = "host_bias_add", [task.src, task.bias], [task.dst]
++                else:  # pragma: no cover - every task family is enumerated above
++                    raise LoweringDeclined(
++                        f"global encoding has no access model for {type(task).__name__}",
++                        op="global_encoding",
++                    )
++                task_rows.append({"task_index": len(task_rows), "kind": kind,
++                                  "reads": reads, "writes": writes})
++            self.params["global_program_plan"] = {
++                "schema": "iface_whole_program_plan_v1", "tasks": task_rows,
++            }
+         if self.params:
+             cb["params"] = dict(self.params)
+         return cb
+ 
+ 
++def _plan_iface_encodings(wl: Workload) -> dict[str, Any]:
++    """Adapt public convolution nodes to the target-neutral encoding solver.
++
++    The public convolution contract already names NHWC semantics.  This adapter's important job
++    is therefore not to guess a layout: it proves that a producer's narrow NHWC buffer can remain
++    the next convolution's physical input, instead of forcing each operation through an isolated
++    flattened/im2col boundary.
++    """
++    resident: dict[str, str] = {}
++    produced_by: dict[str, int] = {}
++    consumers: dict[str, list[int]] = {}
++    conv_nodes: list[tuple[int, Any, str]] = []
++    for index, node in enumerate(wl.nodes):
++        if node.kind == "resident_pack":
++            resident[node.name] = node.ins[0]
++        if node.name:
++            produced_by[node.name] = index
++        for operand in node.ins:
++            consumers.setdefault(resident.get(operand, operand), []).append(index)
++        if node.kind == "conv2d":
++            conv_nodes.append((index, node, resident.get(node.ins[1], node.ins[1])))
++
++    if not conv_nodes:
++        return {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": "not_applicable",
++            "reason": "no_convolution_encoding_region",
++            "cycle_prediction_claimed": False,
++        }
++
++    encodings = {
++        "NHWC": Encoding("NHWC", ("N", "H", "W", "C"), _F.DIM),
++        "NCHW": Encoding("NCHW", ("N", "C", "H", "W"), _F.DIM),
++        "HWIO": Encoding("HWIO", ("H", "W", "I", "O"), _F.DIM),
++        "OIHW": Encoding("OIHW", ("O", "I", "H", "W"), _F.DIM),
++    }
++    tensor_facts: dict[str, TensorBoundary] = {}
++    operations: list[EncodingOperation] = []
++    conv_indices = {index for index, _, _ in conv_nodes}
++    for index, node, weight_name in conv_nodes:
++        ifm_name = node.ins[0]
++        ifm_decl = wl.tensors.get(ifm_name)
++        if ifm_decl is not None:
++            ifm_shape, ifm_dtype, external_input = ifm_decl.shape, ifm_decl.dtype, True
++        else:
++            producer = next((prior for prior in wl.nodes if prior.name == ifm_name), None)
++            if producer is None:
++                raise LoweringDeclined(f"global encoding cannot find {ifm_name!r}", op="conv2d")
++            ifm_shape, ifm_dtype = producer.out_shape, producer.out_dtype
++            # A value produced outside this encoding region is an explicit region input.  It has
++            # no producer in this solver problem; claiming otherwise would make an unrelated
++            # movement/elementwise op look like an unknown encoding alternative.
++            external_input = produced_by.get(ifm_name) not in conv_indices
++        kernel = [int(value) for value in node.attrs["kernel"]]
++        kh, kw, ci, co = kernel
++        stride = [int(value) for value in node.attrs.get("stride", [1, 1])]
++        padding = [int(value) for value in node.attrs.get("padding", [0, 0, 0, 0])]
++        dilation = [int(value) for value in node.attrs.get("dilation", [1, 1])]
++        if len(ifm_shape) != 4:
++            # The ordinary lowering owns the diagnostic.  This receipt simply refuses to invent
++            # an encoding for a non-NHWC rank.
++            return {
++                "schema": "target_neutral_global_encoding_v1", "status": "refused",
++                "reason": "activation_rank_is_not_four", "operation": node.name,
++                "cycle_prediction_claimed": False,
++            }
++        bn, hi, wi, actual_ci = [int(value) for value in ifm_shape]
++        ho, wo = conv_out_dims(hi, wi, kh, kw, stride, padding, dilation)
++        output_extents = {"N": bn, "H": ho, "W": wo, "C": co}
++        ifm_extents = {"N": bn, "H": hi, "W": wi, "C": actual_ci}
++        weight_extents = {"H": kh, "W": kw, "I": ci, "O": co}
++
++        tensor_facts[ifm_name] = TensorBoundary(
++            ifm_name, ifm_extents, ifm_dtype, "NHWC",
++            (produced_by.get(ifm_name)
++             if produced_by.get(ifm_name) in conv_indices else None),
++            tuple(sorted(set(c for c in consumers.get(ifm_name, []) if c in conv_indices))),
++            external_input=external_input,
++            external_output=any(c not in conv_indices for c in consumers.get(ifm_name, ())),
++        )
++        weight_decl = wl.tensors[weight_name]
++        tensor_facts[weight_name] = TensorBoundary(
++            weight_name, weight_extents, weight_decl.dtype, "HWIO", None, (index,),
++            external_input=True,
++        )
++        tensor_facts[node.name] = TensorBoundary(
++            node.name, output_extents, node.out_dtype, "NHWC", index,
++            tuple(sorted(set(c for c in consumers.get(node.name, []) if c in conv_indices))),
++            external_output=(not consumers.get(node.name)
++                             or any(c not in conv_indices for c in consumers.get(node.name, ()))),
++        )
++
++        e = _epilogue_from(node.attrs)
++        candidate = Convolution(
++            ifm_name, weight_name, node.name, bn, ci, hi, wi, co, kh, kw, ho, wo,
++            stride[0], stride[1], dilation[0], dilation[1], *padding,
++            input_layout="NHWC", weight_layout="HWIO", output_layout="NHWC",
++            output_dtype=e.output_dtype, bias=e.bias, acc_scale=e.acc_scale,
++            relu="relu" in e.stages,
++        )
++        activation = Buffer(ifm_name, list(ifm_shape), ifm_dtype, "input")
++        weight = Buffer(weight_name, list(weight_decl.shape), weight_decl.dtype, "weight")
++        destination = Buffer(node.name, list(node.out_shape), node.out_dtype, "output")
++        bias_decl = wl.tensors.get(e.bias) if e.bias is not None else None
++        bias_buffer = (Buffer(e.bias, list(bias_decl.shape), bias_decl.dtype, "bias")
++                       if bias_decl is not None else None)
++        eligible, refusal = select_native_loop_conv(
++            candidate, activation, weight, destination,
++            epilogue_stages=e.stages, bias=e.bias,
++            bias_buffer=bias_buffer, acc_scale=e.acc_scale,
++        )
++        rows, kdim = bn * ho * wo, kh * kw * ci
++        native = OperationAlternative(
++            "native_loop_conv",
++            {ifm_name: "NHWC", weight_name: "HWIO"}, {node.name: "NHWC"},
++            materialized_bytes=0, exact=eligible, refusal="" if eligible else refusal,
++            capability="native_convolution",
++        )
++        fallback = OperationAlternative(
++            "row_streamed_im2col",
++            {ifm_name: "NHWC", weight_name: "HWIO"}, {node.name: "NHWC"},
++            # One compiler-generated im2col matrix write and one accelerator read.  This is a
++            # structural byte count, not measured DRAM traffic.
++            materialized_bytes=2 * rows * kdim * DTYPE_BYTES[ifm_dtype],
++            capability="generic_contraction",
++        )
++        operations.append(EncodingOperation(index, node.name, "conv2d", (native, fallback)))
++
++    return solve_global_encodings(EncodingProblem(
++        tuple(tensor_facts[name] for name in sorted(tensor_facts)), tuple(operations), encodings,
++    ))
++
++
+ def _as_2d(shape: list[int]) -> tuple[int, int]:
+     if len(shape) == 2:
+         return int(shape[0]), int(shape[1])
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/schedule.py b/compiler/mlir_oot/lowering/schedule.py
+--- a/compiler/mlir_oot/lowering/schedule.py	2026-09-08 04:06:44.096341814 -0700
++++ b/compiler/mlir_oot/lowering/schedule.py	2026-09-08 07:08:56.704098409 -0700
+@@ -77,7 +77,13 @@
+     extent, but it commutes with the monotone stages before it, so those still go to the store
+     path and the pool then runs over the already-narrowed values.
+     """
+-    stages = [s for s in e.stages if s not in ("bias_add", "bias")]
++    normalized = ["bias" if stage == "bias_add" else stage for stage in e.stages]
++    bias_positions = [index for index, stage in enumerate(normalized) if stage == "bias"]
++    if bias_positions and (e.bias is None or bias_positions != [0]):
++        raise LoweringDeclined(
++            "a declared bias stage must occur exactly once as accumulator initialization",
++            op="epilogue")
++    stages = [s for s in normalized if s != "bias"]
+     pool = "maxpool" in stages
+     pre = [s for s in stages if s != "maxpool"]
+     # The store path has exactly two readout widths: the accumulator's own dtype (full width, raw)
+@@ -85,8 +91,9 @@
+     # width has to be produced by the CPU lane from the full-width readout.
+     narrowing = e.output_dtype == F.OPERAND_DTYPE
+     full_width = e.output_dtype == F.ACCUMULATOR_DTYPE
++    ordered_native_pre = pre in ([], ["acc_scale"], ["relu"], ["acc_scale", "relu"])
+     if (narrowing and e.integer_output_policy != "modular"
+-            and set(pre) <= {"acc_scale", "relu"} and e.acc_scale > 0.0):
++            and ordered_native_pre and e.acc_scale > 0.0):
+         native_stages, host_stages, stage_dtype = pre, [], e.output_dtype
+     else:
+         native_stages, host_stages, stage_dtype = [], pre, F.ACCUMULATOR_DTYPE
+@@ -123,10 +130,12 @@
+     def emit(self, __kind: str, __bufs: list[str] | None = None, **attrs) -> None:
+         self.instrs.append(Instr(__kind, attrs, list(__bufs or [])))
+ 
+-    def stage_buffer(self, shape: list[int], dtype: str, hint: str) -> Buffer:
++    def stage_buffer(self, shape: list[int], dtype: str, hint: str, *,
++                     zero_initialized: bool = False) -> Buffer:
+         name = f"__stage_{self._stage_id}_{hint}"
+         self._stage_id += 1
+-        buf = Buffer(name, list(shape), dtype, "scratch")
++        buf = Buffer(name, list(shape), dtype, "scratch",
++                     zero_initialized=zero_initialized)
+         self.staging[name] = buf
+         self.plan.buffers[name] = buf
+         return buf
+@@ -190,12 +199,19 @@
+                         device_writes.clear()
+                     host_writes.update(writes)
+                 else:
+-                    hazards = (reads | writes) & host_writes
++                    host_hazards = (reads | writes) & host_writes
++                    device_hazards = ((reads & device_writes)
++                                      | (writes & (device_reads | device_writes)))
++                    hazards = host_hazards | device_hazards
+                     if hazards:
+                         self.emit("fence")
+                         task_record["boundary_sync"] = {
+-                            "direction": "host_to_device", "tensors": sorted(hazards)}
++                            "direction": ("host_to_device" if host_hazards
++                                          else "device_dependency"),
++                            "tensors": sorted(hazards)}
+                         host_writes.clear()
++                        device_reads.clear()
++                        device_writes.clear()
+                     device_reads.update(reads)
+                     device_writes.update(writes)
+             if isinstance(task, Contraction):
+@@ -442,9 +458,10 @@
+         if native:
+             self.native_convolution(c)
+             return
+-        if activation.dtype != "i8" or weight.dtype != "i8" or dst.dtype != "i32":
++        if (activation.dtype != "i8" or weight.dtype != "i8"
++                or dst.dtype != c.output_dtype or c.output_dtype not in ("i8", "i32")):
+             raise LoweringDeclined(
+-                f"streamed conv requires i8 x i8 -> i32; got {activation.dtype} x "
++                f"streamed conv requires i8 x i8 -> i8/i32; got {activation.dtype} x "
+                 f"{weight.dtype} -> {dst.dtype}", op="conv2d")
+         kdim = c.ci * c.kh * c.kw
+         if weight.shape != [c.co, kdim]:
+@@ -458,7 +475,15 @@
+         out_w_pitch = row_pitch(c.wo)
+         out_plane_pitch = c.ho * out_w_pitch
+         mt, nt, kt = _ceil_div(c.co, DIM), _ceil_div(c.wo, DIM), _ceil_div(kdim, DIM)
+-        bm, bn, bk = loop_ws.block_shape(mt, nt, kt)
++        if c.output_dtype == F.OPERAND_DTYPE:
++            native_shape = loop_ws.reduction_resident_block_shape(mt, nt, kt)
++            if native_shape is None:
++                raise LoweringDeclined(
++                    "native narrow convolution cannot spill a partial i8 reduction",
++                    op="conv2d", shape=[c.co, kdim, c.wo])
++            bm, bn, bk = native_shape
++        else:
++            bm, bn, bk = loop_ws.block_shape(mt, nt, kt)
+         for batch in range(c.batch):
+             for oy in range(c.ho):
+                 if packed is None:
+@@ -492,7 +517,9 @@
+                             rows = min(bm * DIM, c.co - m0 * DIM)
+                             cols = min(bn * DIM, c.wo - n0 * DIM)
+                             depth = min(bk * DIM, kdim - k0 * DIM)
+-                            c_offset = (out_base + m0 * DIM * out_plane_pitch + n0 * DIM) * DTYPE_BYTES["i32"]
++                            out_bytes = DTYPE_BYTES[c.output_dtype]
++                            c_offset = (out_base + m0 * DIM * out_plane_pitch
++                                        + n0 * DIM) * out_bytes
+                             self.emit(
+                                 "loop_ws_block", [c.weight, rhs_name, c.dst],
+                                 rows=rows, cols=cols, depth=depth,
+@@ -501,13 +528,27 @@
+                                 a_offset=m0 * DIM * lhs_pitch + k0 * DIM,
+                                 b_offset=rhs_base + k0 * DIM * rhs_pitch + n0 * DIM,
+                                 c_offset=c_offset, d_offset=c_offset,
+-                                accumulate=k0 != 0, full_c=True,
++                                accumulate=k0 != 0,
++                                full_c=c.output_dtype == F.ACCUMULATOR_DTYPE,
++                                c_dtype=c.output_dtype,
++                                acc_act=isa.RELU if c.relu else isa.NO_ACTIVATION,
++                                acc_scale=c.acc_scale,
+                                 implementation="gemmini_loop_ws")
+ 
+     def native_convolution_eligibility(self, c: Convolution) -> tuple[bool, str]:
+         """Whether the source semantics and physical encodings fit LOOP_CONV_WS exactly."""
+         activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
+-        return select_native_loop_conv(c, activation, weight, dst)
++        # The hardware order is accumulator bias initialization, store scaling, activation.
++        # Preserve that exact source stage order in the selector input; mere membership is not
++        # enough because scale/ReLU do not commute for negative values.
++        stages = (["bias"] if c.bias else [])
++        if c.acc_scale != 1.0:
++            stages.append("acc_scale")
++        if c.relu:
++            stages.append("relu")
++        return select_native_loop_conv(
++            c, activation, weight, dst, epilogue_stages=stages, bias=c.bias,
++            bias_buffer=self.buf(c.bias) if c.bias else None, acc_scale=c.acc_scale)
+ 
+     def native_convolution(self, c: Convolution) -> None:
+         """Tile an eligible NHWC/HWIO convolution into complete LOOP_CONV_WS descriptors."""
+@@ -515,8 +556,24 @@
+         batches, porows, pocols, pochs, krows, kcols, kchs = loop_conv.auto_tile(
+             batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
+             stride=c.stride_h, kernel_dilation=c.dilation_h)
++        if (krows, kcols, kchs) != (c.kh, c.kw, c.ci):  # selector is the public fail-closed gate
++            raise LoweringDeclined(
++                "native LOOP_CONV_WS cannot retain a split reduction while also initializing "
++                "the accumulator for repeatable warm invocations", op="conv2d")
++        # LOOP_CONV_WS computes into persistent accumulator rows.  A null bias pointer skips the
++        # overwriting load, which makes a second call accumulate onto the first call's result.
++        # This internal read-only i32 BSS is zero initialized by the executable loader and is
++        # never written, so every descriptor starts from exact zero without changing the ABI.
++        bias_init = (self.buf(c.bias) if c.bias else self.stage_buffer(
++            [c.co], F.ACCUMULATOR_DTYPE, "native_zero_bias", zero_initialized=True))
+         in_stride, weight_stride, out_stride = activation.pitch, weight.pitch, dst.pitch
+-        self.config_st(stride=out_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0)
++        st = {"stride": out_stride,
++              "acc_act": isa.RELU if c.relu else isa.NO_ACTIVATION,
++              "acc_scale": c.acc_scale}
++        # CONFIG_ST is global asynchronous state.  Retire a prior readout before changing it.
++        if self._st_key is not None and tuple(sorted(st.items())) != self._st_key:
++            self.emit("fence")
++        self.config_st(**st)
+         self.config_ex(dataflow=isa.WEIGHT_STATIONARY, act=isa.NO_ACTIVATION,
+                        acc_scale=1.0, a_stride=c.stride_h, c_stride=1)
+         for b in range(0, c.batch, batches):
+@@ -545,8 +602,10 @@
+                                     final = (krow + tile_kr == c.kh
+                                              and kcol + tile_kc == c.kw
+                                              and kch + tile_kch == c.ci)
++                                    first = krow == 0 and kcol == 0 and kch == 0
+                                     self.emit(
+-                                        "loop_conv_ws", [c.activation, c.weight, c.dst],
++                                        "loop_conv_ws",
++                                        [c.activation, c.weight, c.dst, bias_init.name],
+                                         batch_size=c.batch, in_row_dim=c.hi,
+                                         in_col_dim=c.wi, in_channels=c.ci,
+                                         out_channels=c.co, out_row_dim=c.ho,
+@@ -561,7 +620,7 @@
+                                         plpad=0, prpad=0, pupad=0, pdpad=0,
+                                         orows=tile_or, ocols=tile_oc,
+                                         in_stride=in_stride, weight_stride=weight_stride,
+-                                        out_stride=out_stride, no_bias=True, no_pool=True,
++                                        out_stride=out_stride, no_bias=False, no_pool=True,
+                                         downsample=False, wrot180=False, input_dilated=False,
+                                         activation=isa.NO_ACTIVATION,
+                                         trans_output_1203=False, trans_weight_1203=False,
+@@ -578,7 +637,10 @@
+                                         output_offset=((b * c.ho * c.wo
+                                                         + orow * c.wo + ocol)
+                                                        * out_stride + poch),
++                                        bias_offset=poch * DTYPE_BYTES["i32"],
+                                         write_output=final,
++                                        accumulator_initialization=(
++                                            "i32_bias" if c.bias else "read_only_zero_bias"),
+                                         implementation="gemmini_loop_conv_ws")
+ 
+     def contraction(self, c: Contraction) -> None:
+@@ -618,12 +680,10 @@
+         # descriptor owns one capacity-bounded [M,N,K] block; later K blocks read the prior i32
+         # partial sum through D, preserving the source contraction while moving the repetitive
+         # issue loop from the host instruction stream to the endpoint sequencer.
+-        use_loop_ws = (
+-            not e.bias
+-            and out_dtype == F.ACCUMULATOR_DTYPE
+-            and acc_act == isa.NO_ACTIVATION
+-            and acc_scale == 1.0
+-        )
++        use_loop_ws = (not e.bias and (
++            (out_dtype == F.ACCUMULATOR_DTYPE
++             and acc_act == isa.NO_ACTIVATION and acc_scale == 1.0)
++            or (mode == "native" and out_dtype == F.OPERAND_DTYPE)))
+         resident_loop_shape = (
+             loop_ws.reduction_resident_block_shape(mt, nt, kt) if use_loop_ws else None
+         )
+@@ -636,7 +696,7 @@
+                         cols = min(bn * DIM, c.n - n0 * DIM)
+                         depth = min(bk * DIM, c.k - k0 * DIM)
+                         c_offset = ((out_row_offset + m0 * DIM) * out_row_elems
+-                                    + n0 * DIM) * DTYPE_BYTES[F.ACCUMULATOR_DTYPE]
++                                    + n0 * DIM) * out_bytes
+                         self.emit(
+                             "loop_ws_block", [c.lhs, c.rhs, out_buf.name],
+                             rows=rows, cols=cols, depth=depth,
+@@ -647,7 +707,8 @@
+                             b_offset=(rhs_base + k0 * DIM * rhs_pitch + n0 * DIM)
+                             * DTYPE_BYTES[rhs.dtype],
+                             c_offset=c_offset, d_offset=c_offset,
+-                            accumulate=k0 != 0, full_c=True,
++                            accumulate=k0 != 0, full_c=full_row,
++                            c_dtype=out_dtype, acc_act=acc_act, acc_scale=acc_scale,
+                             implementation="gemmini_loop_ws")
+         else:
+             bm, bn, bk = self.block_shape(mt, nt, kt)
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/source_conv_model_lane.py b/compiler/mlir_oot/lowering/source_conv_model_lane.py
+--- a/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-07 02:03:22.527425913 -0700
++++ b/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-08 07:16:06.341017928 -0700
+@@ -145,6 +145,55 @@
+     return tr, source
+ 
+ 
++def _source_conv_encoding_dependency(
++        spec: DirectConv, *, producer_source_op_index: int, task_index: int,
++        live_consumers: list[int], exact_narrow: bool) -> dict[str, Any]:
++    """Describe the post-formation boundary without stale pre-fusion semantics."""
++    current_output_dtype = "i8" if exact_narrow else "i32"
++    current_output_bytes = (prod((spec.batch, spec.co, spec.ho, spec.wo))
++                            * (1 if exact_narrow else 4))
++    candidate_output_bytes = spec.batch * spec.ho * spec.wo * row_pitch(spec.co)
++    refusals = [
++        "native_input_requires_nhwc_producer_or_explicit_adapter",
++        "native_weight_requires_hwio_offline_encoding",
++        "native_output_requires_nhwc_consumer_legalization",
++    ]
++    if not exact_narrow:
++        refusals[:0] = [
++            "semantic_output_dtype_i32_requires_exact_narrow_epilogue",
++            "ordered_f32_epilogue_must_be_proven_before_narrow_store",
++        ]
++    return {
++        "source_op_index": producer_source_op_index,
++        "task_index": task_index,
++        "geometry": {
++            "n": spec.batch, "ci": spec.ci, "hi": spec.hi, "wi": spec.wi,
++            "co": spec.co, "kh": spec.kh, "kw": spec.kw,
++            "ho": spec.ho, "wo": spec.wo,
++        },
++        "current": {
++            "activation_encoding": "NCHW", "weight_encoding": "CoK_dim_padded",
++            "output_encoding": "NCHW", "output_dtype": current_output_dtype,
++            "logical_output_bytes": current_output_bytes,
++        },
++        "native_requirement": {
++            "activation_encoding": "NHWC", "weight_encoding": "HWIO",
++            "output_encoding": "NHWC", "output_dtype": "i8",
++            "encoded_output_bytes": candidate_output_bytes,
++        },
++        "fanout": len(live_consumers),
++        "lifetime": {
++            "producer_source_op_index": producer_source_op_index,
++            "last_consumer_source_op_index": max(live_consumers,
++                                                 default=producer_source_op_index),
++        },
++        "selected": ("streamed_row_im2col_loop_ws_exact_narrow_epilogue"
++                     if exact_narrow else "streamed_row_im2col_loop_ws"),
++        "exact_narrow_epilogue_selected": exact_narrow,
++        "refusal": refusals,
++    }
++
++
+ 
+ class SourceConvBuilder(MixedBuilder):
+     """Explicit source-convolution route; default mixed planner remains unchanged."""
+@@ -153,6 +202,7 @@
+         super().__init__(module, wl)
+         self.weight_prepack = []
+         self.absorbed_by = {}
++        self.source_conv_encoding_dependencies = []
+ 
+     def _encode_buffer(self, name, logical_shape, axis_groups):
+         """One explicit contract drives both the caller ABI and device row pitches.
+@@ -202,6 +252,8 @@
+             # leaking into ordinary matmul/host graphs or introducing artificial
+             # mesh work. Use this extension only when it owns an admitted conv.
+             return MixedBuilder(self.module, self.wl).build()
++        self._select_exact_native_epilogues(mesh_ops)
++        self.prepare_residual_schedule(ops, mesh_ops)
+         # Source-native host loops no longer expand in proportion to tensor size.
+ 
+         # interface tensors: the entry's arguments, then its results, in declaration order
+@@ -277,6 +329,11 @@
+                     break
+                 exclusive = kept
+             absorbed_by[sink] = [item for item in owned if item in exclusive]
++        for producer, formation in self.native_epilogues.items():
++            owned = self._exclusive_epilogue_owners(producer, formation)
++            absorbed_by[producer] = sorted(
++                set(absorbed_by.get(producer, ())) | owned,
++                key=lambda item: list(item.parent_block().ops).index(item))
+         absorbed = {item for owned in absorbed_by.values() for item in owned}
+         self.absorbed_by = absorbed_by
+ 
+@@ -287,12 +344,14 @@
+         for op in ops:
+             if op in absorbed:
+                 continue
++            if op in self.deferred_residual_ops:
++                continue
+             if op in mesh_set:
+                 schedule.append(("host", pending))
+                 pending = []
+                 schedule.append(("mesh", op))
+             else:
+-                pending.append(op)
++                self.append_scheduled_host_op(pending, op)
+         schedule.append(("host", pending))
+ 
+         # Two different places a value can already be live when a host run needs it: in DRAM
+@@ -308,6 +367,9 @@
+             if kind == "mesh":
+                 self._mesh(payload, in_dram)
+                 in_dram.add(payload.results[0])
++                formation = self.native_epilogues.get(payload)
++                if formation is not None:
++                    in_dram.add(formation.output)
+                 continue
+             host_ops = carry + [op for op in payload if op.name != "func.return"]
+             host_set = set(host_ops)
+@@ -347,9 +409,19 @@
+             scalar_ssa |= {value for value in defined_set
+                            if not isinstance(value.type, TensorType)}
+             in_dram |= {v for v, _ in outputs}
++            output_values = {value for value, _ in outputs}
++            residual_fusions = [
++                item for item in self.residual_epilogues
++                if (item.residual_add in host_set
++                    and item.output in output_values
++                    and (item.exposed_float in output_values
++                         or all(use.operation is item.quantize
++                                for use in item.exposed_float.uses)))]
++            self.selected_residual_epilogues.extend(residual_fusions)
+             segments.append(HostSegment(
+                 host_ops, inputs, outputs,
+-                sorted({_region_id(op) for op in host_ops if _region_id(op)})))
++                sorted({_region_id(op) for op in host_ops if _region_id(op)}),
++                residual_fusions))
+             segments[-1].source_op_indices = [self.source_indices[op] for op in host_ops]
+             self.ordered.append(segments[-1])
+ 
+@@ -370,7 +442,8 @@
+         lhs_v, rhs_v = op.operands[0], op.operands[1]
+         folded_transpose = _constant_weight_transpose(op)
+         rhs_source_v = folded_transpose[1] if folded_transpose is not None else rhs_v
+-        out_v = op.results[0]
++        formation = self.native_epilogues.get(op)
++        out_v = formation.output if formation is not None else op.results[0]
+         for operand in (lhs_v, rhs_source_v):
+             if operand not in in_dram:
+                 raise LoweringDeclined(
+@@ -396,7 +469,8 @@
+         # Integer tensor arithmetic wraps at its declared width. Native narrowed
+         # accelerator readout saturates, so preserve a full accumulator and let
+         # submitted host code truncate it. This policy follows source types.
+-        modular = int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:])
++        modular = (formation is None
++                   and int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:]))
+         temporary = self.declare(f"{dst}_accumulator", [m, n], F.ACCUMULATOR_DTYPE,
+                                  self.INTERMEDIATE_ROLE) if modular else None
+         handle = self.residents.get(rhs)
+@@ -411,13 +485,22 @@
+                               "operands": {"lhs": lhs, "rhs": handle, "dst": acc}})
+         self.commands.append({"opcode": "COMMIT",
+                               "operands": {"src": acc, "dst": temporary or dst},
+-                              "attributes": {"epilogue": [], "output_dtype":
++                              "attributes": {"epilogue":
++                                             (["relu"] if formation is not None
++                                              and formation.relu else []), "output_dtype":
+                                              F.ACCUMULATOR_DTYPE if modular else out_dtype}})
+         self.ordered.append(
+             Contraction(lhs, rhs, dst, m, k, n, lhs_row_elems=k, rhs_row_elems=n,
+-                        epilogue=Epilogue(stages=[], output_dtype=out_dtype,
+-                                          integer_output_policy="modular"),
++                        epilogue=Epilogue(
++                            stages=(["relu"] if formation is not None
++                                    and formation.relu else []),
++                            output_dtype=out_dtype,
++                            integer_output_policy=("saturate" if formation is not None
++                                                   else "modular")),
+                         accumulator_temporary=temporary))
++        if formation is not None:
++            self.of_value[op.results[0]] = dst
++            self.of_value[formation.output] = dst
+         self.ordered[-1].source_op_indices = [
+             *[self.source_indices[item] for item in self.absorbed_by.get(op, [])],
+             self.source_indices[op],
+@@ -436,7 +519,9 @@
+                     op="conv2d")
+         activation = self.of_value.get(spec.activation) or self.buffer_for(spec.activation)
+         weight = self.of_value.get(spec.weight) or self.buffer_for(spec.weight)
+-        dst = self.of_value.get(spec.output) or self.buffer_for(spec.output)
++        formation = self.native_epilogues.get(op)
++        out_value = formation.output if formation is not None else spec.output
++        dst = self.of_value.get(out_value) or self.buffer_for(out_value)
+         # The compiler ABI consumes an offline-packed [Co,K] view. OIHW flattening preserves
+         # element order; only end-of-row DIM padding is added by the bundle packer.
+         original_shape = list(self.buffers[weight].shape)
+@@ -450,24 +535,45 @@
+         self.commands.append({"opcode": "RES_PACK", "operands": {"src": weight,
+                               "dst": f"{weight}_res"},
+                               "attributes": {"layout": "packed_conv_lhs"}})
++        attributes = {"kernel": [spec.kh, spec.kw, spec.ci, spec.co],
++                      "stride": [spec.stride_h, spec.stride_w],
++                      "padding": [spec.pad_top, spec.pad_left,
++                                  spec.pad_bottom, spec.pad_right],
++                      "dilation": [spec.dilation_h, spec.dilation_w],
++                      "layout": "nchw_streamed_row_im2col",
++                      "output_dtype": ("i8" if formation is not None else "i32")}
++        # Keep an unselected command byte-for-byte stable.  An empty epilogue list is redundant
++        # semantics, but adding it to every existing convolution obscures whether any physical work
++        # changed in command-buffer A/B evidence.
++        if formation is not None:
++            attributes["epilogue"] = ["relu"] if formation.relu else []
+         self.commands.append({"opcode": "CONV2D",
+                               "operands": {"ifm": activation, "weight": f"{weight}_res",
+                                            "dst": dst},
+-                              "attributes": {"kernel": [spec.kh, spec.kw, spec.ci, spec.co],
+-                                             "stride": [spec.stride_h, spec.stride_w],
+-                                             "padding": [spec.pad_top, spec.pad_left,
+-                                                         spec.pad_bottom, spec.pad_right],
+-                                             "dilation": [spec.dilation_h, spec.dilation_w],
+-                                             "layout": "nchw_streamed_row_im2col",
+-                                             "output_dtype": "i32"}})
++                              "attributes": attributes})
+         task = Convolution(
+             activation, weight, dst, spec.batch, spec.ci, spec.hi, spec.wi, spec.co,
+             spec.kh, spec.kw, spec.ho, spec.wo, spec.stride_h, spec.stride_w,
+             spec.dilation_h, spec.dilation_w, spec.pad_top, spec.pad_left,
+-            spec.pad_bottom, spec.pad_right, spec.direct_dma)
++            spec.pad_bottom, spec.pad_right, spec.direct_dma,
++            output_dtype=("i8" if formation is not None else "i32"),
++            relu=bool(formation is not None and formation.relu))
++        if formation is not None:
++            self.of_value[spec.output] = dst
++            self.of_value[formation.output] = dst
+         task.source_op_indices = [self.source_indices[item]
+                                   for item in [*self.absorbed_by.get(op, []), op]]
+         self.ordered.append(task)
++        boundary_value = formation.output if formation is not None else spec.output
++        live_consumers = sorted({
++            self.source_indices[use.operation]
++            for use in boundary_value.uses if use.operation in self.source_indices
++        })
++        self.source_conv_encoding_dependencies.append(
++            _source_conv_encoding_dependency(
++                spec, producer_source_op_index=self.source_indices[op],
++                task_index=len(self.ordered) - 1, live_consumers=live_consumers,
++                exact_narrow=formation is not None))
+ 
+     def _command_buffer(self, segments: list[HostSegment]) -> dict[str, Any]:
+         # Bind host inputs explicitly; resident packs describe accelerator work only.
+@@ -476,6 +582,70 @@
+                        "role": self.buffers[n].role} for n in self.order}
+         placement = [{"region": r.region_id, "family": r.family, "op": r.op, "dtype": r.dtype,
+                       "lane": r.lane, "reason": r.reason} for r in self.wl.regions]
++        dependencies = list(self.source_conv_encoding_dependencies)
++        current_bytes = sum(row["current"]["logical_output_bytes"] for row in dependencies)
++        candidate_bytes = sum(
++            row["native_requirement"]["encoded_output_bytes"] for row in dependencies
++        )
++
++        def peak_live(byte_path):
++            events = {}
++            for row in dependencies:
++                start = row["lifetime"]["producer_source_op_index"]
++                end = row["lifetime"]["last_consumer_source_op_index"]
++                value = row
++                for key in byte_path:
++                    value = value[key]
++                events[start] = events.get(start, 0) + int(value)
++                events[end + 1] = events.get(end + 1, 0) - int(value)
++            live = peak = peak_at = 0
++            for point in sorted(events):
++                live += events[point]
++                if live > peak:
++                    peak, peak_at = live, point
++            return peak, peak_at
++
++        logical_peak, logical_peak_at = peak_live(("current", "logical_output_bytes"))
++        encoded_peak, encoded_peak_at = peak_live(
++            ("native_requirement", "encoded_output_bytes"))
++        refusal_histogram: dict[str, int] = {}
++        for row in dependencies:
++            for reason in row["refusal"]:
++                refusal_histogram[reason] = refusal_histogram.get(reason, 0) + 1
++        semantic_refusal = any(
++            "semantic_output_dtype_i32_requires_exact_narrow_epilogue" in row["refusal"]
++            for row in dependencies)
++        encoding_report = {
++            "schema": "target_neutral_global_encoding_v1",
++            "status": (("refused_exact_semantic_boundary" if semantic_refusal
++                        else "refused_physical_encoding_boundary")
++                       if dependencies else "not_applicable"),
++            "selection_policy": "capability_layout_dtype_cost_lifetime_fanout_v1",
++            "cycle_prediction_claimed": False,
++            "logical_boundary_bytes": current_bytes,
++            "encoded_boundary_bytes_if_legal": candidate_bytes,
++            "potential_boundary_byte_reduction": current_bytes - candidate_bytes,
++            "layout_transforms_inserted": 0,
++            "layout_transforms_eliminated": 0,
++            "layout_transform_counts_conditional_until_epilogue_is_exact": semantic_refusal,
++            "capacity": {
++                "arena_capacity_bytes": None,
++                "peak_live_logical_bytes": logical_peak,
++                "peak_live_encoded_bytes_if_legal": encoded_peak,
++                "peak_live_at_source_op": encoded_peak_at,
++                "logical_peak_live_at_source_op": logical_peak_at,
++                "fits": None,
++                "reason": "whole-program DRAM capacity is not a target fact; per-tile native "
++                          "convolution capacity remains checked by the capability selector",
++            },
++            "fanout": {
++                "maximum": max((row["fanout"] for row in dependencies), default=0),
++                "boundaries": len(dependencies),
++                "multi_consumer_boundaries": sum(row["fanout"] > 1 for row in dependencies),
++            },
++            "dependencies": dependencies,
++            "refusal_histogram": refusal_histogram,
++        }
+         return {
+             "abi_version": "0.1",
+             "target": "gemmini",
+@@ -508,6 +678,7 @@
+                          "source_op_indices": list(task.source_op_indices),
+                          "reads": [n for _, n in task.inputs] if isinstance(task, HostSegment)
+                                   else ([task.activation, task.weight]
++                                        + ([task.bias] if task.bias else [])
+                                         if isinstance(task, Convolution)
+                                         else [task.lhs, task.rhs]),
+                          "writes": [n for _, n in task.outputs] if isinstance(task, HostSegment)
+@@ -537,13 +708,20 @@
+                 "host_lane_segments": [
+                     {"regions": seg.regions,
+                      "reads": [n for _, n in seg.inputs],
+-                     "writes": [n for _, n in seg.outputs]} for seg in segments],
++                     "writes": [n for _, n in seg.outputs],
++                     "residual_fusion_sites": [
++                         self.source_indices[item.residual_add]
++                         for item in seg.residual_fusions]}
++                    for seg in segments],
++                "target_neutral_quantized_epilogues": self._epilogue_receipt(),
++                "target_neutral_residual_epilogues": self.residual_receipt(),
+                 "weight_prepack_recipes": list(self.weight_prepack),
+                 "convolution_lowering": {
+                     "owner": "generated_phase1_target_dialect",
+                     "strategy": "direct_dma_or_streamed_output_row_im2col",
+                     "full_im2col_materialized": False,
+                 },
++                "global_encoding": encoding_report,
+             },
+         }
+ 
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/lowering/source_conv_plan.py b/compiler/mlir_oot/lowering/source_conv_plan.py
+--- a/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 03:33:08.622563713 -0700
++++ b/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 05:53:16.508907701 -0700
+@@ -34,3 +34,9 @@
+     weight_layout: str = "CoK"
+     output_layout: str = "NCHW"
+     output_dtype: str = "i32"
++    # Abstract epilogue selected from source semantics.  This path currently admits only the
++    # exact identity-scale, zero-bias subset; richer scalar-scale/i32-bias support exists in the
++    # target but is selected only when a separate source-equivalence proof supplies it.
++    bias: str | None = None
++    acc_scale: float = 1.0
++    relu: bool = False
+diff -ruN '--exclude=__pycache__' '--exclude=*.pyc' a/compiler/mlir_oot/tables/loop_ws.py b/compiler/mlir_oot/tables/loop_ws.py
+--- a/compiler/mlir_oot/tables/loop_ws.py	2026-09-08 01:14:37.179139648 -0700
++++ b/compiler/mlir_oot/tables/loop_ws.py	2026-09-08 05:55:21.202115168 -0700
+@@ -103,8 +103,8 @@
+ 
+ def loop_ws_static(*, rows, cols, depth, row_stride_a, row_stride_b, row_stride_c,
+                    full_c=True, activation=0, accumulate=False):
+-    if min(rows,cols,depth,row_stride_a,row_stride_b,row_stride_c) <= 0 or not full_c:
+-        raise ValueError("source convolution requires positive full-width loop geometry")
++    if min(rows,cols,depth,row_stride_a,row_stride_b,row_stride_c) <= 0:
++        raise ValueError("LOOP_WS requires positive static geometry")
+     tiles = [-(-n//F.DIM) for n in (rows,cols,depth)]
+     values = dict(zip(("I","J","K"),tiles))
+     values.update(dict(zip(("pad_I","pad_J","pad_K"),

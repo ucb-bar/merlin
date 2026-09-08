@@ -1,0 +1,170 @@
+{
+  "schema": "phase2_final_combined_exact_residual_global_encoding_v1",
+  "status": "passed_exact_combined_and_transferred_full_model",
+  "lineage": {
+    "base": "development_phase2_exact_native_epilogue_20260908",
+    "base_compiler_sha256": "30fbb259610c35dd47047819c27478b21ddf389059560a6a5392fd9b91bdf42b",
+    "residual_source": "development_phase2_canonical_multimodel_affine_im2col_residual_epilogue_20260908",
+    "encoding_source": "development_phase2_canonical_affine_global_encoding_20260908",
+    "review_base": "development_phase2_canonical_multimodel_affine_im2col_20260908",
+    "shared_tree_mutated": false,
+    "commit_created": false
+  },
+  "sealed_identity": {
+    "compiler_tree_sha256": "48694957d14c9608960f7ac2b6cd08b72b15c55e4a11ff26e1cf952e0cd7607e",
+    "compiler_tree_files": 45,
+    "tests_tree_sha256": "b542aa95c5a2c652c6cc30e49e45d62583027b0833c4f9d903310b148ee6523c",
+    "tests_tree_files": 18,
+    "support_tree_sha256": "0714adc43f25efb2421afc37519190f9a2b58c75ad75d7a08b9ff3537936498a",
+    "support_tree_files": 1016,
+    "review_patch": "final_combined_compiler.patch",
+    "review_patch_sha256": "0e611e3c9c2231196653bfdb906a45843b89f8ee14f4ffbefe683116a9f2477a",
+    "review_patch_lines": 2760,
+    "review_patch_dry_run": "passed_against_canonical_affine"
+  },
+  "composition": {
+    "preserved": [
+      "native scalar epilogue",
+      "dynamic-weight quantization bridge (explicit opt-in)",
+      "reduction-resident LOOP_WS",
+      "native LOOP_CONV with repeatable zero initialization",
+      "affine segmented im2col",
+      "host workspace lifetime allocation"
+    ],
+    "added": [
+      "exact target-neutral non-residual epilogue formation",
+      "exact target-neutral second-tensor residual formation",
+      "target-neutral global encoding solver and source-conv encoding evidence"
+    ],
+    "compatibility_guards": [
+      "bias initialization then scale then activation stage order",
+      "unique epilogue stages and bias operand/stage agreement",
+      "native selector composes semantic, geometry, layout, capacity, and reduction-residency guards",
+      "encoding facts are recorded after final fusion",
+      "native bias is represented as a task hazard read",
+      "no-bias native convolution uses an internal read-only zero bias for warm repeatability",
+      "mixed source-conv plus exact-matmul graphs retain formation-aware emission"
+    ],
+    "model_layer_or_shape_special_cases": false
+  },
+  "tests": {
+    "status": "passed",
+    "count": 65,
+    "seconds": 1.39,
+    "coverage": [
+      "positive and negative exact epilogues",
+      "positive and negative second-tensor residuals",
+      "encoding retention, fanout, lifetime, and capacity",
+      "affine im2col exhaustive and randomized spans",
+      "mixed source-conv plus exact-matmul formation",
+      "interface native conv scale/ReLU/bias propagation and hazard reads",
+      "duplicate and reordered epilogue refusal/fallback",
+      "dynamic bridge, workspace, native LOOP_CONV, and resident LOOP_WS"
+    ]
+  },
+  "warm_reentrant_witnesses": {
+    "exact_native_epilogue": {
+      "status": "passed",
+      "receipt_sha256": "5e358eb793173c90d8dc2d8d678da47b448692a9841d5bea5706548316b14024",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "captured_metric": "cycles",
+      "cycles": 56,
+      "outputs_checked": 323,
+      "target_sha256": "d21d15d4b904b7c22b5c38fedb9ba26e5fcb36fbb2e0a433487d2d8c122362ad",
+      "object_sha256": "f22ca1a6f49446df364de9deec7c2d27fefda01bbf47c73a1df96e17921e11f4",
+      "elf_sha256": "4b0408a0990a7fa0e0294e2ab5458cf8555c86b71427420158040065b3d817ce"
+    },
+    "two_layer_global_encoding": {
+      "status": "passed",
+      "receipt_sha256": "885e1b9492be41d8fc051b95e7ae0f010fff598991f82d3443627fb90f9e603b",
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "captured_metric": "cycles",
+      "cycles": 102,
+      "outputs_checked": 96,
+      "native_convolution_tasks": 2,
+      "im2col_tasks": 0,
+      "target_sha256": "d06abfd38f5f2b6fe8a4bccf1ce5b458006bebca556d4032d2268f22227541be",
+      "command_buffer_sha256": "54f7d1f4f0996c8c25af33ce39e60219290845ac05e4e8de0d693a8e01744bf9",
+      "elf_sha256": "cf9fdfd2e9563b916f49c881173cd5577b712623c87b220dbe27bd81c20dbacc"
+    }
+  },
+  "four_model_compile": {
+    "status": "passed_sequential",
+    "resnet50": {
+      "wall_seconds": 34.88,
+      "rss_kb": 199688,
+      "target_sha256": "c29ba22408242dcad9aa215c33a4bbca8ac45d12f87352360afeb16ee5167883",
+      "command_buffer_sha256": "e0054a7660956a526d7a972c6e29a85976c027071efa4e0272af697810187665"
+    },
+    "tinyllama": {
+      "wall_seconds": 1.54,
+      "rss_kb": 53760,
+      "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5",
+      "command_buffer_sha256": "cdbda3674aed5731910326cb4c9a0140d159ad07bff61cd825a415b2c5f284c6"
+    },
+    "lstmnetvit": {
+      "wall_seconds": 57.20,
+      "rss_kb": 187412,
+      "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7",
+      "command_buffer_sha256": "d011d36c9506ddf42241c806058e3333f000dfb5f6c7ad334857161426c4e7fe"
+    },
+    "smolvla": {
+      "wall_seconds": 54.83,
+      "rss_kb": 308264,
+      "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b",
+      "command_buffer_sha256": "bf7a4a1a30910ac676941f51d955f7b7cddb4f977fdb3ffcdbc460b5620a5aef"
+    }
+  },
+  "dynamic_weight_bridge": {
+    "status": "passed_explicit_opt_in",
+    "source_f32_bit_equivalence": "NOT_CLAIMED",
+    "target_sha256": "a1d39869e27efe2d5f3b4be5f8cb75020746423b761e69d96e69c1ec7d015082",
+    "command_buffer_sha256": "aea701e7ce1a449a62f8b4604664e677f164d1db10403fab0bf24c7d5644ffda"
+  },
+  "resnet50": {
+    "source_ops_owned_exactly_once": 1240,
+    "tasks": 105,
+    "host_tasks": 51,
+    "accelerator_tasks": 54,
+    "abi_pointers": 389,
+    "logical_tensor_bytes": 109306816,
+    "physical_intermediate_bytes": 82739456,
+    "host_workspace_requested_bytes": 7349248,
+    "host_workspace_peak_bytes": 7341056,
+    "host_allocations": 54,
+    "residual_sites_selected": 15,
+    "exact_native_epilogues_selected": 0,
+    "global_encoding": {
+      "status": "refused_exact_semantic_boundary",
+      "dependencies": 53,
+      "logical_boundary_bytes": 44455936,
+      "encoded_boundary_bytes_if_legal": 11113984,
+      "potential_boundary_byte_reduction": 33341952,
+      "peak_live_encoded_bytes_if_legal": 802816
+    },
+    "target_byte_identical_to_residual_child": true,
+    "full_model_spike": {
+      "status": "transferred_by_exact_target_byte_identity",
+      "rerun_performed": false,
+      "warmup_runs": 1,
+      "measured_runs": 1,
+      "cycles": 492147976,
+      "baseline_cycles": 506265226,
+      "cycles_saved": 14117250,
+      "speedup": 1.028684970148084,
+      "logits_checked": 1000,
+      "bad": 0,
+      "checksum_fnv1a64": "c6e777c3fe0aae90",
+      "arguments": ["--isa=rv64gc_zicntr", "--extension=gemmini"],
+      "external_extension_loaded": false
+    }
+  },
+  "hardware": {
+    "firesim_run_performed": false,
+    "l3_run_performed": false,
+    "queue_action_performed": false,
+    "hardware_claim": "none"
+  }
+}
