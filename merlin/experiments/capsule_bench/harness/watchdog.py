@@ -102,7 +102,10 @@ def main() -> int:
     ap.add_argument("--login-kick", action="store_true",
                     help="on a new /login with headroom, restart arms sleeping on a rate-limit wait")
     # mirror launch_ab_batch's run knobs so the resume command matches the original launch exactly
-    ap.add_argument("--model", default="claude-opus-4-8")
+    # Defaults track launch_ab_batch, not this file's history. They had drifted -- model was
+    # claude-opus-4-8 while the launcher defaults to gpt-5.6-sol -- so a watchdog invoked without flags
+    # resurrected a batch under a different model than the one that started it.
+    ap.add_argument("--model", default="gpt-5.6-sol")
     ap.add_argument("--effort", default="high")
     ap.add_argument("--max-rounds", type=int, default=12)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
@@ -110,11 +113,37 @@ def main() -> int:
     ap.add_argument("--experiment", choices=["full", "realistic"], default="full")
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap")
     ap.add_argument("--skip-hidden", action="store_true")
+    # RUN-SHAPE KNOBS. _arm_cmd reads all of these off this namespace with getattr(...) fallbacks, so
+    # every one this file failed to define silently reverted on resume: most damagingly `max_wall_s`,
+    # whose fallback is 0 -- NO WALL CAP -- so a guarded continuous run came back unbounded. The rest
+    # (schedule/qa_timeout/sim_max_jobs/model_budget_s/plateau_rounds/min_rounds/condition) decide the
+    # experiment's shape, and a resume that changes them is a different experiment wearing the same
+    # run id. Defined here with launch_ab_batch's own defaults so a resume is byte-identical.
+    ap.add_argument("--schedule", choices=["rounds", "continuous"], default="continuous")
+    ap.add_argument("--max-wall-s", type=int, default=0,
+                    help="per-arm ACTIVE wall budget forwarded on resume (0 = none). Pass the REMAINDER "
+                         "of the original budget: a run killed before its first checkpoint restarts "
+                         "active_wall_s at zero, so an unqualified resume grants a second full budget.")
+    ap.add_argument("--qa-timeout", type=int, default=None)
+    ap.add_argument("--sim-max-jobs", type=int, default=None)
+    ap.add_argument("--model-budget-s", type=int, default=None)
+    ap.add_argument("--plateau-rounds", type=int, default=None)
+    ap.add_argument("--min-rounds", type=int, default=0)
+    ap.add_argument("--condition", choices=["kernels", "no-kernels", "kernel-library"],
+                    default="kernels")
     # Agent driver + provider — mirrored so _arm_cmd builds the SAME command on the initial launch AND on
     # every --resume (else a resume would silently drop to driver=auto / a different provider than the run
     # was started with). Names + defaults match launch_ab_batch exactly.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode"], default="auto",
-                    help="agent driver for the guarded arm(s) (auto|converse|claudecode|opencode)")
+    # `codex` was absent from this list while being launch_ab_batch's DEFAULT driver, so the watchdog
+    # could not guard the configuration these campaigns actually run. Worse than unavailable: with
+    # driver=auto the resume passes no --driver at all, and auto can never resolve to codex -- it routes
+    # a non-Anthropic model id to the Bedrock Converse loop, i.e. a different agent on a metered
+    # account. A guarded codex batch would have come back as something else entirely.
+    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
+                    default="codex",
+                    help="agent driver for the guarded arm(s). Default codex (the subscription seat "
+                         "these experiments run on), matching launch_ab_batch; `auto` can NEVER "
+                         "resolve to codex.")
     ap.add_argument("--subagent-model", default="")
     ap.add_argument("--background-model", default="")
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
