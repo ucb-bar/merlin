@@ -17,9 +17,10 @@ ITERATION_MAX_SECONDS = 600.0
 # changes may need more than the reduced-witness simulation ceiling, so keep their bound separate.
 GLOBAL_AUTHORING_ROUND_MAX_SECONDS = 1200.0
 # Full-graph compilation and static accounting never execute the model.  Keep their host deadline
-# separate from the reduced-witness simulation limit: large portfolio members can need
-# more than ten minutes to lower and audit even though no simulator is involved.
-FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS = 1200.0
+# separate from the reduced-witness simulation limit.  This ceiling covers one ordered portfolio,
+# not one member: four cold full-model lowers can exceed twenty minutes when the resource guard
+# serializes workers, even though the normal two-worker wall time remains near ten minutes.
+FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS = 2400.0
 STATIC_PLANNER_MAX_SECONDS = 300.0
 FIRESIM_LIFECYCLE = (
     ("firesim", "kill"),

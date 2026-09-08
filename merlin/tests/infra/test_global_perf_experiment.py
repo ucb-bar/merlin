@@ -915,14 +915,14 @@ def test_cross_run_identity_is_path_neutral_but_content_and_order_strict(tmp_pat
 
 
 def test_host_only_full_graph_and_authoring_budgets_are_distinct_from_probe_ceiling(tmp_path):
-    experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=1200)
+    experiment, candidate, calls = setup_experiment(tmp_path, timeout_s=2400)
 
     record = experiment.analyze(candidate, hypothesis="Exercise the host-only static ceiling")
 
     assert calls == [hash_tree(candidate)["sha256"]]
-    assert record["allocated_seconds"] == pytest.approx(1200, abs=0.01)
+    assert record["allocated_seconds"] == pytest.approx(2400, abs=0.01)
     contract = json.loads((experiment.output / "experiment.json").read_text())
-    assert contract["maximum_full_graph_static_analysis_seconds"] == 1200
+    assert contract["maximum_full_graph_static_analysis_seconds"] == 2400
     assert contract["maximum_reduced_witness_seconds"] == 600
     with pytest.raises(ValueError, match="authoring bounds"):
         G.run_global_agent_sequence(
@@ -930,8 +930,8 @@ def test_host_only_full_graph_and_authoring_budgets_are_distinct_from_probe_ceil
             stage_root=tmp_path / "stage", max_rounds=1,
             total_authoring_seconds=1201, round_seconds=1201)
     (tmp_path / "too_long").mkdir()
-    with pytest.raises(ValueError, match="1200-second host wall budget"):
-        setup_experiment(tmp_path / "too_long", timeout_s=1201)
+    with pytest.raises(ValueError, match="2400-second host wall budget"):
+        setup_experiment(tmp_path / "too_long", timeout_s=2401)
 
 
 def test_launcher_and_controller_share_the_canonical_resume_portfolio_identity(tmp_path):
@@ -961,7 +961,7 @@ def test_launcher_refuses_static_analysis_above_distinct_host_ceiling():
     with pytest.raises(SystemExit) as caught:
         launcher.main([
             "--campaign-config", "not-read.json", "--candidate", "candidate",
-            "--output", "not-created", "--iteration-seconds", "1201",
+            "--output", "not-created", "--iteration-seconds", "2401",
         ])
 
     assert caught.value.code == 2
