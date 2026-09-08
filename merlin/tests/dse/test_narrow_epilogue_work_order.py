@@ -125,6 +125,140 @@ def _stage(index: int, stage: str, source: str, output: str, *, extras=(), roles
     }
 
 
+def _source_plan_metadata(program: dict, tasks: list[dict]) -> tuple[dict, dict]:
+    owners = {source_index: task for task in tasks for source_index in task["source_op_indices"]}
+    rows = []
+    encodings = {}
+    for name, buffer in program["buffers"].items():
+        shape = buffer["shape"]
+        strides = []
+        stride = 1
+        for extent in reversed(shape):
+            strides.insert(0, stride)
+            stride *= extent
+        contract = {
+            "schema": "test_grouped_storage_v1", "logical_shape": shape,
+            "dtype": buffer["dtype"], "axis_groups": [[axis] for axis in range(len(shape))],
+            "physical_shape": shape, "strides_elements": strides,
+            "storage_elements": stride, "offset_elements": 0,
+        }
+        checked = {
+            "contract": contract, "proof_scope": "test bounded address map",
+            "caller_materialization": "requires evidence",
+            "emitted_consumer_addressing": "requires evidence",
+        }
+        encodings[name] = checked
+        layout_contract = {key: contract[key] for key in (
+            "axis_groups", "physical_shape", "strides_elements", "storage_elements",
+            "offset_elements")}
+        encoding_sha = _digest(contract)
+        layout_sha = _digest(layout_contract)
+        rows.append({
+            "source_buffer": name,
+            "source_origin": {"kind": "test_fixture"},
+            "materialized_tensor": name,
+            "logical": {"shape": shape, "dtype": buffer["dtype"]},
+            "physical_tensor": {"shape": shape, "dtype": buffer["dtype"],
+                                "role": buffer["kind"]},
+            "encoding": f"{contract['schema']}@sha256:{encoding_sha}",
+            "encoding_sha256": encoding_sha,
+            "encoding_contract_location": f"/storage_encodings/{name}/contract",
+            "layout": f"static_strided_elements_v1@sha256:{layout_sha}",
+            "layout_sha256": layout_sha,
+            "layout_contract": layout_contract,
+            "proof_scope": checked["proof_scope"],
+            "caller_materialization": checked["caller_materialization"],
+            "emitted_consumer_addressing": checked["emitted_consumer_addressing"],
+        })
+
+    def stage(source_index: int, stage_name: str, operation: str, inputs: list[tuple[str, str]],
+              output: str) -> dict:
+        node = program["nodes"][source_index]
+        stage_inputs = []
+        for operand_index, (name, role) in enumerate(inputs):
+            shape = program["buffers"][name]["shape"]
+            output_shape = program["buffers"][output]["shape"]
+            relation = ("exact" if operand_index == 0 else "scalar" if not shape else
+                        "trailing_broadcast" if len(shape) < len(output_shape) else "exact")
+            stage_inputs.append({
+                "source_buffer": name, "operand_index": operand_index, "role": role,
+                "relation": relation, "shape": shape,
+                "dtype": program["buffers"][name]["dtype"],
+            })
+        output_row = {"source_buffer": output,
+                      "shape": program["buffers"][output]["shape"],
+                      "dtype": program["buffers"][output]["dtype"]}
+        semantic = {
+            "stage": stage_name, "operation": operation, "inputs": stage_inputs,
+            "output": output_row, "indexing_maps": ["test_identity"],
+            "scalar_operations": ["test_integer_dag"],
+        }
+        task = owners[source_index]
+        return {
+            **semantic, "semantic_sha256": _digest(semantic),
+            "classification_source": "explicit_source_attributes_plus_exact_integer_scalar_dag",
+            "source_operation_id": source_index, "task_index": task["task_index"],
+            "task_kind": task["declared_task_kind"],
+        }
+
+    roots = []
+    specifications = {
+        0: [stage(1, "acc_scale", "acc_scale", [("acc0", "accumulator"),
+                                                   ("scale0", "scale")], "scaled0"),
+            stage(2, "requant", "requant", [("scaled0", "accumulator")], "out0")],
+        3: [],
+        4: [stage(5, "bias", "bias", [("acc4", "accumulator"),
+                                        ("bias4", "bias")], "biased4"),
+            stage(6, "requant", "requant", [("biased4", "accumulator")], "out4")],
+        7: [], 10: [], 12: [],
+    }
+    reasons = {
+        3: ["epilogue chain terminates before a narrower integer output"],
+        7: ["integer pointwise scalar DAG has no exact supported epilogue identity"],
+        10: ["consumer enters non-integer arithmetic"],
+        12: ["consumer is not a single-result linalg.generic"],
+    }
+    for source_index, stages in specifications.items():
+        node = program["nodes"][source_index]
+        accumulator = node["outputs"][0]
+        task = owners[source_index]
+        classification = "complete_integer_epilogue" if stages else "unclassified"
+        roots.append({
+            "producer_source_operation_id": source_index,
+            "producer_task_index": task["task_index"],
+            "producer_task_kind": task["declared_task_kind"],
+            "accumulator_source_buffer": accumulator,
+            "accumulator": {"shape": program["buffers"][accumulator]["shape"],
+                            "dtype": program["buffers"][accumulator]["dtype"]},
+            "source_operation_ids": [source_index,
+                                     *[item["source_operation_id"] for item in stages]],
+            "stages": stages, "reasons": reasons.get(source_index, []),
+            "classification": classification,
+        })
+    epilogues = {
+        "schema": "source_integer_epilogue_ownership_v1", "status": "verified",
+        "contraction_roots": len(roots),
+        "classification_counts": {
+            "complete_integer_epilogue": 2, "partial_integer_epilogue": 0,
+            "unclassified": 4,
+        },
+        "roots": roots,
+        "proof_scope": "test exact integer DAG and task ownership",
+        "not_proven": ["target capability"],
+    }
+    storage = {
+        "schema": "source_buffer_physical_storage_v1", "status": "complete",
+        "materialized_source_values": len(rows),
+        "exact_physical_representations": len(rows), "rows": rows, "unknown": [],
+        "proof_scope": "test exact source/storage join", "not_proven": ["runtime residency"],
+    }
+    return ({
+        "schema": "source_plan_metadata_v1", "status": "verified",
+        "physical_storage": storage, "integer_epilogue_ownership": epilogues,
+        "problems": [], "proof_scope": "test source-bound evidence",
+    }, encodings)
+
+
 def _record(candidate: Path, contract: dict) -> dict:
     # Six independent accelerator roots exercise the mutually-exclusive inventory outcomes.
     nodes = [
@@ -218,6 +352,9 @@ def _record(candidate: Path, contract: dict) -> dict:
         "candidate_command_buffer_sha256": pins["command_buffer_sha256"],
         "logical_dispatch_digest": logical_digest, "plan_digest": pins["plan_digest"],
     }
+    source_metadata, storage_encodings = _source_plan_metadata(program, tasks)
+    plan["source_plan_metadata"] = source_metadata
+    plan["storage_encodings"] = storage_encodings
     identity = {
         "analysis": "full_graph_compile_and_static_only",
         "capsule": "opaque-member",
@@ -345,10 +482,12 @@ def test_inventory_distinguishes_every_narrow_readout_outcome(tmp_path):
     site = member["eligible"][0]
     assert site["capability_proof_id"] == "opaque-capability-form"
     assert site["capability_form"]["stage_sequence"] == ["acc_scale", "requant"]
-    assert site["capability_form"]["output"] == {
-        "dtype": "i8", "encoding": "dense", "layout": "row_major", "rank": 2,
-        "width_bits": 8,
+    output = site["capability_form"]["output"]
+    assert {key: output[key] for key in ("dtype", "rank", "width_bits")} == {
+        "dtype": "i8", "rank": 2, "width_bits": 8,
     }
+    assert output["encoding"].startswith("test_grouped_storage_v1@sha256:")
+    assert output["layout"].startswith("static_strided_elements_v1@sha256:")
 
 
 def test_capability_must_bind_exact_target_facts_form_and_completion(tmp_path):
@@ -401,6 +540,88 @@ def test_incomplete_source_ownership_is_a_named_failure_not_an_opportunity(tmp_p
     assert member["eligible"] == []
     assert member["ownership_failures"]
     assert {row["producer_source_operation_id"] for row in member["ownership_failures"]} >= {0}
+
+
+def test_missing_source_plan_metadata_fails_closed(tmp_path):
+    candidate = _candidate(tmp_path)
+    record = _record(candidate, _contract())
+    record["analysis"]["diagnostics"]["verified_global_plan_emission"].pop(
+        "source_plan_metadata")
+
+    result = inventory_portfolio_narrow_epilogues(record)
+
+    assert result["status"] == "not_ready"
+    member = result["members"][0]
+    assert member["eligible"] == []
+    assert member["problems"] == ["verified global plan has no source-bound plan metadata"]
+
+
+def test_missing_physical_encoding_is_an_explicit_noneligible_class(tmp_path):
+    candidate = _candidate(tmp_path)
+    record = _record(candidate, _contract())
+    plan = record["analysis"]["diagnostics"]["verified_global_plan_emission"]
+    metadata = plan["source_plan_metadata"]
+    storage = metadata["physical_storage"]
+    row = next(item for item in storage["rows"] if item["source_buffer"] == "scale0")
+    storage["rows"].remove(row)
+    storage["unknown"].append({
+        key: copy.deepcopy(row[key]) for key in (
+            "source_buffer", "source_origin", "materialized_tensor", "logical",
+            "physical_tensor")
+    } | {"reason": "no verified physical storage encoding"})
+    storage["exact_physical_representations"] -= 1
+    storage["status"] = "partial"
+    metadata["status"] = "partial"
+    plan["storage_encodings"].pop("scale0")
+
+    result = inventory_portfolio_narrow_epilogues(record)
+
+    assert result["status"] == "no_eligible_sites"
+    member = result["members"][0]
+    assert [row["producer_source_operation_id"]
+            for row in member["missing_representation"]] == [0]
+    assert member["missing_representation"][0]["reasons"][0] == (
+        "one or more exact epilogue buffers have no verified physical representation")
+    assert member["eligible"] == []
+
+
+def test_logical_epilogue_hints_cannot_replace_source_plan_semantics(tmp_path):
+    candidate = _candidate(tmp_path)
+    record = _record(candidate, _contract())
+    metadata = record["analysis"]["diagnostics"]["verified_global_plan_emission"][
+        "source_plan_metadata"]
+    root = next(item for item in metadata["integer_epilogue_ownership"]["roots"]
+                if item["producer_source_operation_id"] == 0)
+    root["stages"] = []
+    root["source_operation_ids"] = [0]
+    root["classification"] = "unclassified"
+    root["reasons"] = ["source-side semantic proof deliberately unavailable"]
+    counts = metadata["integer_epilogue_ownership"]["classification_counts"]
+    counts["complete_integer_epilogue"] -= 1
+    counts["unclassified"] += 1
+
+    result = inventory_portfolio_narrow_epilogues(record)
+
+    member = result["members"][0]
+    assert [row["producer_source_operation_id"] for row in member["missing_capability"]] == [4]
+    refused = next(row for row in member["float_or_unsupported_stage"]
+                   if row["producer_source_operation_id"] == 0)
+    assert "source-side semantic proof deliberately unavailable" in refused["reasons"]
+
+
+def test_changed_source_plan_semantic_digest_fails_closed(tmp_path):
+    candidate = _candidate(tmp_path)
+    record = _record(candidate, _contract())
+    roots = record["analysis"]["diagnostics"]["verified_global_plan_emission"][
+        "source_plan_metadata"]["integer_epilogue_ownership"]["roots"]
+    roots[0]["stages"][0]["operation"] = "changed_without_rebinding"
+
+    result = inventory_portfolio_narrow_epilogues(record)
+
+    assert result["status"] == "not_ready"
+    assert result["members"][0]["eligible"] == []
+    assert "integer-epilogue root 0 stage 0 identity is invalid" in result["members"][0][
+        "problems"]
 
 
 def test_builder_emits_validator_accepted_one_mechanism_documents(tmp_path):

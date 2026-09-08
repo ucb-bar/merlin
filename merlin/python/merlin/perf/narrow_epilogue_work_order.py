@@ -15,6 +15,7 @@ simulator choices, or target constants.
 from __future__ import annotations
 
 import ast
+import copy
 import hashlib
 import json
 from argparse import ArgumentParser
@@ -38,8 +39,12 @@ from merlin.perf.rank_general_contraction_work_order import (
 
 
 MECHANISM_ID = "t01_04_capability_proven_narrow_epilogue_readout"
-INVENTORY_SCHEMA = "portfolio_capability_proven_narrow_epilogue_inventory_v1"
+INVENTORY_SCHEMA = "portfolio_capability_proven_narrow_epilogue_inventory_v2"
 CAPABILITY_SCHEMA = "target_narrow_epilogue_capability_evidence_v1"
+
+_SOURCE_PLAN_SCHEMA = "source_plan_metadata_v1"
+_SOURCE_STORAGE_SCHEMA = "source_buffer_physical_storage_v1"
+_SOURCE_EPILOGUE_SCHEMA = "source_integer_epilogue_ownership_v1"
 
 _SOURCE_STAGES = frozenset({"acc_scale", "bias", "activation", "requant", "narrow_store"})
 _REQUIRED_SURFACES = frozenset({
@@ -158,6 +163,274 @@ def _graph_links(parts: Mapping[str, Any]) -> tuple[dict[str, int], dict[str, li
         if name in producer and any(producer[name] >= consumer for consumer in consumers):
             problems.append(f"logical graph edge for {name} is not in source order")
     return producer, dict(uses), sorted(set(problems))
+
+
+def _source_plan_adapter(parts: Mapping[str, Any]
+                         ) -> tuple[dict[str, Any] | None, dict[int, Mapping[str, Any]],
+                                    list[str]]:
+    """Expose only source facts backed by the verifier's physical/semantic join.
+
+    The captured graph is logical: any ``encoding``/``layout`` strings or epilogue provenance in
+    that payload are not physical or semantic proof.  This adapter removes those hints and adds
+    them back only after checking the host-built ``source_plan_metadata`` against the same graph,
+    task ownership, and verified storage-contract table.  Older records therefore fail closed
+    instead of accidentally becoming executable work orders.
+    """
+    problems: list[str] = []
+    plan = parts.get("plan")
+    metadata = plan.get("source_plan_metadata") if isinstance(plan, Mapping) else None
+    if not isinstance(metadata, Mapping):
+        return None, {}, ["verified global plan has no source-bound plan metadata"]
+    storage = metadata.get("physical_storage")
+    epilogues = metadata.get("integer_epilogue_ownership")
+    if (metadata.get("schema") != _SOURCE_PLAN_SCHEMA
+            or metadata.get("status") not in {"verified", "partial"}
+            or metadata.get("problems") != []
+            or not isinstance(storage, Mapping) or not isinstance(epilogues, Mapping)):
+        return None, {}, ["source-bound plan metadata schema, status, or join is invalid"]
+
+    nodes = copy.deepcopy(parts["nodes"])
+    buffers = copy.deepcopy(parts["buffers"])
+    owners = parts["owners"]
+    for buffer in buffers.values():
+        if isinstance(buffer, dict):
+            buffer.pop("encoding", None)
+            buffer.pop("layout", None)
+    for node in nodes:
+        provenance = node.get("prov") if isinstance(node, Mapping) else None
+        if isinstance(provenance, dict):
+            for field in ("prov.epilogue_stage", "prov.epilogue_operation",
+                          "prov.epilogue_operand_roles"):
+                provenance.pop(field, None)
+
+    rows, unknown = storage.get("rows"), storage.get("unknown")
+    storage_encodings = plan.get("storage_encodings")
+    if (storage.get("schema") != _SOURCE_STORAGE_SCHEMA
+            or storage.get("status") not in {"complete", "partial"}
+            or not isinstance(rows, list) or not isinstance(unknown, list)
+            or not isinstance(storage_encodings, Mapping)
+            or storage.get("materialized_source_values") != len(rows) + len(unknown)
+            or storage.get("exact_physical_representations") != len(rows)):
+        problems.append("source-bound physical-storage inventory is malformed")
+        rows, unknown, storage_encodings = [], [], {}
+    if ((storage.get("status") == "complete") != (not unknown)
+            or (metadata.get("status") == "verified") != (storage.get("status") == "complete")):
+        problems.append("source-bound metadata and physical-storage completeness disagree")
+
+    represented: set[str] = set()
+    represented_tensors: set[str] = set()
+    for index, row in enumerate(rows):
+        label = f"physical-storage row {index}"
+        if not isinstance(row, Mapping):
+            problems.append(f"{label} is malformed")
+            continue
+        name, tensor = row.get("source_buffer"), row.get("materialized_tensor")
+        logical, physical = row.get("logical"), row.get("physical_tensor")
+        encoding_sha, layout_sha = row.get("encoding_sha256"), row.get("layout_sha256")
+        checked = storage_encodings.get(tensor) if isinstance(tensor, str) else None
+        contract = checked.get("contract") if isinstance(checked, Mapping) else None
+        layout_contract = row.get("layout_contract")
+        source = buffers.get(name) if isinstance(name, str) else None
+        expected_location = f"/storage_encodings/{tensor}/contract"
+        if (set(row) != {"source_buffer", "source_origin", "materialized_tensor", "logical",
+                         "physical_tensor", "encoding", "encoding_sha256",
+                         "encoding_contract_location", "layout", "layout_sha256",
+                         "layout_contract", "proof_scope", "caller_materialization",
+                         "emitted_consumer_addressing"}
+                or not isinstance(source, Mapping) or name in represented
+                or not isinstance(tensor, str) or not tensor or tensor in represented_tensors
+                or not isinstance(logical, Mapping)
+                or logical != {"shape": source.get("shape"), "dtype": source.get("dtype")}
+                or not isinstance(physical, Mapping)
+                or not isinstance(contract, Mapping) or not _pin(encoding_sha)
+                or contract.get("logical_shape") != source.get("shape")
+                or contract.get("dtype") != source.get("dtype")
+                or contract.get("physical_shape") != physical.get("shape")
+                or contract.get("dtype") != physical.get("dtype")
+                or _digest(contract) != encoding_sha
+                or row.get("encoding") != f"{contract.get('schema')}@sha256:{encoding_sha}"
+                or row.get("encoding_contract_location") != expected_location
+                or not isinstance(layout_contract, Mapping) or not _pin(layout_sha)
+                or _digest(layout_contract) != layout_sha
+                or row.get("layout") != f"static_strided_elements_v1@sha256:{layout_sha}"):
+            problems.append(f"{label} does not exactly bind graph and verified storage")
+            continue
+        represented.add(name)
+        represented_tensors.add(tensor)
+        buffers[name]["encoding"] = row["encoding"]
+        buffers[name]["layout"] = row["layout"]
+        buffers[name]["materialized_tensor"] = tensor
+    for index, row in enumerate(unknown):
+        name = row.get("source_buffer") if isinstance(row, Mapping) else None
+        source = buffers.get(name) if isinstance(name, str) else None
+        logical = row.get("logical") if isinstance(row, Mapping) else None
+        if (not isinstance(row, Mapping) or not isinstance(source, Mapping) or name in represented
+                or row.get("reason") != "no verified physical storage encoding"
+                or logical != {"shape": source.get("shape"), "dtype": source.get("dtype")}):
+            problems.append(f"unknown physical-storage row {index} is malformed")
+            continue
+        represented.add(name)
+    if len(represented) != len(rows) + len(unknown):
+        problems.append("source-bound physical-storage rows repeat a logical buffer")
+    if represented_tensors != set(storage_encodings):
+        problems.append("verified storage contracts do not exactly match represented tensors")
+
+    roots = epilogues.get("roots")
+    counts = epilogues.get("classification_counts")
+    classes = ("complete_integer_epilogue", "partial_integer_epilogue", "unclassified")
+    if (epilogues.get("schema") != _SOURCE_EPILOGUE_SCHEMA
+            or epilogues.get("status") != "verified" or not isinstance(roots, list)
+            or epilogues.get("contraction_roots") != len(roots)
+            or not isinstance(counts, Mapping)
+            or set(counts) != set(classes)
+            or any(counts[name] != sum(isinstance(root, Mapping)
+                                       and root.get("classification") == name for root in roots)
+                   for name in classes)):
+        problems.append("source-bound integer-epilogue inventory is malformed")
+        roots = []
+
+    roots_by_id: dict[int, Mapping[str, Any]] = {}
+    for root_index, root in enumerate(roots):
+        label = f"integer-epilogue root {root_index}"
+        source_index = root.get("producer_source_operation_id") \
+            if isinstance(root, Mapping) else None
+        if (type(source_index) is not int or not 0 <= source_index < len(nodes)
+                or source_index in roots_by_id):
+            problems.append(f"{label} has no unique source producer")
+            continue
+        node = nodes[source_index]
+        provenance = node.get("prov") if isinstance(node, Mapping) else None
+        owner = owners.get(source_index)
+        accumulator_name = (node.get("outputs", [None])[0]
+                            if isinstance(node, Mapping) and len(node.get("outputs", [])) == 1
+                            else None)
+        accumulator = buffers.get(accumulator_name)
+        source_ids = root.get("source_operation_ids")
+        stages = root.get("stages")
+        if (set(root) != {"producer_source_operation_id", "producer_task_index",
+                          "producer_task_kind", "accumulator_source_buffer", "accumulator",
+                          "source_operation_ids", "stages", "reasons", "classification"}
+                or root.get("classification") not in classes
+                or not isinstance(provenance, Mapping)
+                or provenance.get("prov.family") != "contraction"
+                or not isinstance(root.get("reasons"), list)
+                or any(not isinstance(reason, str) or not reason for reason in root["reasons"])
+                or not isinstance(owner, Mapping)
+                or root.get("producer_task_index") != owner["task_index"]
+                or root.get("producer_task_kind") != owner["declared_task_kind"]
+                or root.get("accumulator_source_buffer") != accumulator_name
+                or not isinstance(accumulator, Mapping)
+                or root.get("accumulator") != {
+                    "shape": accumulator.get("shape"), "dtype": accumulator.get("dtype")}
+                or not isinstance(stages, list) or not isinstance(source_ids, list)
+                or source_ids != [source_index, *[
+                    stage.get("source_operation_id") for stage in stages
+                    if isinstance(stage, Mapping)]]):
+            problems.append(f"{label} disagrees with graph or task ownership")
+            continue
+        current = accumulator_name
+        valid = True
+        for stage_index, stage in enumerate(stages):
+            operation_id = stage.get("source_operation_id") if isinstance(stage, Mapping) else None
+            operation = (nodes[operation_id] if type(operation_id) is int
+                         and 0 <= operation_id < len(nodes) else None)
+            stage_owner = owners.get(operation_id)
+            inputs = stage.get("inputs") if isinstance(stage, Mapping) else None
+            output = stage.get("output") if isinstance(stage, Mapping) else None
+            semantic = ({key: stage.get(key) for key in (
+                "stage", "operation", "inputs", "output", "indexing_maps", "scalar_operations")}
+                        if isinstance(stage, Mapping) else {})
+            operation_inputs = operation.get("inputs") if isinstance(operation, Mapping) else None
+            operation_outputs = operation.get("outputs") if isinstance(operation, Mapping) else None
+            primary = inputs[0] if isinstance(inputs, list) and inputs else None
+            if (not isinstance(stage, Mapping)
+                    or set(stage) != {"stage", "operation", "inputs", "output",
+                                      "indexing_maps", "scalar_operations", "semantic_sha256",
+                                      "classification_source", "source_operation_id",
+                                      "task_index", "task_kind"}
+                    or not isinstance(operation, Mapping) or not isinstance(stage_owner, Mapping)
+                    or stage.get("task_index") != stage_owner["task_index"]
+                    or stage.get("task_kind") != stage_owner["declared_task_kind"]
+                    or stage.get("stage") not in _SOURCE_STAGES
+                    or not isinstance(stage.get("operation"), str) or not stage["operation"]
+                    or not isinstance(inputs, list) or not inputs
+                    or not isinstance(output, Mapping)
+                    or not isinstance(operation_inputs, list)
+                    or len(inputs) != len(operation_inputs)
+                    or [operand.get("operand_index") for operand in inputs
+                        if isinstance(operand, Mapping)] != list(range(len(operation_inputs)))
+                    or not isinstance(operation_outputs, list) or len(operation_outputs) != 1
+                    or operation_outputs[0] != output.get("source_buffer")
+                    or not isinstance(primary, Mapping)
+                    or primary.get("source_buffer") != current
+                    or primary.get("role") != "accumulator"
+                    or primary.get("relation") != "exact"
+                    or not isinstance(stage.get("indexing_maps"), list)
+                    or any(not isinstance(item, str) or not item
+                           for item in stage["indexing_maps"])
+                    or not isinstance(stage.get("scalar_operations"), list)
+                    or any(not isinstance(item, str) or not item
+                           for item in stage["scalar_operations"])
+                    or _digest(semantic) != stage.get("semantic_sha256")):
+                problems.append(f"{label} stage {stage_index} identity is invalid")
+                valid = False
+                break
+            seen_roles: set[str] = set()
+            for operand in inputs:
+                operand_index = operand.get("operand_index") if isinstance(operand, Mapping) else None
+                name = operand.get("source_buffer") if isinstance(operand, Mapping) else None
+                buffer = buffers.get(name) if isinstance(name, str) else None
+                role = operand.get("role") if isinstance(operand, Mapping) else None
+                if (not isinstance(operand, Mapping)
+                        or set(operand) != {"source_buffer", "operand_index", "role", "relation",
+                                            "shape", "dtype"}
+                        or type(operand_index) is not int
+                        or not 0 <= operand_index < len(operation_inputs)
+                        or operation_inputs[operand_index] != name or not isinstance(buffer, Mapping)
+                        or operand.get("shape") != buffer.get("shape")
+                        or operand.get("dtype") != buffer.get("dtype")
+                        or operand.get("relation") not in {"exact", "scalar", "trailing_broadcast"}
+                        or not isinstance(role, str) or not role or role in seen_roles):
+                    problems.append(f"{label} stage {stage_index} operand contract is invalid")
+                    valid = False
+                    break
+                seen_roles.add(role)
+            final_buffer = buffers.get(output.get("source_buffer"))
+            if (not valid or set(output) != {"source_buffer", "shape", "dtype"}
+                    or not isinstance(final_buffer, Mapping)
+                    or output.get("shape") != final_buffer.get("shape")
+                    or output.get("dtype") != final_buffer.get("dtype")):
+                if valid:
+                    problems.append(f"{label} stage {stage_index} output contract is invalid")
+                valid = False
+                break
+            provenance = operation.setdefault("prov", {})
+            provenance["prov.epilogue_stage"] = stage["stage"]
+            provenance["prov.epilogue_operation"] = stage["operation"]
+            provenance["prov.epilogue_operand_roles"] = [
+                operand["role"] for operand in inputs[1:]]
+            current = output["source_buffer"]
+        accumulator_width = _integer_width(accumulator.get("dtype"))
+        final_width = _integer_width(buffers.get(current, {}).get("dtype"))
+        completed = (bool(stages) and accumulator_width is not None and final_width is not None
+                     and final_width < accumulator_width)
+        expected_classification = ("complete_integer_epilogue" if completed else
+                                   "partial_integer_epilogue" if stages else "unclassified")
+        if valid and root.get("classification") != expected_classification:
+            problems.append(f"{label} completion classification is inconsistent")
+            valid = False
+        if valid:
+            roots_by_id[source_index] = root
+
+    if problems:
+        return None, {}, sorted(set(problems))
+    adapted = dict(parts)
+    adapted.update({"nodes": nodes, "buffers": buffers,
+                    "source_plan_epilogue_roots": roots_by_id})
+    program = dict(parts["program"])
+    program.update({"nodes": nodes, "buffers": buffers})
+    adapted["program"] = program
+    return adapted, roots_by_id, []
 
 
 def _fallback_residual(node: Mapping[str, Any], current: str,
@@ -637,6 +910,7 @@ def _member_inventory(analysis: Mapping[str, Any], identity: Mapping[str, Any],
         "source_operation_ids": [],
         "eligible": [],
         "already_narrow": [],
+        "missing_representation": [],
         "missing_capability": [],
         "residual_second_operand": [],
         "float_or_unsupported_stage": [],
@@ -647,10 +921,27 @@ def _member_inventory(analysis: Mapping[str, Any], identity: Mapping[str, Any],
     if not parts:
         member["inventory_sha256"] = _digest(member)
         return member
-    _producer, uses, link_problems = _graph_links(parts)
-    member["problems"].extend(link_problems)
     ownership_broken = bool(parts["missing_owners"] or any(
         "owner" in reason or "ownership" in reason for reason in problems))
+    if ownership_broken:
+        for raw in parts["placement"].get("contractions", []):
+            member["ownership_failures"].append({
+                "producer_source_operation_id": raw.get("source_op_index")
+                if isinstance(raw, Mapping) else None,
+                "classification": "ownership_failure",
+                "reasons": ["full source graph ownership is incomplete or contradictory"],
+            })
+        member["problems"] = sorted(set(member["problems"]))
+        member["inventory_sha256"] = _digest(member)
+        return member
+    parts, metadata_roots, metadata_problems = _source_plan_adapter(parts)
+    member["problems"].extend(metadata_problems)
+    if not parts:
+        member["problems"] = sorted(set(member["problems"]))
+        member["inventory_sha256"] = _digest(member)
+        return member
+    _producer, uses, link_problems = _graph_links(parts)
+    member["problems"].extend(link_problems)
     seen: set[int] = set()
     for raw in parts["placement"].get("contractions", []):
         source_index = raw.get("source_op_index") if isinstance(raw, Mapping) else None
@@ -663,13 +954,6 @@ def _member_inventory(analysis: Mapping[str, Any], identity: Mapping[str, Any],
             continue
         if type(source_index) is int:
             seen.add(source_index)
-        if ownership_broken:
-            member["ownership_failures"].append({
-                "producer_source_operation_id": source_index,
-                "classification": "ownership_failure",
-                "reasons": ["full source graph ownership is incomplete or contradictory"],
-            })
-            continue
         if not isinstance(raw, Mapping):
             member["uncaptured"].append({
                 "producer_source_operation_id": None, "classification": "uncaptured",
@@ -700,6 +984,23 @@ def _member_inventory(analysis: Mapping[str, Any], identity: Mapping[str, Any],
             continue
         traced = _trace(site, parts, uses, set(parts["program"].get("results", [])))
         classification = traced.pop("classification")
+        source_metadata = metadata_roots.get(source_index)
+        metadata_reasons = (source_metadata.get("reasons", [])
+                            if isinstance(source_metadata, Mapping) else [])
+        representation_reasons = sorted({reason for reason in traced.get("reasons", [])
+                                         if "encoding is absent" in reason
+                                         or "layout is absent" in reason})
+        if representation_reasons:
+            classification = "missing_representation"
+            traced["reasons"] = [
+                "one or more exact epilogue buffers have no verified physical representation",
+                *representation_reasons,
+            ]
+        elif classification in {"uncaptured", "float_or_unsupported_stage"} \
+                and isinstance(metadata_reasons, list):
+            traced["reasons"] = sorted(set([*traced.get("reasons", []),
+                                             *[reason for reason in metadata_reasons
+                                               if isinstance(reason, str) and reason]]))
         if classification == "capability_pending":
             proof = capability_forms.get(traced["capability_form_sha256"])
             if proof is None:
@@ -728,7 +1029,7 @@ def _member_inventory(analysis: Mapping[str, Any], identity: Mapping[str, Any],
                         and isinstance(raw.get("mac_basis"), str) else
                         "contraction observer left the source operation unresolved"],
         })
-    for key in ("eligible", "already_narrow", "missing_capability",
+    for key in ("eligible", "already_narrow", "missing_representation", "missing_capability",
                 "residual_second_operand", "float_or_unsupported_stage", "uncaptured",
                 "ownership_failures"):
         member[key].sort(key=lambda row: (-1 if row["producer_source_operation_id"] is None
@@ -912,6 +1213,7 @@ def build_narrow_epilogue_mechanism_documents(
                 "iteration_record_sha256": iteration_record_sha256,
                 "capability_evidence_file_sha256": capability_evidence_file_sha256,
                 "already_narrow_count": len(member["already_narrow"]),
+                "missing_representation_count": len(member["missing_representation"]),
                 "missing_capability_count": len(member["missing_capability"]),
                 "residual_second_operand_count": len(member["residual_second_operand"]),
                 "float_or_unsupported_stage_count": len(member["float_or_unsupported_stage"]),
@@ -1015,6 +1317,8 @@ def main(argv: list[str] | None = None) -> int:
                             for member in documents["inventory"]["members"]],
         "already_narrow_counts": [len(member["already_narrow"])
                                   for member in documents["inventory"]["members"]],
+        "missing_representation_counts": [len(member["missing_representation"])
+                                           for member in documents["inventory"]["members"]],
         "missing_capability_counts": [len(member["missing_capability"])
                                       for member in documents["inventory"]["members"]],
         "residual_second_operand_counts": [len(member["residual_second_operand"])
