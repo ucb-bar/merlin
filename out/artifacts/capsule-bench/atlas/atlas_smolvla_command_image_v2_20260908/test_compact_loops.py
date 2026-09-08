@@ -140,9 +140,36 @@ def test_static_bias_precedes_relu_in_the_encoded_epilogue() -> None:
     assert words.index(e.vadd(2, 2, 6)) < words.index(e.vrelu(2, 2))
 
 
+def test_emitted_pair_writers_use_even_banks_and_validator_can_fail() -> None:
+    words = _compile(ROOT / "cases/smolvla_state_proj_1_32_960/two_matmuls.mlir")
+    e.validate_pair_banks(words)
+    assert e.vli_all(62, 0) in words
+    assert e.vli_all(63, 0) not in words
+    # Odd VPU pair destinations fail, while odd single-bank VLOAD is legal.
+    e.validate_pair_banks([e.vload(7, 6)])
+    try:
+        e.validate_pair_banks([e.vli_all(63, 0)])
+    except ValueError as error:
+        assert "pair-write" in str(error) and "odd MREG bank 63" in str(error)
+    else:
+        raise AssertionError("odd VLI_ALL pair destination was accepted")
+    for bad_word, expected_role in (
+        (e.vrelu(2, 3), "pair-read-primary"),
+        (e.vadd(2, 2, 3), "pair-read-secondary"),
+        (e.pop_bf16(63, 0, mxu=1), "pair-write"),
+    ):
+        try:
+            e.validate_pair_banks([bad_word])
+        except ValueError as error:
+            assert expected_role in str(error)
+        else:
+            raise AssertionError(f"odd {expected_role} base was accepted")
+
+
 if __name__ == "__main__":
     test_rank2_k_and_n_tails_fit_and_have_valid_runtime_loops()
     test_partial_n_tail_and_batch_count_reuse_one_body()
     test_compact_epilogues_fail_closed_instead_of_emitting_ecall_only()
     test_static_bias_precedes_relu_in_the_encoded_epilogue()
+    test_emitted_pair_writers_use_even_banks_and_validator_can_fail()
     print("ok: compact K/N tails, runtime batch reuse, IMEM bounds, control targets")

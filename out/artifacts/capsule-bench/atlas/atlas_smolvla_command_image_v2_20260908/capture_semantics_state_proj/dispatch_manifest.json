@@ -1,0 +1,110 @@
+{
+  "abi": {
+    "inputs": [
+      {
+        "capture_bytes": 128,
+        "capture_type": "tensor<1x32xf32>",
+        "device_bytes": 32,
+        "device_dtype": "fp8_e4m3",
+        "name": "A0",
+        "origin": {
+          "argument_index": 511,
+          "bridges": [],
+          "kind": "function_argument"
+        }
+      },
+      {
+        "capture_bytes": 122880,
+        "capture_type": "tensor<32x960xf32>",
+        "device_bytes": 30720,
+        "device_dtype": "fp8_e4m3",
+        "name": "W",
+        "origin": {
+          "argument_index": 490,
+          "bridges": [
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            }
+          ],
+          "kind": "function_argument"
+        }
+      },
+      {
+        "capture_bytes": 3840,
+        "capture_type": "tensor<960xf32>",
+        "device_bytes": 1920,
+        "device_dtype": "bf16",
+        "name": "B",
+        "origin": {
+          "argument_index": 491,
+          "bridges": [],
+          "kind": "function_argument"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "capture_bytes": 3840,
+        "capture_type": "tensor<1x960xf32>",
+        "consumers": [
+          {
+            "op": "tensor.collapse_shape",
+            "op_index": 2828,
+            "region_id": "unsqueeze_16",
+            "semantic": "unsqueeze"
+          }
+        ],
+        "device_bytes": 1920,
+        "device_dtype": "bf16",
+        "frontier_consumers": [
+          {
+            "kind": "host_region",
+            "op": "tensor.concat",
+            "op_index": 2834,
+            "region_id": "cat_0",
+            "semantic": "cat"
+          }
+        ],
+        "name": "Y0"
+      }
+    ]
+  },
+  "calibration_contract": "calibration_contract.json",
+  "capture_regions": [
+    "matmul_97",
+    "add_99"
+  ],
+  "claim": "host/device skeleton for one partition; no whole-model dispatch claim",
+  "events": [
+    {
+      "capture_op_index": 2825,
+      "phase": "bind_capture_inputs"
+    },
+    {
+      "capture_op_index": 2825,
+      "phase": "quantize_A0_W_and_fold_B"
+    },
+    {
+      "capture_op_index": 2825,
+      "phase": "launch_device_image"
+    },
+    {
+      "capture_op_index": 2827,
+      "phase": "dequantize_and_publish_Y0"
+    },
+    {
+      "capture_op_index": 2834,
+      "phase": "release_Y0_after_frontier"
+    }
+  ],
+  "fqn": "model.state_proj",
+  "kernel_id": "matmul_1_32_960_bias",
+  "lifetime": {
+    "definition_op_index": 2827,
+    "last_frontier_use_op_index": 2834
+  },
+  "partition_id": "atlas_p0098",
+  "qualified_capture_semantics": true,
+  "schema": "atlas_single_partition_dispatch_v1"
+}

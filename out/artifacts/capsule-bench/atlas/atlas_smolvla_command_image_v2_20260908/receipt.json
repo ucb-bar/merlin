@@ -6,6 +6,18 @@
     "epilogue_safety": "bias precedes ReLU; unsupported compact scale/ReLU combinations fail closed",
     "path": "submission/mlir_oot/codegen.py"
   },
+  "first_capture_semantics_bridge": {
+    "calibration_contract": "calibration_contract.json",
+    "claim_scope": "one real capture partition, not whole-model execution",
+    "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
+    "dispatch_manifest": "capture_semantics_state_proj/dispatch_manifest.json",
+    "fqn": "model.state_proj",
+    "partition_id": "atlas_p0098",
+    "qualified_partitions": 1,
+    "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
+    "result": "capture_semantics_state_proj/result.json",
+    "structural_partitions_total": 391
+  },
   "full_capture_parser_fix": {
     "mechanism": "remove only redundant tuple wrappers around multi-result region type lists before xDSL parsing",
     "next_blocker": "calibrated quantization bridges plus host/device graph dispatch",
@@ -37,10 +49,17 @@
     "mechanism": "register each merlin_iface.commit SSA result in the tensor-name map",
     "path": "submission/mlir_oot/frontend.py"
   },
-  "schema": "atlas_smolvla_command_image_receipt_v2",
+  "pair_bank_fix": {
+    "after": "reserved VLI_ALL pair 62/63 encodes even six-bit base bank 62",
+    "before": "VLI_ALL 63 encoded odd destination bank 31 and aborted assertion-enabled GSIM",
+    "field_width": "RTL ScalarDecoder uses instr[12:7] for six-bit vd/vs fields",
+    "rtl_guard": "atlas_gsim_sim_assert returns zero with empty stderr",
+    "static_guard": "encoder.validate_pair_banks mirrors VPU pair reads/writes and MXU BF16-pop writes"
+  },
+  "schema": "atlas_smolvla_command_image_receipt_v3",
   "status": "representative_rtl_numeric",
   "validation": {
-    "backend_source_tree_sha256": "bb77a68d43c58546ec5a7d1fe40b173df1e6532d7185a44ef070b9b37e3fb30f",
+    "backend_source_tree_sha256": "35edc39b40f3c105bff34b82d7f1340808277f198469b3f18925961e6eedf568",
     "first_concrete_partition": {
       "capture_regions": [
         "matmul_0",
@@ -54,7 +73,7 @@
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 17
+      "passed": 23
     },
     "full_capture_partition_plan": {
       "accelerator_dependency_edges": 88,
@@ -97,6 +116,63 @@
       "usable_as_numeric_oracle_for_emitted_atlas_isa": false
     },
     "ok": true,
+    "real_capture_semantics_qualification": {
+      "acceptance": {
+        "passed": true,
+        "thresholds": {
+          "cosine_min": 0.995,
+          "max_abs_error": 0.125,
+          "max_relative_denominator_floor": 0.001,
+          "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+        }
+      },
+      "capture_regions": [
+        "matmul_97",
+        "add_99"
+      ],
+      "cycles": 154458,
+      "device_output": {
+        "dtype": "bf16",
+        "path": "capture_semantics_state_proj/device_output.bf16.bin",
+        "raw_sha256": "9e6c88fd324ad0629a7506653ff063361570175a2ed2999cf79f62dded542ba7",
+        "shape": [
+          1,
+          960
+        ]
+      },
+      "fqn": "model.state_proj",
+      "partition_id": "atlas_p0098",
+      "qualified_partitions": 1,
+      "quantized_domain_reference_comparison": {
+        "cosine_similarity": 0.9999973773956299,
+        "max_abs_error": 0.012991905212402344,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 0.08831901103258133,
+        "mean_abs_error": 0.001478539314121008,
+        "rmse": 0.0023077691439539194
+      },
+      "raw_gsim_receipt": {
+        "assertion_clean": true,
+        "cycles": 154458,
+        "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+        "final_pc_available": false,
+        "halt_reason": -1,
+        "halted": true,
+        "path": "capture_semantics_state_proj/raw_gsim_receipt.json",
+        "spec_sha256": "a0a0174e8b2963b0dcc79bf0b72a2b49958a10543b5719fbcc91050247b5c872",
+        "stderr_observation": "empty",
+        "stdout_sha256": "5ba040625c1c5a8aa85f897cd2dd218eaaf3982ea7148ffebecea7d1185c44dd"
+      },
+      "source_f32_comparison": {
+        "cosine_similarity": 0.9994547367095947,
+        "max_abs_error": 0.07092868536710739,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 16.858871459960938,
+        "mean_abs_error": 0.01729688048362732,
+        "rmse": 0.021716563031077385
+      },
+      "structural_partitions_total": 391
+    },
     "recovery_status": "representative_rtl_numeric",
     "representative_cases": {
       "bf16_movement_single": {
@@ -105,7 +181,7 @@
         "commands": 1,
         "cycles": 1075,
         "instruction_words": 391,
-        "kernel_sha256": "05fce6be66b99b0f57f8eb7fd97c0a051d3bd14e733cde03ee458371ad654c76",
+        "kernel_sha256": "defaed22b37cdd4af94524ca13792089a06e2a51bd7beeec61a66fb28c04a8e8",
         "outputs": [
           "Y0"
         ]
@@ -116,7 +192,7 @@
         "commands": 2,
         "cycles": 1877,
         "instruction_words": 671,
-        "kernel_sha256": "5fee33a365e0caf736b3bf571a93c6736156c3b7be74b3c105efe94f38a42ab7",
+        "kernel_sha256": "a502ff6db3ffc117c35189e117df20e5a54d52fa26135edecc76d6082b432cf0",
         "outputs": [
           "Y0",
           "Y1"
@@ -128,7 +204,7 @@
         "commands": 8,
         "cycles": 7314,
         "instruction_words": 1882,
-        "kernel_sha256": "ceb6ee8b63b66218c4325fcdc398060709c8185096460d50faff876f0bcd845d",
+        "kernel_sha256": "2587ea688644b2d18cb2aadd9c218e88c17e876c022546b6028e69cc8d1fb69e",
         "outputs": [
           "Y0",
           "Y1"
@@ -140,7 +216,7 @@
         "commands": 8,
         "cycles": 6010,
         "instruction_words": 2359,
-        "kernel_sha256": "7fa7a5e2a9030b150490a56c5e450bc4da9199a2e90eaca43329a8c8809f1b88",
+        "kernel_sha256": "3dfff116e0bee3b235b6910bf6d52fec467b0090be1a1e0b821b346cfc135c1b",
         "outputs": [
           "Y0",
           "Y1"
@@ -152,7 +228,7 @@
         "commands": 4,
         "cycles": 154458,
         "instruction_words": 1509,
-        "kernel_sha256": "853f8396604796ef7bb420811d701cbad4f8cfffd5d38116ff2dd47272a611c6",
+        "kernel_sha256": "0e94ad0ad262a1aafa4f18973b90f4ddaa94dde2d8ce690b0ae525e5870ee11e",
         "outputs": [
           "Y0"
         ]
@@ -163,7 +239,7 @@
         "commands": 4,
         "cycles": 300068,
         "instruction_words": 12605,
-        "kernel_sha256": "fcd4ad1aeadf18d03bd1d13f43ce74f6b417d4c193771e35b4368953146e928a",
+        "kernel_sha256": "ff3b7186089aef125dad7ec855e195dc353478ec8ff762a1e248406592dcdb8d",
         "outputs": [
           "Y0"
         ]
@@ -199,11 +275,11 @@
       "unique_contraction_shapes": 2,
       "unique_contraction_shapes_total": 28
     },
-    "schema": "atlas_smolvla_command_image_validation_v2",
+    "schema": "atlas_smolvla_command_image_validation_v3",
     "unproven": [
       "whole SmolVLA image",
       "extraction/dispatch for every full-graph partition",
-      "numeric qualification of the first concrete partition",
+      "numeric qualification of first_addmm_matmul_0 (state_proj is qualified separately)",
       "arbitrary FP8 accumulation correctness",
       "performance of the full model",
       "capsule score of this changed package"

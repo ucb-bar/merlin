@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 import test_command_image as tests
+import test_capture_bridge as bridge_tests
 import test_compact_loops as compact_tests
 import test_first_partition as partition_tests
 import test_full_graph_inventory as graph_tests
@@ -41,6 +42,7 @@ compact_tests.test_rank2_k_and_n_tails_fit_and_have_valid_runtime_loops()
 compact_tests.test_partial_n_tail_and_batch_count_reuse_one_body()
 compact_tests.test_compact_epilogues_fail_closed_instead_of_emitting_ecall_only()
 compact_tests.test_static_bias_precedes_relu_in_the_encoded_epilogue()
+compact_tests.test_emitted_pair_writers_use_even_banks_and_validator_can_fail()
 parser_tests.test_multi_result_normalization_preserves_ordered_result_types()
 parser_tests.test_full_smolvla_capture_parses_without_mutating_the_capture()
 graph_tests.test_full_capture_partition_inventory_is_fail_closed()
@@ -49,6 +51,11 @@ plan_tests.test_whole_capture_plan_compiles_only_real_structural_contractions()
 plan_tests.test_dependencies_lifetimes_and_abis_are_stable_and_explicit()
 plan_tests.test_no_host_region_is_silently_promoted_to_a_command_image()
 plan_tests.test_plan_and_manifests_are_byte_stable_across_rebuilds()
+bridge_tests.test_calibration_scale_equations_and_rounding_are_explicit_and_deterministic()
+bridge_tests.test_bias_is_folded_in_quant_domain_and_output_scale_is_restored()
+bridge_tests.test_dispatch_manifest_comes_from_planned_dependency_and_lifetime_abi()
+bridge_tests.test_capture_bridge_fails_closed_on_semantic_or_value_drift()
+bridge_tests.test_saved_real_capture_qualification_is_scoped_and_passes_fixed_tolerance()
 
 full = load(ROOT / "full_capture_probe.json")
 raw = load(ROOT / "cases/smolvla_tail_50_720_32/raw_readback.json")
@@ -56,6 +63,8 @@ state_proj = load(ROOT / "cases/smolvla_state_proj_1_32_960/gsim_result.json")
 inventory = load(ROOT / "full_capture_partition_inventory.json")
 partition = load(ROOT / "partitions/first_addmm_matmul_0/compile_receipt.json")
 plan = load(ROOT / "whole_capture_plan/partition_plan.json")
+capture_qualification = load(ROOT / "capture_semantics_state_proj/result.json")
+raw_capture_receipt = load(ROOT / capture_qualification["raw_gsim_receipt"])
 cases = {}
 for case_dir in sorted((ROOT / "cases").iterdir()):
     result_path = case_dir / "gsim_result.json"
@@ -72,11 +81,11 @@ for case_dir in sorted((ROOT / "cases").iterdir()):
         }
 
 verdict = {
-    "schema": "atlas_smolvla_command_image_validation_v2",
+    "schema": "atlas_smolvla_command_image_validation_v3",
     "ok": True,
     "recovery_status": "representative_rtl_numeric",
     "backend_source_tree_sha256": tree_digest(ROOT / "submission"),
-    "focused_tests": {"passed": 17, "failed": 0},
+    "focused_tests": {"passed": 23, "failed": 0},
     "full_capture_structural_compile_coverage": plan["compile_coverage"],
     "rtl_numeric_smolvla_coverage": {
         "unique_contraction_shapes": 2,
@@ -121,6 +130,32 @@ verdict = {
         "maximal_accelerator_islands": plan["maximal_accelerator_island_count"],
         "capture_semantics_executable_partitions": plan["capture_semantics_executable_partition_count"],
     },
+    "real_capture_semantics_qualification": {
+        "partition_id": capture_qualification["partition_id"],
+        "fqn": capture_qualification["fqn"],
+        "capture_regions": capture_qualification["capture_regions"],
+        "qualified_partitions": capture_qualification["capture_semantics_executable_partitions"],
+        "structural_partitions_total": capture_qualification["structural_partitions_total"],
+        "cycles": capture_qualification["cycles"],
+        "source_f32_comparison": capture_qualification["source_f32_comparison"],
+        "quantized_domain_reference_comparison": capture_qualification[
+            "quantized_domain_reference_comparison"
+        ],
+        "acceptance": capture_qualification["acceptance"],
+        "device_output": capture_qualification["device_output"],
+        "raw_gsim_receipt": {
+            "path": capture_qualification["raw_gsim_receipt"],
+            "spec_sha256": raw_capture_receipt["spec_sha256"],
+            "stdout_sha256": raw_capture_receipt["stdout_sha256"],
+            "engine_sha256": raw_capture_receipt["engine_sha256"],
+            "halted": raw_capture_receipt["halted"],
+            "halt_reason": raw_capture_receipt["halt_reason"],
+            "cycles": raw_capture_receipt["cycles"],
+            "final_pc_available": raw_capture_receipt["final_pc_available"],
+            "assertion_clean": raw_capture_receipt["assertion_clean"],
+            "stderr_observation": raw_capture_receipt["stderr_observation"],
+        },
+    },
     "first_concrete_partition": {
         "capture_regions": partition["capture_regions"],
         "instruction_words": partition["instruction_words"],
@@ -137,7 +172,7 @@ verdict = {
     "unproven": [
         "whole SmolVLA image",
         "extraction/dispatch for every full-graph partition",
-        "numeric qualification of the first concrete partition",
+        "numeric qualification of first_addmm_matmul_0 (state_proj is qualified separately)",
         "arbitrary FP8 accumulation correctness",
         "performance of the full model",
         "capsule score of this changed package",
@@ -146,7 +181,7 @@ verdict = {
 (ROOT / "validation.json").write_text(json.dumps(verdict, indent=2, sort_keys=True) + "\n")
 
 receipt = {
-    "schema": "atlas_smolvla_command_image_receipt_v2",
+    "schema": "atlas_smolvla_command_image_receipt_v3",
     "status": verdict["recovery_status"],
     "baseline": "atlas_smolvla_compact_loops_v1_20260908 (committed 28/28 IMEM-fit package)",
     "integration_fix": {
@@ -173,11 +208,30 @@ receipt = {
             "whole_capture_plan/abi_manifest.json",
         ],
     },
+    "first_capture_semantics_bridge": {
+        "partition_id": capture_qualification["partition_id"],
+        "fqn": capture_qualification["fqn"],
+        "qualified_partitions": 1,
+        "structural_partitions_total": plan["partition_count"],
+        "calibration_contract": "calibration_contract.json",
+        "dispatch_manifest": "capture_semantics_state_proj/dispatch_manifest.json",
+        "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
+        "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
+        "result": "capture_semantics_state_proj/result.json",
+        "claim_scope": "one real capture partition, not whole-model execution",
+    },
     "compact_bias_fix": {
         "path": "submission/mlir_oot/codegen.py",
         "before": "bias_add omitted from compact FP8 matmul; first VREDSUM broadcast fix permuted lanes",
         "after": "explicit BF16 two-register row layout; 960/960 state-projection outputs exact on GSIM",
         "epilogue_safety": "bias precedes ReLU; unsupported compact scale/ReLU combinations fail closed",
+    },
+    "pair_bank_fix": {
+        "before": "VLI_ALL 63 encoded odd destination bank 31 and aborted assertion-enabled GSIM",
+        "after": "reserved VLI_ALL pair 62/63 encodes even six-bit base bank 62",
+        "field_width": "RTL ScalarDecoder uses instr[12:7] for six-bit vd/vs fields",
+        "static_guard": "encoder.validate_pair_banks mirrors VPU pair reads/writes and MXU BF16-pop writes",
+        "rtl_guard": "atlas_gsim_sim_assert returns zero with empty stderr",
     },
     "hypotheses_ranked_before_fix": [
         "missing commit-result SSA registration",

@@ -1,0 +1,87 @@
+{
+  "acceptance": {
+    "passed": true,
+    "thresholds": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "capture_regions": [
+    "matmul_97",
+    "add_99"
+  ],
+  "capture_semantics_executable_partitions": 1,
+  "claim": "one real SmolVLA state_proj partition executed on elaborated RTL",
+  "cycles": 154458,
+  "device_output": {
+    "dtype": "bf16",
+    "path": "capture_semantics_state_proj/device_output.bf16.bin",
+    "raw_sha256": "9e6c88fd324ad0629a7506653ff063361570175a2ed2999cf79f62dded542ba7",
+    "shape": [
+      1,
+      960
+    ]
+  },
+  "engine": {
+    "derived_from_rtl": true,
+    "engine": "gsim",
+    "fidelity": "elaborated_rtl",
+    "kind": "atlas-gsim-rtl",
+    "provenance": {
+      "adoption_record": {
+        "name": "provenance.json",
+        "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+      },
+      "binaries": {
+        "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+        "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+        "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+        "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+      },
+      "engine": "gsim",
+      "wrapper": "gsim_run.py"
+    }
+  },
+  "fqn": "model.state_proj",
+  "image": {
+    "command_buffer": "whole_capture_plan/command_buffers/matmul_1_32_960_bias.json",
+    "command_buffer_sha256_without_preloads": "4c56b59fdded260ae09ef2e40fde0b9c2498d077d8870dfdf5d01beef8e8d7d1",
+    "instruction_words": 1509,
+    "kernel": "cases/smolvla_state_proj_1_32_960/kernel.S",
+    "kernel_sha256": "0e94ad0ad262a1aafa4f18973b90f4ddaa94dde2d8ce690b0ae525e5870ee11e"
+  },
+  "not_claimed": [
+    "whole-model dispatch",
+    "whole-model numeric correctness",
+    "source bit-exactness",
+    "whole-model performance"
+  ],
+  "partition_id": "atlas_p0098",
+  "quantized_domain_reference_comparison": {
+    "cosine_similarity": 0.9999973773956299,
+    "max_abs_error": 0.012991905212402344,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 0.08831901103258133,
+    "mean_abs_error": 0.001478539314121008,
+    "rmse": 0.0023077691439539194
+  },
+  "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
+  "scale_equation": {
+    "activation": "qA = E4M3FN_RNE(A / sA)",
+    "bias": "qB = BF16_RNE(B / (sA * sW))",
+    "output": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
+    "weight": "qW = E4M3FN_RNE(W / sW)"
+  },
+  "schema": "atlas_real_capture_partition_qualification_v1",
+  "source_f32_comparison": {
+    "cosine_similarity": 0.9994547367095947,
+    "max_abs_error": 0.07092868536710739,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 16.858871459960938,
+    "mean_abs_error": 0.01729688048362732,
+    "rmse": 0.021716563031077385
+  },
+  "structural_partitions_total": 391
+}

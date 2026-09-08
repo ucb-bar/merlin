@@ -629,12 +629,12 @@ def _stage_bf16_pair(p, spec, m0, n0, rows, cols, local_low, reg_low,
         return
     low_cols, high_cols = min(cols, 16), max(0, cols - 16)
     if padding is not None:
-        p.emit(e.vli_all(63, padding), e.delay(65))
+        p.emit(e.vli_all(62, padding), e.delay(65))
     for local in (local_low, local_low + 256):
         p.li(6, local)
         p.emit(e.vstore(63, 6), e.delay(40))
     if padding is not None:
-        p.emit(e.vli_all(63, 0), e.delay(65))
+        p.emit(e.vli_all(62, 0), e.delay(65))
     source_cols = spec["shape"][-1]
     bulk_local = None
     total_bytes = math.prod(spec["shape"]) * 2
@@ -1027,10 +1027,10 @@ def _emit_layernorm(p, cb, item):
     # Compiler constants survive VLI.ALL's global clobber in VMEM.
     for local, value in ((1536, 1.0 / cols),
                          (1792, item.get("attrs", {}).get("eps", 1.0e-5))):
-        p.emit(e.vli_all(63, _bf16_bits(value)), e.delay(65))
+        p.emit(e.vli_all(62, _bf16_bits(value)), e.delay(65))
         p.li(6, local)
         p.emit(e.vstore(63, 6), e.delay(40))
-    p.emit(e.vli_all(63, 0), e.delay(65))
+    p.emit(e.vli_all(62, 0), e.delay(65))
     p.li(6, 1536)
     p.emit(e.vload(28, 6), e.delay(33), e.vload(29, 6), e.delay(33))
     p.li(6, 1792)
@@ -1344,10 +1344,10 @@ def _emit_attention_full(p, workload, cb, item):
 
     # VLI.ALL clobbers the complete MRF, so preserve the shape-derived scale
     # in VMEM before loading Q/K for the native QK^T contraction.
-    p.emit(e.vli_all(63, _bf16_bits(1.0 / math.sqrt(depth))), e.delay(65))
+    p.emit(e.vli_all(62, _bf16_bits(1.0 / math.sqrt(depth))), e.delay(65))
     p.li(6, 1536)
     p.emit(e.vstore(63, 6), e.delay(40),
-           e.vli_all(63, 0), e.delay(65))
+           e.vli_all(62, 0), e.delay(65))
 
     p.emit(e.seli(0, 127))
     for k0 in range(0, depth, 32):
@@ -1577,7 +1577,7 @@ def emit_program(workload):
     p.li(10, 0)
     # DMA base is per channel.  Program every channel before the scheduler uses it.
     p.emit(*(e.dma_config(5, channel) for channel in range(8)))
-    p.emit(e.vli_all(63, 0), e.delay(65))
+    p.emit(e.vli_all(62, 0), e.delay(65))
     rne_host_inputs = False
     for name, source in cb["tensors"].items():
         temp_name = "__bf16_" + name
@@ -1662,22 +1662,22 @@ def emit_program(workload):
     rms_item = next((item for item in workload.ops if item["op"] == "rmsnorm"), None)
     if rms_item is not None:
         src = next(t for t in workload.tensors if t.name == rms_item["inputs"][0])
-        p.emit(e.vli_all(63, _bf16_bits(1.0 / src.shape[-1])), e.delay(65))
+        p.emit(e.vli_all(62, _bf16_bits(1.0 / src.shape[-1])), e.delay(65))
         p.li(6, 1536)
         p.emit(e.vstore(63, 6), e.delay(40))
-        p.emit(e.vli_all(63, _bf16_bits(rms_item.get("attrs", {}).get("eps", 1e-5))),
+        p.emit(e.vli_all(62, _bf16_bits(rms_item.get("attrs", {}).get("eps", 1e-5))),
                e.delay(65))
         p.li(6, 1792)
-        p.emit(e.vstore(63, 6), e.delay(40), e.vli_all(63, 0), e.delay(65))
+        p.emit(e.vstore(63, 6), e.delay(40), e.vli_all(62, 0), e.delay(65))
     needs_one = any(item["op"] in ("silu", "geglu") for item in workload.ops)
     scale_item = next((item for item in workload.ops if item["op"] == "commit"
                        and "acc_scale" in item.get("attrs", {}).get("epilogue", [])), None)
     needs_half = scale_item is not None
     if needs_one or needs_half:
         constant = 1.0 if needs_one else scale_item.get("attrs", {}).get("acc_scale", 1.0)
-        p.emit(e.vli_all(63, _bf16_bits(constant)), e.delay(65))
+        p.emit(e.vli_all(62, _bf16_bits(constant)), e.delay(65))
         p.li(6, 1536)
-        p.emit(e.vstore(63, 6), e.delay(40), e.vli_all(63, 0), e.delay(65))
+        p.emit(e.vstore(63, 6), e.delay(40), e.vli_all(62, 0), e.delay(65))
     produced = False
     for index, item in enumerate(workload.ops):
         item_produced = None
@@ -1728,6 +1728,7 @@ def emit_program(workload):
         raise ValueError("workload contains no Atlas-emittable semantic operation")
     p.emit(e.ecall())
     p.resolve()
+    e.validate_pair_banks(p.words)
     lines = [".text", ".globl atlas_kernel", ".type atlas_kernel,@function", "atlas_kernel:"]
     lines += [f"  .word 0x{word:08x}" for word in p.words]
     lines.append(".size atlas_kernel, .-atlas_kernel")

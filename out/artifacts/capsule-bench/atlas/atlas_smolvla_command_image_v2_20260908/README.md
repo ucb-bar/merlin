@@ -1,4 +1,4 @@
-# Atlas SmolVLA command-image integration recovery v2
+# Atlas SmolVLA command-image integration recovery v3
 
 This versioned artifact advances the committed compact-loop backend from
 **compile/IMEM-fit only** to **representative RTL numeric**.  It does not claim a
@@ -63,7 +63,57 @@ variants and therefore all 391 structural occurrences compile within the
 32,768-word IMEM; the maximum is 32,458 words. This is structural/IMEM coverage,
 not executable f32-capture coverage: every partition still requires calibrated
 f32-to-FP8 input/weight conversion and BF16-to-f32 output conversion, so the
-manifest explicitly reports zero capture-semantics-executable partitions.
+base planner manifest explicitly reports zero capture-semantics-executable
+partitions because that snapshot describes the structural emitter alone.  The
+new calibrated bridge subsequently qualifies exactly **1/391** real capture
+partitions: `atlas_p0098`, `model.state_proj` (`matmul_97` + `add_99`).
+
+For that partition the bridge loads the original `state` input and
+`model.state_proj.{weight,bias}` tensors, applies the recorded weight transpose,
+and uses symmetric per-tensor E4M3FN calibration:
+
+```
+qA = E4M3FN_RNE(A / sA)
+qW = E4M3FN_RNE(W / sW)
+qB = BF16_RNE(B / (sA * sW))
+Y_f32 = f32(Y_bf16_device) * (sA * sW)
+```
+
+The bias is therefore added in the device quantization domain before output
+dequantization; it is not compared as an unscaled BF16 value.  The fixed,
+predeclared gate in `calibration_contract.json` is max absolute error <= 0.125
+and cosine similarity >= 0.995.  On elaborated RTL the real partition passes at
+0.070929 max absolute error, 0.017297 mean absolute error, 0.021717 RMSE, and
+0.999455 cosine similarity versus the independent f32 source reference.  The
+stabilized max relative error is 16.8589 with denominator floor 0.001 and is
+reported, not gated, because near-zero reference elements dominate it.  Against
+an independently reconstructed quantized-domain reference, max absolute error
+is 0.012992 and cosine similarity is 0.999997.  Folding the bias contributes at
+most 0.000459 absolute error after rescaling.  The unchanged 1,509-word image
+halts in 154,458 GSIM cycles.
+
+`capture_semantics_state_proj/dispatch_manifest.json` records bind, conversion,
+launch, publication at op 2827, and release after the final frontier consumer at
+op 2834.  An assertion-enabled replay first exposed and rejected an illegal
+`VLI_ALL 63`: the destination encoded odd bank 63, but pair writers require an
+even base. Atlas is not using RV32's five-bit `rd` here: RTL `ScalarDecoder`
+extracts six-bit VR/VI fields (`vd=instr[12:7]`, `vs1=instr[18:13]`, and
+`vs2=instr[24:19]`), and `VectorEngineTop` enforces even primary/secondary pair
+reads and pair writes. The emitter now reserves `VLI_ALL 62/63`. A static
+encoded-word validator mirrors those VPU rules plus MXU BF16-pop pair writes,
+while allowing legal odd single-bank loads/stores.
+
+`raw_gsim_spec.json`, stdout, stderr, and
+`raw_gsim_receipt.json` retain the exact submitted words/preloads, no-golden raw
+result page, halt/cycle/read/write counters, engine hash, and explicit absence
+of a final-PC field. The retained run uses `atlas_gsim_sim_assert`, returns zero,
+halts, and has empty stdout/stderr assertion diagnostics (stdout contains only
+the final JSON result page).
+`device_output.bf16.bin` retains those device words. Validation verifies all
+receipt hashes, reloads the original source tensors and device words, and
+recomputes both comparisons; it also verifies that a deliberate output
+perturbation fails the fixed gate. This is approximate FP8 qualification of one
+partition, not source bit-exactness or whole-model execution.
 
 RTL numeric coverage is currently 2/28 unique shapes and 2/391 physical
 contraction instances, plus the small dependency/ABI controls above. The new
@@ -119,17 +169,19 @@ capsule score is claimed.
 From this artifact directory:
 
 ```bash
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python -m pytest -q test_parser_compat.py test_full_graph_inventory.py test_first_partition.py test_compact_loops.py test_command_image.py test_partition_plan.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python validate_recovery.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python run_integration.py chained --engine gsim --max-cycles 200000
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python run_integration.py smolvla_tail_50_720_32 --engine gsim --max-cycles 50000000
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python run_integration.py smolvla_state_proj_1_32_960 --engine gsim --max-cycles 1000000
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python run_raw_gsim.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python run_negative_control.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python probe_full_capture.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python inventory_full_capture.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python build_first_partition.py
-/scratch/agustin/projects/oscar-merlin/.venv/bin/python build_partition_plan.py
+MERLIN_REPO_PYTHON=../../../../../.venv/bin/python
+$MERLIN_REPO_PYTHON -m pytest -q test_parser_compat.py test_full_graph_inventory.py test_first_partition.py test_compact_loops.py test_command_image.py test_partition_plan.py test_capture_bridge.py
+$MERLIN_REPO_PYTHON validate_recovery.py
+MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py
+$MERLIN_REPO_PYTHON run_integration.py chained --engine gsim --max-cycles 200000
+$MERLIN_REPO_PYTHON run_integration.py smolvla_tail_50_720_32 --engine gsim --max-cycles 50000000
+$MERLIN_REPO_PYTHON run_integration.py smolvla_state_proj_1_32_960 --engine gsim --max-cycles 1000000
+$MERLIN_REPO_PYTHON run_raw_gsim.py
+$MERLIN_REPO_PYTHON run_negative_control.py
+$MERLIN_REPO_PYTHON probe_full_capture.py
+$MERLIN_REPO_PYTHON inventory_full_capture.py
+$MERLIN_REPO_PYTHON build_first_partition.py
+$MERLIN_REPO_PYTHON build_partition_plan.py
 ```
 
 `validation.json` and `receipt.json` are the machine-readable summary.  The

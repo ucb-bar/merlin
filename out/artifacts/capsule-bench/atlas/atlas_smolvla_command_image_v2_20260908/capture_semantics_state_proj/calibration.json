@@ -1,0 +1,104 @@
+{
+  "contract": {
+    "bias": {
+      "device_equation": "qB = BF16_RNE(B / (sA * sW))",
+      "placement": "device_epilogue_before_output_dequantization"
+    },
+    "inputs": {
+      "activation_equation": "qA = E4M3FN_RNE(A / sA)",
+      "scale_equation": "sX = max(abs(X)) / 448; sX = 1 only for an all-zero tensor",
+      "scope": "symmetric_per_tensor",
+      "weight_equation": "qW = E4M3FN_RNE(W / sW)"
+    },
+    "output": {
+      "host_equation": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
+      "source_reference": "Y_ref = matmul_f32(A, W) + B"
+    },
+    "quant_format": {
+      "max_finite": 448.0,
+      "name": "OCP_E4M3FN",
+      "rounding": "round_to_nearest_ties_to_even"
+    },
+    "schema": "atlas_capture_calibration_contract_v1",
+    "tolerance": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "measurements": {
+    "activation": {
+      "codes_sha256": "fe39a9ca1f00a7cacbdb7df9f88d483c645872b54f7bed93b766f8c7479feaf5",
+      "max_abs": 2.0532610416412354,
+      "max_abs_reconstruction_error": 0.06704235076904297,
+      "mean_abs_reconstruction_error": 0.019082384184002876,
+      "name": "A0",
+      "saturated_elements": 1,
+      "scale": 0.004583171967949186,
+      "scale_hex": "0x1.2c5cddb6db6dbp-8",
+      "shape": [
+        1,
+        32
+      ],
+      "zero_elements": 0
+    },
+    "bias": {
+      "equation": "BF16_RNE(B / output_scale)",
+      "max_abs_error_after_output_rescale": 0.00045831501483917236,
+      "mean_abs_error_after_output_rescale": 0.0001317320711677894,
+      "quant_domain_max_abs": 97792.0,
+      "quant_domain_words_sha256": "3c72489320e1a01f838c2914f8de16b2d68dfb38b050af050a16ede899ce966c"
+    },
+    "output_scale": 1.8084442502016448e-06,
+    "output_scale_hex": "0x1.e57357b35414ep-20",
+    "weight": {
+      "codes_sha256": "9540c732a7cb77e0cda7474a1a9f2d658959762def6138e7b933c4b05cd5db75",
+      "max_abs": 0.17677342891693115,
+      "max_abs_reconstruction_error": 0.006313100457191467,
+      "mean_abs_reconstruction_error": 0.0019652461633086205,
+      "name": "W",
+      "saturated_elements": 1071,
+      "scale": 0.0003945835466895785,
+      "scale_hex": "0x1.9dc036db6db6ep-12",
+      "shape": [
+        32,
+        960
+      ],
+      "zero_elements": 0
+    }
+  },
+  "partition_id": "atlas_p0098",
+  "schema": "atlas_state_proj_calibration_v1",
+  "source_tensors": {
+    "bias": {
+      "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
+      "name": "model.state_proj.bias",
+      "raw_sha256": "43bacbaf333a58c0add25cda5b4b668c3be7a99767a2bc9606bfe4c57560ff56",
+      "shape": [
+        960
+      ]
+    },
+    "capture": "out/artifacts/recaptures/smolvla_fp32_consistent",
+    "input": {
+      "archive_key": "in4",
+      "argument_index": 511,
+      "capture_name": "state",
+      "raw_sha256": "deac09a04e803f7a5ea42aaf8cc2873d23b04444f6c6c3266b3d5ffbe4004cf6",
+      "shape": [
+        1,
+        32
+      ]
+    },
+    "weight": {
+      "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
+      "name": "model.state_proj.weight",
+      "raw_sha256": "3256df649d0a005db9789d0e4b3441b5e99e642b3f3e3e9c1a5f8b0faccae9d2",
+      "shape": [
+        960,
+        32
+      ]
+    },
+    "weight_capture_bridge": "linalg.transpose permutation=[1,0]"
+  }
+}

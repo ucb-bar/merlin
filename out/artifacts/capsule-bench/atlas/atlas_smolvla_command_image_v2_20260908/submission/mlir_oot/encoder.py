@@ -90,3 +90,44 @@ def vexp(vd, src): return vr(0x57, 0x42, vd, src)
 def vsqrt(vd, src): return vr(0x57, 0x4D, vd, src)
 def vsquare(vd, src): return vr(0x57, 0x4E, vd, src)
 def ecall(): return 0x00000073
+
+
+def validate_pair_banks(words):
+    """Mirror Atlas RTL's even-base contract for every emitted MREG pair.
+
+    ``ScalarDecoder`` defines VR/VI ``vd``, ``vs1``, and ``vs2`` as the six-bit
+    instruction fields [12:7], [18:13], and [24:19]. ``VectorEngineTop`` then
+    requires even primary/secondary pair reads and pair writes.  FP8 pack writes
+    one bank, FP8 unpack does not perform the normal primary-pair read, and
+    VLI_COL/VLI_ONE write one bank. MXU BF16 pops also write a pair. VLOAD,
+    VSTORE, and XLU transpose are single-bank operations and deliberately absent.
+    """
+
+    def require_even(index, word, role, bank):
+        if bank & 1:
+            raise ValueError(
+                f"Atlas pair-{role} instruction {index} targets odd MREG bank "
+                f"{bank}: 0x{word:08x}"
+            )
+
+    for index, word in enumerate(words):
+        opcode = word & 0x7F
+        destination = (word >> 7) & 0x3F
+        primary = (word >> 13) & 0x3F
+        secondary = (word >> 19) & 0x3F
+        function = (word >> 25) & 0x7F
+        if opcode == 0x57:
+            if function != 0x45:  # FP8 unpack has no normal primary-pair read.
+                require_even(index, word, "read-primary", secondary if function == 0x44 else primary)
+            if function in (0x00, 0x02, 0x03, 0x04, 0x06):
+                require_even(index, word, "read-secondary", secondary)
+            if function != 0x44:  # FP8 pack writes one bank.
+                require_even(index, word, "write", destination)
+        elif opcode == 0x5F:
+            vli_kind = (word >> 13) & 0x7
+            if vli_kind not in (0, 1, 2, 3):
+                raise ValueError(f"unknown Atlas VLI kind {vli_kind} at instruction {index}")
+            if vli_kind not in (2, 3):  # VLI_ALL/ROW write pairs; COL/ONE do not.
+                require_even(index, word, "write", destination)
+        elif opcode == 0x77 and function in (8, 9):
+            require_even(index, word, "write", destination)

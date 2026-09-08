@@ -25,7 +25,7 @@
   "kernel_outputs": [
     "Y0"
   ],
-  "kernel_sha256": "05fce6be66b99b0f57f8eb7fd97c0a051d3bd14e733cde03ee458371ad654c76",
+  "kernel_sha256": "defaed22b37cdd4af94524ca13792089a06e2a51bd7beeec61a66fb28c04a8e8",
   "oracle": {
     "derived_from_rtl": false,
     "fidelity": "functional_model",

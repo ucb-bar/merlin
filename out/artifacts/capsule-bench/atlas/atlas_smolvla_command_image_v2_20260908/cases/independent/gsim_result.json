@@ -38,7 +38,7 @@
     "Y0",
     "Y1"
   ],
-  "kernel_sha256": "7fa7a5e2a9030b150490a56c5e450bc4da9199a2e90eaca43329a8c8809f1b88",
+  "kernel_sha256": "3dfff116e0bee3b235b6910bf6d52fec467b0090be1a1e0b821b346cfc135c1b",
   "oracle": {
     "derived_from_rtl": true,
     "engine": "gsim",

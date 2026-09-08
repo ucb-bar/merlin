@@ -14,7 +14,7 @@ atlas_kernel:
   .word 0x0002d07f
   .word 0x0002e07f
   .word 0x0002f07f
-  .word 0x00001fdf
+  .word 0x00001f5f
   .word 0x04101067
   .word 0x00000a37
   .word 0x001a0a13

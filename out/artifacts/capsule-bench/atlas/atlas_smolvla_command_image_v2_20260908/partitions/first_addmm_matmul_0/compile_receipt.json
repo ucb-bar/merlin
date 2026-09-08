@@ -1,5 +1,5 @@
 {
-  "assembly_sha256": "6dd4958b107035f1318ba1ec9e10612b5ba63f461b5ae9d107bba96c14c5d8b9",
+  "assembly_sha256": "02df3c97533fc0956a517d2263e01c52e9f7b5bc7dd8863a5edb2a8b5b39531f",
   "capture_regions": [
     "matmul_0",
     "add_3"

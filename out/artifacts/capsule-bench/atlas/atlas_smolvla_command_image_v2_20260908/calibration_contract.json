@@ -1,0 +1,28 @@
+{
+  "bias": {
+    "device_equation": "qB = BF16_RNE(B / (sA * sW))",
+    "placement": "device_epilogue_before_output_dequantization"
+  },
+  "inputs": {
+    "activation_equation": "qA = E4M3FN_RNE(A / sA)",
+    "scale_equation": "sX = max(abs(X)) / 448; sX = 1 only for an all-zero tensor",
+    "scope": "symmetric_per_tensor",
+    "weight_equation": "qW = E4M3FN_RNE(W / sW)"
+  },
+  "output": {
+    "host_equation": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
+    "source_reference": "Y_ref = matmul_f32(A, W) + B"
+  },
+  "quant_format": {
+    "max_finite": 448.0,
+    "name": "OCP_E4M3FN",
+    "rounding": "round_to_nearest_ties_to_even"
+  },
+  "schema": "atlas_capture_calibration_contract_v1",
+  "tolerance": {
+    "cosine_min": 0.995,
+    "max_abs_error": 0.125,
+    "max_relative_denominator_floor": 0.001,
+    "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+  }
+}
