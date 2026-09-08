@@ -173,3 +173,66 @@ class TestHarvestingFromCapsuleRuns:
         (d / "capsule_result.json").write_text(json.dumps({"tiers": {}}), encoding="utf-8")
         samples, refusals = MB.samples_from_capsule_runs(tmp_path)
         assert samples == [] and "no emitted command buffer" in refusals[0]["reason"]
+
+
+class TestSaturatedBandwidthIsTwoSidedOnlyWhenItSaturates:
+    """The stronger estimator, and the guard that keeps it honest.
+
+    :func:`fit` divides bytes by the whole window, so the fixed per-transfer cost sits in the
+    denominator and its slope is a LOWER bound on achievable bandwidth -- licensing only an upper
+    bound on the ridge, which can prove a workload compute-bound and can never prove one
+    memory-bound. Charging the bytes against the movement engines' own BUSY cycles, from the
+    hardware occupancy partition, removes that term. But the result is a PEAK only if the curve has
+    flattened, so ``saturated`` is decided from the data.
+    """
+
+    #: Measured on GSIM with the full MAIN_* partition: (bytes, DMA-busy cycles).
+    MEASURED = ((40, 28), (512, 56), (1125, 75), (1200, 80), (1275, 85), (1280, 80))
+
+    def test_the_measured_curve_saturates_at_the_derived_row_width(self):
+        got = MB.saturated_bandwidth(self.MEASURED, structural_width_bytes=16)
+        assert got.saturated and got.two_sided
+        assert got.bytes_per_busy_cycle == pytest.approx(16.0)
+        assert got.plateau_points == 4
+        assert got.macs_per_byte(256.0) == pytest.approx(16.0)
+        assert any("1.000x the target's derived 16-byte row width" in n for n in got.notes)
+
+    def test_it_agrees_with_the_independent_marginal_fit(self):
+        """Two estimators, different denominators, 0.7% apart -- that is the corroboration."""
+        marginal = MB.fit(_series(MEASURED)).peak_bytes_per_cycle
+        saturating = MB.saturated_bandwidth(self.MEASURED).bytes_per_busy_cycle
+        assert abs(marginal - saturating) / saturating < 0.01
+
+    def test_a_still_rising_curve_refuses_the_two_sided_ridge(self):
+        """THE GUARD. Otherwise "the largest transfer we tried" becomes "the machine's peak"."""
+        rising = MB.saturated_bandwidth(((40, 28), (512, 56), (1024, 80)),
+                                        structural_width_bytes=16)
+        assert not rising.saturated and not rising.two_sided
+        assert rising.macs_per_byte(256.0) is None
+        assert any("NOT saturated" in n and "can never prove one memory-bound" in n
+                   for n in rising.notes)
+
+    def test_too_few_observations_cannot_show_a_plateau(self):
+        got = MB.saturated_bandwidth(((512, 56), (1280, 80)))
+        assert not got.saturated and "distinguishable from a rising curve" in got.notes[0]
+
+    def test_a_matching_rate_at_a_SMALL_size_is_not_saturation(self):
+        """A ceiling is reached at the large end; a fast small point is a coincidence of that size."""
+        got = MB.saturated_bandwidth(((40, 3), (512, 56), (1024, 100), (1280, 128)))
+        assert not got.saturated, "the trailing run must be the plateau, not the best point anywhere"
+
+    def test_non_positive_observations_are_dropped_not_counted(self):
+        got = MB.saturated_bandwidth(((0, 10), (512, 0), (1125, 75), (1200, 80), (1275, 85)))
+        assert got.domain_bytes == (1125, 1275)
+
+    def test_the_structural_note_says_corroboration_not_derivation(self):
+        got = MB.saturated_bandwidth(self.MEASURED, structural_width_bytes=16)
+        note = next(n for n in got.notes if "row width" in n)
+        assert "CORROBORATION" in note
+        assert "wider burst path" in note, "the caveat must travel with the claim"
+
+    def test_it_serialises_with_its_licence_fields(self):
+        d = MB.saturated_bandwidth(self.MEASURED, structural_width_bytes=16).to_dict()
+        assert d["schema"] == "merlin_saturated_bandwidth_v1"
+        assert d["two_sided"] is True and d["plateau_points"] == 4
+        assert len(d["observations"]) == 6

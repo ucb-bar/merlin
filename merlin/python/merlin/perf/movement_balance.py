@@ -39,7 +39,8 @@ from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Any
 
-__all__ = ["MovementSample", "MovementBalance", "fit", "MIN_DISTINCT_SIZES", "MIN_DOMAIN_RATIO"]
+__all__ = ["MovementSample", "MovementBalance", "SaturatedRate", "fit",
+           "saturated_bandwidth", "MIN_DISTINCT_SIZES", "MIN_DOMAIN_RATIO"]
 
 #: Two points can fit a line through any two points; the third is what makes a bad fit visible at
 #: all. The repo's standing rule is at least two points per fitted parameter, and there are two.
@@ -222,6 +223,101 @@ def fit(samples: Sequence[MovementSample], *, engine: str | None = None,
         n_distinct_sizes=len(sizes),
         residual_cycles=tuple(round(float(y - p), 3) for y, p in zip(ys, predicted, strict=True)),
         samples=tuple(rows), notes=tuple(notes))
+
+
+@dataclass(frozen=True)
+class SaturatedRate:
+    """A peak bandwidth read off a SATURATING curve of bytes per busy cycle."""
+
+    bytes_per_busy_cycle: float
+    saturated: bool
+    plateau_points: int
+    domain_bytes: tuple[int, int]
+    observations: tuple[tuple[int, int, float], ...] = ()   # (bytes, busy_cycles, rate)
+    structural_width_bytes: int | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def two_sided(self) -> bool:
+        """Whether this licenses a ridge point in BOTH directions rather than one."""
+        return self.saturated
+
+    def macs_per_byte(self, peak_macs_per_cycle: float) -> float | None:
+        if not self.saturated or self.bytes_per_busy_cycle <= 0 or peak_macs_per_cycle <= 0:
+            return None
+        return float(peak_macs_per_cycle) / float(self.bytes_per_busy_cycle)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"schema": "merlin_saturated_bandwidth_v1",
+                "bytes_per_busy_cycle": self.bytes_per_busy_cycle, "saturated": self.saturated,
+                "two_sided": self.two_sided, "plateau_points": self.plateau_points,
+                "domain_bytes": list(self.domain_bytes),
+                "observations": [list(o) for o in self.observations],
+                "structural_width_bytes": self.structural_width_bytes,
+                "notes": list(self.notes)}
+
+
+def saturated_bandwidth(observations: Sequence[tuple[int, int]], *,
+                        structural_width_bytes: int | None = None,
+                        plateau_tolerance: float = 0.10,
+                        min_plateau_points: int = 3) -> SaturatedRate:
+    """Peak bytes per BUSY cycle from a saturating curve, or a rate that is not yet a peak.
+
+    WHY THIS IS STRONGER THAN THE MARGINAL FIT IN :func:`fit`. That fit divides bytes by the whole
+    measured window, so the fixed per-transfer cost and any host time are inside the denominator and
+    the slope it recovers is a LOWER bound on what a large transfer achieves -- which only ever
+    licenses an upper bound on the ridge, and therefore only ever proves a workload compute-bound.
+    Charging the bytes against the movement engines' own BUSY cycles, taken from the hardware's
+    occupancy partition, removes both terms by construction.
+
+    A rate obtained that way is only a PEAK if the curve saturates: the observations must rise and
+    then flatten, and the flat run is the ceiling. Measured on this tree: 40 B -> 1.429, 512 B ->
+    9.143, then 1,125 / 1,200 / 1,275 / 1,280 B -> 15.0, 15.0, 15.0, 16.0 -- a plateau at the derived
+    16-byte scratchpad row width, with the marginal fit independently landing at 16.119.
+
+    ⚠️ ``saturated`` is what licenses the two-sided ridge, so it is decided from the data and never
+    assumed: a monotonically rising curve has NOT reached its ceiling, and reporting its best point
+    as a peak would turn "the largest transfer we tried" into "the fastest the machine can go".
+    """
+    rows = [(int(b), int(c)) for b, c in observations if int(b) > 0 and int(c) > 0]
+    if len(rows) < min_plateau_points:
+        return SaturatedRate(0.0, False, 0, (0, 0), notes=(
+            f"{len(rows)} usable observation(s); at least {min_plateau_points} are needed for a "
+            f"plateau to be distinguishable from a rising curve",))
+    rows.sort()
+    rates = [(b, c, b / c) for b, c in rows]
+    best = max(r[2] for r in rates)
+    # The plateau is the trailing run of observations within tolerance of the best rate. Trailing,
+    # because a ceiling is reached at the LARGE end; a matching rate at a small size would be a
+    # coincidence of that size, not saturation.
+    plateau = 0
+    for _b, _c, rate in reversed(rates):
+        if rate >= best * (1.0 - plateau_tolerance):
+            plateau += 1
+        else:
+            break
+    saturated = plateau >= min_plateau_points
+    notes = [
+        f"best {best:.3f} B/busy-cycle over {len(rates)} observations; trailing plateau "
+        f"{plateau} point(s) within {plateau_tolerance:.0%}",
+        "bytes charged against the movement engines' BUSY cycles from the occupancy partition, so "
+        "the fixed per-transfer cost and host time are excluded by construction",
+    ]
+    if not saturated:
+        notes.append(
+            "NOT saturated: the curve is still rising, so this is a lower bound on the peak and "
+            "licenses only an UPPER bound on the ridge -- i.e. it can prove a workload "
+            "compute-bound and can never prove one memory-bound")
+    if structural_width_bytes:
+        ratio = best / float(structural_width_bytes)
+        notes.append(
+            f"the plateau sits at {ratio:.3f}x the target's derived {structural_width_bytes}-byte "
+            f"row width; agreement is CORROBORATION that this is the datapath's ceiling and not a "
+            f"property of the sizes tried, but a wider burst path, if the target has one, would "
+            f"raise it")
+    return SaturatedRate(best, saturated, plateau, (rates[0][0], rates[-1][0]),
+                         observations=tuple(rates), structural_width_bytes=structural_width_bytes,
+                         notes=tuple(notes))
 
 
 def samples_from_capsule_runs(runs_root: Any, *, engine: str = "gsim",
