@@ -26,13 +26,32 @@ from merlin.runtime.tensor import Tensor
 # --------------------------------------------------------------------------------------------
 # leaf materialization (single source of truth)
 # --------------------------------------------------------------------------------------------
+def capsule_stimulus_range(capsule: dict) -> tuple[int, int]:
+    """The inclusive ``(lo, hi)`` this capsule's stimulus is drawn from, or the default.
+
+    Declared as ``stimulus_range: [lo, hi]`` at the top level of ``capsule.yaml``. Validated by the
+    same function the command buffer uses, so the golden and the emitted program cannot disagree
+    about the distribution: a range read two ways is a range that will eventually be read two
+    different ways.
+    """
+    from merlin.runtime.commandbuffer import STIMULUS_RANGE_KEY, stimulus_range
+
+    return stimulus_range({"params": {STIMULUS_RANGE_KEY: capsule.get(STIMULUS_RANGE_KEY)}})
+
+
 def materialize_capsule_leaves(capsule: dict) -> dict[str, Tensor]:
-    """Materialize the capsule's declared leaf tensors deterministically by name."""
+    """Materialize the capsule's declared leaf tensors deterministically by name.
+
+    The stimulus range is the capsule's own declaration (see :func:`capsule_stimulus_range`), so a
+    capsule that needs signed operands -- to make a ReLU actually bind, for instance -- declares them
+    once and both the golden and the device get them.
+    """
+    lo, hi = capsule_stimulus_range(capsule)
     env: dict[str, Tensor] = {}
     for spec in capsule.get("inputs", []):
         if spec.get("role") in ("input", "weight", "bias"):
             env[spec["name"]] = Tensor.deterministic(
-                spec["name"], tuple(spec["shape"]), spec.get("dtype", "i8"))
+                spec["name"], tuple(spec["shape"]), spec.get("dtype", "i8"), lo, hi)
     return env
 
 
