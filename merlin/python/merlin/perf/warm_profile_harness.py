@@ -13,6 +13,7 @@ failed validation emits no performance metric.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 import textwrap
 
@@ -81,6 +82,7 @@ def render_warm_then_measure_main(
         validate_outputs: str, contract: WarmProfileContract = WarmProfileContract(),
         cycle_reader: str = "read_cycles", function_name: str = "main",
         reset_after_warm: str | None = None,
+        counter_bracket: object = None,
         success_body: str | None = None) -> str:
     """Render a C entrypoint with a completed warm run and one measured run.
 
@@ -94,6 +96,15 @@ def render_warm_then_measure_main(
     ``success_body`` is emitted after the metric, allowing target-owned result
     readback to remain outside the compute window without putting a large UART
     dump in front of the primary measurement.
+
+    ``counter_bracket`` is the ``{"prologue", "epilogue"}`` pair a counter selector produced (see
+    :func:`merlin.perf.hw_counters.occupancy_partition_bracket`).  ORDERING IS THE WHOLE REASON IT IS
+    PLACED HERE RATHER THAN PASTED INTO A BUNDLE: the configure/reset must follow every warm
+    invocation and the post-warm reset, so warm-up traffic is not inside the counted window, and the
+    read-back must follow the target's completion hook and the closing cycle read but PRECEDE
+    validation, which is host work whose cost belongs to neither.  Every bundle that hand-placed its
+    own bracket got to choose its own eight slots, and one of them quietly stopped emitting a
+    complete partition -- which is exactly the failure this parameter removes the opportunity for.
     """
     if (not isinstance(contract.warmup_runs, int)
             or isinstance(contract.warmup_runs, bool)
@@ -116,6 +127,19 @@ def render_warm_then_measure_main(
              if reset_after_warm is not None else None)
     success = (_block(success_body, role="post-profile success body")
                if success_body is not None else None)
+    counter_prologue = counter_epilogue = None
+    if counter_bracket is not None:
+        if not isinstance(counter_bracket, Mapping):
+            raise WarmProfileHarnessError(
+                "counter bracket must be the mapping a counter selector returned, so the harness "
+                "cannot be handed a hand-written slot assignment")
+        missing = [key for key in ("prologue", "epilogue") if not counter_bracket.get(key)]
+        if missing:
+            raise WarmProfileHarnessError(
+                f"counter bracket is missing {missing}; a configure without a read-back measures "
+                f"nothing and a read-back without a configure reports whatever the slots last held")
+        counter_prologue = _block(str(counter_bracket["prologue"]), role="counter configuration")
+        counter_epilogue = _block(str(counter_bracket["epilogue"]), role="counter read-back")
     invoke = textwrap.indent(invocation.invoke, "  ")
     complete = textwrap.indent(invocation.complete, "  ")
 
@@ -134,13 +158,19 @@ def render_warm_then_measure_main(
         ])
         if reset is not None:
             lines.append(textwrap.indent(reset, "  "))
+    lines.append('  printf("MERLIN_PROFILE warmup end rc=0\\n");')
+    if counter_prologue is not None:
+        lines.append(textwrap.indent(counter_prologue, "  "))
     lines.extend([
-        '  printf("MERLIN_PROFILE warmup end rc=0\\n");',
         '  printf("MERLIN_PROFILE measured begin\\n");',
         f"  const uint64_t merlin_profile_cycle_start = {cycle_reader}();",
         invoke,
         complete,
         f"  const uint64_t merlin_profile_cycle_end = {cycle_reader}();",
+    ])
+    if counter_epilogue is not None:
+        lines.append(textwrap.indent(counter_epilogue, "  "))
+    lines.extend([
         f"  const int merlin_profile_validation_rc = ({validate});",
         "  if (merlin_profile_validation_rc != 0) {",
         ('    printf("MERLIN_PROFILE measured end rc=%d\\n", '
@@ -175,7 +205,8 @@ def require_strict_final_warm_profile(contract: object) -> WarmProfileContract:
 def render_target_warm_then_measure_main(
         *, target: str, arguments: str, prepare_input: str,
         validate_outputs: str, contract: WarmProfileContract = WarmProfileContract(),
-        cycle_reader: str = "read_cycles", function_name: str = "main") -> str:
+        cycle_reader: str = "read_cycles", function_name: str = "main",
+        counter_bracket: object = None) -> str:
     """Resolve launch/completion hooks from ``target`` and render its profile main.
 
     This is the entrypoint for bundle generators.  The target contract supplies
@@ -193,4 +224,5 @@ def render_target_warm_then_measure_main(
         contract=contract,
         cycle_reader=cycle_reader,
         function_name=function_name,
+        counter_bracket=counter_bracket,
     )

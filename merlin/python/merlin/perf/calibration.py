@@ -70,6 +70,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import ClassVar
 
 __all__ = [
     "CALIBRATED", "COMPOSITION_TOLERANCE", "COUNTER_INSTRUMENT", "Cell", "CounterReading",
@@ -611,6 +612,22 @@ class CounterReading:
     #: Whether the harness could observe when an engine's work COMPLETED. Tri-state, never defaulted.
     completion_observable: bool | None = None
     provenance: str = ""
+    #: The elaborated-artifact inputs :func:`~merlin.perf.hw_counters.eta_from_counters` needs to
+    #: PROVE, from the target's own CIRCT output, that the combination counters are mutually
+    #: exclusive and exhaustive. All four or none: an eta computed without that proof is an eta over
+    #: counters that might double-count, and the function refuses rather than approximating. Absent
+    #: leaves this reading's eta UNKNOWN, which is the honest answer for a producer that supplied no
+    #: artifact -- not an error, and not a number.
+    partition_proof_inputs: Mapping[str, object] | None = None
+
+    #: The keys :attr:`partition_proof_inputs` must carry when it is supplied at all.
+    PROOF_KEYS: ClassVar[tuple[str, ...]] = ("hw_text", "codes", "module", "counter_module")
+    #: Set by a producer that can state, but not prove, that its combination counters are mutually
+    #: exclusive and exhaustive. It buys an eta where no elaborated artifact exists -- and the record
+    #: labels that eta ``declared_by_producer``, because on counters that are not actually exclusive
+    #: both the per-engine totals and the realised overlap are silently over-reported and nothing in
+    #: the header can detect it. Never a substitute for the proof; a named weaker rung.
+    exclusivity_declared_by_producer: bool = False
 
 
 #: How many capsules a fitted cell gets by default. TWO, because the repo's standing rule is at least
@@ -916,6 +933,8 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
     """
     from merlin.perf.decompose import ActivitySource, Resource, ResourceKind, Unavailable
     from merlin.perf.headroom import Composition, composition_operator
+    from merlin.perf.hw_counters import DECLARED_BY_PRODUCER as HC_DECLARED
+    from merlin.perf.hw_counters import PROVED_FROM_ARTIFACT as HC_PROVED
     from merlin.perf.hw_counters import eta_from_counters, observations_from_counters
 
     out: dict = {"instrument": COUNTER_INSTRUMENT, "n_runs": len(readings),
@@ -940,7 +959,32 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
     out["engines"] = [] if mixed else sorted(next(iter(engine_sets)))
     per_run: dict[str, dict] = {}
     for r in sorted(readings, key=lambda x: x.workload):
-        got = eta_from_counters(dict(r.values), r.counters)
+        # NO PROOF, NO ETA. `eta_from_counters` requires the elaborated artifact so it can establish
+        # that the combination counters partition busy time; a reading whose producer did not supply
+        # it gets UNKNOWN with that as the reason. This call previously omitted the four inputs
+        # entirely and raised TypeError, which took the whole counter axis of the calibration record
+        # down with it.
+        proof = dict(r.partition_proof_inputs or {})
+        absent = [k for k in CounterReading.PROOF_KEYS if not proof.get(k)]
+        if not absent:
+            got = eta_from_counters(
+                dict(r.values), r.counters, hw_text=str(proof["hw_text"]),
+                codes=proof["codes"], module=str(proof["module"]),
+                counter_module=str(proof["counter_module"]),
+                exclusivity=HC_PROVED, measurement_cycles=r.total_cycles,
+                source=r.provenance or COUNTER_INSTRUMENT)
+        elif r.exclusivity_declared_by_producer:
+            got = eta_from_counters(
+                dict(r.values), r.counters, exclusivity=HC_DECLARED,
+                measurement_cycles=r.total_cycles,
+                source=r.provenance or COUNTER_INSTRUMENT)
+        else:
+            got = {"state": "unknown", "eta": None,
+                   "why": ("the producer supplied no elaborated-artifact input(s) "
+                           f"{absent} and did not declare counter exclusivity, so nothing "
+                           "establishes that these counters partition busy time -- and an eta read "
+                           "off counters that do not would over-report both the per-engine totals "
+                           "and the realised overlap")}
         obs = observations_from_counters(
             dict(r.values), r.counters, total_cycles=r.total_cycles,
             source=r.provenance or COUNTER_INSTRUMENT,
@@ -972,6 +1016,10 @@ def counter_calibration(readings: Sequence[CounterReading]) -> dict:
                                     detail="realised / available overlap on the counter-derived "
                                            "engine axis")
             entry["counter_set_complete"] = bool(got.get("complete"))
+            # WHICH RUNG this eta stands on. Reported per run rather than once per record, because a
+            # corpus may mix a target with an elaborated artifact and one without, and a reader
+            # deciding whether to cite the corpus eta needs to know the weakest rung in it.
+            entry["exclusivity"] = str((got.get("partition_proof") or {}).get("method") or "")
         else:
             why = str(got.get("why") or "the counter set supports no eta reading")
             entry["busy_cycles"] = unknown(why)

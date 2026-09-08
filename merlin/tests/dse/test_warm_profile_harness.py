@@ -187,3 +187,62 @@ static void *model_context;
     assert ran.returncode == 0, ran.stderr
     assert ran.stdout.count("METRIC cycles ") == 1
     assert "METRIC cycles 37\n" in ran.stdout
+
+
+class TestCounterBracketPlacement:
+    """WHERE the counter bracket goes is the reason it belongs to the generator.
+
+    Every bundle that pasted its own bracket also chose its own eight slots, and one of them quietly
+    stopped emitting a complete occupancy partition -- so a whole-model run reported accelerator-busy
+    as a lower bound and nothing downstream could price a bucket from it.
+    """
+
+    BRACKET = {"prologue": "counter_configure(0, 1);\ncounter_reset();",
+               "epilogue": 'printf("HWC %u\\n", counter_read(0));'}
+
+    def _rendered(self, bracket=None):
+        return render_warm_then_measure_main(
+            prepare_input="prepare();",
+            invocation=TargetInvocationHooks("launch();", "wait();"),
+            validate_outputs="validate()",
+            reset_after_warm="reset_mutable();",
+            counter_bracket=self.BRACKET if bracket is None else bracket)
+
+    def test_configuration_follows_the_warm_run_and_its_reset(self):
+        """Warm-up traffic inside the counted window would be attributed to the measured run."""
+        source = self._rendered()
+        assert (source.index("warmup end")
+                < source.index("counter_configure(0, 1);")
+                < source.index("MERLIN_PROFILE measured begin"))
+        assert source.index("reset_mutable();") < source.index("counter_configure(0, 1);")
+
+    def test_read_back_follows_completion_and_precedes_validation(self):
+        """Validation is host work whose cost belongs to neither the counters nor the cycle window."""
+        source = self._rendered()
+        assert (source.index("merlin_profile_cycle_end")
+                < source.index("counter_read(0)")
+                < source.index("merlin_profile_validation_rc"))
+
+    def test_omitting_the_bracket_leaves_the_harness_byte_identical(self):
+        with_none = render_warm_then_measure_main(
+            prepare_input="prepare();",
+            invocation=TargetInvocationHooks("launch();", "wait();"),
+            validate_outputs="validate()", reset_after_warm="reset_mutable();")
+        assert "counter_" not in with_none
+
+    def test_a_configure_without_a_read_back_is_refused(self):
+        """It measures nothing; a read-back without a configure reports whatever the slots held."""
+        for partial in ({"prologue": "counter_reset();"},
+                        {"epilogue": "counter_read(0);"},
+                        {"prologue": "counter_reset();", "epilogue": ""}):
+            with pytest.raises(WarmProfileHarnessError, match="missing"):
+                self._rendered(partial)
+
+    def test_a_hand_written_slot_assignment_cannot_be_passed_as_text(self):
+        with pytest.raises(WarmProfileHarnessError, match="mapping a counter selector returned"):
+            self._rendered("counter_configure(0, 1);")
+
+    def test_a_bracket_may_not_shadow_the_reserved_profile_tokens(self):
+        with pytest.raises(WarmProfileHarnessError, match="reserved profile tokens"):
+            self._rendered({"prologue": 'printf("METRIC cycles 0\\n");',
+                            "epilogue": "counter_read(0);"})

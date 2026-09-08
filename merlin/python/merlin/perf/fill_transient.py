@@ -124,9 +124,11 @@ def partition_kwargs(partition) -> dict:
     source = partition.get("source")
     if source is not None and not isinstance(source, str):
         raise PartitionEvidenceError("the partition evidence 'source' must be a string when present")
+    from merlin.perf.hw_counters import PROVED_FROM_ARTIFACT  # noqa: PLC0415
+
     return {"hw_text": str(partition["hw_text"]), "codes": dict(codes),
             "module": str(partition["module"]), "counter_module": str(partition["counter_module"]),
-            "source": source}
+            "exclusivity": PROVED_FROM_ARTIFACT, "source": source}
 
 
 @dataclass(frozen=True)
@@ -165,18 +167,26 @@ class Point:
 
 
 def point_from_counter_values(label: str, axis: int, cycles: int, values: Mapping[str, int],
-                              counters, *, partition) -> Point:
+                              counters, *, partition=None,
+                              exclusivity_declared_by_producer: bool = False) -> Point:
     """A :class:`Point` whose overlap comes from one bracketed run's combination counters.
 
     Delegates to :func:`merlin.perf.hw_counters.eta_from_counters` rather than re-deriving the ratio,
     so realised/available here are the SAME quantities the falsifier and the perf ledger hold, and a
     later change to how available overlap is bounded moves all three together.
 
-    ``partition`` is the target's CIRCT counter-partition evidence (see :data:`PARTITION_FIELDS`) and
-    is REQUIRED, because that delegate refuses to call overlap measured until the counters are proved
-    exclusive and exhaustive from the elaborated RTL. It cannot be derived here and is never defaulted:
-    evidence that is absent produces a Point carrying the reason and NO overlap reading, exactly as a
-    counter that did not read does.
+    ``partition`` is the target's CIRCT counter-partition evidence (see :data:`PARTITION_FIELDS`),
+    because that delegate refuses to call overlap measured until the counters are proved exclusive and
+    exhaustive from the elaborated RTL. It cannot be derived here and is never defaulted: evidence
+    that is absent produces a Point carrying the reason and NO overlap reading, exactly as a counter
+    that did not read does.
+
+    ``exclusivity_declared_by_producer`` is the WEAKER rung, for a caller that can state but not
+    prove the partition -- a synthetic counter block, or a target with no elaborated artifact. It
+    buys an overlap reading where none was possible, and the Point's ``overlap_detail`` carries the
+    delegate's own note saying the property was declared rather than verified. One or the other must
+    be supplied; neither leaves the Point with no overlap and the reason why, which is the honest
+    result for a reading nothing established.
 
     ``cycles`` doubles as the counter window: the readings and the cycle count come from one bracketed
     run, so a partition totalling more than the window it was read in is mixed, corrupt or wrapped, and
@@ -184,18 +194,30 @@ def point_from_counter_values(label: str, axis: int, cycles: int, values: Mappin
     """
     from merlin.perf.hw_counters import eta_from_counters
 
-    try:
-        proof = partition_kwargs(partition)
-    except PartitionEvidenceError as exc:
-        return Point(label=label, axis=int(axis), cycles=int(cycles), overlap_detail=str(exc))
+    from merlin.perf.hw_counters import DECLARED_BY_PRODUCER  # noqa: PLC0415
+
+    if partition is None and exclusivity_declared_by_producer:
+        proof = {"exclusivity": DECLARED_BY_PRODUCER, "source": None}
+    else:
+        try:
+            proof = partition_kwargs(partition)
+        except PartitionEvidenceError as exc:
+            return Point(label=label, axis=int(axis), cycles=int(cycles), overlap_detail=str(exc))
     reading = eta_from_counters(dict(values), counters, measurement_cycles=int(cycles), **proof)
     if reading.get("state") != "measured":
         return Point(label=label, axis=int(axis), cycles=int(cycles),
                      overlap_detail=str(reading.get("why") or "the counter reading is not measured"))
+    method = str((reading.get("partition_proof") or {}).get("method") or "")
+    detail = str(reading.get("note") or "")
+    if method == DECLARED_BY_PRODUCER:
+        # WHICH RUNG travels with the point, because a reader deciding whether to cite an eta needs
+        # to know whether its partition was verified or merely asserted.
+        detail = (f"exclusivity {DECLARED_BY_PRODUCER}: no elaborated artifact verified that these "
+                  f"counters partition busy time. {detail}").strip()
     return Point(label=label, axis=int(axis), cycles=int(cycles),
                  realised_overlap=int(reading["realised_cycles"]),
                  available_overlap=int(reading["available_cycles"]),
-                 overlap_detail=str(reading.get("note") or ""))
+                 overlap_detail=detail)
 
 
 def _ordered(points: Sequence[Point]) -> list[Point]:

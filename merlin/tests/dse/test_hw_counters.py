@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import textwrap
 
+import pytest
+
 from merlin.perf import hw_counters as H
 
 # A synthetic header in the shape a real one has: three singles, three pairs, the triple. Names chosen
@@ -531,3 +533,65 @@ class TestDerivedCounterExpressions:
         bracket = H.counter_bracket_for_names(tuple(selected), H.event_codes(header), slots=2)
         assert set(bracket["slot_of"]) == set(selected)
         assert bracket["epilogue"].count("counter_read(") == 2
+
+
+class TestOccupancyPartitionBracket:
+    """The selector that makes accelerator-busy CLOSED rather than a lower bound."""
+
+    HEADER = "\n".join((
+        "#define MAIN_LD_CYCLES 1",
+        "#define MAIN_ST_CYCLES 2",
+        "#define MAIN_EX_CYCLES 3",
+        "#define MAIN_LD_ST_CYCLES 4",
+        "#define MAIN_LD_EX_CYCLES 5",
+        "#define MAIN_ST_EX_CYCLES 6",
+        "#define MAIN_LD_ST_EX_CYCLES 7",
+        "#define EXE_ACTIVE_CYCLE 8",
+        "#define RDMA_BYTES_REC 9",
+    ))
+
+    def test_it_selects_every_partition_member_and_says_which_engines(self):
+        bracket = H.occupancy_partition_bracket(self.HEADER, slots=8)
+        assert set(bracket["engines"]) == {"EX", "LD", "ST"}
+        # 2**3 - 1 combinations over three engines: an exhaustive one-hot partition.
+        assert len(bracket["partition_names"]) == 7
+        assert bracket["closes_accelerator_busy"] is True
+        for name in bracket["partition_names"]:
+            assert name in bracket["slot_of"]
+
+    def test_a_free_slot_takes_a_declared_extra_counter(self):
+        bracket = H.occupancy_partition_bracket(
+            self.HEADER, slots=8, additional=("EXE_ACTIVE_CYCLE",))
+        assert bracket["additional_names"] == ("EXE_ACTIVE_CYCLE",)
+        assert bracket["additional_declined"] == ()
+
+    def test_an_extra_counter_that_does_not_fit_is_NAMED_never_silently_dropped(self):
+        """A caller that asked for a byte counter and got none would read absence as zero bytes."""
+        bracket = H.occupancy_partition_bracket(
+            self.HEADER, slots=8, additional=("EXE_ACTIVE_CYCLE", "RDMA_BYTES_REC"))
+        assert bracket["additional_names"] == ("EXE_ACTIVE_CYCLE",)
+        assert bracket["additional_declined"] == ("RDMA_BYTES_REC",)
+
+    def test_an_extra_counter_never_displaces_a_partition_member(self):
+        bracket = H.occupancy_partition_bracket(
+            self.HEADER, slots=8, additional=("MAIN_LD_ST_EX_CYCLES", "EXE_ACTIVE_CYCLE"))
+        assert len(bracket["partition_names"]) == 7
+        assert "MAIN_LD_ST_EX_CYCLES" in bracket["partition_names"]
+        # Already a partition member, so it is not counted again as an extra.
+        assert bracket["additional_names"] == ("EXE_ACTIVE_CYCLE",)
+
+    def test_too_few_slots_refuses_because_no_subset_of_a_partition_is_a_partition(self):
+        with pytest.raises(ValueError, match="no subset of a partition"):
+            H.occupancy_partition_bracket(self.HEADER, slots=3)
+
+    def test_an_incomplete_header_refuses_rather_than_emitting_three_of_seven(self):
+        """THE EXACT DEFECT THIS EXISTS FOR.
+
+        A run emitting only the three single-engine counters reports accelerator-busy as a lower
+        bound, and every consumer downstream can price nothing from a bound. Refusing at selection
+        time is the only place the mistake is still visible.
+        """
+        partial = "\n".join(("#define MAIN_LD_CYCLES 1", "#define MAIN_ST_CYCLES 2",
+                             "#define MAIN_EX_CYCLES 3"))
+        with pytest.raises(ValueError, match="does not derive a complete occupancy partition"):
+            H.occupancy_partition_bracket(partial, slots=8)

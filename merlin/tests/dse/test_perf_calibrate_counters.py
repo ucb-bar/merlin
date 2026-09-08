@@ -73,6 +73,11 @@ REALISED, AVAILABLE = 45, 110
 
 
 def _reading(workload="w0", values=None, **kw):
+    # This fixture is a synthetic HEADER, so it has no elaborated CIRCT artifact and cannot PROVE
+    # that its counters partition busy time. It declares the exclusivity instead, which is what the
+    # arithmetic below is checking by hand -- and the record labels the resulting eta
+    # `declared_by_producer` so the weaker rung stays visible.
+    kw.setdefault("exclusivity_declared_by_producer", True)
     return CAL.CounterReading(workload=workload, values=dict(VALUES if values is None else values),
                               counters=_counters(), total_cycles=kw.pop("total_cycles", 300),
                               provenance=kw.pop("provenance", "synthetic counter block"), **kw)
@@ -346,3 +351,26 @@ def test_a_target_with_no_counter_block_is_refused_not_defaulted(producer, monke
     with pytest.raises(SystemExit) as exc:
         producer.counter_block("t")
     assert "unavailable" in str(exc.value)
+
+
+# --------------------------------------------------------------- which rung the exclusivity stands on
+
+
+def test_a_declared_exclusivity_is_recorded_as_declared_not_as_proved():
+    """The difference decides whether the eta may be cited, so it is never collapsed."""
+    got = CAL.counter_calibration([_reading()])
+    assert got["runs"][0]["exclusivity"] == HC.DECLARED_BY_PRODUCER
+    assert got["runs"][0]["eta"]["state"] == CAL.MEASURED
+
+
+def test_neither_a_proof_nor_a_declaration_leaves_the_eta_unknown():
+    """Fail-closed: nothing establishes the partition, so no eta -- not a plausible one."""
+    got = CAL.counter_calibration([_reading(exclusivity_declared_by_producer=False)])
+    run = got["runs"][0]
+    assert run["eta"]["state"] != CAL.MEASURED
+    assert "partition busy time" in run["eta"]["why"]
+
+
+def test_an_unrecognised_exclusivity_rung_is_refused_rather_than_treated_as_the_weaker_one():
+    with pytest.raises(ValueError, match="no third way"):
+        HC.eta_from_counters(dict(VALUES), _counters(), exclusivity="looks_fine_to_me")

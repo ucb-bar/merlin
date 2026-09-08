@@ -496,8 +496,20 @@ def counter_slots_from_circt(
                          "families": {name: len(got) for name, got in indices.items()}}}
 
 
-def eta_from_counters(values: dict, counters: OccupancyCounters, *, hw_text: str,
-                      codes: Mapping[str, int], module: str, counter_module: str,
+#: How a caller established that the combination counters are mutually exclusive and exhaustive.
+#: ``PROVED_FROM_ARTIFACT`` follows the event ports into elaborated CIRCT and symbolically checks
+#: every cone; ``DECLARED_BY_PRODUCER`` is the producer's word for it. The two are NOT
+#: interchangeable and the record says which one it had, because on counters that are not actually
+#: exclusive the per-engine totals and the realised overlap are both silently over-reported -- and
+#: nothing in the header can detect that.
+PROVED_FROM_ARTIFACT = "proved_from_artifact"
+DECLARED_BY_PRODUCER = "declared_by_producer"
+
+
+def eta_from_counters(values: dict, counters: OccupancyCounters, *, hw_text: str = "",
+                      codes: Mapping[str, int] | None = None, module: str = "",
+                      counter_module: str = "",
+                      exclusivity: str = PROVED_FROM_ARTIFACT,
                       measurement_cycles: int | None = None,
                       source: str | None = None) -> dict:
     """η from a set of counter READINGS, with every refusal carrying its reason.
@@ -523,13 +535,36 @@ def eta_from_counters(values: dict, counters: OccupancyCounters, *, hw_text: str
     that from the header alone -- the exclusivity is a property of the RTL, not of the ``#define`` list
     -- so a new target's counter block should be read once before its η is cited.
     """
-    proof = prove_occupancy_partition_from_circt(
-        hw_text, counters, codes, module=module, counter_module=counter_module, source=source)
-    if proof.get("status") != "proved":
-        return {"state": "unknown", "eta": None, "complete": counters.complete(),
-                "partition_proof": proof,
-                "why": "counter exclusivity/exhaustiveness was not proved from CIRCT: "
-                       + str(proof.get("why", "unknown proof failure"))}
+    if exclusivity not in (PROVED_FROM_ARTIFACT, DECLARED_BY_PRODUCER):
+        raise ValueError(
+            f"exclusivity must be {PROVED_FROM_ARTIFACT!r} or {DECLARED_BY_PRODUCER!r}, not "
+            f"{exclusivity!r}; there is no third way to establish that these counters partition "
+            f"busy time, and defaulting to the weaker one is how a declared property comes to be "
+            f"cited as a proved one")
+    if exclusivity == DECLARED_BY_PRODUCER:
+        # The weaker evidence, and LABELLED as such rather than silently substituted. It is
+        # accepted because refusing it outright would leave a target with no elaborated artifact
+        # unable to report an eta its hardware genuinely measured; it is labelled because the
+        # difference decides whether the number may be cited.
+        proof = {"status": "declared", "method": exclusivity, "source": source,
+                 "why": ("the producer declared these counters mutually exclusive and exhaustive; "
+                         "no elaborated artifact was supplied, so nothing verified it. Counter "
+                         "exclusivity is a property of the RTL, not of the header's #define list.")}
+    else:
+        if not hw_text or codes is None or not module or not counter_module:
+            return {"state": "unknown", "eta": None, "complete": counters.complete(),
+                    "partition_proof": {"status": "unknown", "method": PROVED_FROM_ARTIFACT},
+                    "why": ("proving counter exclusivity from the artifact needs hw_text, codes, "
+                            "module and counter_module, and at least one was not supplied; pass "
+                            f"exclusivity={DECLARED_BY_PRODUCER!r} to report the producer's own "
+                            "declaration instead, which is recorded as the weaker evidence it is")}
+        proof = prove_occupancy_partition_from_circt(
+            hw_text, counters, codes, module=module, counter_module=counter_module, source=source)
+        if proof.get("status") != "proved":
+            return {"state": "unknown", "eta": None, "complete": counters.complete(),
+                    "partition_proof": proof,
+                    "why": "counter exclusivity/exhaustiveness was not proved from CIRCT: "
+                           + str(proof.get("why", "unknown proof failure"))}
     required = set(counters.by_combination.values())
     supplied = set(values or {})
     missing = sorted(required - supplied)
@@ -667,6 +702,53 @@ def counter_bracket_for_names(names: list[str] | tuple[str, ...], codes: dict, *
     return {"prologue": "\n".join(pro) + "\n", "epilogue": "\n".join(epi) + "\n",
             "slot_of": slot_of,
             "configured_slots": int(slots) if padding_code is not None else len(ordered)}
+
+
+def occupancy_partition_bracket(header_text: str, *, slots: int, additional=(),
+                                padding_code: int | None = None) -> dict:
+    """The bracket that makes accelerator-busy CLOSED rather than a lower bound.
+
+    WHY THIS EXISTS AS A DERIVED SELECTOR. A whole-model run on this tree measured
+    ``main_ld + main_st + main_ex = 58,659,625`` against ``1,383,906,735`` cycles and reported
+    accelerator-busy as **4.24%** -- correctly labelled a LOWER bound, because the three singles are
+    3 of a 7-member exhaustive partition and the 4 absent members are exactly the overlap terms. With
+    the partition complete, busy is the SUM and host residue is ``rdcycle - sum``: a closed
+    decomposition rather than two one-sided bounds. Nothing downstream
+    (:mod:`merlin.perf.attribution`, :mod:`merlin.perf.envelope`) can price a bucket it only has a
+    bound for, which is why the whole feedback stack had no data.
+
+    The selection is DERIVED here, from the target's own counter header, and refuses a partition the
+    header does not prove exhaustive. That is the point: the harness that produced the 3-counter run
+    picked its eight slots by hand, so the partition silently stopped being one. ``additional`` names
+    extra counters for the slots the partition leaves free; they are the caller's declared choice and
+    are never allowed to displace a partition member.
+    """
+    occupancy = derive_occupancy_counters(header_text)
+    if not occupancy.complete():
+        raise ValueError(
+            "this target's counter header does not derive a complete occupancy partition "
+            f"({len(occupancy.by_combination)} of the combinations over engines "
+            f"{list(occupancy.engines)}); a partial set makes accelerator-busy a lower bound, and "
+            "emitting it as though it were a total is the defect this selector exists to prevent")
+    partition = [occupancy.by_combination[key]
+                 for key in sorted(occupancy.by_combination, key=lambda combo: sorted(combo))]
+    extra = [str(name) for name in additional if str(name) not in partition]
+    if len(partition) > int(slots):
+        raise ValueError(
+            f"the occupancy partition needs {len(partition)} slots but the target exposes {slots}; "
+            "there is no subset of a partition that is still a partition")
+    ordered = partition + extra[:max(0, int(slots) - len(partition))]
+    dropped = extra[len(ordered) - len(partition):]
+    bracket = counter_bracket_for_names(ordered, event_codes(header_text), slots=slots,
+                                        padding_code=padding_code)
+    bracket["partition_names"] = tuple(partition)
+    bracket["additional_names"] = tuple(ordered[len(partition):])
+    # Named rather than silently truncated: a caller that asked for a byte counter and did not get one
+    # would otherwise read its absence as "this run moved no bytes".
+    bracket["additional_declined"] = tuple(dropped)
+    bracket["engines"] = tuple(occupancy.engines)
+    bracket["closes_accelerator_busy"] = True
+    return bracket
 
 
 def counter_bracket_c(counters: OccupancyCounters, codes: dict, *, slots: int,

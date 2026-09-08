@@ -75,7 +75,8 @@ def _point(label, axis, cycles, realised, available):
 
 def pk_points() -> list[FT.Point]:
     derived = counters()
-    return [FT.point_from_counter_values(name, axis, cycles, values, derived)
+    return [FT.point_from_counter_values(name, axis, cycles, values, derived,
+                                     exclusivity_declared_by_producer=True)
             for name, (axis, cycles, values) in PK_COHORT.items()]
 
 
