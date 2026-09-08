@@ -54,6 +54,13 @@ def test_a_target_with_no_fence_emits_no_fence_call():
     assert abi.call("x") == "  npu_kernel(x);"
 
 
+def test_warm_profile_hooks_keep_target_launch_and_completion_separate():
+    abi = HA.from_contract(_block(), target="synth_npu")
+    hooks = abi.warm_profile_invocation("x")
+    assert hooks.invoke == "npu_kernel(x);"
+    assert hooks.complete == "npu_fence();"
+
+
 def test_a_target_with_no_cycle_window_metric_emits_no_metric_line():
     """Not the same as emitting it as 0. The runner's parser treats an absent key and a falsy value
     identically, so a 0-valued line is noise carrying another target's vocabulary."""

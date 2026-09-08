@@ -56,6 +56,25 @@ class HarnessAbi:
         call = f"  {self.entry_symbol}({args});"
         return f"{call}\n  {self.fence_symbol}();" if self.fence_symbol else call
 
+    def warm_profile_invocation(self, args: str):
+        """Return the target hooks required by a warm cycle profile.
+
+        Unlike :meth:`call`, a performance window cannot silently accept a
+        missing completion operation: doing so can read the end cycle while
+        asynchronous target work is still outstanding.  The target contract is
+        the authority for both symbols; the generic profile renderer contains
+        neither one.
+        """
+        if not self.fence_symbol:
+            raise HarnessAbiError(
+                "a warm cycle profile requires the target harness ABI to declare "
+                "an explicit completion/fence symbol")
+        from merlin.perf.warm_profile_harness import TargetInvocationHooks
+        return TargetInvocationHooks(
+            invoke=f"{self.entry_symbol}({args});",
+            complete=f"{self.fence_symbol}();",
+        )
+
     def cycle_window_line(self) -> str:
         """The METRIC line attributing the cycle window, or empty when the target declares none."""
         if not self.cycle_window_metric:
