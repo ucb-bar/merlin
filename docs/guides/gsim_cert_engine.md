@@ -234,6 +234,22 @@ marker). Radiance L3 on GSIM therefore reports **unavailable** rather than passi
 the toolchain are demonstrably working end to end, and what is missing is the observability to grade
 the result, which is a harness gap to close and not a verdict to keep.
 
+### Observability recovery candidate (2026-09-08)
+
+GSIM now has a tested source-level repair for that harness gap. Generated successful FIRRTL
+`stop(..., 0)` sites emit `GSIM model finished execution.` immediately before `exit(0)`; non-zero
+stops retain their failure exit and emit no success witness. High-volume hardware prints are filtered
+by default without filtering assertions, timeouts, cycle lines, or the completion marker. Merlin also
+rejects a non-zero emulator process even if its console contains a stale positive marker.
+
+A freshly emitted and linked Radiance L3 candidate ran `R0_gemm_fp32` to that positive stop in 82.22
+seconds (317 DRAM reads, 1,268 read beats, and 19,786 CVFPU accepts). This closes observability, but it
+does **not** promote the installed engine: the run wrote no result page and provided no independent
+numeric comparison, and the 1.93 GB FIRRTL still lacks a fully attributable source revision. The exact
+binary, source snapshot, hashes, and negative limits are preserved in
+`out/artifacts/capsule-bench/radiance/radiance_l3_gsim_functional_candidate_20260908/`. Promotion still
+requires a freshly attributable elaboration plus a result-producing capsule with a golden match.
+
 ## Verified end to end (2026-09-04)
 
 The claim "GSIM runs our accelerators" is only worth what a reproduction says, so both flavours were

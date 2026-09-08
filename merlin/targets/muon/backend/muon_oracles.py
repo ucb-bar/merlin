@@ -301,12 +301,16 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
         log = Path(workdir) / "gsim_console.log"
         try:
             with log.open("wb") as fh:
-                subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
-                               preexec_fn=_unlimited_stack)
+                completed = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
+                                           preexec_fn=_unlimited_stack)
         except subprocess.TimeoutExpired as e:
             raise muon.MuonUnavailable(f"GSIM emu wall-timed out after {timeout}s") from e
         t2 = time.perf_counter()
         console, console_bytes, console_truncated = muon._read_console(log)
+        if completed.returncode != 0:
+            raise muon.MuonUnavailable(
+                f"GSIM emu exited nonzero ({completed.returncode}); refusing completion markers from "
+                f"a failed process. tail:\n{console[-600:]}")
         # GSIM completion contract (the radiance kernels self-verify against their embedded golden, then
         # go idle on PASS or spin on FAIL):
         #   PASS  => the GPUResetAggregator's stopSim (GPU idle for 1k cycles) fires, which the emitted

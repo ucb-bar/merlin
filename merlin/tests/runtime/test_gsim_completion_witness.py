@@ -15,6 +15,8 @@ same tier to one standard rather than inventing a new bar.
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 from merlin.runtime.backends.base import get_backend
@@ -38,10 +40,21 @@ def test_a_console_with_no_witness_and_no_failure_is_refused(console, why, monke
     assert "no completion witness" in str(exc.value), why
 
 
-@pytest.mark.parametrize("witness", ["Cycles: 12345\n", "Muon core 0 finished execution.\n"])
+@pytest.mark.parametrize("witness", [
+    "Cycles: 12345\n",
+    "Muon core 0 finished execution.\n",
+    "GSIM model finished execution.\n",
+])
 def test_either_positive_witness_is_accepted(witness, monkeypatch, tmp_path):
     res = _drive(monkeypatch, tmp_path, witness)
     assert res["oracle"]["kind"] == "rtl_gsim_muon"
+
+
+def test_nonzero_emulator_exit_is_refused_even_with_a_completion_witness(monkeypatch, tmp_path):
+    """A stale/partial witness must not turn a crashed emulator process into a certification."""
+    with pytest.raises(muon.MuonUnavailable) as exc:
+        _drive(monkeypatch, tmp_path, "GSIM model finished execution.\n", returncode=17)
+    assert "exited nonzero (17)" in str(exc.value)
 
 
 @pytest.mark.parametrize("console", [
@@ -55,7 +68,7 @@ def test_a_failure_marker_still_loses_even_beside_a_witness(console, monkeypatch
     assert "did not reach GPU-idle completion" in str(exc.value)
 
 
-def _drive(monkeypatch, tmp_path, console: str):
+def _drive(monkeypatch, tmp_path, console: str, *, returncode: int = 0):
     """Run the real adapter with the compile/fuse/exec seams stubbed, so only grading is exercised."""
     import subprocess
 
@@ -67,6 +80,6 @@ def _drive(monkeypatch, tmp_path, console: str):
     monkeypatch.setattr(muon, "compile_mlir_forkfree", lambda *a, **k: tmp_path / "k.elf")
     monkeypatch.setattr(muon, "fuse_soc_elf", lambda elf, wd: tmp_path / "k.soc.elf")
     monkeypatch.setattr(MO, "flops_from_cb", lambda cb: 0)
-    monkeypatch.setattr(subprocess, "run", lambda *a, **k: None)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=returncode))
     monkeypatch.setattr(muon, "_read_console", lambda log: (console, len(console), False))
     return MO.gsim_muon_adapter("radiance")({"target": "radiance"}, "mlir", tmp_path, 60)
