@@ -839,6 +839,17 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     from . import muon_bsp, muon_link, muon_harness
 
     from merlin.targetgen import build_cache as _bc
+    fact = mlc_bridge.isa_encoding_for(target)
+    if not fact:
+        raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
+    model = isa_model_from_encoding(target, fact)
+    launch = (cb.get("kernel_abi") or {}).get("launch")
+    if launch is not None:
+        # The semantic launch determines how many warp contexts the BSP must
+        # initialize at boot. In particular, WSPAWNing eight workers after a
+        # one-warp startup leaves their stack/register state undefined.
+        num_warps = muon_harness._external_kernel_launch_warps(
+            launch, cb.get("resources"), model)
     work = Path(workdir)
     work.mkdir(parents=True, exist_ok=True)
     # Private oracle payloads affect only the trusted rv64 grading carrier, not
@@ -871,10 +882,6 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     clang = mlir_bin("clang")
     if not clang.is_file():
         raise MuonUnavailable(f"stock LLVM tool absent: {clang} (set MERLIN_MLIR_INSTALL)")
-    fact = mlc_bridge.isa_encoding_for(target)
-    if not fact:
-        raise MuonUnavailable(f"no derived ISA encoding fact for target {target!r}")
-    model = isa_model_from_encoding(target, fact)
     triple, mabi = forkfree_compile_triple(model)
     march = derive_march(model)
     cflags = [f"--target={triple}", f"-march={march}", f"-mabi={mabi}", "-mno-relax", "-mcmodel=medany",

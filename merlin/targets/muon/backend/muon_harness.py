@@ -1194,6 +1194,93 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                              for o in out_args] if compact_expected is not None else None))
 
 
+def _validated_external_kernel_launch(
+    launch: dict[str, Any] | None,
+    resource_claims: dict[str, Any] | None,
+    model,
+) -> dict[str, Any] | None:
+    """Resolve one semantic external-kernel launch from reviewed target facts."""
+    if launch is None:
+        return None
+    kinds = {"simt_single_warp", "simt_all_warps"}
+    if (not isinstance(launch, dict) or set(launch) != {"kind"}
+            or launch.get("kind") not in kinds):
+        raise ValueError(
+            "kernel_abi.launch must be exactly {'kind': 'simt_single_warp'} "
+            "or {'kind': 'simt_all_warps'}")
+    kind = launch["kind"]
+    if not isinstance(resource_claims, dict):
+        raise ValueError(f"{kind} launch requires command-buffer resource claims")
+
+    from merlin.targetgen.rtl.facts import load_facts
+
+    document = load_facts(model.target)
+    facts = document.get("facts") if isinstance(document, dict) else None
+    simt = facts.get("simt") if isinstance(facts, dict) else None
+    names = ("cores", "warps_per_core", "lanes_per_warp")
+    geometry = {name: simt.get(name) if isinstance(simt, dict) else None for name in names}
+    bad = {name: value for name, value in geometry.items()
+           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
+    if bad:
+        raise ValueError(f"target RTL facts have invalid SIMT geometry: {bad}")
+    mismatches = {name: {"claimed": resource_claims.get(name), "rtl": geometry[name]}
+                  for name in names if resource_claims.get(name) != geometry[name]}
+    if mismatches:
+        raise ValueError(f"command-buffer SIMT resources disagree with target RTL facts: {mismatches}")
+
+    runtime_abi = model.runtime_abi if isinstance(model.runtime_abi, dict) else {}
+    xlen = runtime_abi.get("xlen")
+    if xlen not in (32, 64):
+        raise ValueError(f"{kind} requires derived XLEN 32 or 64, got {xlen!r}")
+    if geometry["lanes_per_warp"] > xlen:
+        raise ValueError(
+            f"derived lane mask ({geometry['lanes_per_warp']} lanes) does not fit XLEN {xlen}")
+    if model.base_isa_family() != f"riscv{xlen}":
+        raise ValueError(
+            f"SIMT launch base ISA {model.base_isa_family()!r} disagrees with derived XLEN {xlen}")
+
+    def _encoding(role: str) -> dict[str, int]:
+        op = model.sfu_op(role)
+        opcode, funct3 = op.get("opcode"), op.get("funct3")
+        if (not isinstance(opcode, int) or isinstance(opcode, bool)
+                or not 0 <= opcode < (1 << 7)
+                or not isinstance(funct3, int) or isinstance(funct3, bool)
+                or not 0 <= funct3 < (1 << 3)):
+            raise ValueError(f"invalid derived {role.upper()} encoding: {op}")
+        return {"opcode": opcode, "funct3": funct3}
+
+    resolved: dict[str, Any] = {
+        "kind": kind,
+        "geometry": geometry,
+        "xlen": xlen,
+        "tmc": _encoding("tmc"),
+    }
+    if kind == "simt_all_warps":
+        # main elects a manager only on core zero. WSPAWN is core-local, so a
+        # multi-core launch needs a separate inter-core scheduler contract.
+        if geometry["cores"] != 1:
+            raise ValueError("simt_all_warps currently requires exactly one RTL core")
+        resolved["wspawn"] = _encoding("wspawn")
+        wmask = model.special_csr("warp_mask")
+        if (not isinstance(wmask, int) or isinstance(wmask, bool)
+                or not 0 <= wmask < (1 << 12)):
+            raise ValueError(f"invalid derived warp-mask CSR: {wmask!r}")
+        resolved["warp_mask_csr"] = wmask
+    return resolved
+
+
+def _external_kernel_launch_warps(
+    launch: dict[str, Any] | None,
+    resource_claims: dict[str, Any] | None,
+    model,
+) -> int:
+    """Return the BSP occupancy required by the semantic launch contract."""
+    resolved = _validated_external_kernel_launch(launch, resource_claims, model)
+    if resolved is None or resolved["kind"] == "simt_single_warp":
+        return 1
+    return int(resolved["geometry"]["warps_per_core"])
+
+
 def _external_kernel_launch_wrapper(
     launch: dict[str, Any] | None,
     resource_claims: dict[str, Any] | None,
@@ -1217,49 +1304,14 @@ def _external_kernel_launch_wrapper(
     instruction encoding come from reviewed RTL/runtime facts and are checked
     against the buffer's resource claims; no submitted asm fields are accepted.
     """
-    if launch is None:
+    resolved = _validated_external_kernel_launch(launch, resource_claims, model)
+    if resolved is None:
         return ""
-    if not isinstance(launch, dict) or launch != {"kind": "simt_single_warp"}:
-        raise ValueError(
-            "kernel_abi.launch must be exactly {'kind': 'simt_single_warp'}")
-    if not isinstance(resource_claims, dict):
-        raise ValueError("simt_single_warp launch requires command-buffer resource claims")
-
-    from merlin.targetgen.rtl.facts import load_facts
-
-    document = load_facts(model.target)
-    facts = document.get("facts") if isinstance(document, dict) else None
-    simt = facts.get("simt") if isinstance(facts, dict) else None
-    names = ("cores", "warps_per_core", "lanes_per_warp")
-    geometry = {name: simt.get(name) if isinstance(simt, dict) else None for name in names}
-    bad = {name: value for name, value in geometry.items()
-           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
-    if bad:
-        raise ValueError(f"target RTL facts have invalid SIMT geometry: {bad}")
-    mismatches = {name: {"claimed": resource_claims.get(name), "rtl": geometry[name]}
-                  for name in names if resource_claims.get(name) != geometry[name]}
-    if mismatches:
-        raise ValueError(f"command-buffer SIMT resources disagree with target RTL facts: {mismatches}")
-
-    runtime_abi = model.runtime_abi if isinstance(model.runtime_abi, dict) else {}
-    xlen = runtime_abi.get("xlen")
-    if xlen not in (32, 64):
-        raise ValueError(f"simt_single_warp requires derived XLEN 32 or 64, got {xlen!r}")
-    if geometry["lanes_per_warp"] > xlen:
-        raise ValueError(
-            f"derived lane mask ({geometry['lanes_per_warp']} lanes) does not fit XLEN {xlen}")
+    geometry, xlen, tmc = resolved["geometry"], resolved["xlen"], resolved["tmc"]
     if not isinstance(argument_count, int) or not 0 < argument_count <= 8:
         raise ValueError(
-            f"simt_single_warp supports 1..8 pointer ABI arguments, got {argument_count!r}")
-    if model.base_isa_family() != f"riscv{xlen}":
-        raise ValueError(
-            f"SIMT launch base ISA {model.base_isa_family()!r} disagrees with derived XLEN {xlen}")
-    tmc = model.sfu_op("tmc")
-    opcode, funct3 = tmc.get("opcode"), tmc.get("funct3")
-    if (not isinstance(opcode, int) or isinstance(opcode, bool) or not 0 <= opcode < (1 << 7)
-            or not isinstance(funct3, int) or isinstance(funct3, bool)
-            or not 0 <= funct3 < (1 << 3)):
-        raise ValueError(f"invalid derived TMC encoding: {tmc}")
+            f"{resolved['kind']} supports 1..8 pointer ABI arguments, got {argument_count!r}")
+    opcode, funct3 = tmc["opcode"], tmc["funct3"]
 
     word_bytes = xlen // 8
     store, load = ("sw", "lw") if xlen == 32 else ("sd", "ld")
@@ -1273,7 +1325,8 @@ def _external_kernel_launch_wrapper(
     loads = "\n".join(
         f'    "{load} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
     ra_offset = argument_count * word_bytes
-    return f'''static volatile uintptr_t __merlin_simt_call_state[{argument_count + 1}]
+    if resolved["kind"] == "simt_single_warp":
+        return f'''static volatile uintptr_t __merlin_simt_call_state[{argument_count + 1}]
     __attribute__((used,aligned({word_bytes})));
 __attribute__((naked,noinline,used)) static void __merlin_simt_launch({definition}){{
   __asm__ volatile(
@@ -1290,6 +1343,51 @@ __attribute__((naked,noinline,used)) static void __merlin_simt_launch({definitio
     "1:\\n"
     "li t1, 1\\n"
     ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "la t0, __merlin_simt_call_state\\n"
+    "{load} ra, {ra_offset}(t0)\\n"
+    "ret\\n");
+}}'''
+
+    wspawn = resolved["wspawn"]
+    warps = geometry["warps_per_core"]
+    wmask = resolved["warp_mask_csr"]
+    return f'''static volatile uintptr_t __merlin_simt_call_state[{argument_count + 1}]
+    __attribute__((used,aligned(64)));
+extern void {kernel_symbol}({ptrs});
+__attribute__((naked,noinline,used)) static void __merlin_simt_worker(void){{
+  __asm__ volatile(
+    "li t1, {mask}\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "la t0, __merlin_simt_call_state\\n"
+{loads}
+    "la ra, 1f\\n"
+    "tail {kernel_symbol}\\n"
+    "1:\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, x0, x0\\n"
+    "2: j 2b\\n");
+}}
+__attribute__((naked,noinline,used)) static void __merlin_simt_launch({definition}){{
+  __asm__ volatile(
+    "la t0, __merlin_simt_call_state\\n"
+{stores}
+    "{store} ra, {ra_offset}(t0)\\n"
+    "fence rw, rw\\n"
+    "li t1, {warps}\\n"
+    "la t2, __merlin_simt_worker\\n"
+    ".insn r {wspawn['opcode']}, {wspawn['funct3']}, 0, x0, t1, t2\\n"
+    "li t1, {mask}\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "la t0, __merlin_simt_call_state\\n"
+{loads}
+    "la ra, 1f\\n"
+    "tail {kernel_symbol}\\n"
+    "1:\\n"
+    "li t1, 1\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "2:\\n"
+    "csrr t1, {wmask:#x}\\n"
+    "li t2, 1\\n"
+    "bne t1, t2, 2b\\n"
     "la t0, __merlin_simt_call_state\\n"
     "{load} ra, {ra_offset}(t0)\\n"
     "ret\\n");
