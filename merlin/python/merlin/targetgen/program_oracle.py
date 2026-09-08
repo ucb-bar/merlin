@@ -82,6 +82,9 @@ def _mlc_importable(mlc_dir):
 
 _EMIT_HELPER = Path(__file__).resolve().parent / "oracle_helpers" / "npu_emit.py"
 _COSIM_HELPER = Path(__file__).resolve().parent / "oracle_helpers" / "program_cosim.py"
+_FUNC_ERRATA_HELPER = (
+    Path(__file__).resolve().parent / "oracle_helpers" / "functional_errata_runner.py"
+)
 
 
 def _model_venv_python(model_ext: str) -> Path:
@@ -646,12 +649,52 @@ def _func_program_helper(target: str) -> Path:
 
 def _run_func_helper(target: str, model_ext: str, req: dict, workdir: Path, timeout: int) -> dict[str, Any]:
     """Run the mlc functional program runner in the MODEL venv (same venv+cwd as ``_run_emit_helper``),
-    marshalling a JSON+base64 request/result across the venv gap (mirrors its ``__main__`` CLI)."""
+    marshalling a JSON+base64 request/result across the venv gap (mirrors its ``__main__`` CLI).
+
+    A shipped ISA model is evidence and is never edited in place.  Reviewed RTL-authoritative
+    corrections are instead passed to a process-local overlay helper.  This makes the functional
+    decoder execute the same instruction words as hardware while retaining both the original spec and
+    an auditable receipt of every field changed for this invocation.
+    """
     py = _model_venv_python(model_ext)
     func = _func_program_helper(target)
     infile, outfile = workdir / "func_in.json", workdir / "func_out.json"
-    infile.write_text(json.dumps(req))
-    cmd = [str(py), str(func), "--in", str(infile), "--out", str(outfile)]
+    from .isa_model import _reviewed_errata
+    corrections = {
+        name: row for name, row in _reviewed_errata(target).items()
+        if str(row.get("authoritative") or "").lower() == "rtl"
+        and row.get("declared") not in (None, "")
+        and row.get("hardware") not in (None, "")
+    }
+    request = dict(req)
+    request["reviewed_isa_errata"] = corrections
+    functional_registry = Path(__file__).resolve().parents[3] / "contract" / "functional_model_errata.yaml"
+    functional_corrections = {}
+    functional_isa_module = ""
+    if functional_registry.is_file():
+        import yaml
+        functional_doc = yaml.safe_load(functional_registry.read_text()) or {}
+        functional_section = dict(
+            ((functional_doc.get("errata") or {}).get(target)) or {}
+        )
+        functional_isa_module = str(functional_section.get("isa_module") or "")
+        functional_corrections = dict(functional_section.get("corrections") or {})
+    request["reviewed_functional_model_errata"] = functional_corrections
+    request["functional_model_isa_module"] = functional_isa_module
+    infile.write_text(json.dumps(request))
+    if corrections or functional_corrections:
+        if not functional_isa_module:
+            raise OracleUnavailable(
+                f"{target}: reviewed functional corrections name no model ISA module"
+            )
+        cmd = [str(py), str(_FUNC_ERRATA_HELPER), "--runner", str(func),
+               "--in", str(infile), "--out", str(outfile)]
+    else:
+        request.pop("reviewed_isa_errata")
+        request.pop("reviewed_functional_model_errata")
+        request.pop("functional_model_isa_module")
+        infile.write_text(json.dumps(request))
+        cmd = [str(py), str(func), "--in", str(infile), "--out", str(outfile)]
     cwd = ext_path(model_ext)                           # ASM_FOLDER is cwd-relative in the model
     p = subprocess.run(cmd, cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
     if p.returncode != 0:

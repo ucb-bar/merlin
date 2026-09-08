@@ -1,0 +1,42 @@
+# Reviewed corrections to target-owned functional models.
+#
+# These are process-local oracle overlays, not changes to the shipped model or
+# the target RTL.  Each correction is admitted only when machine-derived RTL
+# evidence establishes the model/runtime disagreement.  Consumers must fail
+# closed if a named model class or precondition is absent.
+
+version: 1
+errata:
+  atlas:
+    isa_module: npu_model.configs.isa_definition
+    corrections:
+      vmem_engine_address_unit:
+        authoritative: rtl
+        correction: vmem_base_unit_bytes
+        model_classes: [_DMA_LOAD_CHN, _DMA_STORE_CHN, VLOAD, VSTORE]
+        declared_unit_bytes: 1
+        hardware_unit_bytes: 4
+        sources_against_model:
+          - atlas/scalar/ScalarCore.scala: LSU and DMA discard VmemParams.wordOffBits
+          - atlas/common/VmemParams.scala: wordWidth is 32 bits
+        rationale: >-
+          The model stores VMEM as a byte array, but DMA vmemAddr and VLS base
+          addresses are architectural 32-bit word addresses. Scalar LB/LH/LW and
+          SB/SH/SW offsets remain byte-addressed and therefore are not overlaid.
+        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
+      e8m0_scale_interpretation:
+        authoritative: rtl
+        correction: e8m0_biased_exponent
+        model_classes: [VPACK_BF16_FP8, VUNPACK_FP8_BF16]
+        exponent_bias: 127
+        exponent_min: -128
+        exponent_max: 127
+        sources_against_model:
+          - atlas/vector/VectorEngine.scala: e8m0ToScaleExpClamped
+          - atlas/vector/laneBoxes/FP8Pack.scala: exponent subtraction
+          - atlas/vector/laneBoxes/FP8Unpack.scala: exponent addition
+        rationale: >-
+          read_erf returns the encoded E8M0 byte. The shipped functional model
+          treats that byte as an arithmetic multiplier/divisor. RTL interprets it
+          as a biased exponent: scale exponent = clamp(code - 127).
+        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
