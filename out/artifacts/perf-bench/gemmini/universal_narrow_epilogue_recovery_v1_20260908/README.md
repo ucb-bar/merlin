@@ -1,5 +1,15 @@
 # Jack Universal Gemmini narrow-INT8 recovery v1
 
+> **Erratum (2026-09-08):** the original report incorrectly treated
+> `hardcode_d_to_garbage_address` as disabling convolution bias. It disables the
+> ordinary execute-path D operand, but `LoopConvLdBias` independently loads i32
+> per-channel bias into accumulator rows with `LOAD3_CMD`. The inventory remains
+> 0/53 for the current compiler because every convolution needs per-channel scale
+> partitioning (and some also cross residual/pool/global operations), not because
+> bias is unavailable. The analyzer, generated inventory, and regression below
+> have been corrected. A native LOOP_CONV recovery supersedes the conclusion in
+> the original prose.
+
 ## Result
 
 The exact prepared W8A8 ResNet-50 has **0/53 convolutions admitted** for a
@@ -11,12 +21,11 @@ every channel nonzero, and 53/53 with genuinely per-channel weight scales.
 Twenty convolution paths participate in a residual add before quantization;
 the stem requires max-pool; the final convolution reaches global reduction/FC.
 
-The decisive target restriction is
-`hardcode_d_to_garbage_address: true`. In weight-stationary execution, Jack's
-RTL discards the operand carrying the accumulator preload. Therefore the bias
-accepted by the LOOP_CONV programming interface cannot provide a legal bias
-preload on this configuration. Merely changing the current output-row LOOP_WS
-emitter to LOOP_CONV would still produce wrong results.
+The decisive remaining restriction is that each convolution uses genuinely
+per-channel scaling, while one LOOP_CONV store descriptor supplies one scale.
+The compiler must partition output channels by scale (or emit an equivalent
+exact post-accumulation transformation). Twenty paths also cross residual adds,
+the stem crosses max-pool, and the final path crosses global reduction/FC.
 
 ## Implemented safe vertical slice
 
@@ -51,8 +60,8 @@ although Spike passed.
 
 ## Next legal boundary
 
-The same RTL needs a mechanism independent of D, or a target change exposing
-live accumulator/bias preload. Channel-partitioned scale programming can handle
-per-channel scales and LOOP_CONV can absorb the stem pool, but neither solves
-nonzero bias on hardcoded-D hardware. Approximate fusion is deliberately not
-admitted under the exact 1000-logit gate.
+Use the already implemented native LOOP_CONV mechanism, its dedicated LOAD3
+bias path, and channel-partitioned store configuration to form an exact narrow
+boundary. Then retain residual/global operations on Rocket until separately
+proven fusible. Approximate fusion is deliberately not admitted under the exact
+1000-logit gate.

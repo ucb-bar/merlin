@@ -12,7 +12,8 @@
     "residual_add_paths": 20,
     "maxpool_paths": 1,
     "global_tail_paths": 1,
-    "hardware_qualification": "not_run_no_candidate_admitted"
+    "hardware_qualification": "not_run_no_candidate_admitted",
+    "erratum": "nonzero bias is supported by LoopConvLdBias LOAD3 even when the ordinary execute-path D operand is hardwired to garbage"
   },
   "convolutions": [
     {
@@ -43,6 +44,7 @@
         "tensor": "model.conv1.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -9.418174743652344,
         "max": 22.49496078491211
       },
@@ -56,7 +58,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "maxpool_requires_native_loop_conv_emission"
       ]
@@ -87,6 +88,7 @@
         "tensor": "model.layer1.0.conv1.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -20.147268295288086,
         "max": 15.999448776245117
       },
@@ -100,7 +102,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -130,6 +131,7 @@
         "tensor": "model.layer1.0.conv2.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -12.553802490234375,
         "max": 14.834203720092773
       },
@@ -143,7 +145,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -174,6 +175,7 @@
         "tensor": "model.layer1.0.conv3.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -14.034213066101074,
         "max": 11.683894157409668
       },
@@ -187,7 +189,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -219,6 +220,7 @@
         "tensor": "model.layer1.0.downsample.0.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -14.145302772521973,
         "max": 24.49135398864746
       },
@@ -232,7 +234,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -263,6 +264,7 @@
         "tensor": "model.layer1.1.conv1.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -9.282356262207031,
         "max": 32.378662109375
       },
@@ -276,7 +278,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -306,6 +307,7 @@
         "tensor": "model.layer1.1.conv2.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -1.486552357673645,
         "max": 5.628358840942383
       },
@@ -319,7 +321,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -350,6 +351,7 @@
         "tensor": "model.layer1.1.conv3.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -8.83262825012207,
         "max": 12.252721786499023
       },
@@ -363,7 +365,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -394,6 +395,7 @@
         "tensor": "model.layer1.2.conv1.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -8.432600975036621,
         "max": 4.936821937561035
       },
@@ -407,7 +409,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -437,6 +438,7 @@
         "tensor": "model.layer1.2.conv2.weight_bias",
         "channels": 64,
         "nonzero_channels": 64,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -11.86962604522705,
         "max": 6.579132556915283
       },
@@ -450,7 +452,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -481,6 +482,7 @@
         "tensor": "model.layer1.2.conv3.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -10.943815231323242,
         "max": 14.686656951904297
       },
@@ -494,7 +496,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -525,6 +526,7 @@
         "tensor": "model.layer2.0.conv1.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -9.545639038085938,
         "max": 4.6019792556762695
       },
@@ -538,7 +540,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -568,6 +569,7 @@
         "tensor": "model.layer2.0.conv2.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -1.207034945487976,
         "max": 4.810915470123291
       },
@@ -581,7 +583,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -612,6 +613,7 @@
         "tensor": "model.layer2.0.conv3.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -16.608327865600586,
         "max": 11.61974811553955
       },
@@ -625,7 +627,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -657,6 +658,7 @@
         "tensor": "model.layer2.0.downsample.0.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -8.700763702392578,
         "max": 9.98996353149414
       },
@@ -670,7 +672,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -701,6 +702,7 @@
         "tensor": "model.layer2.1.conv1.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -9.920166969299316,
         "max": 4.073278427124023
       },
@@ -714,7 +716,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -744,6 +745,7 @@
         "tensor": "model.layer2.1.conv2.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -13.5668306350708,
         "max": 8.072240829467773
       },
@@ -757,7 +759,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -788,6 +789,7 @@
         "tensor": "model.layer2.1.conv3.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.752218723297119,
         "max": 5.60001802444458
       },
@@ -801,7 +803,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -832,6 +833,7 @@
         "tensor": "model.layer2.2.conv1.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.345354080200195,
         "max": 3.24829363822937
       },
@@ -845,7 +847,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -875,6 +876,7 @@
         "tensor": "model.layer2.2.conv2.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.279099941253662,
         "max": 6.68617057800293
       },
@@ -888,7 +890,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -919,6 +920,7 @@
         "tensor": "model.layer2.2.conv3.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.772764682769775,
         "max": 4.626742362976074
       },
@@ -932,7 +934,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -963,6 +964,7 @@
         "tensor": "model.layer2.3.conv1.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -4.224554061889648,
         "max": 2.7518701553344727
       },
@@ -976,7 +978,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1006,6 +1007,7 @@
         "tensor": "model.layer2.3.conv2.weight_bias",
         "channels": 128,
         "nonzero_channels": 128,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.147319793701172,
         "max": 5.488915920257568
       },
@@ -1019,7 +1021,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1050,6 +1051,7 @@
         "tensor": "model.layer2.3.conv3.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -11.459210395812988,
         "max": 7.954369068145752
       },
@@ -1063,7 +1065,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1094,6 +1095,7 @@
         "tensor": "model.layer3.0.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.776217937469482,
         "max": 4.646461009979248
       },
@@ -1107,7 +1109,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1137,6 +1138,7 @@
         "tensor": "model.layer3.0.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -1.819549560546875,
         "max": 3.8689894676208496
       },
@@ -1150,7 +1152,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1181,6 +1182,7 @@
         "tensor": "model.layer3.0.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.228767395019531,
         "max": 8.161531448364258
       },
@@ -1194,7 +1196,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1226,6 +1227,7 @@
         "tensor": "model.layer3.0.downsample.0.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.735016345977783,
         "max": 5.402318477630615
       },
@@ -1239,7 +1241,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1270,6 +1271,7 @@
         "tensor": "model.layer3.1.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -4.058315277099609,
         "max": 4.522781848907471
       },
@@ -1283,7 +1285,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1313,6 +1314,7 @@
         "tensor": "model.layer3.1.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.925135612487793,
         "max": 6.228141784667969
       },
@@ -1326,7 +1328,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1357,6 +1358,7 @@
         "tensor": "model.layer3.1.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.187296390533447,
         "max": 4.831145286560059
       },
@@ -1370,7 +1372,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1401,6 +1402,7 @@
         "tensor": "model.layer3.2.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.1252357959747314,
         "max": 3.442765474319458
       },
@@ -1414,7 +1416,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1444,6 +1445,7 @@
         "tensor": "model.layer3.2.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -2.4722583293914795,
         "max": 4.424267768859863
       },
@@ -1457,7 +1459,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1488,6 +1489,7 @@
         "tensor": "model.layer3.2.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.154050827026367,
         "max": 5.396468639373779
       },
@@ -1501,7 +1503,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1532,6 +1533,7 @@
         "tensor": "model.layer3.3.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.495725631713867,
         "max": 3.277282953262329
       },
@@ -1545,7 +1547,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1575,6 +1576,7 @@
         "tensor": "model.layer3.3.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.6695897579193115,
         "max": 4.069202899932861
       },
@@ -1588,7 +1590,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1619,6 +1620,7 @@
         "tensor": "model.layer3.3.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.58204460144043,
         "max": 3.9578564167022705
       },
@@ -1632,7 +1634,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1663,6 +1664,7 @@
         "tensor": "model.layer3.4.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.3195958137512207,
         "max": 1.710150957107544
       },
@@ -1676,7 +1678,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1706,6 +1707,7 @@
         "tensor": "model.layer3.4.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -4.696188449859619,
         "max": 4.687714576721191
       },
@@ -1719,7 +1721,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1750,6 +1751,7 @@
         "tensor": "model.layer3.4.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.952134609222412,
         "max": 3.9050252437591553
       },
@@ -1763,7 +1765,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1794,6 +1795,7 @@
         "tensor": "model.layer3.5.conv1.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.009478807449341,
         "max": 3.398073673248291
       },
@@ -1807,7 +1809,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1837,6 +1838,7 @@
         "tensor": "model.layer3.5.conv2.weight_bias",
         "channels": 256,
         "nonzero_channels": 256,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.109373092651367,
         "max": 3.9009556770324707
       },
@@ -1850,7 +1852,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1881,6 +1882,7 @@
         "tensor": "model.layer3.5.conv3.weight_bias",
         "channels": 1024,
         "nonzero_channels": 1024,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.390344619750977,
         "max": 3.7934517860412598
       },
@@ -1894,7 +1896,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1925,6 +1926,7 @@
         "tensor": "model.layer4.0.conv1.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -3.226940155029297,
         "max": 1.6000139713287354
       },
@@ -1938,7 +1940,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1968,6 +1969,7 @@
         "tensor": "model.layer4.0.conv2.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -1.9576716423034668,
         "max": 5.953485488891602
       },
@@ -1981,7 +1983,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2012,6 +2013,7 @@
         "tensor": "model.layer4.0.conv3.weight_bias",
         "channels": 2048,
         "nonzero_channels": 2048,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -7.966121673583984,
         "max": 8.913094520568848
       },
@@ -2025,7 +2027,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2057,6 +2058,7 @@
         "tensor": "model.layer4.0.downsample.0.weight_bias",
         "channels": 2048,
         "nonzero_channels": 2048,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.620062828063965,
         "max": 5.5980682373046875
       },
@@ -2070,7 +2072,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2101,6 +2102,7 @@
         "tensor": "model.layer4.1.conv1.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -5.670987129211426,
         "max": 3.1857028007507324
       },
@@ -2114,7 +2116,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2144,6 +2145,7 @@
         "tensor": "model.layer4.1.conv2.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -6.859125137329102,
         "max": 4.024154186248779
       },
@@ -2157,7 +2159,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2188,6 +2189,7 @@
         "tensor": "model.layer4.1.conv3.weight_bias",
         "channels": 2048,
         "nonzero_channels": 2048,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -13.521289825439453,
         "max": 5.127305507659912
       },
@@ -2201,7 +2203,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2232,6 +2233,7 @@
         "tensor": "model.layer4.2.conv1.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -4.767824649810791,
         "max": 1.5657347440719604
       },
@@ -2245,7 +2247,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2275,6 +2276,7 @@
         "tensor": "model.layer4.2.conv2.weight_bias",
         "channels": 512,
         "nonzero_channels": 512,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -8.537635803222656,
         "max": 8.516261100769043
       },
@@ -2288,7 +2290,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2325,6 +2326,7 @@
         "tensor": "model.layer4.2.conv3.weight_bias",
         "channels": 2048,
         "nonzero_channels": 2048,
+        "native_transport": "loop_conv_load3_to_accumulator",
         "min": -9.319655418395996,
         "max": 3.583876132965088
       },
@@ -2338,7 +2340,6 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
-        "nonzero_bias_requires_live_d_preload",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize",
         "global_reduction_or_fc_precedes_quantize"

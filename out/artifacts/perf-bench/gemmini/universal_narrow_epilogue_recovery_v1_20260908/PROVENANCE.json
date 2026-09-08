@@ -13,6 +13,7 @@
     "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/weights.safetensors.manifest.json",
     "sha256": "93d5ba6a921647f118d70b767602978f3f7e0639b0e964065ee1ff5899243d73"
   },
-  "inventory_sha256": "1f22e91bc8fe3ffb9e2c4b956f5975efa53feb7562060919a09683050932de88",
-  "hardware_qualification": "not_run_no_candidate_admitted"
+  "inventory_sha256": "fb8bb6524a1c8a234b76215f412a124637f3a844b09fce4d6e1d948a2b386ffd",
+  "hardware_qualification": "not_run_no_candidate_admitted",
+  "erratum": "LoopConvLdBias uses an independent LOAD3 accumulator preload; hardcoded execute-path D does not prohibit convolution bias"
 }

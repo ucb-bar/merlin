@@ -11,7 +11,7 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 
 
-def test_exact_resnet_has_no_legal_native_narrow_convolution() -> None:
+def test_exact_resnet_currently_needs_channel_partitioned_narrow_store() -> None:
     bundle = REPO / "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908"
     result = module.audit(
         bundle / "provenance/model2mlir_direct.mlir",
@@ -27,5 +27,9 @@ def test_exact_resnet_has_no_legal_native_narrow_convolution() -> None:
     assert summary["residual_add_paths"] == 20
     assert summary["maxpool_paths"] == 1
     assert summary["global_tail_paths"] == 1
-    assert all("nonzero_bias_requires_live_d_preload" in item["refusal_reasons"]
+    assert all("nonzero_bias_requires_live_d_preload" not in item["refusal_reasons"]
                for item in result["convolutions"])
+    assert all(item["bias"]["native_transport"] == "loop_conv_load3_to_accumulator"
+               for item in result["convolutions"])
+    assert all("per_channel_scale_requires_channel_partitioned_store_configuration"
+               in item["refusal_reasons"] for item in result["convolutions"])

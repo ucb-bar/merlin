@@ -5,6 +5,11 @@ This is intentionally an admission pass, not an approximation pass.  It follows
 the integer convolution into its captured FP32 bias/requant graph, resolves the
 frozen parameters through the bundle manifest, and records every reason a
 native i8 LOOP_CONV result would change model semantics.
+
+Bias is deliberately not a refusal reason.  The target's ordinary execute-path
+D operand is hardwired away, but LoopConvLdBias has an independent LOAD3 path
+which writes per-output-channel i32 bias directly into accumulator rows before
+execution.  Conflating those two paths was the v1 postmortem's original error.
 """
 from __future__ import annotations
 
@@ -112,8 +117,6 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         reasons = []
         if requant is None or bias_name is None or not path or _op_name(path[-1]) != "quant_ext.quantize_per_tensor":
             reasons.append("unrecognized_conv_bias_requant_quantize_chain")
-        if nonzero_bias:
-            reasons.append("nonzero_bias_requires_live_d_preload")
         if unique_scales > 1:
             reasons.append("per_channel_scale_requires_channel_partitioned_store_configuration")
         if residual:
@@ -134,6 +137,7 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
             "path_to_quantize": path_ops,
             "bias": {"arg": bias_arg, "tensor": bias_name, "channels": int(bias.size),
                      "nonzero_channels": nonzero_bias,
+                     "native_transport": "loop_conv_load3_to_accumulator",
                      "min": float(bias.min()) if bias.size else None,
                      "max": float(bias.max()) if bias.size else None},
             "weight_scale": {"arg": weight_scale_arg, "tensor": weight_scale_name,
@@ -163,6 +167,10 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         "global_tail_paths": sum("global_reduction_or_fc_precedes_quantize" in r["refusal_reasons"]
                                  for r in records),
         "hardware_qualification": "not_run_no_candidate_admitted",
+        "erratum": (
+            "nonzero bias is supported by LoopConvLdBias LOAD3 even when the "
+            "ordinary execute-path D operand is hardwired to garbage"
+        ),
     }
     return {"summary": summary, "convolutions": records}
 
