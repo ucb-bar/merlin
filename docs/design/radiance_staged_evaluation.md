@@ -53,6 +53,24 @@ only when its per-capsule evidence names exactly those sixteen members (includin
 multiply), every row records an L2 numeric pass and an execution digest, and the suite reports 16/16.
 Seal that score with the candidate and source-tree digests; the seal must live outside the candidate.
 
+The self-check runner defaults to the repository's default target when no descriptor is supplied, so
+Radiance selection must be explicit.  A canonical clean Stage-1 run is:
+
+```bash
+MERLIN_TARGET_EXPERIMENT=merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml \
+MERLIN_ELF_BUILD_CACHE=0 MERLIN_MUON_TRUSTED_COMPACT_NUMERIC=1 \
+PYTHONPATH=merlin/python .venv/bin/python \
+  merlin/experiments/capsule_bench/harness/agent_selfcheck.py \
+  --submission out/runs/radiance/capsule-bench/<run>/submission \
+  --sim spike --tiers L2 --capsules all --workers 4 --timeout 300 \
+  --out out/artifacts/capsule-bench/radiance/<run>/l2_score.json \
+  --progress-out out/artifacts/capsule-bench/radiance/<run>/l2_progress.json
+```
+
+`MERLIN_MUON_TRUSTED_COMPACT_NUMERIC=1` changes only the target-owned result transport: the complete
+full-shape kernel still executes, and the private post-compile nonce check still covers every output.
+It is not a reduced-shape evaluation or a substitute for the numeric verdict.
+
 ```bash
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
   --target radiance \
