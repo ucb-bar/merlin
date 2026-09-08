@@ -217,6 +217,50 @@ _MACRO_OPTIMIZATION_LADDER = (
 )
 
 
+# Quantized-region plans name semantic ownership roles, never paths.  This host-owned table maps a
+# known role onto CCA/effect vocabulary; the real editable coordinates still have to resolve through
+# ``inspect_compiler_package`` and the immutable edit contract below.  A candidate receipt therefore
+# cannot grant itself authority by inventing a path, effect, or new role.
+_QUANTIZED_REGION_EDIT_ROLES = {
+    "source_epilogue_semantics": {
+        "effects": frozenset({"quantization", "fusion", "dtype"}),
+        "cca_axes": frozenset({
+            "compute.epilogue", "coverage.non_contraction_op_fraction",
+        }),
+        "purpose": "recognize exact source quantization stages and ownership",
+    },
+    "global_quant_domain_planner": {
+        "effects": frozenset({"quantization", "encoding", "residency", "fusion"}),
+        "cca_axes": frozenset({
+            "compute.epilogue", "communication.intermediate_materialized",
+            "communication.resident_across_calls",
+        }),
+        "purpose": "choose compatible domains and legal producer/consumer regions globally",
+    },
+    "target_epilogue_emitter": {
+        "effects": frozenset({"quantization", "dtype", "encoding", "fusion"}),
+        "cca_axes": frozenset({"compute.epilogue", "layout.operand_major"}),
+        "purpose": "lower an admitted epilogue through a target-supported physical readout",
+    },
+    "target_residual_region_emitter": {
+        "effects": frozenset({"quantization", "fusion", "residency", "movement"}),
+        "cca_axes": frozenset({
+            "compute.epilogue", "communication.intermediate_materialized",
+            "communication.resident_across_calls", "memory.onchip_resident",
+        }),
+        "purpose": "lower admitted wide-domain residual operations without host materialization",
+    },
+    "target_encoding_and_residency": {
+        "effects": frozenset({"encoding", "layout", "residency", "movement"}),
+        "cca_axes": frozenset({
+            "layout.operand_major", "communication.resident_across_calls",
+            "memory.onchip_resident", "memory.capacity_fit",
+        }),
+        "purpose": "realize direct encoded boundaries under target-derived capacity",
+    },
+}
+
+
 def macro_optimization_order() -> dict[str, Any]:
     """Return the host-owned largest-to-smallest Phase-2 selection contract."""
     return {
@@ -491,6 +535,91 @@ def build_compiler_edit_contract(
     }
     contract['sha256'] = hashlib.sha256(json.dumps(contract, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     return contract
+
+
+def guidance_for_quantized_region_plan(
+        plan: Mapping[str, Any], inventory: PackageOptimizationInventory) -> dict[str, Any]:
+    """Join a quantized-region plan to host-verified, contract-bound edit coordinates.
+
+    The plan may request only a known semantic role.  Its text is never trusted as a path or an
+    effect classification.  Returned surfaces come exclusively from ``inventory`` and are bound to
+    the generated edit-contract SHA, so candidate-authored metadata cannot enlarge the sandbox.
+    Accuracy/corpus policy is intentionally listed as a protected host input rather than an edit
+    surface.
+    """
+    if plan.get("schema") != "target_neutral_quantized_region_plan_v1":
+        raise ValueError("quantized region guidance requires a canonical framework plan")
+    requirements = plan.get("agent_edit_requirements")
+    if not isinstance(requirements, Sequence) or isinstance(requirements, (str, bytes)):
+        raise ValueError("quantized region plan has malformed agent edit requirements")
+    contract = build_compiler_edit_contract(inventory)
+    authorized = {
+        (owner["surface_id"], owner["path"], owner["symbol"])
+        for owner in contract["existing_symbols"]
+    }
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(requirements):
+        if not isinstance(raw, Mapping):
+            raise ValueError(f"quantized edit requirement {index} is not an object")
+        role = raw.get("role")
+        if role not in _QUANTIZED_REGION_EDIT_ROLES or role in seen:
+            raise ValueError(f"quantized edit requirement role {role!r} is unknown or repeated")
+        seen.add(role)
+        reason_codes = raw.get("reason_codes")
+        if (not isinstance(reason_codes, Sequence) or isinstance(reason_codes, (str, bytes))
+                or any(not isinstance(reason, str) or not reason for reason in reason_codes)):
+            raise ValueError(f"quantized edit requirement {role!r} has malformed reasons")
+        metadata = _QUANTIZED_REGION_EDIT_ROLES[role]
+        axis_matches = [
+            surface for surface in inventory.surfaces
+            if metadata["cca_axes"].intersection(surface.cca_axes)
+            and (surface.id, surface.path, surface.symbol) in authorized
+        ]
+        effect_matches = [
+            surface for surface in inventory.surfaces
+            if metadata["effects"].intersection(surface.effects)
+            and (surface.id, surface.path, surface.symbol) in authorized
+        ]
+        matches = axis_matches or effect_matches
+        rows.append({
+            "role": role,
+            "status": "authorized" if matches else "missing_verified_surface",
+            "purpose": metadata["purpose"],
+            "reason_codes": sorted(set(reason_codes)),
+            "required_effects": sorted(metadata["effects"]),
+            "required_cca_axes": sorted(metadata["cca_axes"]),
+            "mapping_basis": (
+                "exact CCA axis" if axis_matches else
+                "broad effect compatibility" if effect_matches else None
+            ),
+            "authorized_edit_surfaces": [surface.to_dict() for surface in matches],
+        })
+    protected = plan.get("protected_policy_blockers")
+    if not isinstance(protected, Sequence) or isinstance(protected, (str, bytes)):
+        raise ValueError("quantized region plan has malformed protected policy blockers")
+    return {
+        "schema": "agent_quantized_region_guidance_v1",
+        "plan_source_sha256": plan.get("normalized_source_sha256"),
+        "plan_status": plan.get("status"),
+        "edit_contract_sha256": contract["sha256"],
+        "requirements": rows,
+        "protected_inputs": [{
+            "name": "accuracy_and_corpus_policy",
+            "editable_by_candidate": False,
+            "reason_codes": sorted(set(str(reason) for reason in protected)),
+            "required_action": (
+                "the experiment owner must provide a reviewed, source-bound policy and corpus; "
+                "compiler edits cannot self-authorize approximation"
+            ),
+        }],
+        "authority": (
+            "only surfaces resolved from the host-frozen compiler inventory and named by the "
+            "bound compiler_edit_contract_v1 are returned"
+        ),
+        "candidate_manifest_grants_authority": False,
+        "compiler_edit_contract": contract,
+    }
 
 
 def guidance_for_report(report: WholeModelReport,
