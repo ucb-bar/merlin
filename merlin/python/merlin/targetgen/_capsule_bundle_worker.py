@@ -7,10 +7,10 @@ Python that owns torch because the ordinary Merlin environment intentionally nee
 torch.  Its only inputs are files in one already-frozen capsule plus the input/golden arrays that
 the parent decoded from that capsule's ``golden.yaml``.
 
-The missing capture-bundle manifest is recovered from ``torch.export``'s graph signature.  That is
-the same authoritative parameter/buffer/user-input ordering from which model2MLIR externalized the
-capsule.  Every recovered entry is checked against the frozen MLIR signature and safetensors bytes;
-shape-only matching is rejected because repeated LayerNorm/GEMM shapes make it ambiguous.
+Version-2 capsules carry the manifest produced by model2MLIR from the exact exported graph it lowered.
+The worker validates that manifest against the frozen MLIR signature, safetensors bytes, loader inputs,
+and every golden result.  Legacy capsules may still recover an ABI from ``torch.export``; newly generated
+capsules never do, because rebuilding an unquantized loader can have a different placeholder list.
 """
 from __future__ import annotations
 
@@ -63,10 +63,97 @@ def main(argv: list[str] | None = None) -> int:
     golden_path = Path(req["golden_npy"]).resolve(strict=True)
     signature = list(req["signature"])
 
+    dependency_root_name = req.get("loader_dependencies")
+    if dependency_root_name:
+        dependency_root = Path(dependency_root_name).resolve(strict=True)
+        dependency_dirs = {dependency_root, *(p.parent for p in dependency_root.rglob("*.py"))}
+        for dependency_dir in sorted(dependency_dirs, key=lambda p: (len(p.parts), str(p))):
+            if str(dependency_dir) not in sys.path:
+                sys.path.append(str(dependency_dir))
+
     module = _load_module(loader)
+    torch.manual_seed(int(req.get("torch_seed", 0)))
     model, loader_inputs = module.get_model_and_inputs()
     model = model.eval()
     loader_inputs = tuple(loader_inputs)
+    captured_manifest_name = req.get("captured_manifest")
+    if captured_manifest_name:
+        captured_manifest_path = Path(captured_manifest_name).resolve(strict=True)
+        captured_manifest = json.loads(captured_manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(captured_manifest, dict) or set(captured_manifest) != {
+                str(i) for i in range(len(signature))}:
+            raise RuntimeError("capture-time manifest does not cover every frozen interface argument")
+        frozen_weights = load_file(str(weights_path), device="cpu")
+        supplied_inputs = np.load(inputs_path, allow_pickle=False)
+        input_order: dict[str, int] = {}
+        user_index = 0
+        for index, sig in enumerate(signature):
+            meta = captured_manifest[str(index)]
+            sig_shape = [int(v) for v in sig["shape"]]
+            if list(meta.get("shape") or sig_shape) != sig_shape:
+                raise RuntimeError(
+                    f"capture manifest shape disagrees with interface argument {index}")
+            if meta.get("kind") in ("param", "buffer"):
+                key = meta.get("weight")
+                if key:
+                    if key not in frozen_weights:
+                        raise RuntimeError(
+                            f"capture manifest argument {index} names absent frozen tensor {key!r}")
+                    stored = frozen_weights[key]
+                    # Tensor-subclass arguments are represented by a one-element dead-argument stub.
+                    if not meta.get("stub") and list(stored.shape) != sig_shape:
+                        raise RuntimeError(
+                            f"frozen tensor {key!r} shape disagrees with interface argument {index}")
+                continue
+            key = f"in{user_index}"
+            if key not in supplied_inputs.files or user_index >= len(loader_inputs):
+                raise RuntimeError(f"missing frozen user input {key} for interface argument {index}")
+            loader_arr = loader_inputs[user_index].detach().cpu().numpy()
+            frozen_arr = supplied_inputs[key]
+            if list(loader_arr.shape) != sig_shape or list(frozen_arr.shape) != sig_shape:
+                raise RuntimeError(
+                    f"user input {user_index} shape disagrees with interface argument {index}")
+            if not np.array_equal(loader_arr, frozen_arr):
+                raise RuntimeError(f"frozen input {user_index} disagrees with frozen loader")
+            name = str(meta.get("name") or f"input_{user_index}")
+            input_order[name] = user_index
+            user_index += 1
+        if user_index != len(loader_inputs) or user_index != len(supplied_inputs.files):
+            raise RuntimeError(
+                f"input cardinality mismatch: manifest={user_index}, loader={len(loader_inputs)}, "
+                f"frozen={len(supplied_inputs.files)}")
+
+        output_signature = list(req.get("output_signature") or [])
+        output_order = list(req.get("output_order") or [])
+        goldens_path = Path(req["goldens_npz"]).resolve(strict=True)
+        goldens = np.load(goldens_path, allow_pickle=False)
+        if len(output_signature) != len(output_order) or set(goldens.files) != set(output_order):
+            raise RuntimeError("multi-output golden order does not match the frozen result signature")
+        for index, (name, sig) in enumerate(zip(output_order, output_signature)):
+            if list(goldens[name].shape) != [int(v) for v in sig["shape"]]:
+                raise RuntimeError(f"frozen golden {name!r} shape disagrees with result {index}")
+
+        report = {
+            "version": 2,
+            "manifest": captured_manifest,
+            "input_order": input_order,
+            "output_order": output_order,
+            "loader_sha256": _sha256(loader),
+            "weights_sha256": _sha256(weights_path),
+            "manifest_sha256": _sha256(captured_manifest_path),
+            "python": str(Path(sys.executable).resolve()),
+            "python_version": sys.version.split()[0],
+            "torch_version": str(torch.__version__),
+            "torch_export": False,
+            "capture_manifest_validated": True,
+            "loader_input_count": user_index,
+            "golden_validated": True,
+            "golden_value_replay": False,
+            "weights_validated_exact": True,
+        }
+        print("__CAPSULE_BUNDLE_ABI__ " + json.dumps(report, sort_keys=True))
+        return 0
+
     exported = torch.export.export(model, loader_inputs)
     specs = list(exported.graph_signature.input_specs)
     if len(specs) != len(signature):

@@ -39,7 +39,8 @@ from .schemas import contract_dir
 # when present, omitting them creates a valid-looking grading corpus that cannot reproduce the model.
 _CAPSULE_FILES = (
     "capsule.yaml", "capsule.interface.mlir", "capsule.pytorch.py", "capsule.linalg.mlir",
-    "capsule.weights.safetensors", "golden.yaml", "expected_instruction_coverage.yaml", "README.md",
+    "capsule.weights.safetensors", "capsule.weights.safetensors.manifest.json", "golden.yaml",
+    "expected_instruction_coverage.yaml", "README.md",
 )
 _TIER_ORDER = ["L0", "L1", "L2", "L3", "L4", "L5"]
 _DEFAULT_CEILING = "L2"  # bwrap sandbox: numerics + spike, no VCS/FireSim (L3+).
@@ -304,6 +305,9 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                 (d / f).write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
             else:
                 shutil.copyfile(sp, d / f)
+        dependency_root = src / "capsule.loader_deps"
+        if dependency_root.is_dir() and not dependency_root.is_symlink():
+            shutil.copytree(dependency_root, d / dependency_root.name, dirs_exist_ok=True)
         written.append(name)
     return sorted(written)
 

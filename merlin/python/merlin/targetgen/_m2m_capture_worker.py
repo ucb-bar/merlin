@@ -10,7 +10,8 @@ token, and an output dir) it:
   3. lowers to linalg-on-tensors via ``m2m.convert`` (fx_importer backend), externalizing weights;
   4. asserts 0 opaque ops (a capsule whose program still has opaque ops is not a valid input program);
   5. runs the model EAGER on host CPU to produce the reference (golden) output;
-  6. writes ``linalg.mlir``, ``weights.safetensors``, ``inputs.json``, ``golden.json``, ``meta.json``.
+  6. writes ``linalg.mlir``, ``weights.safetensors`` and its argument manifest,
+     ``inputs.json``, ``golden.json``, ``meta.json``.
 
 This file carries no target-name literal and no merlin import — it is a pure m2m/torch worker.
 """
@@ -32,6 +33,8 @@ _SCHEME = {
     "int8": ("int8_weight_only", None), "i8": ("int8_weight_only", None),
     "fp8": ("float8_weight_only_e4m3", None), "fp8_e4m3": ("float8_weight_only_e4m3", None),
 }
+
+_CAPTURE_ABI_VERSION = 3
 
 
 def _load_loader(loader_py: Path):
@@ -165,6 +168,23 @@ def _input_abi(inputs):
     return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
 
 
+def _output_abi(outputs):
+    """Flatten model results and preserve the ABI of every tensor result.
+
+    Whole-model captures historically recorded only the nested JSON values.  A list-shaped tensor and
+    a tuple of tensors are indistinguishable in that representation, which made the parent silently
+    retain only result zero.  The pytree flattening performed while torch still owns the values is the
+    authoritative result cardinality and dtype record.
+    """
+    import torch
+
+    leaves, _spec = torch.utils._pytree.tree_flatten(outputs)
+    bad = [type(x).__name__ for x in leaves if not isinstance(x, torch.Tensor)]
+    if bad:
+        raise RuntimeError(f"model outputs must have only tensor leaves; got {bad}")
+    return leaves, [{"shape": list(x.shape), "dtype": _mlir_dtype(x.dtype)} for x in leaves]
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="m2m capsule capture worker (runs in the m2m venv).")
     ap.add_argument("--loader", required=True, help="path to a .py exposing get_model_and_inputs()")
@@ -176,6 +196,8 @@ def main(argv=None) -> int:
     ap.add_argument("--scheme", default="",
                     help="torchAO scheme name, overriding the dtype default (e.g. "
                          "int8_dyn_act_int8_weight for a true W8A8 integer contraction)")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="torch RNG seed applied before the frozen loader constructs model/inputs")
     a = ap.parse_args(argv)
 
     if a.m2m_dir and a.m2m_dir not in sys.path:
@@ -189,7 +211,19 @@ def main(argv=None) -> int:
     out.mkdir(parents=True, exist_ok=True)
     loader = _load_loader(Path(a.loader))
 
+    torch.manual_seed(int(a.seed))
+    modules_before_loader_call = set(sys.modules)
     mdl, inputs = loader.get_model_and_inputs()
+    loader_dependency_sources = []
+    for module_name in sorted(set(sys.modules) - modules_before_loader_call):
+        module = sys.modules.get(module_name)
+        source_name = getattr(module, "__file__", None)
+        if not source_name:
+            continue
+        source_path = Path(source_name)
+        if source_path.suffix != ".py" or not source_path.is_file() or source_path == Path(a.loader):
+            continue
+        loader_dependency_sources.append({"module": module_name, "path": str(source_path.resolve())})
     # BEFORE any cast/quantization: what the loader says about the data it just built. Recorded for
     # every capture, so the capsule can never be silent about whether its inputs were real.
     provenance = _loader_provenance(loader, mdl, inputs)
@@ -243,7 +277,11 @@ def main(argv=None) -> int:
     # host torch-eager reference — THE golden. Run the (cast/quantized) model the compiler must reproduce.
     with torch.no_grad():
         y = mdl(*inputs)
-    outputs = _to_native(y)
+    output_leaves, output_abi = _output_abi(y)
+    output_values = [_to_native(x) for x in output_leaves]
+    # Preserve the version-1 single-result JSON shape so existing operator capsules and caches remain
+    # byte-compatible.  ``output_abi`` is what disambiguates one list-shaped tensor from many results.
+    outputs = output_values[0] if len(output_values) == 1 else output_values
     input_leaves, input_abi = _input_abi(inputs)
     input_prov = [_to_native(x) for x in input_leaves]
 
@@ -258,9 +296,18 @@ def main(argv=None) -> int:
         "path_taken": getattr(res, "path_taken", None), "dtype": a.dtype,
         "linalg_ops": res.mlir_text.count("linalg."), "func_name": a.func_name,
         "weights": weights_path,
+        # model2MLIR externalization emits the authoritative placeholder -> state/input map from the
+        # exact exported/quantized graph it lowered.  Preserve that map now; recreating torch.export
+        # later from the source loader can have a different argument list (notably tensor-subclass
+        # quantization expands parameters into inner tensors).
+        "weights_manifest": weights_path + ".manifest.json",
+        "capture_abi_version": _CAPTURE_ABI_VERSION,
+        "torch_seed": int(a.seed),
+        "loader_dependency_sources": loader_dependency_sources,
         # The only authoritative dtype record that survives JSON serialization. The parent verifies this
         # independently against the captured @forward signature before declaring capsule inputs.
         "input_abi": input_abi,
+        "output_abi": output_abi,
         # WHAT THE INPUTS WERE, as the loader itself declares them. The parent turns this into the
         # capsule's input-provenance record; without it a synthetic-input capture and a real-data one
         # are indistinguishable afterwards, and only one of them can back an accuracy statement.

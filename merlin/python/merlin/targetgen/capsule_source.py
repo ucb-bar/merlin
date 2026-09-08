@@ -35,6 +35,9 @@ from pathlib import Path
 from merlin.common.paths import env as _env, repo_root
 
 
+_MODEL_CAPTURE_ABI_VERSION = 3
+
+
 # ------------------------------------------------------------------------------------------------
 # m2m venv resolution (torch lives there, never in the merlin venv)
 # ------------------------------------------------------------------------------------------------
@@ -482,7 +485,8 @@ class PytorchRefSource:
             declared = "\x1f".join(f"{k}={v}" for k, v in sorted((env or {}).items()))
             key = hashlib.sha256(
                 "\0".join((op, str(dtype), str(scheme or ""), str(self.m2m_dir), src,
-                           declared, str(python or self.python))).encode()
+                           declared, str(python or self.python),
+                           f"capture_abi={_MODEL_CAPTURE_ABI_VERSION}")).encode()
             ).hexdigest()[:16]
             return cache_dir("model_capture") / f"{op}_{dtype}_{key}"
         except Exception:            # noqa: BLE001 -- an unavailable cache is not a failed capture
@@ -505,7 +509,10 @@ class PytorchRefSource:
                 # were, and a capsule may not be built from a capture whose provenance is unrecoverable.
                 # Re-capturing is the cheap, honest repair; serving it would launder an unknown.
                 if (cached.get("ok") and cached.get("opaque", -1) == 0
-                        and "loader_provenance_status" in cached):
+                        and "loader_provenance_status" in cached
+                        and cached.get("capture_abi_version") == _MODEL_CAPTURE_ABI_VERSION
+                        and isinstance(cached.get("output_abi"), list)
+                        and Path(cached.get("weights_manifest", "")).is_file()):
                     return CapsuleArtifacts(
                         op=op, dtype=dtype, pytorch_src=src,
                         linalg_mlir=(slot / "linalg.mlir").read_text(encoding="utf-8"),
@@ -1191,6 +1198,57 @@ def model_capture_python(workload: "str | None") -> "Path | None":
     """The interpreter ``workload`` pins for its own capture, when it pins one that exists here."""
     if not workload:
         return None
+
+
+def freeze_model_loader_dependencies(workload: "str | None", destination: Path,
+                                     capture_meta: dict) -> "str | None":
+    """Copy loader-imported source declared by the workload into a capsule-local Python tree.
+
+    A frozen loader that imports an upstream module is not frozen if it still relies on an absolute
+    checkout path.  Workload ``capture.toml`` already declares that upstream source.  Preserve only
+    Python sources (never checkpoints, datasets, build products, or VCS metadata); the validation worker
+    adds their directories to ``sys.path`` without recovering a host path from sanitized loader text.
+    """
+    import shutil
+
+    if not workload:
+        return None
+    try:
+        from merlin.baselines import bundle as _bundle
+
+        root_value = _bundle.capture_config(workload).get("upstream")
+    except Exception:  # noqa: BLE001 -- no declared dependency is a valid loader shape
+        return None
+    root = Path(str(root_value or ""))
+    if not root.is_dir():
+        return None
+    sources = []
+    for item in capture_meta.get("loader_dependency_sources") or []:
+        source = Path(str((item or {}).get("path") or ""))
+        try:
+            source.resolve(strict=True).relative_to(root.resolve(strict=True))
+        except (OSError, ValueError):
+            continue
+        if source.suffix == ".py" and source.is_file() and not source.is_symlink():
+            sources.append(source)
+    sources = sorted(set(sources))
+    if not sources:
+        return None
+    dependency_root = destination / "capsule.loader_deps"
+    if dependency_root.exists():
+        shutil.rmtree(dependency_root)
+    for source in sources:
+        relative = source.resolve(strict=True).relative_to(root.resolve(strict=True))
+        target = dependency_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+    license_files = sorted(p for p in root.iterdir()
+                           if p.is_file() and p.name.lower().startswith(("license", "copying")))
+    if not license_files:
+        raise M2MUnavailable(
+            f"workload dependency source {root} declares no license; refusing to redistribute it")
+    shutil.copyfile(license_files[0], dependency_root / license_files[0].name)
+    return dependency_root.name
     try:
         from merlin.baselines import bundle as _bundle
         return _bundle.capture_python(workload)
@@ -1477,7 +1535,17 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     inputs = [{"name": nm, "role": "input", "shape": input_abi[i]["shape"],
                "dtype": input_abi[i]["dtype"]}
               for i, nm in enumerate(in_names)]
-    out_name = entry.get("out", "Y0")
+    output_abi = list((art.meta or {}).get("output_abi") or [])
+    if not output_abi:
+        raise M2MUnavailable("model capture has no output_abi; refusing to guess result cardinality")
+    out_names = [str(x) for x in (entry.get("outs") or [])]
+    if not out_names:
+        out_names = [str(entry.get("out", "Y0"))] if len(output_abi) == 1 else [
+            f"Y{i}" for i in range(len(output_abi))]
+    if len(out_names) != len(output_abi) or len(set(out_names)) != len(out_names):
+        raise M2MUnavailable(
+            f"model declares outputs {out_names!r}, but capture has {len(output_abi)} tensor results")
+    out_name = out_names[0]
     gate = entry.get("gate") or {"after_op_pass_fraction": 0.8}
 
     # self-contained weights: copy in + rewrite the linalg's absolute prov.weights_file to a relative name
@@ -1486,6 +1554,13 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     if wsrc.is_file():
         shutil.copyfile(wsrc, d / "capsule.weights.safetensors")
         linalg = linalg.replace(str(wsrc), "capsule.weights.safetensors")
+    manifest_src = Path((art.meta or {}).get("weights_manifest") or (str(wsrc) + ".manifest.json"))
+    if not manifest_src.is_file():
+        raise M2MUnavailable(
+            "model capture has no external-weight argument manifest; refusing to reconstruct the "
+            "quantized graph ABI from a later torch.export")
+    shutil.copyfile(manifest_src, d / "capsule.weights.safetensors.manifest.json")
+    loader_dependencies = freeze_model_loader_dependencies(workload, d, art.meta or {})
 
     # What this model owes the accelerator, derived from its own captured linalg and this target's role
     # census. Without it the capstone is vacuous: no required classes and no must_accelerate means a
@@ -1500,8 +1575,14 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
         "inputs": inputs,
         "operation": {"op": "model", "attributes": {
             "model": entry.get("model", ""), "dtype": idt, "out": out_name,
+            **({"outs": out_names} if len(out_names) > 1 else {}),
+            "bundle_abi_version": 2,
+            "quant_scheme": (art.meta or {}).get("scheme"),
+            "torch_seed": int((art.meta or {}).get("torch_seed", 0)),
+            **({"loader_dependencies": loader_dependencies} if loader_dependencies else {}),
             "compile_dtype": compile_dtype(binding.operand_dtype),
-            "arg_order": in_names + [out_name], "weights": "capsule.weights.safetensors"}},
+            "arg_order": in_names + out_names, "weights": "capsule.weights.safetensors",
+            "weights_manifest": "capsule.weights.safetensors.manifest.json"}},
         # the whole-model golden is the host torch-eager float output, so it is graded with tolerance even
         # on an integer-datapath target (whose op capsules grade exact_int).
         "numeric_policy": {"compare": "tolerance_float", "dtype": "f32",
@@ -1537,20 +1618,21 @@ def write_model_capsule(entry: dict, binding, out_root, *, source: "PytorchRefSo
     }
     prov = {nm: {"shape": input_abi[i]["shape"], "decoded": _flatten(art.inputs[i])}
             for i, nm in enumerate(in_names)}
+    golden_values = list(art.golden) if len(output_abi) > 1 else [art.golden]
     golden = {
         "golden_source": "host_torch_eager",
         "oracle_provenance": {
             "engine": "model2MLIR whole-model linalg-on-tensors + host torch-eager",
             "model": entry.get("model", ""), "output_dtype": "f32",
             "grade_policy": {"compare": binding.compare, "atol": _tol(binding)[0], "rtol": _tol(binding)[1]},
-            "interface": "linalg_positional", "arg_order": in_names + [out_name],
+            "interface": "linalg_positional", "arg_order": in_names + out_names,
             "pytorch_source": "capsule.pytorch.py", "linalg_mlir": "capsule.interface.mlir",
             # The same record the capsule carries, on the oracle side too: what the reference was
             # computed over is part of where the reference came from, and a grader reading only the
             # golden must not have to infer it.
             "input_provenance": provenance,
             "inputs": prov},
-        "outputs": {out_name: art.golden},
+        "outputs": dict(zip(out_names, golden_values, strict=True)),
     }
     (d / "capsule.yaml").write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
     (d / "capsule.interface.mlir").write_text(linalg, encoding="utf-8")

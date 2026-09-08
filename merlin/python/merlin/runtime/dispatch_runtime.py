@@ -1244,9 +1244,8 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     driver = next(op for op in outlined.module.walk()
                   if op.name == "func.func" and "$kernel_" not in op.sym_name.data)
     out_types = list(driver.function_type.outputs.data)
-    if len(out_types) != 1:
-        raise DispatchRuntimeError(
-            f"multi-output models not supported yet ({len(out_types)} results)")
+    if not out_types:
+        raise DispatchRuntimeError("whole-model forward has no results")
     args = resolve_forward_args(model_dir)
     # Quantized-subclass inner tensors (int_data/scale) the capture extracted under qinner::
     # keys; bind them to the prov.quant_inner-tagged empties m2m left uninitialized.
@@ -1264,28 +1263,50 @@ def run_model(model_dir: str | Path, workdir: str | Path,
     results = execute(outlined, args, Path(workdir), cache_dir=cache_dir, tap=tap,
                       qinner=qinner, kernel_backend=kernel_backend, mesh_target=mesh_target,
                       mesh_package=mesh_package, counters=_mesh_counts)
-    # widen bf16 (stored as uint16 bit patterns) to f32 for the golden comparison
-    raw = results[0]
-    out = (bf16_to_f32(raw) if _elem_str(out_types[0]) == "bf16"
-           else np.asarray(raw, dtype=np.float32)).ravel()
+    if len(results) != len(out_types):
+        raise DispatchRuntimeError(
+            f"whole-model execution returned {len(results)} values for {len(out_types)} results")
+    # Widen each result independently.  Concatenating results would erase the declared ABI and can let
+    # a correct first result hide an untouched recurrent-state result.
+    widened = [(bf16_to_f32(raw) if _elem_str(typ) == "bf16"
+                else np.asarray(raw, dtype=np.float32)).ravel()
+               for raw, typ in zip(results, out_types, strict=True)]
 
-    res: dict[str, Any] = {"output": results[0], "n_kernels": outlined.n_kernels,
+    res: dict[str, Any] = {"output": results[0], "outputs": list(results),
+                           "n_kernels": outlined.n_kernels,
                            "n_unique_kernels": getattr(execute, "last_unique_kernels", None),
                            "kernel_backend": kernel_backend,
                            "n_xnn_routed": (getattr(execute, "last_xnn_routed", 0)
                                             if kernel_backend == "xnnpack" else 0),
                            **_mesh_counts}
-    gpath = model_dir / "golden.npy"
-    if gpath.is_file():
-        gold = np.load(gpath).astype(np.float32).ravel()
-        k = min(len(out), len(gold))
-        a, b = out[:k], gold[:k]
-        gmax = float(np.abs(b).max())
-        abs_err = float(np.abs(a - b).max())
-        rel = abs_err / max(1e-9, gmax)
-        cos = float((a @ b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-12))
-        # Cosine is undefined for a ~zero golden (e.g. a DiT with a zero-init output head):
-        # fall back to absolute agreement so a correct zero-output match isn't a false fail.
-        ok = rel < 1e-3 if gmax < 1e-6 else (cos > 0.9999 and rel < 1e-3)
-        res.update(golden=gold, cos=cos, rel=rel, abs_err=abs_err, gold_absmax=gmax, ok=ok)
+    goldens_path = model_dir / "goldens.npz"
+    order_path = model_dir / "output_order.json"
+    if goldens_path.is_file() and order_path.is_file():
+        names = [str(x) for x in json.loads(order_path.read_text(encoding="utf-8"))]
+        archive = np.load(goldens_path, allow_pickle=False)
+        if len(names) != len(widened) or set(names) != set(archive.files):
+            raise DispatchRuntimeError("goldens.npz/output_order.json disagree with model results")
+        golden_arrays = [np.asarray(archive[name], dtype=np.float32).ravel() for name in names]
+    else:
+        gpath = model_dir / "golden.npy"
+        golden_arrays = [np.load(gpath).astype(np.float32).ravel()] if gpath.is_file() else []
+        names = ["Y0"] if golden_arrays else []
+    if golden_arrays:
+        checks = []
+        for name, out, gold in zip(names, widened, golden_arrays, strict=True):
+            if len(out) != len(gold):
+                raise DispatchRuntimeError(
+                    f"model result {name!r} has {len(out)} values, golden has {len(gold)}")
+            gmax = float(np.abs(gold).max())
+            abs_err = float(np.abs(out - gold).max())
+            rel = abs_err / max(1e-9, gmax)
+            cos = float((out @ gold) / (np.linalg.norm(out) * np.linalg.norm(gold) + 1e-12))
+            ok = rel < 1e-3 if gmax < 1e-6 else (cos > 0.9999 and rel < 1e-3)
+            checks.append({"name": name, "cos": cos, "rel": rel, "abs_err": abs_err,
+                           "gold_absmax": gmax, "ok": ok})
+        res.update(golden=golden_arrays[0], cos=min(x["cos"] for x in checks),
+                   rel=max(x["rel"] for x in checks),
+                   abs_err=max(x["abs_err"] for x in checks),
+                   gold_absmax=max(x["gold_absmax"] for x in checks),
+                   ok=all(x["ok"] for x in checks), output_checks=checks)
     return res

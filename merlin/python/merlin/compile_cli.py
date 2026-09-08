@@ -555,7 +555,26 @@ def compile_rvv(workload: str, dtype: str, *, run: str, verify: bool, package: s
         out["status"] = "ran"
         out["n_kernels"] = res.get("n_kernels")
         if refs:
-            g = zm._gate(res["output"], refs)
+            outputs = list(res.get("outputs") or [res["output"]])
+            multi_path = bundle / "goldens.npz"
+            order_path = bundle / "output_order.json"
+            if len(outputs) > 1 and multi_path.is_file() and order_path.is_file():
+                names = [str(x) for x in json.loads(order_path.read_text(encoding="utf-8"))]
+                archive = np.load(multi_path, allow_pickle=False)
+                if len(names) != len(outputs) or set(names) != set(archive.files):
+                    raise ValueError("multi-output golden manifest disagrees with runtime results")
+                per_output = []
+                for name, value in zip(names, outputs, strict=True):
+                    check = zm._gate(value, {"fp32": archive[name]})
+                    per_output.append({"name": name, **check})
+                g = {
+                    "ok": all(bool(x.get("ok")) for x in per_output),
+                    "per_output": per_output,
+                    "fp32_cos": min(float(x.get("fp32_cos", 0.0)) for x in per_output),
+                    "fp32_rel": max(float(x.get("fp32_rel", float("inf"))) for x in per_output),
+                }
+            else:
+                g = zm._gate(res["output"], refs)
             out["verify"] = {"gate_ok": bool(g.get("ok")), **g}
             out["status"] = "verified" if g.get("ok") else "run_mismatch"
         return out

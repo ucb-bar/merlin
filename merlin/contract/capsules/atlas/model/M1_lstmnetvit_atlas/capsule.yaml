@@ -43,6 +43,14 @@ operation:
     model: lstmnetvit
     dtype: fp8_e4m3
     out: Y0
+    outs:
+    - Y0
+    - Y1
+    - Y2
+    bundle_abi_version: 2
+    quant_scheme: float8_weight_only_e4m3
+    torch_seed: 0
+    loader_dependencies: capsule.loader_deps
     compile_dtype: fp8
     arg_order:
     - I0
@@ -51,7 +59,10 @@ operation:
     - I3
     - I4
     - Y0
+    - Y1
+    - Y2
     weights: capsule.weights.safetensors
+    weights_manifest: capsule.weights.safetensors.manifest.json
 numeric_policy:
   compare: tolerance_float
   dtype: f32
@@ -105,5 +116,8 @@ semantic:
   must_accelerate: true
   eligible: auto
 numeric_falsifiability:
-  status: not_measured
-  why: no golden output could be sized
+  status: ok
+  declared_atol: 0.25
+  ceiling_atol: 0.593164484500885
+  basis: the largest atol under which the best constant answer still fails this golden
+  falsifiable: true

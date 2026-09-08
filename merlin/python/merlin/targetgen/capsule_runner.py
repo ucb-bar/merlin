@@ -2628,11 +2628,31 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
         interface = _model_asset(root, interface_names[0], "linalg interface")
         loader = _model_asset(root, ref.get("loader"), "PyTorch loader")
         weights = _model_asset(root, op_attrs.get("weights"), "external weights")
+        manifest_name = op_attrs.get("weights_manifest")
+        manifest_asset = (_model_asset(root, manifest_name, "capture-time weight manifest")
+                          if manifest_name else None)
+        dependency_name = op_attrs.get("loader_dependencies")
+        dependency_root = None
+        if dependency_name:
+            dependency_lexical = root / str(dependency_name)
+            if (Path(str(dependency_name)).is_absolute() or ".." in Path(str(dependency_name)).parts or
+                    dependency_lexical.is_symlink() or not dependency_lexical.is_dir()):
+                raise ValueError("model loader dependency tree must be a real capsule-local directory")
+            dependency_root = dependency_lexical.resolve(strict=True)
+            if root not in dependency_root.parents:
+                raise ValueError("model loader dependency tree must stay inside the capsule")
         golden_yaml = _model_asset(root, "golden.yaml", "independent golden")
         capsule_yaml = _model_asset(root, "capsule.yaml", "capsule declaration")
         source_files = {"capsule_declaration": capsule_yaml, "loader": loader,
                         "linalg_interface": interface, "external_weights": weights,
                         "independent_golden": golden_yaml}
+        if manifest_asset is not None:
+            source_files["capture_manifest"] = manifest_asset
+        if dependency_root is not None:
+            for dependency in sorted(dependency_root.rglob("*.py")):
+                if dependency.is_symlink() or not dependency.is_file():
+                    raise ValueError("model loader dependency source is missing or a symlink")
+                source_files[f"loader_dependency::{dependency.relative_to(dependency_root)}"] = dependency
         source_before = _content_identity(source_files, root=root)
 
         golden_doc = yaml.safe_load(golden_yaml.read_text(encoding="utf-8"))
@@ -2643,14 +2663,16 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
             raise ValueError("golden provenance does not name the capsule's declared loader/interface")
         input_specs = list(capsule.get("inputs") or [])
         input_names = [str(x.get("name")) for x in input_specs]
-        output_name = str(op_attrs.get("out") or "")
+        output_names = [str(x) for x in (op_attrs.get("outs") or [])]
+        if not output_names:
+            output_names = [str(op_attrs.get("out") or "")]
         declared_order = list(op_attrs.get("arg_order") or [])
         golden_order = list(prov.get("arg_order") or [])
-        if declared_order != input_names + [output_name] or golden_order != declared_order:
+        if declared_order != input_names + output_names or golden_order != declared_order:
             raise ValueError("capsule/golden argument order is inconsistent")
         golden_inputs = prov.get("inputs") or {}
         outputs = golden_doc.get("outputs") or {}
-        if set(golden_inputs) != set(input_names) or set(outputs) != {output_name}:
+        if set(golden_inputs) != set(input_names) or set(outputs) != set(output_names):
             raise ValueError("capsule golden input/output names do not exactly match its declaration")
 
         from ..common.mlir_query import forward_signature
@@ -2662,8 +2684,10 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
             raise ValueError(
                 f"interface has {len(signature)} arguments but frozen weights+inputs account for "
                 f"{len(header)}+{len(input_names)}")
-        if len(output_signature) != 1:
-            raise ValueError("capsule runtime-bundle adapter requires exactly one model output")
+        if len(output_signature) != len(output_names):
+            raise ValueError(
+                f"capsule declares {len(output_names)} outputs but interface returns "
+                f"{len(output_signature)}")
 
         arrays: dict[str, np.ndarray] = {}
         first_input = len(signature) - len(input_names)
@@ -2684,11 +2708,13 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 raise ValueError(f"frozen input {name!r} element count disagrees with its shape")
             arrays[f"in{offset}"] = np.ascontiguousarray(array.reshape(shape))
 
-        out_shape, out_dtype = output_signature[0]
-        output_array = np.asarray(outputs[output_name], dtype=_numpy_dtype(out_dtype))
-        if output_array.size != int(np.prod(out_shape, dtype=np.int64)):
-            raise ValueError("frozen golden element count disagrees with interface output shape")
-        output_array = np.ascontiguousarray(output_array.reshape(out_shape))
+        output_arrays: dict[str, np.ndarray] = {}
+        for output_name, (out_shape, out_dtype) in zip(output_names, output_signature, strict=True):
+            output_array = np.asarray(outputs[output_name], dtype=_numpy_dtype(out_dtype))
+            if output_array.size != int(np.prod(out_shape, dtype=np.int64)):
+                raise ValueError(
+                    f"frozen golden {output_name!r} element count disagrees with interface shape")
+            output_arrays[output_name] = np.ascontiguousarray(output_array.reshape(out_shape))
 
         temp = Path(tempfile.mkdtemp(prefix="merlin_frozen_capsule_bundle_"))
         bundle = temp / "bundle"
@@ -2701,7 +2727,12 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
             shutil.copyfile(weights, bundle / weights.name)
             _write_deterministic_npz(bundle / "inputs.npz", arrays)
             with (bundle / "golden.npy").open("wb") as fh:
-                np.save(fh, output_array, allow_pickle=False)
+                np.save(fh, output_arrays[output_names[0]], allow_pickle=False)
+            _write_deterministic_npz(bundle / "goldens.npz", output_arrays)
+            (bundle / "output_order.json").write_text(
+                json.dumps(output_names, separators=(",", ":")), encoding="utf-8")
+            if manifest_asset is not None:
+                shutil.copyfile(manifest_asset, bundle / "weights.safetensors.manifest.json")
 
             from .capsule_source import _m2m_python
 
@@ -2715,8 +2746,17 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 "golden_npy": str(bundle / "golden.npy"),
                 "signature": [{"shape": list(shape), "dtype": dtype}
                               for shape, dtype in signature],
+                "output_signature": [{"shape": list(shape), "dtype": dtype}
+                                     for shape, dtype in output_signature],
+                "goldens_npz": str(bundle / "goldens.npz"),
+                "output_order": output_names,
+                "torch_seed": int(op_attrs.get("torch_seed", 0)),
                 "numeric_policy": capsule.get("numeric_policy") or {},
             }
+            if manifest_asset is not None:
+                request["captured_manifest"] = str(manifest_asset)
+            if dependency_root is not None:
+                request["loader_dependencies"] = str(dependency_root)
             request_path = temp / "request.json"
             request_path.write_text(json.dumps(request, sort_keys=True), encoding="utf-8")
             env = dict(os.environ)
@@ -2746,8 +2786,9 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 raise ValueError("loader validator returned an incomplete forward-argument manifest")
             if not isinstance(order, dict) or sorted(order.values()) != list(range(len(input_names))):
                 raise ValueError("loader validator returned an invalid input order")
-            (bundle / "weights.safetensors.manifest.json").write_text(
-                json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8")
+            if manifest_asset is None:
+                (bundle / "weights.safetensors.manifest.json").write_text(
+                    json.dumps(manifest, sort_keys=True, separators=(",", ":")), encoding="utf-8")
             (bundle / "input_order.json").write_text(
                 json.dumps(order, sort_keys=True, separators=(",", ":")), encoding="utf-8")
 
@@ -2760,15 +2801,17 @@ def _model_runtime_bundle(capsule: dict, *, timeout: int):
                 path.chmod(0o444)
             bundle.chmod(0o555)
             provenance = {
-                "version": 1,
+                "version": 2 if manifest_asset is not None else 1,
                 "source": source_before,
                 "bundle": bundle_before,
-                "construction": "frozen_capsule_assets_v1",
+                "construction": ("frozen_capsule_assets_v2" if manifest_asset is not None
+                                 else "frozen_capsule_assets_v1"),
                 "interface_reused_byte_exact": True,
                 "live_recapture_used": False,
                 "network_or_model_checkout_used": False,
                 "validation": {k: report.get(k) for k in
-                               ("torch_export", "golden_validated", "weights_validated_exact",
+                               ("torch_export", "capture_manifest_validated", "golden_validated",
+                                "golden_value_replay", "weights_validated_exact",
                                 "loader_input_count")},
                 "tool": {"worker_sha256": _file_identity(worker)["sha256"],
                          "python": report.get("python"),
