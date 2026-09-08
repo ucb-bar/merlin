@@ -365,6 +365,125 @@ def test_pointwise_concat_refuses_shared_producer_and_oversized_probe():
     with pytest.raises(ValueError, match="tensor-element budget"):
         extract_pointwise_concat(
             POINTWISE_CONCAT, [0, 1, 2], max_extent=3, max_elements=38)
+
+
+POINTWISE_VIEW_CHAIN = '''builtin.module {
+  func.func @forward(%left: tensor<2x3xf32>, %right: tensor<3xf32>) -> tensor<1x2x3xf32> {
+    %empty = tensor.empty() : tensor<2x3xf32>
+    %product = linalg.generic {
+        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                         affine_map<(d0, d1) -> (d1)>,
+                         affine_map<(d0, d1) -> (d0, d1)>],
+        iterator_types = ["parallel", "parallel"]}
+      ins(%left, %right : tensor<2x3xf32>, tensor<3xf32>)
+      outs(%empty : tensor<2x3xf32>) {
+    ^bb0(%lhs: f32, %rhs: f32, %unused: f32):
+      %value = arith.mulf %lhs, %rhs : f32
+      linalg.yield %value : f32
+    } -> tensor<2x3xf32>
+    %flat = tensor.collapse_shape %product [[0, 1]]
+      : tensor<2x3xf32> into tensor<6xf32>
+    %view = tensor.expand_shape %flat [[0, 1, 2]] output_shape [1, 2, 3]
+      : tensor<6xf32> into tensor<1x2x3xf32>
+    func.return %view : tensor<1x2x3xf32>
+  }
+}'''
+
+
+def test_pointwise_view_chain_extracts_exact_bijective_source_slice():
+    from merlin.perf.host_source_witness import extract_pointwise_view_chain
+
+    probe, receipt = extract_pointwise_view_chain(
+        POINTWISE_VIEW_CHAIN, [0, 1, 2, 3], max_extent=3, max_elements=64)
+
+    assert receipt["source_indices"] == [1, 2, 3]
+    assert receipt["auxiliary_source_indices"] == [0]
+    assert receipt["view_operations"] == [
+        "tensor.collapse_shape", "tensor.expand_shape"]
+    assert receipt["source_producer_shape"] == [2, 3]
+    assert receipt["probe_producer_shape"] == [2, 3]
+    assert receipt["probe_view_shapes"] == [
+        [[2, 3], [6]], [[6], [1, 2, 3]]]
+    assert receipt["probe_intermediate_payload_bytes"] == 24
+    assert receipt["all_source_producer_uses_preserved"] is True
+    assert receipt["all_source_view_uses_preserved"] is True
+    left = np.asarray([[0.0, -0.0, 2**-24], [1.0, -1.0, 2**20]], dtype=np.float32)
+    right = np.asarray([0.5, -2.0, 2**-20], dtype=np.float32)
+    actual = evaluate_pointwise_source(probe, [left, right])[0]
+    expected = np.multiply(left, right, dtype=np.float32).reshape(1, 2, 3)
+    assert actual.tobytes() == expected.tobytes()
+
+
+def test_pointwise_view_chain_refuses_source_fanout():
+    from merlin.perf.host_source_witness import extract_pointwise_view_chain
+
+    shared = POINTWISE_VIEW_CHAIN.replace(
+        "    func.return %view : tensor<1x2x3xf32>", '''    %copy_empty = tensor.empty() : tensor<2x3xf32>
+    %copy = linalg.generic {
+        indexing_maps = [affine_map<(d0, d1) -> (d0, d1)>,
+                         affine_map<(d0, d1) -> (d0, d1)>],
+        iterator_types = ["parallel", "parallel"]}
+      ins(%product : tensor<2x3xf32>) outs(%copy_empty : tensor<2x3xf32>) {
+    ^bb1(%value: f32, %unused: f32):
+      linalg.yield %value : f32
+    } -> tensor<2x3xf32>
+    func.return %view : tensor<1x2x3xf32>''')
+    with pytest.raises(ValueError, match="no unique pointwise"):
+        extract_pointwise_view_chain(shared, range(6))
+
+
+@pytest.mark.parametrize("mutation", ["dynamic", "non_bijective", "dtype_change"])
+def test_pointwise_view_chain_refuses_unproved_shape_or_dtype_changes(mutation):
+    from merlin.perf.host_source_witness import extract_pointwise_view_chain
+
+    source = POINTWISE_VIEW_CHAIN
+    if mutation == "dynamic":
+        source = source.replace("tensor<6xf32>", "tensor<?xf32>")
+    elif mutation == "non_bijective":
+        source = source.replace("tensor<6xf32>", "tensor<5xf32>").replace(
+            "[1, 2, 3]", "[1, 1, 5]").replace(
+            "tensor<1x2x3xf32>", "tensor<1x1x5xf32>")
+    else:
+        source = source.replace("tensor<6xf32>", "tensor<6xi32>").replace(
+            "tensor<1x2x3xf32>", "tensor<1x2x3xi32>")
+    with pytest.raises(
+            ValueError,
+            match="valid typed IR|dynamic or non-bijective|dtype-preserving"):
+        extract_pointwise_view_chain(source, [0, 1, 2, 3])
+
+
+def test_pointwise_view_chain_emission_requires_exact_deletion_and_scalar_store():
+    from merlin.perf.host_region_qualifier import pointwise_view_chain_emission_evidence
+
+    extraction = {
+        "schema": "actual_source_pointwise_view_chain_witness_v1",
+        "mechanism": "pointwise_view_chain",
+        "producer_result_scalar_operation": "arith.mulf",
+        "scalar_region_sha256": "a" * 64,
+        "view_operations": ["tensor.collapse_shape", "tensor.expand_shape"],
+        "source_view_shapes": [[[2, 3], [6]], [[6], [1, 2, 3]]],
+        "probe_view_shapes": [[[2, 3], [6]], [[6], [1, 2, 3]]],
+        "probe_intermediate_payload_bytes": 24,
+        "all_source_producer_uses_preserved": True,
+        "all_source_view_uses_preserved": True,
+    }
+    before = {"status": "derived", "dynamic_operations": {
+        "floating_arithmetic": 6, "conversion": 0}}
+    after = {"status": "derived", "dynamic_operations": {
+        "floating_arithmetic": 6, "conversion": 3}}
+    delta = {"status": "changed_reduced_materialization",
+             "deleted_payload_bytes": {"static_allocation_payload_bytes": 24,
+                                       "load_payload_bytes": 24,
+                                       "store_payload_bytes": 24}}
+    evidence = pointwise_view_chain_emission_evidence(
+        extraction, before, after, emitted_operation_names=["llvm.fmul", "llvm.store"],
+        direct_output=True, materialization_delta=delta)
+    assert evidence["status"] == "demonstrated_changed_pointwise_through_view_chain"
+    assert pointwise_view_chain_emission_evidence(
+        extraction, before, after, emitted_operation_names=["llvm.fmul", "llvm.store"],
+        direct_output=False, materialization_delta=delta)["status"] == "NOT_DEMONSTRATED"
+
+
 DEQUANT_CONTRACTION = '''builtin.module {
   func.func @forward(%w: tensor<3x4xi8>, %s: tensor<4xf32>, %z: tensor<4xi32>,
                      %a: tensor<1x3xf32>, %initial: tensor<1x4xf32>) -> tensor<1x4xf32> {
@@ -606,14 +725,14 @@ def test_changed_region_extraction_exhausts_best_task_mechanisms_before_next_tas
     best = ((100, True, 20), {"task_index": 7}, [200, 100])
     second = ((10, True, 5), {"task_index": 8}, [20, 10])
     options = list(qualifier._ranked_source_witness_options([second, best]))
-    kinds = [kind for kind, _ in options[:9]]
+    kinds = [kind for kind, _ in options[:10]]
 
-    assert [row[1][1]["task_index"] for row in options[:9]] == [7] * 9
+    assert [row[1][1]["task_index"] for row in options[:10]] == [7] * 10
     assert kinds == [
-        "pointwise_concat", "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
+        "pointwise_view_chain", "pointwise_concat", "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
         "pointwise_reduction", "dequant_contraction", "fanout", "chain",
     ]
-    assert options[9][1][1]["task_index"] == 8
+    assert options[10][1][1]["task_index"] == 8
 
 
 def test_changed_region_extraction_budget_stops_after_highest_ranked_task():

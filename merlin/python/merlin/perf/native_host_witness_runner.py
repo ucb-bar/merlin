@@ -15,7 +15,7 @@ import sys
 
 
 _KINDS = {"i8": ctypes.c_int8, "i16": ctypes.c_int16, "i32": ctypes.c_int32,
-          "i64": ctypes.c_int64, "f32": ctypes.c_float}
+          "i64": ctypes.c_int64, "bf16": ctypes.c_uint16, "f32": ctypes.c_float}
 # Host process safety limits, not target geometry or performance assumptions.
 _MAX_STORAGE_ELEMENTS = 1_000_000
 _MAX_ARGUMENT_ELEMENTS = 4096
@@ -114,6 +114,9 @@ def _validate_arguments(request, alignment):
                     if (type(value) not in (int, float) or not math.isfinite(value)
                             or abs(value) > 3.4028234663852886e38):
                         raise ValueError("host witness f32 input is not finite/representable")
+                elif spec["dtype"] == "bf16":
+                    if type(value) is not int or not 0 <= value < (1 << 16):
+                        raise ValueError("host witness bf16 input is not a raw 16-bit pattern")
                 else:
                     bits = ctypes.sizeof(ctype) * 8
                     if type(value) is not int or not -(1 << (bits-1)) <= value < (1 << (bits-1)):

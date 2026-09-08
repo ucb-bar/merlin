@@ -12,11 +12,11 @@ from pathlib import Path
 from time import monotonic
 from typing import Any, Callable, Mapping
 
-from .host_source_witness import (evaluate_pointwise_source, extract_pointwise_chain,
+from .host_source_witness import (bf16_bits, bf16_values, evaluate_pointwise_source, extract_pointwise_chain,
                                   extract_dequant_contraction, extract_pointwise_reduction,
                                   extract_bounded_gather, extract_generic_reduction,
                                   extract_named_reduction, extract_insert_slice,
-                                  extract_pointwise_concat)
+                                  extract_pointwise_concat, extract_pointwise_view_chain)
 
 
 def _sha(data: bytes) -> str:
@@ -92,7 +92,7 @@ def changed_host_task_candidates(before_tasks, after_tasks, tables):
 
 
 _SOURCE_WITNESS_KINDS = (
-    "pointwise_concat", "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
+    "pointwise_view_chain", "pointwise_concat", "insert_slice", "bounded_gather", "named_reduction", "generic_reduction",
     "pointwise_reduction", "dequant_contraction", "fanout", "chain",
 )
 
@@ -214,6 +214,77 @@ def pointwise_concat_emission_evidence(
     }
 
 
+def pointwise_view_chain_emission_evidence(
+        extraction: Mapping[str, Any], before_activity: Mapping[str, Any],
+        after_activity: Mapping[str, Any], *, emitted_operation_names,
+        direct_output: bool, materialization_delta: Mapping[str, Any]) -> dict[str, Any]:
+    """Bind exact reduced semantics to deletion across a source-cloned view chain."""
+    lowered_scalar = {
+        "arith.negf": "llvm.fneg", "arith.addf": "llvm.fadd",
+        "arith.subf": "llvm.fsub", "arith.mulf": "llvm.fmul",
+        "arith.divf": "llvm.fdiv", "arith.addi": "llvm.add",
+        "arith.subi": "llvm.sub", "arith.muli": "llvm.mul",
+        "arith.extsi": "llvm.sext", "arith.extui": "llvm.zext",
+        "arith.trunci": "llvm.trunc", "arith.sitofp": "llvm.sitofp",
+        "arith.uitofp": "llvm.uitofp", "arith.fptosi": "llvm.fptosi",
+        "arith.fptoui": "llvm.fptoui",
+    }
+    source_scalar = extraction.get("producer_result_scalar_operation")
+    emitted_scalar = lowered_scalar.get(source_scalar)
+    names = list(emitted_operation_names)
+    activities_derived = all(
+        arm.get("status") == "derived" for arm in (before_activity, after_activity))
+    operation_counts = {
+        category: [(arm.get("dynamic_operations") or {}).get(category)
+                   for arm in (before_activity, after_activity)]
+        for category in ("floating_arithmetic", "conversion")
+    }
+    expected = extraction.get("probe_intermediate_payload_bytes")
+    deleted = materialization_delta.get("deleted_payload_bytes") or {}
+    source_contract = (
+        extraction.get("schema") == "actual_source_pointwise_view_chain_witness_v1"
+        and extraction.get("mechanism") == "pointwise_view_chain"
+        and extraction.get("all_source_producer_uses_preserved") is True
+        and extraction.get("all_source_view_uses_preserved") is True
+        and isinstance(extraction.get("view_operations"), list)
+        and bool(extraction["view_operations"])
+        and set(extraction["view_operations"]) <= {
+            "tensor.collapse_shape", "tensor.expand_shape"}
+    )
+    exact_deletion = (
+        materialization_delta.get("status") == "changed_reduced_materialization"
+        and type(expected) is int and expected > 0
+        and deleted.get("static_allocation_payload_bytes") == expected
+        and type(deleted.get("load_payload_bytes")) is int
+        and deleted["load_payload_bytes"] >= expected
+        and type(deleted.get("store_payload_bytes")) is int
+        and deleted["store_payload_bytes"] >= expected
+    )
+    demonstrated = bool(source_contract and activities_derived and direct_output and emitted_scalar
+                        and names.count(emitted_scalar) == 1
+                        and exact_deletion)
+    return {
+        "status": ("demonstrated_changed_pointwise_through_view_chain" if demonstrated
+                   else "NOT_DEMONSTRATED"),
+        "kind": "pointwise_producer_direct_scalar_store_through_static_view_chain",
+        "source_result_scalar_operation": source_scalar,
+        "emitted_result_scalar_operation": emitted_scalar,
+        "actual_result_scalar_operations": names.count(emitted_scalar) if emitted_scalar else 0,
+        "dynamic_floating_arithmetic_and_conversion_before_after": operation_counts,
+        "aggregate_conversion_reduction_allowed_for_deleted_view_addressing": True,
+        "direct_output_without_intermediate_allocation": bool(direct_output),
+        "materialization_delta": dict(materialization_delta),
+        "source_scalar_region_sha256": extraction.get("scalar_region_sha256"),
+        "view_operations": extraction.get("view_operations"),
+        "source_view_shapes": extraction.get("source_view_shapes"),
+        "probe_view_shapes": extraction.get("probe_view_shapes"),
+        "all_source_producer_uses_preserved": extraction.get(
+            "all_source_producer_uses_preserved"),
+        "all_source_view_uses_preserved": extraction.get("all_source_view_uses_preserved"),
+        "performance": "UNMEASURED",
+    }
+
+
 def reduced_materialization_change(before: Mapping[str, Any], after: Mapping[str, Any],
                                    extraction: Mapping[str, Any], *,
                                    before_lowered_sha256: str | None = None,
@@ -281,7 +352,8 @@ def reduced_materialization_change(before: Mapping[str, Any], after: Mapping[str
                 "deleted_destination_load_bytes": deleted["load_payload_bytes"],
                 "scope": "same cloned insert slice under preceding/current compilers; proves "
                          "one source-box worth of overwritten destination traffic was removed"}
-    if mechanism in {"dequant_contraction", "pointwise_reduction", "pointwise_concat"}:
+    if mechanism in {"dequant_contraction", "pointwise_reduction", "pointwise_concat",
+                     "pointwise_view_chain"}:
         changed = (type(expected) is int and expected > 0
                    and deleted["static_allocation_payload_bytes"] == expected
                    and deleted["store_payload_bytes"] >= expected
@@ -418,7 +490,10 @@ class HostChangedRegionQualifier:
                 # cannot silently start another complete parse after the deadline has expired.
                 remaining()
                 try:
-                    if kind == "pointwise_concat":
+                    if kind == "pointwise_view_chain":
+                        probe_text, extraction = extract_pointwise_view_chain(
+                            source_text, task["source_op_indices"])
+                    elif kind == "pointwise_concat":
                         probe_text, extraction = extract_pointwise_concat(
                             source_text, task["source_op_indices"])
                     elif kind == "insert_slice":
@@ -568,6 +643,17 @@ class HostChangedRegionQualifier:
                 if concat_evidence["status"] != "demonstrated_changed_pointwise_in_concat":
                     raise ValueError(
                         "changed reduced pointwise-to-concat mechanism not demonstrated")
+            if extraction.get("mechanism") == "pointwise_view_chain":
+                view_evidence = pointwise_view_chain_emission_evidence(
+                    extraction, reduced_activities[0], activity,
+                    emitted_operation_names=(op.name for op in module.walk()),
+                    direct_output=direct_output,
+                    materialization_delta=record[
+                        "changed_reduced_mechanism"]["materialization_delta"])
+                record["emitted_mechanism"].update(view_evidence)
+                if view_evidence["status"] != "demonstrated_changed_pointwise_through_view_chain":
+                    raise ValueError(
+                        "changed reduced pointwise-through-view-chain mechanism not demonstrated")
             if extraction.get("mechanism") == "bounded_gather":
                 record["emitted_mechanism"].update(
                     status="demonstrated_changed_bounded_gather_subgraph",
@@ -745,9 +831,11 @@ class HostChangedRegionQualifier:
             for seed in range(3):
                 inputs = []
                 for i, spec in enumerate(input_specs):
-                    dtype = np.dtype("float32" if spec["dtype"] == "f32" else "int"+spec["dtype"][1:])
+                    dtype = np.dtype("float32" if spec["dtype"] in {"f32", "bf16"}
+                                     else "int"+spec["dtype"][1:])
                     pool = ([-1.0, -0.5, -2**-24, 0.0, 2**-24, 0.5, 1.0]
-                            if spec["dtype"] == "f32" else [-127, -1, 0, 1, 126, 127])
+                            if spec["dtype"] in {"f32", "bf16"}
+                            else [-127, -1, 0, 1, 126, 127])
                     data = [pool[(j+i+seed)%len(pool)] for j in range(int(np.prod(spec["shape"])))]
                     inputs.append(np.asarray(data, dtype=dtype).reshape(spec["shape"]))
                 expected = evaluate_pointwise_source(probe_text, inputs)
@@ -766,7 +854,9 @@ class HostChangedRegionQualifier:
                         wanted = input_specs[input_index]
                         if spec["shape"] != wanted["shape"] or spec["dtype"] != wanted["dtype"]:
                             raise ValueError("candidate pointer ABI differs from source boundary argument order")
-                        row["values"] = inputs[input_index].reshape(-1).tolist()
+                        values = inputs[input_index].reshape(-1)
+                        row["values"] = (bf16_bits(values).tolist()
+                                         if spec["dtype"] == "bf16" else values.tolist())
                         input_index += 1
                     else:
                         wanted = output_specs[output_index]
@@ -787,12 +877,20 @@ class HostChangedRegionQualifier:
                 if len(decoded["outputs"]) != len(expected):
                     raise ValueError("native source witness output count differs from source")
                 correct_outputs = []
-                for output, wanted in zip(decoded["outputs"], expected):
-                    actual = np.asarray(output).reshape(wanted.shape)
+                for output, wanted, output_spec in zip(
+                        decoded["outputs"], expected, output_specs):
+                    raw_actual = np.asarray(output)
+                    actual = (bf16_values(raw_actual.astype(np.uint16)).reshape(wanted.shape)
+                              if output_spec["dtype"] == "bf16"
+                              else raw_actual.reshape(wanted.shape))
                     if extraction.get("mechanism") in {
                             "dequant_contraction", "pointwise_reduction", "generic_reduction",
-                            "named_reduction", "insert_slice", "pointwise_concat"} and wanted.dtype.kind == "f":
-                        correct_outputs.append(actual.astype(np.float32).tobytes() == wanted.tobytes())
+                            "named_reduction", "insert_slice", "pointwise_concat",
+                            "pointwise_view_chain"} and wanted.dtype.kind == "f":
+                        correct_outputs.append(
+                            (raw_actual.astype(np.uint16).tobytes() == bf16_bits(wanted).tobytes())
+                            if output_spec["dtype"] == "bf16"
+                            else actual.astype(np.float32).tobytes() == wanted.tobytes())
                         continue
                     correct_outputs.append(bool(np.allclose(actual, wanted, atol=self.float_atol,
                         rtol=self.float_rtol, equal_nan=False) if wanted.dtype.kind == "f"
@@ -830,6 +928,10 @@ class HostChangedRegionQualifier:
                 record.update(source_mechanism_correspondence=extraction["scope"],
                               geometry=extraction["geometry"])
             elif extraction.get("mechanism") == "pointwise_concat":
+                record.update(source_mechanism_correspondence=extraction["scope"],
+                              geometry=extraction["geometry"],
+                              float_comparison="exact_f32_bits", float_atol=0, float_rtol=0)
+            elif extraction.get("mechanism") == "pointwise_view_chain":
                 record.update(source_mechanism_correspondence=extraction["scope"],
                               geometry=extraction["geometry"],
                               float_comparison="exact_f32_bits", float_atol=0, float_rtol=0)

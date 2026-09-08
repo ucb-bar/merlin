@@ -132,3 +132,21 @@ def test_rank_zero_logical_map_has_one_value():
         "schema": "logical_address_map_v1", "logical_shape": [],
         "strides_elements": [], "offset_elements": 2})
     assert runner._validate_arguments(request, 4096)[0][2] == (2,)
+
+
+@pytest.mark.parametrize("bits", [[0, 0x3F80, 0xBF80, 0x7F7F], [-1], [1 << 16]])
+def test_bf16_native_carrier_accepts_only_raw_16_bit_patterns(bits):
+    request = _request()
+    request["limits"]["max_total_logical_elements"] = 4
+    request["arguments"] = [{
+        "dtype": "bf16", "access": "read", "storage_elements": 4,
+        "logical_address_map": {"schema": "logical_address_map_v1",
+                                "offsets_elements": [0, 1, 2, 3]},
+        "values": bits,
+    }]
+    if len(bits) == 4:
+        layout = runner._validate_arguments(request, 4096)[0]
+        assert layout[0] is runner.ctypes.c_uint16
+    else:
+        with pytest.raises(ValueError):
+            runner._validate_arguments(request, 4096)
