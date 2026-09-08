@@ -4175,23 +4175,25 @@ def test_baseline_storage_view_keeps_separate_binding_and_details(tmp_path, boun
     assert len(json.dumps(summary)) < 4000
 
 
-def test_host_fast_evaluator_is_bound_recorded_and_exposed_to_agent(tmp_path):
+def test_four_model_fast_evaluator_is_serialized_bound_and_agent_visible(tmp_path):
     from merlin.perf.phase2_portfolio import (
         FastEvaluationPolicy,
-        QualityBudget,
-        QualityLimit,
+        standard_four_model_quality_schema,
     )
 
-    baseline, candidate, source = (tmp_path / name for name in
-                                   ("fast_base", "fast_candidate", "fast_model"))
-    for path in (baseline, candidate, source):
+    baseline, candidate = tmp_path / "fast-base", tmp_path / "fast-candidate"
+    for path in (baseline, candidate):
         path.mkdir()
         (path / "source.txt").write_text(path.name)
-    (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
-    (source / "capsule.interface.mlir").write_text("module {}\n")
-    sentinel = PAS.StageE2ESentinel(
-        "fast-model", str(source), str(source), PAS._exact_tree_record(source)["sha256"],
-        ("lane",), ("L2",))
+    sentinels = []
+    for index in range(4):
+        source = tmp_path / f"fast-model-{index}"
+        source.mkdir()
+        (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+        (source / "capsule.interface.mlir").write_text(f"module {{ // fixture {index}\n}}\n")
+        sentinels.append(PAS.StageE2ESentinel(
+            f"fast-model-{index}", str(source), str(source),
+            PAS._exact_tree_record(source)["sha256"], ("lane",), ("L2",)))
 
     def analyzer(base, current, objective, **kwargs):
         candidate_sha = hash_tree(current)["sha256"]
@@ -4207,7 +4209,8 @@ def test_host_fast_evaluator_is_bound_recorded_and_exposed_to_agent(tmp_path):
                     "status": "verified", "plan_digest": SHA["plan"],
                     "candidate_sha256": candidate_sha,
                     "logical_dispatch_digest": SHA["graph"],
-                    "source_sha256": PAS._sha256_file(source / "capsule.interface.mlir"),
+                    "source_sha256": PAS._sha256_file(Path(objective.capsule_path)
+                                                       / "capsule.interface.mlir"),
                     "candidate_lowered_sha256": SHA["llvm"],
                     "candidate_command_buffer_sha256": SHA["buffer"],
                     "emitted_dispatches": 1},
@@ -4219,8 +4222,7 @@ def test_host_fast_evaluator_is_bound_recorded_and_exposed_to_agent(tmp_path):
     def metrics(cycles, placed, islands, boundaries):
         return {
             "cycles": {"lo": cycles, "hi": cycles, "provenance": ["host model"]},
-            "movement_bytes": cycles,
-            "movement_scope": "physical",
+            "movement_bytes": cycles, "movement_scope": "physical",
             "occupancy": {"total_cycles": cycles,
                 "busy_cycles": {"compute": cycles * (0.6 if cycles < 100 else 0.5),
                                 "move": cycles * 0.5},
@@ -4241,51 +4243,111 @@ def test_host_fast_evaluator_is_bound_recorded_and_exposed_to_agent(tmp_path):
                 "resource_floors": {"compute": cycles * 0.5, "movement": cycles * 0.4},
                 "limiting_resources": ["compute"],
                 "optimization_effects": ["movement", "tiling"],
-                "composition": "explicit max", "provenance": ["host roofline"]},
+                "composition": "explicit adapter max", "provenance": ["host roofline"]},
             "encoding_conversions": {"count": islands, "bytes": cycles,
                 "cycles": {"lo": islands, "hi": islands, "provenance": ["host model"]}},
             "risk_score": 0.05, "provenance": ["bound host adapter"],
         }
 
     provider_calls = []
+    active = 0
+    maximum_active = 0
 
     def provider(**kwargs):
-        provider_calls.append(kwargs["sentinel"].capsule_sha256)
-        assert kwargs["provider_binding"]["implementation_sha256"] == SHA["target"]
-        return {
-            "baseline": metrics(100, 70, 2, 10),
-            "candidate": metrics(80, 80, 1, 8),
-            "baseline_quality": {"values": {"error": 0.01}, "complete": True,
-                                 "provenance": ["independent reference"]},
-            "candidate_quality": {"values": {"error": 0.01}, "complete": True,
-                                  "provenance": ["independent reference"]},
-        }
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        try:
+            provider_calls.append(kwargs["sentinel"].capsule_sha256)
+            assert kwargs["provider_binding"]["resource_admission"] == \
+                "serialized_one_model_at_a_time"
+            if kwargs["sentinel"].capsule_sha256 == sentinels[0].capsule_sha256:
+                baseline_quality = {"top1_degradation_percentage_points": 0.0}
+                candidate_quality = {"top1_degradation_percentage_points": 0.4}
+            else:
+                baseline_quality = {"cosine_similarity": 1.0,
+                                    "normalized_root_mean_square_error": 0.0}
+                candidate_quality = {"cosine_similarity": 0.995,
+                                     "normalized_root_mean_square_error": 0.01}
+            return {
+                "baseline": metrics(100, 70, 2, 10),
+                "candidate": metrics(80, 80, 1, 8),
+                "baseline_quality": {"values": baseline_quality, "complete": True,
+                                     "provenance": ["independent reference"]},
+                "candidate_quality": {"values": candidate_quality, "complete": True,
+                                      "provenance": ["independent reference"]},
+            }
+        finally:
+            active -= 1
 
-    budget = QualityBudget((QualityLimit("error", "at_most", 0.02),),
-                           "independent complete output")
+    corpora = {member.capsule_sha256: PAS._sha256(
+        f"held-out-{index}".encode()) for index, member in enumerate(sentinels)}
+    quality = standard_four_model_quality_schema(
+        [member.capsule_sha256 for member in sentinels],
+        classification_member_sha256=sentinels[0].capsule_sha256,
+        corpus_sha256_by_member=corpora)
     experiment = G.GlobalPerfExperiment(
         baseline=baseline, baseline_sha256=hash_tree(baseline)["sha256"],
-        sentinel=sentinel, target="test-target", target_sha256=SHA["target"],
-        output=tmp_path / "fast_run", analyzer=analyzer,
+        sentinel=sentinels[0], portfolio_sentinels=sentinels[1:],
+        target="test-target", target_sha256=SHA["target"],
+        output=tmp_path / "fast-run", analyzer=analyzer,
         fast_evaluation_provider=provider,
         fast_evaluation_policy=FastEvaluationPolicy(),
-        quality_budgets={sentinel.capsule_sha256: budget},
+        quality_budgets=quality.budget_map,
         fast_evaluation_provider_binding={
             "schema": "host_fast_analytical_evaluator_binding_v1",
             "implementation_sha256": SHA["target"],
             "execution": "host_analytical_only", "full_model_simulation_allowed": False,
+            "resource_admission": "serialized_one_model_at_a_time",
             "maximum_model_seconds": 1,
-            "calibration_sha256s": [SHA["plan"]]},
+            "calibration_sha256s": [SHA["plan"]],
+        },
     )
 
-    record = experiment.analyze(candidate, hypothesis="Evaluate a fast global candidate")
-    digest = G.portfolio_action_digest(
-        record, complete_evidence="complete.json", edit_contract=None)
+    record = experiment.analyze(candidate, hypothesis="Evaluate fast global candidate")
+    digest = G.portfolio_action_digest(record, complete_evidence="complete.json",
+                                        edit_contract=None)
 
-    assert provider_calls == [sentinel.capsule_sha256]
+    assert provider_calls == [member.capsule_sha256 for member in sentinels]
+    assert maximum_active == 1
     assert record["fast_evaluation"]["status"] == "retain"
-    assert record["readiness"]["selection"] == \
-        "multi_model_pareto_without_invented_static_cycle_total"
+    assert record["fast_evaluation"]["resource_admission"] == \
+        "serialized_one_model_at_a_time"
+    assert record["fast_evaluation"]["provider_evaluation_order"] == provider_calls
     assert digest["fast_accuracy_bounded_evaluation"] == record["fast_evaluation"]
     assert PAS._mapping_file(experiment.output / "experiment.json")[
         "fast_evaluation_binding_sha256"] == experiment.fast_evaluation_binding_sha256
+    experiment.edit_contract = {"existing_symbols": [
+        {"surface_id": "allowed", "path": "compiler.py", "symbol": "schedule"}]}
+    filtered = experiment._fast_evaluation_surfaces({"optimization_brief": {"ranked_actions": [{
+        "edit_surfaces": [
+            {"id": "allowed", "path": "compiler.py", "symbol": "schedule",
+             "scope": "function", "effects": ["scheduling"]},
+            {"id": "self-granted", "path": "other.py", "symbol": "rewrite",
+             "scope": "function", "effects": ["movement"]},
+        ]}]}})
+    assert [surface["id"] for surface in filtered] == ["allowed"]
+    over_budget_binding = {
+        **experiment.fast_evaluation_provider_binding,
+        "maximum_model_seconds": 61,
+    }
+    with pytest.raises(ValueError, match="exact implementation binding"):
+        G.GlobalPerfExperiment(
+            baseline=baseline, baseline_sha256=hash_tree(baseline)["sha256"],
+            sentinel=sentinels[0], portfolio_sentinels=sentinels[1:],
+            target="test-target", target_sha256=SHA["target"],
+            output=tmp_path / "over-budget-fast-run", analyzer=analyzer,
+            fast_evaluation_provider=provider,
+            fast_evaluation_policy=FastEvaluationPolicy(),
+            quality_budgets=quality.budget_map,
+            fast_evaluation_provider_binding=over_budget_binding)
+
+
+def test_unconfigured_fast_evaluator_records_exact_only_fallback(tmp_path):
+    experiment, candidate, _ = setup_experiment(tmp_path)
+
+    record = experiment.analyze(candidate, hypothesis="Keep exact semantics without corpus")
+
+    assert record["fast_evaluation"]["status"] == "exact_only_fallback"
+    assert record["fast_evaluation"]["approximation_allowed"] is False
+    assert record["fast_evaluation"]["maximum_parallel_model_evaluations"] == 1
