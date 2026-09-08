@@ -1,0 +1,4 @@
+RESULT descriptors=2 checked=512 bad=0 first_tile=46 second_tile=-33
+PASS
+Gemmini extension configured with:
+    dim = 16

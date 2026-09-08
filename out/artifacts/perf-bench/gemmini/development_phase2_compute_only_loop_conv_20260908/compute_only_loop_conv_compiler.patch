@@ -1,0 +1,620 @@
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/llvm_emit.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/codegen/llvm_emit.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 05:56:18.304130154 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 07:58:23.271333197 -0700
+@@ -157,11 +157,15 @@
+         elif ins.kind == "config_ex":
+             f, rs1, rs2 = isa.config_ex(dataflow=a["dataflow"], sys_act=a["act"],
+                                         acc_scale=a["acc_scale"], a_stride=a["a_stride"],
+-                                        c_stride=a["c_stride"])
++                                        c_stride=a["c_stride"],
++                                        a_transpose=a.get("a_transpose", False),
++                                        b_transpose=a.get("b_transpose", False))
+         elif ins.kind == "config_ld":
+             f, rs1, rs2 = isa.config_ld(stride=a["stride"], scale=a.get("scale", 1.0),
+                                         shrunk=a.get("shrunk", False),
+-                                        load_id=a.get("load_id", 0))
++                                        load_id=a.get("load_id", 0),
++                                        block_stride=a.get("block_stride", isa.DIM),
++                                        pixel_repeats=a.get("pixel_repeats", 1))
+         elif ins.kind == "config_st":
+             f, rs1, rs2 = isa.config_st(stride=a["stride"], acc_act=a["acc_act"],
+                                         acc_scale=a["acc_scale"],
+@@ -194,6 +198,13 @@
+             raise LoweringDeclined(f"no encoding for scheduled command {ins.kind!r}")
+         self.rocc(f, self.fb.const(rs1), self.fb.const(rs2))
+
++    def emit_zero_i32(self, ins: Instr) -> None:
++        """Initialize the compiler-owned LoopConv LOAD3 carrier; staging globals are undef."""
++        ptr = self.ptr(ins.bufs[0])
++        self.fb.for_range(
++            int(ins.attrs["elements"]),
++            lambda index: self.fb.store_i64(self.fb.const(0), ptr, index, "i32"))
++
+     # -- compiler-generated host lane --------------------------------------------------------
+     def emit_transpose(self, ins: Instr) -> None:
+         src, dst = ins.bufs
+@@ -665,8 +676,10 @@
+         lowering = self.host_lowering()
+         lowering.run_segment(
+             segment.ops,
+-            [(value, self.ptr(name)) for value, name in segment.inputs],
+-            [(value, self.ptr(name)) for value, name in segment.outputs],
++            [(value, self.ptr(name), self.plan.buffers[name].storage_encoding)
++             for value, name in segment.inputs],
++            [(value, self.ptr(name), self.plan.buffers[name].storage_encoding)
++             for value, name in segment.outputs],
+             getattr(segment, "source_op_indices", ()))
+
+     def emit_host_linalg(self, ins: Instr) -> None:
+@@ -713,6 +726,8 @@
+             elif ins.kind == "loop_conv_ws":
+                 self.emit_loop_conv_ws(ins)
+                 loop_ws_state.clear()
++            elif ins.kind == "host_zero_i32":
++                self.emit_zero_i32(ins)
+             elif ins.kind == "host_epilogue":
+                 self.emit_epilogue(ins)
+             elif ins.kind == "host_linalg":
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/loop_host_linalg.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/codegen/loop_host_linalg.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/loop_host_linalg.py	2026-09-08 02:59:11.096800416 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/codegen/loop_host_linalg.py	2026-09-08 06:56:08.702854083 -0700
+@@ -649,8 +649,22 @@
+                      if not isinstance(lowered, LoopTensor)}
+         self._begin_storage_segment(ops, source_op_indices)
+         self._segment_ops = set(ops)
+-        self._segment_outputs = {value for value, _ in outputs}
+-        return super().run_segment(ops, inputs, outputs)
++        self._segment_outputs = {item[0] for item in outputs}
++        # Segment boundary buffers may carry an explicit physical layout.  In particular,
++        # compute-only LOOP_CONV writes a padded NHWC i32 carrier while the source SSA remains
++        # NCHW.  Bind that address map here so the existing host epilogue reads the same logical
++        # tensor without inserting a standalone transpose.
++        for item in inputs:
++            value, ptr = item[:2]
++            encoding = item[2] if len(item) > 2 else None
++            if value not in self.vals:
++                self.vals[value] = self.load_encoded_arg(ptr, value.type, encoding)
++        for op in ops:
++            self._tensor_op(op)
++        for item in outputs:
++            value, ptr = item[:2]
++            encoding = item[2] if len(item) > 2 else None
++            self.store_encoded_result(ptr, self.get(value), encoding)
+
+     def _lazy_copy_map(self, op):
+         """Fold a proven pure affine copy into its one same-segment consumer.
+@@ -935,10 +949,67 @@
+     def load_arg(self, ptr, ty):
+         return self.storage(tensor_shape(ty), elem_name(ty.get_element_type()), ptr, padded=True)
+
++    def _encoded_storage(self, ptr, shape, ety, encoding):
++        if not encoding or encoding.get("schema") != "permuted_axes_storage_v1":
++            return self.storage(shape, ety, ptr, padded=True)
++        permutation = tuple(int(axis) for axis in encoding["permutation"])
++        physical = tuple(int(size) for size in encoding["physical_shape"])
++        strides = tuple(int(stride) for stride in encoding["strides_elements"])
++        if (tuple(encoding.get("logical_shape", ())) != tuple(shape)
++                or sorted(permutation) != list(range(len(shape)))
++                or tuple(shape[axis] for axis in permutation) != physical
++                or len(strides) != len(physical)):
++            raise LoweringDeclined("invalid permuted boundary storage encoding", op="host_lane")
++
++        def offset(index):
++            result = self.fb.const(int(encoding.get("offset_elements", 0)))
++            for physical_axis, logical_axis in enumerate(permutation):
++                stride = strides[physical_axis]
++                if stride:
++                    result = self.fb.add_i(
++                        result, self.fb.mul_i(self.value(index[logical_axis]),
++                                              self.fb.const(stride)))
++            return result
++
++        def read(index):
++            flat = offset(index)
++            if ety == "i1":
++                value = self.fb.add(llvm.LoadOp(self.fb.gep(ptr, flat, i1), i1)).results[0]
++                return self.fb.add(llvm.ZExtOp(value, i64)).results[0]
++            if is_int(ety):
++                return self.fb.load_i64(ptr, flat, ety)
++            if ety == "f64":
++                return self.fb.add(llvm.LoadOp(
++                    self.fb.gep(ptr, flat, Float64Type()), Float64Type())).results[0]
++            return self.fp.load(ptr, flat, ety)
++
++        def write(index, value):
++            flat = offset(index)
++            if ety == "i1":
++                self.fb.add(llvm.StoreOp(
++                    self.fb.add(llvm.TruncOp(value, i1)).results[0],
++                    self.fb.gep(ptr, flat, i1)))
++            elif is_int(ety):
++                self.fb.store_i64(value, ptr, flat, ety)
++            elif ety == "f64":
++                self.fb.add(llvm.StoreOp(
++                    value, self.fb.gep(ptr, flat, Float64Type())))
++            else:
++                self.fp.store(value, ptr, flat, ety)
++        return LoopTensor(shape, ety, read, write)
++
++    def load_encoded_arg(self, ptr, ty, encoding=None):
++        return self._encoded_storage(
++            ptr, tensor_shape(ty), elem_name(ty.get_element_type()), encoding)
++
+     def store_result(self, ptr, val):
+         out = self.storage(val.shape, val.ety, ptr, padded=True)
+         self.indices(val.shape, lambda idx: out.write(idx, val.at(idx)))
+
++    def store_encoded_result(self, ptr, val, encoding=None):
++        out = self._encoded_storage(ptr, val.shape, val.ety, encoding)
++        self.indices(val.shape, lambda idx: out.write(idx, val.at(idx)))
++
+     def _scalar_op(self, op, ins):
+         result_type = op.results[0].type if op.results else None
+         if op.name == "arith.bitcast":
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/native_conv_selector.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 06:36:41.991032900 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 07:08:57.684116495 -0700
+@@ -76,3 +76,66 @@
+     if c.kh * c.kw * c.ci * 128 * 128 > (1 << 31) - 1:
+         return False, "native_loop_conv_accumulator_may_overflow_i32"
+     return True, "selected"
++
++
++def select_native_loop_conv_compute_only(c, activation, weight, dst) -> tuple[bool, str]:
++    """Admit LOOP_CONV as an i32 dot-product producer, without using its narrow store.
++
++    The universal RTL's LoopConv store is narrow-only.  This route deliberately leaves the
++    output pointer null, fences, and performs explicit full-width accumulator MVOUTs.  It is
++    consequently independent of the native scale/bias/activation path and preserves the
++    canonical PT2E epilogue on the host lane.
++
++    Batch-one NCHW is representable by ``trans_input_3120``: with N=1, NCHW and CHWN have the
++    same byte order.  We do not generalise that identity to N>1.  Weights are explicitly
++    prepacked from OIHW to HWIO, and the i32 staging buffer has an explicit logical-NCHW /
++    physical-NHWC encoding.
++    """
++    if not F.HAS_LOOP_CONV:
++        return False, "target_has_no_loop_conv"
++    if not F.HAS_TRAINING_CONVS:
++        return False, "target_has_no_loop_conv_layout_transforms"
++    if (activation.dtype != F.OPERAND_DTYPE or weight.dtype != F.OPERAND_DTYPE
++            or c.output_dtype != F.ACCUMULATOR_DTYPE or dst.dtype != F.ACCUMULATOR_DTYPE):
++        return False, "compute_only_requires_i8_i8_to_i32"
++    if dst.role == "output":
++        return False, "compute_only_physical_nhwc_must_not_escape_output_abi"
++    if c.batch != 1:
++        return False, "nchw_trans_input_3120_requires_batch_one"
++    if (c.input_layout, c.weight_layout, c.output_layout) != (
++            "NCHW_batch1", "HWIO", "NHWC_accumulator"):
++        return False, "compute_only_layout_contract_not_satisfied"
++    if c.bias is not None or c.relu or float(c.acc_scale) != 1.0:
++        return False, "compute_only_must_not_own_epilogue"
++    if c.kh != c.kw or c.stride_h != c.stride_w or c.dilation_h != c.dilation_w:
++        return False, "loop_conv_requires_uniform_2d_geometry"
++    if not (c.pad_top == c.pad_left == c.pad_bottom == c.pad_right):
++        return False, "loop_conv_requires_uniform_padding"
++    if c.pad_top < 0 or c.pad_top >= c.kh:
++        return False, "native_loop_conv_requires_0_le_padding_lt_kernel"
++    if min(c.batch, c.ci, c.hi, c.wi, c.co, c.kh, c.kw, c.ho, c.wo,
++           c.stride_h, c.dilation_h) < 1:
++        return False, "loop_conv_requires_positive_static_geometry"
++    if activation.shape != [1, c.ci, c.hi, c.wi]:
++        return False, "activation_shape_does_not_match_batch1_nchw"
++    if activation.pitch != c.wi:
++        return False, "trans_input_3120_requires_dense_nchw_rows"
++    if weight.shape not in ([c.kh, c.kw, c.ci, c.co], [c.kh * c.kw * c.ci, c.co]):
++        return False, "weight_shape_does_not_match_hwio"
++    encoding = dst.storage_encoding or {}
++    if (dst.shape != [1, c.co, c.ho, c.wo]
++            or encoding.get("schema") != "permuted_axes_storage_v1"
++            or encoding.get("permutation") != [0, 2, 3, 1]
++            or encoding.get("physical_shape") != [1, c.ho, c.wo, c.co]):
++        return False, "output_is_not_logical_nchw_physical_nhwc"
++    fields16 = (c.batch, c.ci, c.hi, c.wi, c.co, c.kh, c.kw, c.ho, c.wo,
++                activation.pitch, weight.pitch, dst.pitch)
++    if any(value >= (1 << 16) for value in fields16):
++        return False, "native_loop_conv_16bit_field_overflow"
++    if c.stride_h >= (1 << 8) or c.pad_top >= (1 << 8):
++        return False, "native_loop_conv_8bit_field_overflow"
++    if c.dilation_h >= (1 << 10):
++        return False, "kernel_dilation_not_representable"
++    if c.kh * c.kw * c.ci * 128 * 128 > (1 << 31) - 1:
++        return False, "native_loop_conv_accumulator_may_overflow_i32"
++    return True, "selected_compute_only_full_width_mvout"
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/plan.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/plan.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/plan.py	2026-09-08 04:11:09.216536547 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/plan.py	2026-09-08 07:04:59.494716124 -0700
+@@ -68,9 +68,13 @@
+     def pitch(self) -> int:
+         if self.storage_encoding is not None:
+             encoding = self.storage_encoding
+-            if encoding["physical_shape"] != self.shape or encoding["dtype"] != self.dtype:
++            declared = (encoding.get("logical_shape")
++                        if encoding.get("schema") == "permuted_axes_storage_v1"
++                        else encoding["physical_shape"])
++            if declared != self.shape or encoding["dtype"] != self.dtype:
+                 raise LoweringDeclined("buffer type changed after storage encoding", op="storage_encoding")
+-            return (encoding["strides_elements"][-2] if len(self.shape) > 1
++            physical = encoding["physical_shape"]
++            return (encoding["strides_elements"][-2] if len(physical) > 1
+                     else encoding["storage_elements"])
+         return row_pitch(self.shape[-1]) if self.shape else 0
+
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/schedule.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/schedule.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/schedule.py	2026-09-08 05:56:18.303130136 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/schedule.py	2026-09-08 08:15:32.583500036 -0700
+@@ -14,7 +14,10 @@
+ from ..tables import rtl_facts as F
+ from .model_lane import HostSegment
+ from .source_conv_plan import Convolution
+-from .native_conv_selector import select_native_loop_conv
++from .native_conv_selector import (
++    select_native_loop_conv,
++    select_native_loop_conv_compute_only,
++)
+ from ..tables import loop_ws
+ from ..tables import loop_conv
+
+@@ -251,10 +254,16 @@
+         if conv_receipt is not None:
+             conv_receipt.update(
+                 native_loop_conv_count=sum(
++                    item["selected"].startswith("gemmini_loop_conv_ws")
++                    for item in self._convolution_selections),
++                native_loop_conv_narrow_count=sum(
+                     item["selected"] == "gemmini_loop_conv_ws"
+                     for item in self._convolution_selections),
++                native_loop_conv_compute_only_count=sum(
++                    item["selected"] == "gemmini_loop_conv_ws_compute_only"
++                    for item in self._convolution_selections),
+                 fallback_count=sum(
+-                    item["selected"] != "gemmini_loop_conv_ws"
++                    not item["selected"].startswith("gemmini_loop_conv_ws")
+                     for item in self._convolution_selections),
+                 selections=list(self._convolution_selections))
+         if len(self.instrs) > COMMAND_BUDGET:
+@@ -436,7 +445,9 @@
+                          "padding": [c.pad_top, c.pad_left, c.pad_bottom, c.pad_right]},
+             "semantic_output_dtype": c.output_dtype,
+             "layouts": [c.input_layout, c.weight_layout, c.output_layout],
+-            "selected": "gemmini_loop_conv_ws" if native else "streamed_row_im2col_loop_ws",
++            "selected": (("gemmini_loop_conv_ws_compute_only"
++                          if c.compute_only_native else "gemmini_loop_conv_ws")
++                         if native else "streamed_row_im2col_loop_ws"),
+             "reason": _reason,
+         })
+         if native:
+@@ -522,6 +533,8 @@
+     def native_convolution_eligibility(self, c: Convolution) -> tuple[bool, str]:
+         """Whether the source semantics and physical encodings fit LOOP_CONV_WS exactly."""
+         activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
++        if c.compute_only_native:
++            return select_native_loop_conv_compute_only(c, activation, weight, dst)
+         stages = (["bias"] if c.bias else [])
+         if c.relu:
+             stages.append("relu")
+@@ -536,8 +549,16 @@
+         activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
+         batches, porows, pocols, pochs, krows, kcols, kchs = loop_conv.auto_tile(
+             batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
+-            stride=c.stride_h, kernel_dilation=c.dilation_h)
++            stride=c.stride_h, kernel_dilation=c.dilation_h,
++            trans_input_3120=c.compute_only_native)
+         in_stride, weight_stride, out_stride = activation.pitch, weight.pitch, dst.pitch
++        zero_bias = (self.stage_buffer([pochs], F.ACCUMULATOR_DTYPE, "loop_conv_zero_bias")
++                     if c.compute_only_native else None)
++        if zero_bias is not None:
++            # Compiler staging globals lower to LLVM ``undef``, not a BSS zero initializer.
++            # Materialise the exact LOAD3 value every invocation and publish it before launch.
++            self.emit("host_zero_i32", [zero_bias.name], elements=pochs)
++            self.emit("fence")
+         st = {"stride": out_stride,
+               "acc_act": isa.RELU if c.relu else isa.NO_ACTIVATION,
+               "acc_scale": c.acc_scale}
+@@ -546,7 +567,13 @@
+             self.emit("fence")
+         self.config_st(**st)
+         self.config_ex(dataflow=isa.WEIGHT_STATIONARY, act=isa.NO_ACTIVATION,
+-                       acc_scale=1.0, a_stride=c.stride_h, c_stride=1)
++                       acc_scale=1.0, a_stride=c.stride_h, c_stride=1,
++                       # The descriptor flag changes LOOP_CONV's loader and execute
++                       # address formulas, but CONFIG_EX independently controls the
++                       # systolic array's A transpose.  The public Gemmini helper sets
++                       # both for an NCHW/CHWN input; omitting this bit computes a
++                       # different matrix product without trapping.
++                       a_transpose=c.compute_only_native, b_transpose=False)
+         for b in range(0, c.batch, batches):
+             for orow in range(0, c.ho, porows):
+                 for ocol in range(0, c.wo, pocols):
+@@ -575,8 +602,35 @@
+                                              and kch + tile_kch == c.ci)
+                                     first = krow == 0 and kcol == 0 and kch == 0
+                                     bufs = [c.activation, c.weight, c.dst]
+-                                    if c.bias:
++                                    if c.bias and zero_bias is None:
+                                         bufs.append(c.bias)
++                                    if zero_bias is not None and first:
++                                        # With a null output pointer LoopConv keeps its private C
++                                        # accumulator base at row zero.  Its ordinary bias-load
++                                        # path does not provide the public, stable C-zeroing
++                                        # contract compute-only needs.  Clear C0 explicitly through
++                                        # LOAD3 and keep CONFIG_6 bias null.  One source zero row is
++                                        # replayed with DRAM stride zero over the tile's C layout.
++                                        volume = tile_b * tile_or * tile_oc
++                                        self.emit(
++                                            "config_ld", stride=0, scale=1.0,
++                                            shrunk=False, load_id=2,
++                                            block_stride=volume, pixel_repeats=1)
++                                        for local_och in range(0, tile_och, DIM):
++                                            cols = min(DIM, tile_och - local_och)
++                                            c_block = local_och // DIM
++                                            for local_b in range(tile_b):
++                                                for local_orow in range(tile_or):
++                                                    for local_ocol in range(0, tile_oc, DIM):
++                                                        rows = min(DIM, tile_oc - local_ocol)
++                                                        local_row = (
++                                                            c_block * volume
++                                                            + local_b * tile_or * tile_oc
++                                                            + local_orow * tile_oc + local_ocol)
++                                                        self.emit(
++                                                            "mvin", [zero_bias.name], load_id=2,
++                                                            local=isa.acc_addr(local_row),
++                                                            rows=rows, cols=cols, offset=0)
+                                     self.emit(
+                                         "loop_conv_ws", bufs,
+                                         batch_size=c.batch, in_row_dim=c.hi,
+@@ -594,26 +648,82 @@
+                                         orows=tile_or, ocols=tile_oc,
+                                         in_stride=in_stride, weight_stride=weight_stride,
+                                         out_stride=out_stride,
+-                                        no_bias=not (c.bias and first), no_pool=True,
++                                        # A null bias pointer makes LoopConvLdBias skip rather
++                                        # than clear C.  Compute-only descriptors deliberately
++                                        # reuse accumulator base zero, so LOAD3 an all-zero
++                                        # compiler-owned vector for the first K slice of every
++                                        # output tile; later slices accumulate without clearing.
++                                        no_bias=(True if zero_bias is not None
++                                                 else not (c.bias and first)), no_pool=True,
+                                         downsample=False, wrot180=False, input_dilated=False,
+                                         activation=isa.NO_ACTIVATION,
+                                         trans_output_1203=False, trans_weight_1203=False,
+-                                        trans_weight_0132=False, trans_input_3120=False,
+-                                        max_pixels_per_row=min(
+-                                            tile_kc, max(1, DIM // tile_kch)), dw=False,
++                                        trans_weight_0132=False,
++                                        trans_input_3120=c.compute_only_native,
++                                        # Gemmini's public helper forces one pixel whenever
++                                        # either matrix is transposed.  With transposed A, a
++                                        # larger value makes K=pixels*kchs while the temporary
++                                        # A stride is irows*icols; compute then reads beyond the
++                                        # rows loaded for the channel-major tile.
++                                        max_pixels_per_row=(
++                                            1 if c.compute_only_native else
++                                            min(tile_kc, max(1, DIM // tile_kch))), dw=False,
+                                         a_spad_id=0, b_spad_id=0,
+-                                        input_offset=((b * c.hi * c.wi
++                                        input_offset=((kch * c.hi * c.wi
+                                                        + (irow + upad) * c.wi
+-                                                       + (icol + lpad)) * in_stride + kch),
++                                                       + (icol + lpad))
++                                                      if c.compute_only_native else
++                                                      ((b * c.hi * c.wi
++                                                        + (irow + upad) * c.wi
++                                                        + (icol + lpad)) * in_stride + kch)),
+                                         weight_offset=((krow * c.kw * c.ci
+                                                         + kcol * c.ci + kch)
+                                                        * weight_stride + poch),
+                                         output_offset=((b * c.ho * c.wo
+                                                         + orow * c.wo + ocol)
+                                                        * out_stride + poch),
+-                                        bias_offset=poch * DTYPE_BYTES["i32"],
+-                                        write_output=final,
+-                                        implementation="gemmini_loop_conv_ws")
++                                        bias_offset=(0 if zero_bias is not None
++                                                     else poch * DTYPE_BYTES["i32"]),
++                                        write_output=final and not c.compute_only_native,
++                                        implementation=("gemmini_loop_conv_ws_compute_only"
++                                                        if c.compute_only_native
++                                                        else "gemmini_loop_conv_ws"))
++                                    if c.compute_only_native and final:
++                                        # The loop controller does not rotate accumulator banks
++                                        # when output_dram_addr is null, so this descriptor's C
++                                        # starts at row zero. The controller blocks this direct
++                                        # MVOUT until internal completion; the reservation station
++                                        # orders its read against the next descriptor's write.
++                                        self.config_st(
++                                            stride=out_stride * DTYPE_BYTES[F.ACCUMULATOR_DTYPE],
++                                            acc_act=isa.NO_ACTIVATION, acc_scale=1.0)
++                                        for local_och in range(0, tile_och, DIM):
++                                            cols = min(DIM, tile_och - local_och)
++                                            channel = poch + local_och
++                                            c_block = local_och // DIM
++                                            for local_b in range(tile_b):
++                                                for local_orow in range(tile_or):
++                                                    # MVOUT's row count is a DIM-sized hardware
++                                                    # field.  The LOOP_CONV tile may be wider than
++                                                    # DIM, so mirror the public helper's ocol
++                                                    # splitting rather than encoding 32 as zero.
++                                                    for local_ocol in range(0, tile_oc, DIM):
++                                                        rows = min(DIM, tile_oc - local_ocol)
++                                                        local_row = (
++                                                            c_block * tile_b * tile_or * tile_oc
++                                                            + local_b * tile_or * tile_oc
++                                                            + local_orow * tile_oc + local_ocol)
++                                                        global_row = (
++                                                            (b + local_b) * c.ho * c.wo
++                                                            + (orow + local_orow) * c.wo
++                                                            + ocol + local_ocol)
++                                                        self.emit(
++                                                            "mvout", [c.dst],
++                                                            local=isa.acc_addr(
++                                                                local_row, full_row=True),
++                                                            rows=rows, cols=cols,
++                                                            offset=(global_row * out_stride + channel)
++                                                            * DTYPE_BYTES[F.ACCUMULATOR_DTYPE])
+
+     def contraction(self, c: Contraction) -> None:
+         lhs, rhs, dst = self.buf(c.lhs), self.buf(c.rhs), self.buf(c.dst)
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-08 06:12:32.875682927 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-08 07:08:57.685116513 -0700
+@@ -448,14 +448,53 @@
+         formation = self.native_epilogues.get(op)
+         out_value = formation.output if formation is not None else spec.output
+         dst = self.of_value.get(out_value) or self.buffer_for(out_value)
+-        # The compiler ABI consumes an offline-packed [Co,K] view. OIHW flattening preserves
+-        # element order; only end-of-row DIM padding is added by the bundle packer.
++        # The compute-only LOOP_CONV route is intentionally restricted to the exact NCHW case
++        # its training-convolution transpose bit represents: batch one.  All other cases retain
++        # the established streamed-row fallback and its CoK packing.
++        compute_only = bool(
++            formation is None and F.HAS_LOOP_CONV and F.HAS_TRAINING_CONVS
++            and self.buffers[dst].role != "output"
++            and self.buffers[activation].pitch == spec.wi
++            and spec.batch == 1 and spec.kh == spec.kw
++            and spec.stride_h == spec.stride_w
++            and spec.dilation_h == spec.dilation_w
++            and spec.pad_top == spec.pad_left == spec.pad_bottom == spec.pad_right
++            and 0 <= spec.pad_top < spec.kh
++            and max(spec.batch, spec.ci, spec.hi, spec.wi, spec.co, spec.kh, spec.kw,
++                    spec.ho, spec.wo) < (1 << 16)
++            and spec.stride_h < (1 << 8) and spec.dilation_h < (1 << 10)
++            and spec.kh * spec.kw * spec.ci * 128 * 128 <= (1 << 31) - 1)
+         original_shape = list(self.buffers[weight].shape)
+-        self.buffers[weight].shape = [spec.co, spec.k]
+-        self._encode_buffer(weight, original_shape, [[0], [1, 2, 3]])
+-        recipe = {"tensor": weight, "source_shape": original_shape,
+-                  "packed_shape": [spec.co, spec.k], "source_layout": "OIHW",
+-                  "packed_layout": "CoK_dim_padded"}
++        if compute_only:
++            # LOOP_CONV's default weight stream is HWIO.  This is an offline constant transform,
++            # never runtime work.  K-major rows are padded only along the output-channel axis.
++            self.buffers[weight].shape = [spec.k, spec.co]
++            self._encode_buffer(weight, original_shape, [[2, 3, 1], [0]])
++            recipe = {"tensor": weight, "source_shape": original_shape,
++                      "packed_shape": [spec.k, spec.co], "source_layout": "OIHW",
++                      "packed_layout": "HWIO_dim_padded",
++                      "permutation": [2, 3, 1, 0]}
++            out = self.buffers[dst]
++            logical = [spec.batch, spec.co, spec.ho, spec.wo]
++            physical = [spec.batch, spec.ho, spec.wo, spec.co]
++            pitch = row_pitch(spec.co)
++            out.storage_encoding = {
++                "schema": "permuted_axes_storage_v1", "logical_shape": logical,
++                "dtype": out.dtype, "permutation": [0, 2, 3, 1],
++                "physical_shape": physical,
++                "strides_elements": [spec.ho * spec.wo * pitch,
++                                     spec.wo * pitch, pitch, 1],
++                "storage_elements": spec.batch * spec.ho * spec.wo * pitch,
++                "offset_elements": 0,
++            }
++        else:
++            # The fallback ABI consumes an offline-packed [Co,K] view. OIHW flattening preserves
++            # element order; only end-of-row DIM padding is added by the bundle packer.
++            self.buffers[weight].shape = [spec.co, spec.k]
++            self._encode_buffer(weight, original_shape, [[0], [1, 2, 3]])
++            recipe = {"tensor": weight, "source_shape": original_shape,
++                      "packed_shape": [spec.co, spec.k], "source_layout": "OIHW",
++                      "packed_layout": "CoK_dim_padded"}
+         if recipe not in self.weight_prepack:
+             self.weight_prepack.append(recipe)
+         self.commands.append({"opcode": "RES_PACK", "operands": {"src": weight,
+@@ -466,7 +505,8 @@
+                       "padding": [spec.pad_top, spec.pad_left,
+                                   spec.pad_bottom, spec.pad_right],
+                       "dilation": [spec.dilation_h, spec.dilation_w],
+-                      "layout": "nchw_streamed_row_im2col",
++                      "layout": ("nchw_batch1_loop_conv_compute_only"
++                                 if compute_only else "nchw_streamed_row_im2col"),
+                       "output_dtype": ("i8" if formation is not None else "i32")}
+         # Keep an unselected command byte-for-byte stable.  An empty epilogue list is redundant
+         # semantics, but adding it to every existing convolution obscures whether any physical work
+@@ -482,8 +522,12 @@
+             spec.kh, spec.kw, spec.ho, spec.wo, spec.stride_h, spec.stride_w,
+             spec.dilation_h, spec.dilation_w, spec.pad_top, spec.pad_left,
+             spec.pad_bottom, spec.pad_right, spec.direct_dma,
++            input_layout="NCHW_batch1" if compute_only else "NCHW",
++            weight_layout="HWIO" if compute_only else "CoK",
++            output_layout="NHWC_accumulator" if compute_only else "NCHW",
+             output_dtype=("i8" if formation is not None else "i32"),
+-            relu=bool(formation is not None and formation.relu))
++            relu=bool(formation is not None and formation.relu),
++            compute_only_native=compute_only)
+         if formation is not None:
+             self.of_value[spec.output] = dst
+             self.of_value[formation.output] = dst
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_plan.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/source_conv_plan.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 05:53:16.508907701 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 06:52:02.374226523 -0700
+@@ -40,3 +40,4 @@
+     bias: str | None = None
+     acc_scale: float = 1.0
+     relu: bool = False
++    compute_only_native: bool = False
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/isa.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/tables/isa.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/isa.py	2026-09-05 04:54:56.514634980 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/tables/isa.py	2026-09-08 07:59:15.846147303 -0700
+@@ -25,6 +25,7 @@
+ K_CONFIG = 0
+ K_MVIN2 = 1
+ K_MVIN = 2
++K_MVIN3 = 14
+ K_MVOUT = 3
+ K_COMPUTE_PRELOADED = 4
+ K_COMPUTE_ACCUMULATE = 5
+@@ -156,7 +157,7 @@
+
+ def mvin(*, local_addr: int, cols: int, rows: int, load_id: int = 0):
+     """`gemmini_extended_mvin`; rs1 is the DRAM address (runtime pointer)."""
+-    funct = {0: K_MVIN, 1: K_MVIN2}[load_id]
++    funct = {0: K_MVIN, 1: K_MVIN2, 2: K_MVIN3}[load_id]
+     return funct, None, _mem_rs2(local_addr, cols, rows)
+
+
+diff -ruN '--exclude=__pycache__' /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/loop_conv.py /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/tables/loop_conv.py
+--- /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/loop_conv.py	2026-09-08 03:33:08.622563713 -0700
++++ /scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_compute_only_loop_conv_20260908/compiler/mlir_oot/tables/loop_conv.py	2026-09-08 07:43:15.949143471 -0700
+@@ -85,7 +85,9 @@
+
+ def total_rows(*, accumulator: bool, stride: int, kernel_dilation: int,
+                batches: int, porows: int, pocols: int, pochs: int,
+-               krows: int, kcols: int, kchs: int) -> int:
++               krows: int, kcols: int, kchs: int,
++               trans_input_3120: bool = False,
++               trans_weight_0132: bool = False) -> int:
+     """Rows used by one no-pool NHWC/HWIO tile, matching tiled_conv_total_spad_rows."""
+     dilated_krows = krows + (kernel_dilation - 1) * (krows - 1)
+     dilated_kcols = kcols + (kernel_dilation - 1) * (kcols - 1)
+@@ -93,14 +95,20 @@
+     icols = pocols * stride + dilated_kcols - 1
+     in_channel_tiles = (kchs + F.DIM - 1) // F.DIM
+     out_channel_tiles = (pochs + F.DIM - 1) // F.DIM
+-    a_rows = in_channel_tiles * batches * irows * icols
+-    b_rows = out_channel_tiles * kcols * krows * kchs
++    batch_tiles = (batches + F.DIM - 1) // F.DIM
++    a_rows = ((batch_tiles * kchs if trans_input_3120
++               else in_channel_tiles * batches) * irows * icols)
++    b_rows = ((in_channel_tiles * kcols * krows * pochs)
++              if trans_weight_0132
++              else (out_channel_tiles * kcols * krows * kchs))
+     c_rows = out_channel_tiles * batches * porows * pocols
+     return c_rows if accumulator else a_rows + b_rows
+
+
+ def auto_tile(*, batch: int, ho: int, wo: int, co: int, kh: int, kw: int,
+-              ci: int, stride: int, kernel_dilation: int) -> tuple[int, ...]:
++              ci: int, stride: int, kernel_dilation: int,
++              trans_input_3120: bool = False,
++              trans_weight_0132: bool = False) -> tuple[int, ...]:
+     """Capacity-select a native tile using Gemmini's public ``tiled_conv_stride_auto`` rule."""
+     args = [batch, ho, wo, co, kh, kw, ci]
+     maxima = list(args)
+@@ -108,6 +116,8 @@
+
+     def fits(candidate: list[int]) -> bool:
+         common = dict(stride=stride, kernel_dilation=kernel_dilation,
++                      trans_input_3120=trans_input_3120,
++                      trans_weight_0132=trans_weight_0132,
+                       batches=candidate[0], porows=candidate[1], pocols=candidate[2],
+                       pochs=candidate[3], krows=candidate[4], kcols=candidate[5],
+                       kchs=candidate[6])

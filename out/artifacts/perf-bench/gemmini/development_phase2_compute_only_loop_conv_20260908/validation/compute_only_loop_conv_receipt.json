@@ -1,0 +1,91 @@
+{
+  "schema": "merlin_gemmini_compute_only_loop_conv_v1",
+  "status": "passed_exact_local_spike_not_hardware_qualified",
+  "provenance": {
+    "owner": "Merlin canonical compiler and source graph",
+    "hybrid_or_tvm_graph_ownership": false,
+    "source_mlir": "phase2_portfolio_bootstrap_v1_20260907/objectives/resnet50_w8a8/model.prepared.mlir",
+    "source_sha256": "76c26171096661650e2ee440fb545926936b1e770d2bfd0206a6509e6e835e94",
+    "quantization_contract": "designated_i32_staged_f32_v1",
+    "source_semantics_changed": false
+  },
+  "compiler": {
+    "tree_sha256": "0ef9caa3b16c30c724077de42305da7441ac838bbfe98be217712e1de11a1cd3",
+    "tree_files": 43,
+    "compile_seconds": 31.05,
+    "maxrss_kb": 217176,
+    "target_mlir_bytes": 13915624,
+    "target_mlir_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673",
+    "command_buffer_sha256": "b679505a376585db38e06c976b3c60b40b4d5af864ae20519ec78b96fb7c58af",
+    "kernel_object_bytes": 499328,
+    "kernel_object_sha256": "7d95c7431e35d5e74d528d20489231b07661efced52f25a99ddd89ff289f407d"
+  },
+  "coverage": {
+    "source_convolutions": 53,
+    "native_compute_only": 1,
+    "native_narrow": 0,
+    "fallback": 52,
+    "native_task": 1,
+    "native_geometry": "1x3x224x224 -> 1x64x112x112, K7, stride2, pad3",
+    "fallback_reason": "loop_conv_store_is_narrow_only",
+    "limitation": "Only the dense-pitch stem is admitted. Later padded NCHW activations fail closed because trans_input_3120 does not represent their physical row pitch."
+  },
+  "payload": {
+    "kernel_args": 393,
+    "const_blob_bytes": 26562496,
+    "const_blob_sha256": "91906f3bd330473442eb499cb78431e4e218a72c5e0d855c023bb80dff1509ff",
+    "mutable_blob_bytes": 90083520,
+    "only_changed_constant": "arg162 OIHW to HWIO",
+    "arg162_elements": 9408,
+    "arg162_unpadded_sha256": "523fdc344ff8ee5b81ee0a272b153622b34465f0f7b9ee523d2b82314b4ee244",
+    "independent_pack_index_formula_passed": true
+  },
+  "two_descriptor_exact_gate": {
+    "target_mlir_sha256": "de90ae64c939cdfa18ad239af853ec3e988a6058df735897a630634fde2ab608",
+    "elf_sha256": "fff543fbfa516e34d14f121057622b1a0b4d041c2a0d9f49850cf0fc96f6e4a9",
+    "descriptors": 2,
+    "outputs_checked": 512,
+    "mismatches": 0,
+    "first_channel_tile_witness": 46,
+    "second_channel_tile_witness": -33,
+    "fresh_repeat_count": 3,
+    "repeat_log_sha256": "e5c8b25f2e6ebeea0c8fecb53b2c0acee4a03a19c81460024faa8ec4501e5e7c"
+  },
+  "whole_model_spike": {
+    "elf_bytes": 27422128,
+    "elf_sha256": "aa70e8aaffaea946f021da952570bcf270962948d6c5b4ac09532a9fb8b20366",
+    "measured_kernel_object_sha256": "7d95c7431e35d5e74d528d20489231b07661efced52f25a99ddd89ff289f407d",
+    "warm_progress_kernel_object_sha256": "14ccd14d5d5ee22976bb7100710e241e9b0c0bc406357069676b5e177149f859",
+    "log_sha256": "a40f3ceee0c29521bfa2a32fcd31e516991b2c5d212b3034dd68498dfc885bd5",
+    "wall_seconds": 80.17,
+    "warm_progress_completed_tasks": [12, 26, 39, 53, 67, 80, 94, 108],
+    "cycles": 496240002,
+    "instret": 496240008,
+    "logits_checked": 1000,
+    "mismatches": 0,
+    "nonfinite": 0,
+    "top1": 258,
+    "expected_top1": 258,
+    "checksum_fnv1a64": "c6e777c3fe0aae90",
+    "max_abs_bits": "00000000"
+  },
+  "comparison": {
+    "q535_spike_cycles": 506265226,
+    "candidate_spike_cycles": 496240002,
+    "cycles_saved": 10025224,
+    "cycle_reduction_percent": 1.9802316030,
+    "speedup": 1.0202023697,
+    "scope": "Spike comparative proxy only, not a hardware performance claim"
+  },
+  "tests": {
+    "command": "PYTHONPATH=compiler:runtime_target .venv/bin/python -m pytest -q tests",
+    "passed": 51,
+    "parameterized_subtests": 6
+  },
+  "hardware": {
+    "firesim_run": false,
+    "fpga_submission": false,
+    "safe_to_submit": true,
+    "readiness": "independent audit passed; root owns submission"
+  }
+}

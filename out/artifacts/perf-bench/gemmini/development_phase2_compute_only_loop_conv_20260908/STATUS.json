@@ -1,0 +1,23 @@
+{
+  "artifact_status": "exact_local_spike_pass_firesim_ready",
+  "mechanism": "native LOOP_CONV compute-only plus explicit LOAD3 C clear and full-width i32 MVOUT",
+  "canonical_resnet50": {
+    "native_convolutions": 1,
+    "fallback_convolutions": 52,
+    "spike_cycles": 496240002,
+    "q535_spike_cycles": 506265226,
+    "logits_checked": 1000,
+    "mismatches": 0,
+    "top1": 258
+  },
+  "qualification": {
+    "tests": "51 passed plus 6 parameterized subtests",
+    "two_descriptor_micro_spike": "512/512 exact, three repeat-stable runs",
+    "whole_model_spike": "clean warm-progress ELF passed exact",
+    "firesim": "not run",
+    "safe_to_submit": true,
+    "independent_audit": "passed",
+    "firesim_owner": "root agent"
+  },
+  "evidence": "validation/compute_only_loop_conv_receipt.json"
+}
