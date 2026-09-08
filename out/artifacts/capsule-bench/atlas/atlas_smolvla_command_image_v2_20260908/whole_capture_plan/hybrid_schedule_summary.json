@@ -1,4 +1,891 @@
 {
+  "accelerator_contract_census": {
+    "by_kind": {
+      "matmul": 303,
+      "matmul_batched": 88
+    },
+    "classes": [
+      {
+        "contract_qualified": 0,
+        "count": 1,
+        "input_origins": [
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_768_768_1024",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0000"
+        ],
+        "source_semantic": "convolution_im2col_matmul"
+      },
+      {
+        "contract_qualified": 36,
+        "count": 36,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_1024_768_768_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0001",
+          "atlas_p0002",
+          "atlas_p0003",
+          "atlas_p0009",
+          "atlas_p0010",
+          "atlas_p0011",
+          "atlas_p0017",
+          "atlas_p0018",
+          "atlas_p0019",
+          "atlas_p0025",
+          "atlas_p0026",
+          "atlas_p0027",
+          "atlas_p0033",
+          "atlas_p0034",
+          "atlas_p0035",
+          "atlas_p0041",
+          "atlas_p0042",
+          "atlas_p0043",
+          "atlas_p0049",
+          "atlas_p0050",
+          "atlas_p0051",
+          "atlas_p0057",
+          "atlas_p0058",
+          "atlas_p0059",
+          "atlas_p0065",
+          "atlas_p0066",
+          "atlas_p0067",
+          "atlas_p0073",
+          "atlas_p0074",
+          "atlas_p0075",
+          "atlas_p0081",
+          "atlas_p0082",
+          "atlas_p0083",
+          "atlas_p0089",
+          "atlas_p0090",
+          "atlas_p0091"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 12,
+        "input_origins": [
+          "accelerator_partition",
+          "accelerator_partition"
+        ],
+        "kernel_id": "matmul_batched_12_1024_64_1024",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0004",
+          "atlas_p0012",
+          "atlas_p0020",
+          "atlas_p0028",
+          "atlas_p0036",
+          "atlas_p0044",
+          "atlas_p0052",
+          "atlas_p0060",
+          "atlas_p0068",
+          "atlas_p0076",
+          "atlas_p0084",
+          "atlas_p0092"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 12,
+        "input_origins": [
+          "host_region",
+          "accelerator_partition"
+        ],
+        "kernel_id": "matmul_batched_12_1024_1024_64",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0005",
+          "atlas_p0013",
+          "atlas_p0021",
+          "atlas_p0029",
+          "atlas_p0037",
+          "atlas_p0045",
+          "atlas_p0053",
+          "atlas_p0061",
+          "atlas_p0069",
+          "atlas_p0077",
+          "atlas_p0085",
+          "atlas_p0093"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 12,
+        "count": 12,
+        "input_origins": [
+          "accelerator_partition",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_1024_768_768_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0006",
+          "atlas_p0014",
+          "atlas_p0022",
+          "atlas_p0030",
+          "atlas_p0038",
+          "atlas_p0046",
+          "atlas_p0054",
+          "atlas_p0062",
+          "atlas_p0070",
+          "atlas_p0078",
+          "atlas_p0086",
+          "atlas_p0094"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 12,
+        "count": 12,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_1024_768_3072_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0007",
+          "atlas_p0015",
+          "atlas_p0023",
+          "atlas_p0031",
+          "atlas_p0039",
+          "atlas_p0047",
+          "atlas_p0055",
+          "atlas_p0063",
+          "atlas_p0071",
+          "atlas_p0079",
+          "atlas_p0087",
+          "atlas_p0095"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 12,
+        "count": 12,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_1024_3072_768_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0008",
+          "atlas_p0016",
+          "atlas_p0024",
+          "atlas_p0032",
+          "atlas_p0040",
+          "atlas_p0048",
+          "atlas_p0056",
+          "atlas_p0064",
+          "atlas_p0072",
+          "atlas_p0080",
+          "atlas_p0088",
+          "atlas_p0096"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_64_12288_960",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0097"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "function_argument",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_1_32_960_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0098"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_960_960",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0099",
+          "atlas_p0108",
+          "atlas_p0117",
+          "atlas_p0126",
+          "atlas_p0135",
+          "atlas_p0144",
+          "atlas_p0153",
+          "atlas_p0162",
+          "atlas_p0171",
+          "atlas_p0180",
+          "atlas_p0189",
+          "atlas_p0198",
+          "atlas_p0207",
+          "atlas_p0216",
+          "atlas_p0225",
+          "atlas_p0234"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 32,
+        "count": 32,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_960_320",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0100",
+          "atlas_p0101",
+          "atlas_p0109",
+          "atlas_p0110",
+          "atlas_p0118",
+          "atlas_p0119",
+          "atlas_p0127",
+          "atlas_p0128",
+          "atlas_p0136",
+          "atlas_p0137",
+          "atlas_p0145",
+          "atlas_p0146",
+          "atlas_p0154",
+          "atlas_p0155",
+          "atlas_p0163",
+          "atlas_p0164",
+          "atlas_p0172",
+          "atlas_p0173",
+          "atlas_p0181",
+          "atlas_p0182",
+          "atlas_p0190",
+          "atlas_p0191",
+          "atlas_p0199",
+          "atlas_p0200",
+          "atlas_p0208",
+          "atlas_p0209",
+          "atlas_p0217",
+          "atlas_p0218",
+          "atlas_p0226",
+          "atlas_p0227",
+          "atlas_p0235",
+          "atlas_p0236"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "host_region"
+        ],
+        "kernel_id": "matmul_batched_15_113_64_113",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0102",
+          "atlas_p0111",
+          "atlas_p0120",
+          "atlas_p0129",
+          "atlas_p0138",
+          "atlas_p0147",
+          "atlas_p0156",
+          "atlas_p0165",
+          "atlas_p0174",
+          "atlas_p0183",
+          "atlas_p0192",
+          "atlas_p0201",
+          "atlas_p0210",
+          "atlas_p0219",
+          "atlas_p0228",
+          "atlas_p0237"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "host_region"
+        ],
+        "kernel_id": "matmul_batched_15_113_113_64",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0103",
+          "atlas_p0112",
+          "atlas_p0121",
+          "atlas_p0130",
+          "atlas_p0139",
+          "atlas_p0148",
+          "atlas_p0157",
+          "atlas_p0166",
+          "atlas_p0175",
+          "atlas_p0184",
+          "atlas_p0193",
+          "atlas_p0202",
+          "atlas_p0211",
+          "atlas_p0220",
+          "atlas_p0229",
+          "atlas_p0238"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "accelerator_partition",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_960_960",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0104",
+          "atlas_p0113",
+          "atlas_p0122",
+          "atlas_p0131",
+          "atlas_p0140",
+          "atlas_p0149",
+          "atlas_p0158",
+          "atlas_p0167",
+          "atlas_p0176",
+          "atlas_p0185",
+          "atlas_p0194",
+          "atlas_p0203",
+          "atlas_p0212",
+          "atlas_p0221",
+          "atlas_p0230",
+          "atlas_p0239"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 32,
+        "count": 32,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_960_2560",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0105",
+          "atlas_p0106",
+          "atlas_p0114",
+          "atlas_p0115",
+          "atlas_p0123",
+          "atlas_p0124",
+          "atlas_p0132",
+          "atlas_p0133",
+          "atlas_p0141",
+          "atlas_p0142",
+          "atlas_p0150",
+          "atlas_p0151",
+          "atlas_p0159",
+          "atlas_p0160",
+          "atlas_p0168",
+          "atlas_p0169",
+          "atlas_p0177",
+          "atlas_p0178",
+          "atlas_p0186",
+          "atlas_p0187",
+          "atlas_p0195",
+          "atlas_p0196",
+          "atlas_p0204",
+          "atlas_p0205",
+          "atlas_p0213",
+          "atlas_p0214",
+          "atlas_p0222",
+          "atlas_p0223",
+          "atlas_p0231",
+          "atlas_p0232",
+          "atlas_p0240",
+          "atlas_p0241"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_2560_960",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0107",
+          "atlas_p0116",
+          "atlas_p0125",
+          "atlas_p0134",
+          "atlas_p0143",
+          "atlas_p0152",
+          "atlas_p0161",
+          "atlas_p0170",
+          "atlas_p0179",
+          "atlas_p0188",
+          "atlas_p0197",
+          "atlas_p0206",
+          "atlas_p0215",
+          "atlas_p0224",
+          "atlas_p0233",
+          "atlas_p0242"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "function_argument",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_32_720_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0243"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_1440_720_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0244"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_720_720_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0245"
+        ],
+        "source_semantic": "addmm"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_720_960",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0246",
+          "atlas_p0255",
+          "atlas_p0264",
+          "atlas_p0273",
+          "atlas_p0282",
+          "atlas_p0291",
+          "atlas_p0300",
+          "atlas_p0309",
+          "atlas_p0318",
+          "atlas_p0327",
+          "atlas_p0336",
+          "atlas_p0345",
+          "atlas_p0354",
+          "atlas_p0363",
+          "atlas_p0372",
+          "atlas_p0381"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_720_320",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0247",
+          "atlas_p0248",
+          "atlas_p0265",
+          "atlas_p0266",
+          "atlas_p0283",
+          "atlas_p0284",
+          "atlas_p0301",
+          "atlas_p0302",
+          "atlas_p0319",
+          "atlas_p0320",
+          "atlas_p0337",
+          "atlas_p0338",
+          "atlas_p0355",
+          "atlas_p0356",
+          "atlas_p0373",
+          "atlas_p0374"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 8,
+        "input_origins": [
+          "host_region",
+          "host_region"
+        ],
+        "kernel_id": "matmul_batched_15_50_64_163",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0249",
+          "atlas_p0267",
+          "atlas_p0285",
+          "atlas_p0303",
+          "atlas_p0321",
+          "atlas_p0339",
+          "atlas_p0357",
+          "atlas_p0375"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 8,
+        "input_origins": [
+          "host_region",
+          "host_region"
+        ],
+        "kernel_id": "matmul_batched_15_50_163_64",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0250",
+          "atlas_p0268",
+          "atlas_p0286",
+          "atlas_p0304",
+          "atlas_p0322",
+          "atlas_p0340",
+          "atlas_p0358",
+          "atlas_p0376"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 8,
+        "count": 8,
+        "input_origins": [
+          "accelerator_partition",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_960_720",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0251",
+          "atlas_p0269",
+          "atlas_p0287",
+          "atlas_p0305",
+          "atlas_p0323",
+          "atlas_p0341",
+          "atlas_p0359",
+          "atlas_p0377"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 32,
+        "count": 32,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_720_2048",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0252",
+          "atlas_p0253",
+          "atlas_p0261",
+          "atlas_p0262",
+          "atlas_p0270",
+          "atlas_p0271",
+          "atlas_p0279",
+          "atlas_p0280",
+          "atlas_p0288",
+          "atlas_p0289",
+          "atlas_p0297",
+          "atlas_p0298",
+          "atlas_p0306",
+          "atlas_p0307",
+          "atlas_p0315",
+          "atlas_p0316",
+          "atlas_p0324",
+          "atlas_p0325",
+          "atlas_p0333",
+          "atlas_p0334",
+          "atlas_p0342",
+          "atlas_p0343",
+          "atlas_p0351",
+          "atlas_p0352",
+          "atlas_p0360",
+          "atlas_p0361",
+          "atlas_p0369",
+          "atlas_p0370",
+          "atlas_p0378",
+          "atlas_p0379",
+          "atlas_p0387",
+          "atlas_p0388"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_2048_720",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0254",
+          "atlas_p0263",
+          "atlas_p0272",
+          "atlas_p0281",
+          "atlas_p0290",
+          "atlas_p0299",
+          "atlas_p0308",
+          "atlas_p0317",
+          "atlas_p0326",
+          "atlas_p0335",
+          "atlas_p0344",
+          "atlas_p0353",
+          "atlas_p0362",
+          "atlas_p0371",
+          "atlas_p0380",
+          "atlas_p0389"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 16,
+        "count": 16,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_113_320_320",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0256",
+          "atlas_p0257",
+          "atlas_p0274",
+          "atlas_p0275",
+          "atlas_p0292",
+          "atlas_p0293",
+          "atlas_p0310",
+          "atlas_p0311",
+          "atlas_p0328",
+          "atlas_p0329",
+          "atlas_p0346",
+          "atlas_p0347",
+          "atlas_p0364",
+          "atlas_p0365",
+          "atlas_p0382",
+          "atlas_p0383"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 8,
+        "input_origins": [
+          "host_region",
+          "accelerator_partition"
+        ],
+        "kernel_id": "matmul_batched_15_50_64_113",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0258",
+          "atlas_p0276",
+          "atlas_p0294",
+          "atlas_p0312",
+          "atlas_p0330",
+          "atlas_p0348",
+          "atlas_p0366",
+          "atlas_p0384"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 0,
+        "count": 8,
+        "input_origins": [
+          "host_region",
+          "accelerator_partition"
+        ],
+        "kernel_id": "matmul_batched_15_50_113_64",
+        "kind": "matmul_batched",
+        "partition_ids": [
+          "atlas_p0259",
+          "atlas_p0277",
+          "atlas_p0295",
+          "atlas_p0313",
+          "atlas_p0331",
+          "atlas_p0349",
+          "atlas_p0367",
+          "atlas_p0385"
+        ],
+        "source_semantic": "batch_matmul"
+      },
+      {
+        "contract_qualified": 8,
+        "count": 8,
+        "input_origins": [
+          "host_region",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_960_720",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0260",
+          "atlas_p0278",
+          "atlas_p0296",
+          "atlas_p0314",
+          "atlas_p0332",
+          "atlas_p0350",
+          "atlas_p0368",
+          "atlas_p0386"
+        ],
+        "source_semantic": "matmul"
+      },
+      {
+        "contract_qualified": 1,
+        "count": 1,
+        "input_origins": [
+          "host_region",
+          "function_argument",
+          "function_argument"
+        ],
+        "kernel_id": "matmul_50_720_32_bias",
+        "kind": "matmul",
+        "partition_ids": [
+          "atlas_p0390"
+        ],
+        "source_semantic": "addmm"
+      }
+    ],
+    "contract_qualified_by_kind": {
+      "matmul": 302
+    },
+    "contract_qualified_partitions": 302,
+    "contract_unqualified_partitions": 89,
+    "exact_class_count": 31,
+    "rejections_by_reason": {
+      "batched command consumes raw W after declaring an unused resident pack": 88,
+      "rank-2 source requires capture-specific preprocessing outside the command": 1
+    },
+    "schema": "atlas_accelerator_contract_census_v1"
+  },
+  "accelerator_contract_numeric_witnesses": [
+    {
+      "bias_fused": false,
+      "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
+      "class_partition_count": 208,
+      "command_contract_sha256": "37e1159130f95a13c9ae320590e1c9d3dd03c4144960c34b5488fb2249d96b11",
+      "conversion_preload_bytes": 266400,
+      "geometry": {
+        "K": 720,
+        "M": 50,
+        "N": 320
+      },
+      "label": "rank2_bf16_no_bias",
+      "oracle_sha256": "dc8b6074df1209ec53a5c1ab05bc94de679f2c637ae8968f9c6c72756f52afee",
+      "output_sha256": "dc8b6074df1209ec53a5c1ab05bc94de679f2c637ae8968f9c6c72756f52afee",
+      "published_capture_sha256": "fb580fafbb4ae41fb7dd74805c50f4700fab7e557227b5ba4a4cc9ea52c966c7",
+      "published_oracle_sha256": "fb580fafbb4ae41fb7dd74805c50f4700fab7e557227b5ba4a4cc9ea52c966c7",
+      "representative_partition_id": "atlas_p0247",
+      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "source_dtype": "bf16",
+      "status": "fresh_device_domain_execution_matches_independent_oracle"
+    },
+    {
+      "bias_fused": false,
+      "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
+      "class_partition_count": 17,
+      "command_contract_sha256": "5a1ba037dd36c5a7790525c751929b237395815e85832dda8d4511aaebbc4b32",
+      "conversion_preload_bytes": 138560,
+      "geometry": {
+        "K": 320,
+        "M": 113,
+        "N": 320
+      },
+      "label": "rank2_f32_no_bias",
+      "oracle_sha256": "2fea2d24bd1afc4d5d9e3a47f4272da88780c02ab35c2ee17f8f9f5f3e052a65",
+      "output_sha256": "2fea2d24bd1afc4d5d9e3a47f4272da88780c02ab35c2ee17f8f9f5f3e052a65",
+      "published_capture_sha256": "d8edb5967f4cfb4036188e7e92fb302b2788b68acce311bf9e53a6f676137852",
+      "published_oracle_sha256": "d8edb5967f4cfb4036188e7e92fb302b2788b68acce311bf9e53a6f676137852",
+      "representative_partition_id": "atlas_p0256",
+      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "source_dtype": "f32",
+      "status": "fresh_device_domain_execution_matches_independent_oracle"
+    },
+    {
+      "bias_fused": true,
+      "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
+      "class_partition_count": 77,
+      "command_contract_sha256": "103ad7fe41890fc92e1d06cac9626d4ee8d4c58f9f570918ea2d9e6571424798",
+      "conversion_preload_bytes": 32672,
+      "geometry": {
+        "K": 32,
+        "M": 1,
+        "N": 960
+      },
+      "label": "rank2_f32_bias",
+      "oracle_sha256": "e8e0feed116fb1055bb89ab076ee693e967f2c754697b8f1e6faf1b4adfb33ca",
+      "output_sha256": "e8e0feed116fb1055bb89ab076ee693e967f2c754697b8f1e6faf1b4adfb33ca",
+      "published_capture_sha256": "9cca3612ab40e07d4fe8d32af9954bafa41e2bc4dbc09ac6d7403ad9b9b3a652",
+      "published_oracle_sha256": "9cca3612ab40e07d4fe8d32af9954bafa41e2bc4dbc09ac6d7403ad9b9b3a652",
+      "representative_partition_id": "atlas_p0098",
+      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "source_dtype": "f32",
+      "status": "fresh_device_domain_execution_matches_independent_oracle"
+    }
+  ],
   "bounded_chain": {
     "claim": "fresh deterministic host-bridge replay joined to retained RTL evidence; device partitions were not rerun and this is not whole-model execution",
     "events": [
@@ -81,7 +968,8 @@
       "host_to_device_quantize_bias": 77
     },
     "count": 1250,
-    "qualified": 12
+    "qualified": 12,
+    "semantics_qualified": 947
   },
   "coverage": {
     "host_materialized_layout_bridges": 358,
@@ -138,6 +1026,7 @@
     "qualified_accelerator_partitions": 3,
     "qualified_layout_bridges": 2033,
     "semantic_host_required_regions": 2430,
+    "static_command_contract_partitions_qualified": 302,
     "strided_broadcast_bridges": 246,
     "structural_accelerator_partitions": 391
   },
@@ -157,6 +1046,7 @@
     "missing_host_semantics": 0,
     "missing_host_semantics_by_semantic": {},
     "missing_physical_event_runtime": 1,
+    "unqualified_accelerator_command_contracts": 89,
     "unqualified_accelerator_partitions": 388,
     "unrealized_layout_bridges": 0
   },
@@ -272,7 +1162,7 @@
   ],
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "33f9769d00c6922c6bef19d0794766cf9bd43e0e9af99e036bfad2257f7f0fd8"
+    "sha256": "799e0edf181ce20ec25f89a45c34fb515f48aee33a8e205ef4882bfe2aa633e3"
   },
   "generic_host_chain": {
     "claim": "host semantic execution only; no device execution and not whole-model E2E",

@@ -5,6 +5,7 @@ import hashlib
 import json
 import subprocess
 import sys
+import copy
 from collections import Counter
 from pathlib import Path
 
@@ -14,6 +15,7 @@ import pytest
 from submission.mlir_oot.frontend import parse_verified
 from submission.mlir_oot.hybrid_runtime import allocate_intervals
 from submission.mlir_oot.host_semantics import HostSemanticLane, LayoutBridgeLane
+from submission.mlir_oot.accelerator_semantics import AcceleratorContractLane
 
 
 ROOT = Path(__file__).resolve().parent
@@ -38,6 +40,28 @@ def real_lane(real_workload) -> HostSemanticLane:
 @pytest.fixture(scope="module")
 def real_layout_lane(real_workload) -> LayoutBridgeLane:
     return LayoutBridgeLane(real_workload)
+
+
+@pytest.fixture(scope="module")
+def real_partition_plan() -> dict:
+    return load(PLAN_ROOT / "partition_plan.json")
+
+
+@pytest.fixture(scope="module")
+def real_command_buffers(real_partition_plan) -> dict[str, dict]:
+    return {
+        row["kernel_id"]: load(ROOT / row["command_buffer"])
+        for row in real_partition_plan["kernel_library"]
+    }
+
+
+@pytest.fixture(scope="module")
+def real_accelerator_lane(
+    real_workload, real_partition_plan, real_command_buffers,
+) -> AcceleratorContractLane:
+    return AcceleratorContractLane(
+        real_workload, real_partition_plan, real_command_buffers
+    )
 
 
 def test_interval_allocator_respects_inclusive_lifetimes_and_reuses_storage() -> None:
@@ -113,12 +137,14 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "qualified_accelerator_partitions": 3,
         "qualified_layout_bridges": 2033,
         "semantic_host_required_regions": 2430,
+        "static_command_contract_partitions_qualified": 302,
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
     assert schedule["fail_closed"]["missing_host_semantics"] == 0
     assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {}
     assert schedule["fail_closed"]["missing_physical_event_runtime"] == 1
+    assert schedule["fail_closed"]["unqualified_accelerator_command_contracts"] == 89
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 0
     assert schedule["conversion_boundaries"] == {
@@ -130,6 +156,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         },
         "count": 1250,
         "qualified": 12,
+        "semantics_qualified": 947,
     }
     assert len(schedule["events"]) == 6104
     assert [row["event_index"] for row in schedule["events"]] == list(range(6104))
@@ -160,6 +187,168 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     assert schedule["device_activation_arena"]["peak_bytes"] < (
         schedule["device_activation_arena"]["naive_no_reuse_bytes"]
     )
+
+
+def test_accelerator_contract_census_and_numeric_witnesses_are_exact() -> None:
+    schedule = load(PLAN_ROOT / "hybrid_schedule.json")
+    census = schedule["accelerator_contract_census"]
+    assert census["exact_class_count"] == 31
+    assert census["by_kind"] == {"matmul": 303, "matmul_batched": 88}
+    assert census["contract_qualified_by_kind"] == {"matmul": 302}
+    assert census["contract_qualified_partitions"] == 302
+    assert census["contract_unqualified_partitions"] == 89
+    assert census["rejections_by_reason"] == {
+        "batched command consumes raw W after declaring an unused resident pack": 88,
+        "rank-2 source requires capture-specific preprocessing outside the command": 1,
+    }
+    assert len(census["classes"]) == 31
+    assert sum(row["count"] for row in census["classes"]) == 391
+    assert sum(row["contract_qualified"] for row in census["classes"]) == 302
+
+    witnesses = schedule["accelerator_contract_numeric_witnesses"]
+    assert [row["label"] for row in witnesses] == [
+        "rank2_bf16_no_bias", "rank2_f32_no_bias", "rank2_f32_bias",
+    ]
+    assert sum(row["class_partition_count"] for row in witnesses) == 302
+    assert all(
+        row["status"] == "fresh_device_domain_execution_matches_independent_oracle"
+        and row["output_sha256"] == row["oracle_sha256"]
+        and row["published_capture_sha256"] == row["published_oracle_sha256"]
+        and len(row["command_contract_sha256"]) == 64
+        and "physical partition" in row["claim"]
+        for row in witnesses
+    )
+
+
+def test_all_real_rank2_contracts_qualify_without_promoting_physical_execution(
+    real_accelerator_lane: AcceleratorContractLane,
+) -> None:
+    assert len(real_accelerator_lane.contracts) == 302
+    assert len(real_accelerator_lane.rejections) == 89
+    assert Counter(
+        contract.signature["source_dtype"]
+        for contract in real_accelerator_lane.contracts.values()
+    ) == {"bf16": 208, "f32": 94}
+    assert Counter(
+        contract.signature["bias_fused"]
+        for contract in real_accelerator_lane.contracts.values()
+    ) == {False: 225, True: 77}
+    assert all(
+        contract.signature["command"]["command_sequence"] == [
+            "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "EVICT",
+        ]
+        and "not calibration" in contract.signature["qualification_scope"]
+        for contract in real_accelerator_lane.contracts.values()
+    )
+    schedule = load(PLAN_ROOT / "hybrid_schedule.json")
+    accelerator_events = [
+        row for row in schedule["events"] if row["kind"] == "accelerator_partition"
+    ]
+    assert sum(row["command_contract_qualified"] for row in accelerator_events) == 302
+    assert sum(row["executable"] for row in accelerator_events) == 3
+    conversion_events = [
+        row for row in schedule["events"] if row["kind"] == "conversion_boundary"
+    ]
+    assert sum(row["conversion_semantics_qualified"] for row in conversion_events) == 947
+    assert sum(row["executable"] for row in conversion_events) == 12
+
+
+def test_rank2_device_domain_execution_and_conversion_are_independently_exact(
+    real_accelerator_lane: AcceleratorContractLane,
+) -> None:
+    partition_id = "atlas_p0098"
+    contract = real_accelerator_lane.contracts[partition_id].signature
+    m, k, n = (contract["geometry"][key] for key in ("M", "K", "N"))
+    activation = np.zeros((m, k), dtype=np.float32)
+    activation[0, 7] = np.float32(1)
+    weight = (((np.arange(k)[:, None] * 3 + np.arange(n)[None, :]) % 5) - 2).astype(
+        np.float32
+    )
+    bias = ((np.arange(n) % 3) - 1).astype(np.float32)
+    values = {"A0": activation, "W": weight, "B": bias}
+    actual = real_accelerator_lane.execute_device_domain(partition_id, dict(values))
+    expected_f32 = np.asarray(weight[7:8] + bias, dtype=np.float32)
+    bits = expected_f32.view(np.uint32)
+    expected = (
+        bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+    ) & np.uint32(0xFFFF0000)
+    np.testing.assert_array_equal(actual, expected.view(np.float32))
+    converted = real_accelerator_lane.prepare_capture_inputs(partition_id, values)
+    assert len(converted["preloads"]["A0"]) == m * k
+    assert len(converted["preloads"]["W"]) == k * n
+    assert len(converted["preloads"]["B"]) == 2 * n
+    assert converted["record"]["bias_equation"] == "BF16_RNE(B / (sA * sW))"
+    published = real_accelerator_lane.publish_device_output(
+        partition_id, actual, converted["record"]["output_scale"]
+    )
+    np.testing.assert_array_equal(
+        published,
+        np.asarray(actual * np.float32(converted["record"]["output_scale"]), dtype=np.float32),
+    )
+
+
+def test_malformed_command_and_capture_binding_fail_closed(
+    real_workload, real_partition_plan, real_command_buffers,
+) -> None:
+    partition = next(
+        row for row in real_partition_plan["partitions"]
+        if row["partition_id"] == "atlas_p0001"
+    )
+    receipt = next(
+        row for row in real_partition_plan["kernel_library"]
+        if row["kernel_id"] == partition["kernel_id"]
+    )
+    bounded_plan = {"partitions": [copy.deepcopy(partition)],
+                    "kernel_library": [copy.deepcopy(receipt)]}
+    malformed_commands = {
+        partition["kernel_id"]: copy.deepcopy(real_command_buffers[partition["kernel_id"]])
+    }
+    malformed_commands[partition["kernel_id"]]["commands"][1]["operands"]["rhs"] = "W"
+    lane = AcceleratorContractLane(real_workload, bounded_plan, malformed_commands)
+    assert lane.contracts == {}
+    assert lane.rejections[partition["partition_id"]] == (
+        "rank-2 command dependency chain changed"
+    )
+
+    malformed_plan = copy.deepcopy(bounded_plan)
+    malformed_plan["partitions"][0]["capture_regions"][0] = "add_3"
+    lane = AcceleratorContractLane(real_workload, malformed_plan, {
+        partition["kernel_id"]: real_command_buffers[partition["kernel_id"]]
+    })
+    assert lane.contracts == {}
+    assert lane.rejections[partition["partition_id"]] == (
+        "source region is not one isolated linalg.matmul"
+    )
+
+
+def test_batched_and_patch_command_contracts_remain_explicitly_blocked(
+    real_accelerator_lane: AcceleratorContractLane,
+) -> None:
+    assert real_accelerator_lane.rejections["atlas_p0000"] == (
+        "rank-2 source requires capture-specific preprocessing outside the command"
+    )
+    batched = [
+        reason for partition_id, reason in real_accelerator_lane.rejections.items()
+        if partition_id != "atlas_p0000"
+    ]
+    assert len(batched) == 88
+    assert set(batched) == {
+        "batched command consumes raw W after declaring an unused resident pack"
+    }
+
+
+def test_rank2_conversion_runtime_shape_and_dtype_fail_closed(
+    real_accelerator_lane: AcceleratorContractLane,
+) -> None:
+    with pytest.raises(ValueError, match="capture A0/W shape or dtype differs"):
+        real_accelerator_lane.prepare_capture_inputs(
+            "atlas_p0098",
+            {
+                "A0": np.zeros((1, 32), dtype=np.float64),
+                "W": np.zeros((32, 960), dtype=np.float32),
+                "B": np.zeros((960,), dtype=np.float32),
+            },
+        )
 
 
 def _independent_layout_materialization(

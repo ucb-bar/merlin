@@ -120,6 +120,21 @@ partitions and the physical event/DMA runtime remain unresolved. See
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
 is added.
 
+The accelerator side is now split into 31 exact kernel/source/origin classes.
+Static source, ABI, allocation, command-chain, and image-receipt agreement is
+proven for 302/391 partitions: 208 BF16 no-bias rank-2 matmuls, 17 F32 no-bias
+rank-2 matmuls, and 77 F32 bias-fused rank-2 matmuls. Their 947/1,250 conversion
+boundaries have concrete FP8/BF16 host conversion semantics, including scaled
+BF16 output publication. The 36 direct device requantizations whose producers
+are rejected batched partitions remain unqualified. Three real-shape software witnesses match independent
+oracles. These events remain physically non-executable unless their capture-bound
+RTL receipt exists, so physical coverage is unchanged at 3/391 and 12/1,250.
+
+The other 89 static contracts fail closed: one patch convolution needs im2col
+preprocessing outside its image, while all 88 batched buffers pack `W` into a
+resident handle but execute from raw `W`. The latter is a concrete command
+dependency defect, not missing model parallelism or a calibration guess.
+
 The deterministic full-capture planner identifies 391 structural contraction
 partitions, 28 kernel variants, 88 direct accelerator dependencies, and 303
 maximal accelerator islands (239 singletons, 40 pairs, and 24 triples). Stable

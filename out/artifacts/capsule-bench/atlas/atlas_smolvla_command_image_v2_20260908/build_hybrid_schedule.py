@@ -23,6 +23,10 @@ from mlir_oot.host_semantics import (  # noqa: E402
     LayoutBridgeLane,
     array_sha256,
 )
+from mlir_oot.accelerator_semantics import (  # noqa: E402
+    AcceleratorContractLane,
+    contract_sha256,
+)
 from run_capture_partition import (  # noqa: E402
     PARTITIONS,
     _load_capture_values,
@@ -517,20 +521,117 @@ def layout_bridge_witnesses(workload) -> list[dict]:
     return witnesses
 
 
+def _independent_bf16_rne(value: np.ndarray) -> np.ndarray:
+    source = np.ascontiguousarray(value, dtype=np.float32)
+    bits = source.view(np.uint32)
+    rounded = bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+    return (rounded & np.uint32(0xFFFF0000)).view(np.float32)
+
+
+def accelerator_contract_witnesses(
+    workload, plan: dict, command_buffers: dict[str, dict],
+) -> list[dict]:
+    """Exercise one real-shape contract per exact dtype/epilogue topology."""
+    lane = AcceleratorContractLane(workload, plan, command_buffers)
+    classes = {}
+    for contract in lane.contracts.values():
+        signature = contract.signature
+        key = (signature["source_dtype"], signature["bias_fused"])
+        classes.setdefault(key, []).append(contract)
+    witnesses = []
+    for (source_dtype, bias_fused), contracts in sorted(classes.items()):
+        contract = min(
+            contracts,
+            key=lambda row: (
+                row.signature["geometry"]["M"] * row.signature["geometry"]["N"],
+                row.signature["geometry"]["K"], row.partition_id,
+            ),
+        )
+        geometry = contract.signature["geometry"]
+        m, k, n = (geometry[key] for key in ("M", "K", "N"))
+        activation = np.zeros((m, k), dtype=np.float32)
+        selected = (np.arange(m, dtype=np.int64) * 17 + 3) % k
+        activation[np.arange(m), selected] = np.float32(1)
+        rows = np.arange(k, dtype=np.int64)[:, None]
+        columns = np.arange(n, dtype=np.int64)[None, :]
+        weight = (((rows * 3 + columns) % 5) - 2).astype(np.float32)
+        values = {"A0": activation, "W": weight}
+        expected = weight[selected].copy()
+        if bias_fused:
+            bias = ((np.arange(n, dtype=np.int64) % 3) - 1).astype(np.float32)
+            values["B"] = bias
+            expected = np.asarray(expected + bias, dtype=np.float32)
+        actual = lane.execute_device_domain(contract.partition_id, dict(values))
+        expected = _independent_bf16_rne(expected)
+        if not np.array_equal(actual, expected):
+            raise ValueError(
+                f"independent accelerator oracle failed for {contract.partition_id}"
+            )
+        converted = lane.prepare_capture_inputs(contract.partition_id, values)
+        expected_preload_bytes = m * k + k * n + (2 * n if bias_fused else 0)
+        actual_preload_bytes = sum(len(raw) for raw in converted["preloads"].values())
+        if actual_preload_bytes != expected_preload_bytes:
+            raise ValueError(
+                f"conversion byte extent failed for {contract.partition_id}"
+            )
+        published = lane.publish_device_output(
+            contract.partition_id, actual, converted["record"]["output_scale"]
+        )
+        published_oracle = np.asarray(
+            expected * np.float32(converted["record"]["output_scale"]),
+            dtype=np.float32,
+        )
+        if source_dtype == "bf16":
+            published_oracle = _independent_bf16_rne(published_oracle)
+        if not np.array_equal(published, published_oracle):
+            raise ValueError(
+                f"independent output conversion oracle failed for {contract.partition_id}"
+            )
+        witnesses.append({
+            "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+            "label": f"rank2_{source_dtype}_{'bias' if bias_fused else 'no_bias'}",
+            "status": "fresh_device_domain_execution_matches_independent_oracle",
+            "claim": (
+                "static command-contract and host conversion evidence only; encoded image, "
+                "physical partition, DMA/event runtime, and E2E are not qualified"
+            ),
+            "representative_partition_id": contract.partition_id,
+            "class_partition_count": len(contracts),
+            "geometry": geometry,
+            "source_dtype": source_dtype,
+            "bias_fused": bias_fused,
+            "output_sha256": array_sha256(actual),
+            "oracle_sha256": array_sha256(expected),
+            "conversion_preload_bytes": actual_preload_bytes,
+            "published_capture_sha256": array_sha256(published),
+            "published_oracle_sha256": array_sha256(published_oracle),
+            "command_contract_sha256": contract_sha256(contract.signature),
+        })
+    return witnesses
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
     plan = load(PLAN_ROOT / "partition_plan.json")
+    command_buffers = {
+        row["kernel_id"]: load(ROOT / row["command_buffer"])
+        for row in plan["kernel_library"]
+    }
     inventory = load(ROOT / "full_capture_partition_inventory.json")
     workload = parse_verified(source)
     chain, bounded_regions = bounded_chain_witness()
     host_chain, host_witnesses = generic_host_witnesses(workload)
     indexed_witnesses = final_indexed_host_witnesses(workload)
     bridge_witnesses = layout_bridge_witnesses(workload)
+    accelerator_witnesses = accelerator_contract_witnesses(
+        workload, plan, command_buffers
+    )
     schedule = build_hybrid_schedule(
         workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
         bounded_host_regions=bounded_regions,
+        command_buffers=command_buffers,
         alignment=32,
     )
     schedule["capture"].update({
@@ -543,6 +644,7 @@ def main() -> int:
     schedule["generic_host_numeric_witnesses"] = host_witnesses
     schedule["final_indexed_host_numeric_witnesses"] = indexed_witnesses
     schedule["layout_bridge_numeric_witnesses"] = bridge_witnesses
+    schedule["accelerator_contract_numeric_witnesses"] = accelerator_witnesses
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -570,6 +672,8 @@ def main() -> int:
         "final_indexed_host_numeric_witnesses": indexed_witnesses,
         "layout_bridge_census": schedule["layout_bridge_census"],
         "layout_bridge_numeric_witnesses": bridge_witnesses,
+        "accelerator_contract_census": schedule["accelerator_contract_census"],
+        "accelerator_contract_numeric_witnesses": accelerator_witnesses,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),

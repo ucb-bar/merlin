@@ -13,6 +13,7 @@ import math
 from .frontend import _str_attr
 from .full_graph import _partition_class, _tensor_dtype, _tensor_shape
 from .host_semantics import HostSemanticLane, LayoutBridgeLane, signature_sha256
+from .accelerator_semantics import AcceleratorContractLane, contract_sha256
 
 
 _PROVEN_ALIAS_SEMANTICS = frozenset({"view", "unsqueeze"})
@@ -176,12 +177,16 @@ def build_hybrid_schedule(
     *,
     qualified_partitions: set[str],
     bounded_host_regions: set[str],
+    command_buffers: dict[str, dict],
     alignment: int,
 ) -> dict:
     """Build a complete deterministic schedule skeleton and fail-closed readiness verdict."""
     regions, top_level_ops = _region_inventory(workload)
     host_lane = HostSemanticLane(workload)
     layout_lane = LayoutBridgeLane(workload)
+    accelerator_lane = AcceleratorContractLane(
+        workload, partition_plan, command_buffers
+    )
     by_region = {row["region_id"]: row for row in regions}
     observed_classes = Counter(row["category"] for row in regions)
     if dict(sorted(observed_classes.items())) != full_inventory["regions_by_partition_class"]:
@@ -267,37 +272,58 @@ def build_hybrid_schedule(
     for partition in partition_plan["partitions"]:
         partition_id = partition["partition_id"]
         qualified = partition_id in qualified_partitions
+        contract = accelerator_lane.signature_for(partition_id)
+        contract_qualified = contract is not None
         if not qualified:
             missing_partitions.append(partition_id)
         capture_index = int(partition["capture_op_index"])
         for input_index, entry in enumerate(partition["abi"]["inputs"]):
+            boundary_kind = _boundary_kind(entry)
+            conversion_contract_qualified = contract_qualified and (
+                boundary_kind != "device_requantize"
+                or entry["origin"].get("partition_id") in accelerator_lane.contracts
+            )
             boundary = {
                 "capture_op_index": capture_index,
                 "kind": "conversion_boundary",
                 "direction": "to_device",
-                "conversion": _boundary_kind(entry),
+                "conversion": boundary_kind,
                 "partition_id": partition_id,
                 "tensor": entry["name"],
                 "capture_type": entry["capture_type"],
                 "device_dtype": entry["device_dtype"],
                 "device_bytes": entry["device_bytes"],
                 "origin": entry["origin"],
-                "status": "qualified" if qualified else "missing_calibration",
+                "status": (
+                    "qualified" if qualified else
+                    "conversion_semantics_qualified_pending_physical_partition"
+                    if conversion_contract_qualified else "missing_conversion_contract"
+                ),
                 "executable": qualified,
+                "conversion_semantics_qualified": conversion_contract_qualified,
                 "input_index": input_index,
             }
             events.append(boundary)
             boundaries.append(boundary)
-        events.append({
+        partition_event = {
             "capture_op_index": capture_index,
             "kind": "accelerator_partition",
             "partition_id": partition_id,
             "capture_regions": partition["capture_regions"],
             "kernel_id": partition["kernel_id"],
             "status": ("qualified_capture_semantics" if qualified
-                       else "structural_only_unqualified"),
+                       else "static_command_contract_qualified_pending_capture_numeric"
+                       if contract_qualified else "structural_only_unqualified"),
             "executable": qualified,
-        })
+            "command_contract_qualified": contract_qualified,
+        }
+        if contract is not None:
+            partition_event["command_contract_sha256"] = contract_sha256(contract)
+        else:
+            partition_event["command_contract_rejection"] = (
+                accelerator_lane.rejections[partition_id]
+            )
+        events.append(partition_event)
         output = partition["abi"]["outputs"][0]
         boundary = {
             "capture_op_index": int(partition["lifetime"]["definition_op_index"]),
@@ -309,8 +335,13 @@ def build_hybrid_schedule(
             "capture_type": output["capture_type"],
             "device_dtype": output["device_dtype"],
             "device_bytes": output["device_bytes"],
-            "status": "qualified" if qualified else "missing_calibration",
+            "status": (
+                "qualified" if qualified else
+                "conversion_semantics_qualified_pending_physical_partition"
+                if contract_qualified else "missing_conversion_contract"
+            ),
             "executable": qualified,
+            "conversion_semantics_qualified": contract_qualified,
         }
         events.append(boundary)
         boundaries.append(boundary)
@@ -353,6 +384,7 @@ def build_hybrid_schedule(
     failures = {
         "missing_host_semantics": len(missing_host),
         "unqualified_accelerator_partitions": len(missing_partitions),
+        "unqualified_accelerator_command_contracts": len(accelerator_lane.rejections),
         "unrealized_layout_bridges": blocking_aliases,
         "missing_physical_event_runtime": 1,
     }
@@ -402,6 +434,7 @@ def build_hybrid_schedule(
         "coverage": {
             "structural_accelerator_partitions": len(partition_plan["partitions"]),
             "qualified_accelerator_partitions": len(qualified_partitions),
+            "static_command_contract_partitions_qualified": len(accelerator_lane.contracts),
             "semantic_host_required_regions": host_count,
             "host_signature_regions_implemented": host_count - len(missing_host),
             "host_signature_regions_by_semantic": dict(sorted(qualified_by_semantic.items())),
@@ -431,7 +464,11 @@ def build_hybrid_schedule(
                 boundary["conversion"] for boundary in boundaries
             ).items())),
             "qualified": sum(boundary["executable"] for boundary in boundaries),
+            "semantics_qualified": sum(
+                boundary["conversion_semantics_qualified"] for boundary in boundaries
+            ),
         },
+        "accelerator_contract_census": accelerator_lane.census(),
         "device_activation_arena": arena,
         "layout_bridge_census": {
             "shape_class_count": len(layout_shape_classes),
