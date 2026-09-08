@@ -1017,6 +1017,7 @@ def portfolio_action_digest(record: Mapping[str, Any], *, complete_evidence: str
             "candidate_sha256": record.get("candidate_sha256"),
             "members": rows,
             "optimization_order": shared_optimization_order,
+            "fast_accuracy_bounded_evaluation": copy.deepcopy(record.get("fast_evaluation")),
             "selection": "per-model Pareto evidence; totals are never summed across models",
             "timing_status": "UNMEASURED_FULL_MODEL"}
 
@@ -1155,7 +1156,11 @@ class GlobalPerfExperiment:
                  source_snapshot_root: Path | None = None,
                  source_snapshot_files_sha256: str | None = None,
                  analyzer: Callable[..., Mapping[str, Any]] = PAS.analyze_whole_model_emission,
-                 plan_verifier: Callable[..., Mapping[str, Any]] | None = None):
+                 plan_verifier: Callable[..., Mapping[str, Any]] | None = None,
+                 fast_evaluation_provider: Callable[..., Mapping[str, Any]] | None = None,
+                 fast_evaluation_policy: Any | None = None,
+                 quality_budgets: Mapping[str, Any] | None = None,
+                 fast_evaluation_provider_binding: Mapping[str, Any] | None = None):
         if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
             raise ValueError(
                 "full-graph static analysis must fit the "
@@ -1282,6 +1287,54 @@ class GlobalPerfExperiment:
         self.optimization_baseline_binding_sha256 = PAS._document_sha256(self.optimization_baseline_binding)
         self.portfolio_identity = full_model_portfolio_identity(self.portfolio_sentinels)
         self.portfolio_identity_sha256 = PAS._document_sha256(self.portfolio_identity)
+        from merlin.perf.phase2_portfolio import FastEvaluationPolicy, QualityBudget
+        configured_fast_parts = (fast_evaluation_provider, fast_evaluation_policy,
+                                 quality_budgets, fast_evaluation_provider_binding)
+        if any(part is not None for part in configured_fast_parts) and not all(
+                part is not None for part in configured_fast_parts):
+            raise ValueError("fast evaluation requires provider, policy, per-model quality budgets, "
+                             "and an immutable provider binding")
+        self.fast_evaluation_provider = fast_evaluation_provider
+        self._fast_evaluation_provider_identity = fast_evaluation_provider
+        self.fast_evaluation_policy = fast_evaluation_policy
+        self.quality_budgets = dict(quality_budgets or {})
+        self.fast_evaluation_provider_binding = copy.deepcopy(
+            fast_evaluation_provider_binding)
+        if fast_evaluation_provider is not None:
+            if not isinstance(fast_evaluation_policy, FastEvaluationPolicy):
+                raise TypeError("fast_evaluation_policy must be FastEvaluationPolicy")
+            if (set(self.quality_budgets) != set(member_hashes)
+                    or any(not isinstance(value, QualityBudget)
+                           for value in self.quality_budgets.values())):
+                raise ValueError("quality budgets must exactly cover the content-addressed portfolio")
+            provider_binding = self.fast_evaluation_provider_binding
+            if (not isinstance(provider_binding, Mapping)
+                    or provider_binding.get("schema")
+                    != "host_fast_analytical_evaluator_binding_v1"
+                    or not PAS._is_sha256(provider_binding.get("implementation_sha256"))
+                    or provider_binding.get("execution") != "host_analytical_only"
+                    or provider_binding.get("full_model_simulation_allowed") is not False
+                    or isinstance(provider_binding.get("maximum_model_seconds"), bool)
+                    or not isinstance(provider_binding.get("maximum_model_seconds"), (int, float))
+                    or not 0 < provider_binding["maximum_model_seconds"] <= 60
+                    or not isinstance(provider_binding.get("calibration_sha256s"), Sequence)
+                    or isinstance(provider_binding.get("calibration_sha256s"), (str, bytes))
+                    or not provider_binding["calibration_sha256s"]
+                    or any(not PAS._is_sha256(value)
+                           for value in provider_binding["calibration_sha256s"])):
+                raise ValueError("fast analytical provider requires an exact implementation binding")
+            self.fast_evaluation_binding = {
+                "schema": "phase2_fast_evaluation_binding_v1",
+                "provider": provider_binding,
+                "policy": fast_evaluation_policy.to_dict(),
+                "quality_budgets": {model: self.quality_budgets[model].to_dict()
+                                    for model in member_hashes},
+                "execution": "host_analytical_only_no_complete_model_or_layer_simulation",
+            }
+        else:
+            self.fast_evaluation_binding = None
+        self.fast_evaluation_binding_sha256 = PAS._document_sha256(
+            self.fast_evaluation_binding)
         self.baseline_emission_cache_binding = None
         self.baseline_emission_cache_seeds: list[dict[str, Any]] = []
         if baseline_emission_cache is not None:
@@ -1327,6 +1380,8 @@ class GlobalPerfExperiment:
             "baseline_emission_cache_seeds": self.baseline_emission_cache_seeds,
             "portfolio_analysis_workers": self.portfolio_analysis_workers,
             "minimum_memory_available_bytes": self.minimum_memory_available_bytes,
+            "fast_evaluation": copy.deepcopy(self.fast_evaluation_binding),
+            "fast_evaluation_binding_sha256": self.fast_evaluation_binding_sha256,
             "maximum_iteration_seconds": timeout_s,
             "maximum_full_graph_static_analysis_seconds": timeout_s,
             "maximum_reduced_witness_seconds": int(ITERATION_MAX_SECONDS),
@@ -1482,6 +1537,23 @@ class GlobalPerfExperiment:
             raise ValueError("complete-model portfolio identity changed during global search")
         if PAS._document_sha256(self.historical_reference) != self._historical_reference_binding_sha256:
             raise ValueError("historical reference binding changed")
+        if PAS._document_sha256(
+                self.fast_evaluation_binding) != self.fast_evaluation_binding_sha256:
+            raise ValueError("host fast-evaluation binding changed")
+        if self.fast_evaluation_provider is not self._fast_evaluation_provider_identity:
+            raise ValueError("host fast-evaluation provider changed")
+        if self.fast_evaluation_provider is not None:
+            current_fast_binding = {
+                "schema": "phase2_fast_evaluation_binding_v1",
+                "provider": copy.deepcopy(self.fast_evaluation_provider_binding),
+                "policy": self.fast_evaluation_policy.to_dict(),
+                "quality_budgets": {
+                    member.capsule_sha256: self.quality_budgets[member.capsule_sha256].to_dict()
+                    for member in self.portfolio_sentinels},
+                "execution": "host_analytical_only_no_complete_model_or_layer_simulation",
+            }
+            if current_fast_binding != self.fast_evaluation_binding:
+                raise ValueError("host fast-evaluation policy or quality budget changed")
         if self.historical_reference is not None:
             path = Path(self.historical_reference["path"])
             if path.is_symlink() or PAS._sha256_file(path) != self.historical_reference["sha256"]:
@@ -2148,6 +2220,81 @@ class GlobalPerfExperiment:
                 output=self.analyzer.output)
         return self.analyzer
 
+    def _fast_evaluation_surfaces(
+            self, analysis: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+        """Return only analysis surfaces already present in host-frozen edit authority."""
+        if self.edit_contract is None:
+            return ()
+        authorized = {
+            (row.get("surface_id"), row.get("path"), row.get("symbol"))
+            for row in self.edit_contract.get("existing_symbols") or ()
+            if isinstance(row, Mapping)
+        }
+        result: list[dict[str, Any]] = []
+        seen: set[tuple[Any, Any, Any]] = set()
+        brief = analysis.get("optimization_brief") or {}
+        for action in brief.get("ranked_actions") or ():
+            for surface in action.get("edit_surfaces") or ():
+                key = (surface.get("id"), surface.get("path"), surface.get("symbol"))
+                if key not in authorized or key in seen:
+                    continue
+                seen.add(key)
+                result.append({field: copy.deepcopy(surface.get(field)) for field in
+                               ("id", "path", "symbol", "scope", "effects")})
+        return tuple(result)
+
+    def _fast_evaluate_portfolio(
+            self, members: Sequence[tuple[PAS.StageE2ESentinel, Mapping[str, Any],
+                                         Mapping[str, Any]]]) -> dict[str, Any]:
+        """Run the optional bounded host analytical adapter and apply the shared gate."""
+        from merlin.perf.phase2_portfolio import (
+            evaluate_fast_portfolio,
+            unavailable_fast_evaluation,
+        )
+
+        if self.fast_evaluation_provider is None:
+            return unavailable_fast_evaluation(
+                reason="no host-owned calibrated analytical provider and quality budget installed")
+        rows = []
+        surfaces: dict[str, Sequence[Mapping[str, Any]]] = {}
+        provider_wall_seconds: dict[str, float] = {}
+        for sentinel, analysis, artifacts in members:
+            model_id = sentinel.capsule_sha256
+            surfaces[model_id] = self._fast_evaluation_surfaces(analysis)
+            try:
+                provider_started = time.monotonic()
+                raw = self.fast_evaluation_provider(
+                    analysis=analysis, artifacts=artifacts, sentinel=sentinel,
+                    target_descriptor=self.target_descriptor,
+                    target_sha256=self.target_sha256,
+                    portfolio_sha256=self.portfolio_identity_sha256,
+                    provider_binding=copy.deepcopy(self.fast_evaluation_provider_binding))
+                provider_elapsed = time.monotonic() - provider_started
+                provider_wall_seconds[model_id] = provider_elapsed
+                if provider_elapsed > self.fast_evaluation_provider_binding[
+                        "maximum_model_seconds"]:
+                    raise TimeoutError("host analytical provider exceeded its per-model wall budget")
+                if not isinstance(raw, Mapping):
+                    raise TypeError("host analytical provider must return a mapping")
+                rows.append({**copy.deepcopy(dict(raw)), "model_id": model_id,
+                             "provider_elapsed_seconds": provider_elapsed})
+            except Exception as exc:  # fail closed without discarding valid compiler analysis
+                rows.append({
+                    "model_id": model_id,
+                    "baseline": {}, "candidate": {},
+                    "provider_failure": {"type": type(exc).__name__,
+                                         "reason": str(exc)[:20000]},
+                })
+        report = evaluate_fast_portfolio(
+            rows, quality_budgets=self.quality_budgets,
+            policy=self.fast_evaluation_policy,
+            authorized_surfaces=surfaces,
+            expected_models=[member.capsule_sha256 for member in self.portfolio_sentinels])
+        return {**report,
+                "binding": copy.deepcopy(self.fast_evaluation_binding),
+                "binding_sha256": self.fast_evaluation_binding_sha256,
+                "provider_wall_seconds_by_model": provider_wall_seconds}
+
     def _analysis_reuse_binding(self, *, candidate_sha256: str,
                                 compiler_dependencies: Mapping[str, Any]) -> dict[str, Any]:
         """Exact static-analysis inputs whose equality permits cross-iteration reuse."""
@@ -2164,6 +2311,8 @@ class GlobalPerfExperiment:
             "compiler_edit_authority_sha256": PAS._document_sha256(
                 getattr(self, "edit_scope_binding", None)),
         }
+        if self.fast_evaluation_binding is not None:
+            body["fast_evaluation_binding_sha256"] = self.fast_evaluation_binding_sha256
         return {"schema": "global_static_analysis_reuse_binding_v1", **body,
                 "sha256": PAS._document_sha256(body)}
 
@@ -2204,6 +2353,8 @@ class GlobalPerfExperiment:
             },
             "machine_build_policy": copy.deepcopy(self.machine_build_policy),
         }
+        if self.fast_evaluation_binding is not None:
+            body["fast_evaluation_binding"] = copy.deepcopy(self.fast_evaluation_binding)
         return {"schema": "global_cross_run_static_analysis_binding_v1", **body,
                 "sha256": PAS._document_sha256(body)}
 
@@ -2669,6 +2820,11 @@ class GlobalPerfExperiment:
             "portfolio_members_total": len(members),
             "selection": "multi_model_pareto_without_invented_static_cycle_total",
         })
+        fast_evaluation = self._fast_evaluate_portfolio([
+            (sentinel, analysis, current_artifacts[sentinel.capsule_sha256])
+            for sentinel, analysis in zip(
+                self.portfolio_sentinels, current_analyses, strict=True)
+        ])
         elapsed = time.monotonic() - started
         reuse = {
             "schema": "global_exact_cross_run_static_analysis_import_v1",
@@ -2712,6 +2868,7 @@ class GlobalPerfExperiment:
             "global_performance_claim": "unproven",
             "relative_semantic_evidence": {
                 "status": "unavailable_cross_run_static_import", "numerical_equivalence": False},
+            "fast_evaluation": fast_evaluation,
         }
         record["static_comparison"] = self._compare(record)
         record["portfolio"] = {
@@ -2972,6 +3129,7 @@ class GlobalPerfExperiment:
             "allocated_seconds": budget_seconds,
             "probe_receipts": [], "global_performance_claim": "unproven",
             "relative_semantic_evidence": relative_semantics,
+            "fast_evaluation": copy.deepcopy(source.get("fast_evaluation")),
         }
         if source.get("static_analysis_bundle") is not None:
             record["static_analysis_bundle"] = copy.deepcopy(source["static_analysis_bundle"])
@@ -3207,7 +3365,16 @@ class GlobalPerfExperiment:
                 "elapsed_seconds": member_elapsed,
                 "timing_status": "UNMEASURED_FULL_MODEL",
             })
-            baseline_artifacts = member_artifacts.pop("baseline_artifacts", None)
+        fast_evaluation = self._fast_evaluate_portfolio([
+            (sentinel, member_result[0], member_result[1])
+            for sentinel, member_result in zip(
+                self.portfolio_sentinels, member_results, strict=True)
+            if member_result is not None
+        ])
+        for sentinel, member_result in zip(
+                self.portfolio_sentinels[1:], member_results[1:], strict=True):
+            assert member_result is not None
+            baseline_artifacts = member_result[1].pop("baseline_artifacts", None)
             if baseline_artifacts is not None:
                 self._portfolio_baseline_artifacts[sentinel.capsule_sha256] = baseline_artifacts
         self._check_inputs()
@@ -3265,6 +3432,7 @@ class GlobalPerfExperiment:
             "allocated_seconds": budget_seconds,
             "probe_receipts": [], "global_performance_claim": "unproven",
             "relative_semantic_evidence": relative_semantics,
+            "fast_evaluation": fast_evaluation,
         }
         record["static_comparison"] = self._compare(record)
         record["portfolio"] = {
@@ -4594,9 +4762,15 @@ class GlobalPerfExperiment:
             "source_contraction_preparation_receipts": row.get("source_contraction_preparation_receipts", []),
             "source_pair_receipts": row.get("source_pair_receipts", []),
             "decision_feedback": row.get("decision_feedback"),
+            "fast_evaluation": copy.deepcopy(row.get("fast_evaluation")),
             "full_model_timing_status": "UNMEASURED", "global_speedup_proven": False,
             "promotion_status": "unqualified_candidate_for_review",
-            "promotion_blockers": row["readiness"]["promotion_blockers"],
+            "promotion_blockers": [
+                *row["readiness"]["promotion_blockers"],
+                *(["fast accuracy-bounded portfolio gate did not retain this candidate"]
+                  if self.fast_evaluation_provider is not None
+                  and row.get("fast_evaluation", {}).get("status") != "retain" else []),
+            ],
             "consumer": "global_plan_review_and_optional_post_freeze_validation",
         })
 
@@ -5915,6 +6089,12 @@ def run_global_agent_round(
         "unpruned graph and immutable analysis copy when a transformation needs those details. "
         "Start with portfolio_action_digest: it resolves the primary and secondary member records "
         "into one per-model readiness, work, movement, dispatch, placement and authorized-action view. "
+        "When fast_accuracy_bounded_evaluation is configured, use its per-model conservative cycle "
+        "intervals, physical movement, occupancy, overlap, encoding conversion, supported-work "
+        "placement, connected-region, host-island and boundary evidence. Its recommended levers name "
+        "only matching host-authorized surfaces. A larger accelerator op count is not a benefit by "
+        "itself: the gate requires a quality-safe global benefit and rejects added movement, boundary "
+        "traffic, occupancy loss, excessive uncertainty or a regression in any portfolio member. "
         "The initial exact analysis is already available there; unchanged reanalysis reuses it. "
         "For continuation rounds, prior_round_context in STAGE_CONTEXT.json contains earlier agents' "
         "own untrusted summaries plus host refusal status. Use it as search memory and do not repeat "
@@ -6159,9 +6339,15 @@ def run_global_agent_round(
                 "iteration_record": str(iteration_record),
                 "iteration_record_sha256": PAS._sha256_file(iteration_record),
                 "readiness": copy.deepcopy(validation.get("readiness")),
+                "fast_evaluation": copy.deepcopy(validation.get("fast_evaluation")),
                 "exact_analysis_reused": validation.get("exact_analysis_reused") is True,
                 "elapsed_seconds": time.monotonic() - validation_started,
             }
+            if (experiment.fast_evaluation_provider is not None
+                    and validation.get("fast_evaluation", {}).get("status") != "retain"):
+                refusals.append(
+                    "host fast accuracy-bounded portfolio gate did not retain the candidate: "
+                    + str(validation.get("fast_evaluation", {}).get("status")))
         except Exception as exc:  # noqa: BLE001 - failed mandatory host validation refuses the round
             post_validation = {
                 **post_authoring_validation_contract,
@@ -6188,6 +6374,13 @@ def run_global_agent_round(
     except PAS.StageGateError as exc:
         telemetry = {"complete": False, "reason": str(exc)}
         refusals.append(str(exc))
+    # A SPENT BUDGET IS NOT A CRASH. The rule lives in one place (phase 1 has always used it) so
+    # this driver and the stage cannot drift: the round-deadline exit is admitted alongside a clean
+    # audit and no refusals, and every other non-zero exit stays refused. Admitting it here is what
+    # stops a deadline-killed round from being non-authored, which raised, re-consumed the
+    # checkpoint and DISCARDED the round's compiler edits -- 2 of 3 paid rounds on the last run.
+    admission = PAS.authored_round_status(agent_exit_code=rc, audit_clean=audit.get("clean"),
+                                          refusals=refusals)
     record = {"schema": "global_agent_round_v1", "round": round_index,
               "candidate_sha256": current["candidate_sha256"], "agent_exit_code": rc,
               "audit": audit, "broker_evidence": evidence, "telemetry": telemetry,
@@ -6198,9 +6391,18 @@ def run_global_agent_round(
                   experiment.mechanism_work_order_analysis_binding),
               "host_post_authoring_validation": post_validation,
               "authoring_readiness": copy.deepcopy(current.get("readiness")),
+              "fast_evaluation": copy.deepcopy(current.get("fast_evaluation")),
               "promotion_ready": (current.get("readiness", {}).get("status")
-                                  == "ready_for_probe_admission"),
-              "status": "authored" if rc == 0 and audit.get("clean") and not refusals else "refused",
+                                  == "ready_for_probe_admission"
+                                  and (experiment.fast_evaluation_provider is None
+                                       or current.get("fast_evaluation", {}).get("status")
+                                       == "retain")),
+              "status": admission["status"],
+              # Named rather than implied: "authored, and the budget ended it" and "authored, having
+              # finished" are different results, and a report that shows them as one is how the last
+              # campaign's three rounds looked identical.
+              "stopped_by": admission["stopped_by"],
+              "status_reason": admission["why"],
               "refusal_reasons": refusals,
               "global_speedup_proven": False}
     experiment._write(f"agent_round_{round_index:04d}.json", record)
