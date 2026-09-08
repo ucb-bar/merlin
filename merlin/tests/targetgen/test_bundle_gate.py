@@ -883,3 +883,58 @@ class TestAFarConstBlobIsAddressedAbsolutelyNotByRelocation:
         assert BH.CONST_BASE_MACRO in without.stderr
         withit = build([f"-D{BH.CONST_BASE_MACRO}=0x200000000UL"])
         assert withit.returncode == 0, withit.stderr[:2000]
+
+
+class TestTheFarBlobsTwoHalvesComeFromOneNumber:
+    """A far blob has two halves that must agree: the address the harness compiles into an `li`, and
+    the address the linker puts the bytes at. If they disagree the program still links and still
+    runs -- it reads whatever happens to be at the literal. So both come from one call.
+    """
+
+    def test_the_link_flag_and_the_compile_literal_carry_the_same_address(self):
+        base = 0x200000000
+        link = BH.far_blob_link_flags(base)
+        compile_ = BH.far_blob_compile_flags(base)
+        assert link == (f"-Wl,--section-start={BH.FAR_BLOB_SECTION}=0x200000000",)
+        assert compile_ == (f"-D{BH.CONST_BASE_MACRO}=0x200000000UL",)
+        assert "0x200000000" in link[0] and "0x200000000" in compile_[0]
+
+    def test_the_assembly_places_the_blob_in_the_section_the_flag_names(self):
+        asm = BH.render_far_blob_assembly(blob_path="payload/const_blob.bin")
+        assert f".section {BH.FAR_BLOB_SECTION}," in asm
+        assert BH.FAR_BLOB_SECTION in BH.far_blob_link_flags(0x200000000)[0]
+        assert '.incbin "payload/const_blob.bin"' in asm
+
+    def test_the_assembly_says_its_symbol_is_not_the_access_path(self):
+        """Taking the symbol's address would be a relocation -- the thing the literal avoids."""
+        asm = BH.render_far_blob_assembly(blob_path="b.bin")
+        assert "never through this symbol" in asm
+
+    @pytest.mark.parametrize("bad", [0, -1, 1 << 62])
+    def test_a_bad_base_is_refused_or_accepted_consistently_by_BOTH(self, bad):
+        """Whatever one half refuses, the other must refuse: a half-applied base is the defect."""
+        link_error = compile_error = None
+        try:
+            BH.far_blob_link_flags(bad)
+        except BH.BundleHarnessError as exc:
+            link_error = str(exc)
+        try:
+            BH.far_blob_compile_flags(bad)
+        except BH.BundleHarnessError as exc:
+            compile_error = str(exc)
+        assert (link_error is None) == (compile_error is None)
+
+    def test_a_non_integer_base_is_refused_by_both(self):
+        for bad in ("0x200000000", True, 1.5, None):
+            with pytest.raises(BH.BundleHarnessError):
+                BH.far_blob_link_flags(bad)
+            with pytest.raises(BH.BundleHarnessError):
+                BH.far_blob_compile_flags(bad)
+
+    def test_a_section_name_that_is_not_one_is_refused(self):
+        with pytest.raises(BH.BundleHarnessError, match="ELF section name"):
+            BH.far_blob_link_flags(0x200000000, section="merlin_const_blob")
+
+    def test_an_empty_blob_path_is_refused(self):
+        with pytest.raises(BH.BundleHarnessError):
+            BH.render_far_blob_assembly(blob_path="")

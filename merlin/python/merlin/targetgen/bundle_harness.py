@@ -478,3 +478,64 @@ def render_freestanding_support(symbols: Sequence[str]) -> str:
         blocks.append(f"/* {name}: {shim['why']} */")
         blocks.append(str(shim["definition"]))
     return "\n".join(blocks)
+
+
+# ---------------------------------------------------------------------------------------------
+# Placing a far const blob, so the C literal and the linker cannot disagree
+# ---------------------------------------------------------------------------------------------
+#
+# A far blob has two halves that must agree: the address the harness compiles into an `li`, and the
+# address the linker actually puts the bytes at. If they disagree the program still links and still
+# runs -- it reads whatever is at the literal. So both come from ONE call here.
+#
+# The placement is a linker OPTION, not a script edit. `INSERT AFTER` cannot be used: a script
+# containing INSERT augments ld's DEFAULT script, so combined with the target's own `-T` script the
+# insert point is not found ("`.text` not found for insert"). `--section-start` needs no script at
+# all, which leaves the target's curated linker script authoritative -- and that script is vendored,
+# so not editing it is the point rather than a convenience.
+
+#: The section a far const blob is emitted into. Named here once so the assembly that defines it and
+#: the linker flag that places it cannot drift apart.
+FAR_BLOB_SECTION = ".merlin_const_blob"
+
+
+def far_blob_link_flags(const_blob_base: int, *, section: str = FAR_BLOB_SECTION) -> tuple[str, ...]:
+    """Linker flags placing ``section`` at ``const_blob_base``, as its own load segment."""
+    if not isinstance(const_blob_base, int) or isinstance(const_blob_base, bool):
+        raise BundleHarnessError("const_blob_base must be an integer address")
+    if const_blob_base <= 0:
+        raise BundleHarnessError("const_blob_base must be a positive absolute address")
+    if not section.startswith("."):
+        raise BundleHarnessError(f"section {section!r} must be an ELF section name")
+    return (f"-Wl,--section-start={section}={const_blob_base:#x}",)
+
+
+def far_blob_compile_flags(const_blob_base: int) -> tuple[str, ...]:
+    """The compile-time literal the harness reaches the blob by. Same number, one source."""
+    if not isinstance(const_blob_base, int) or isinstance(const_blob_base, bool):
+        raise BundleHarnessError("const_blob_base must be an integer address")
+    if const_blob_base <= 0:
+        raise BundleHarnessError("const_blob_base must be a positive absolute address")
+    return (f"-D{CONST_BASE_MACRO}={const_blob_base:#x}UL",)
+
+
+def render_far_blob_assembly(*, blob_path: str, section: str = FAR_BLOB_SECTION) -> str:
+    """Assembly placing ``blob_path``'s bytes in ``section``, with no symbol anyone must reach.
+
+    A symbol is emitted for a reader's benefit and deliberately not used by the harness: taking its
+    address would be a relocation, which is the thing the absolute literal exists to avoid.
+    """
+    if not blob_path:
+        raise BundleHarnessError("the blob path is required")
+    return "\n".join([
+        f'/* {section} is placed at an absolute address by far_blob_link_flags(); the harness',
+        f'   reaches it through the {CONST_BASE_MACRO} literal and never through this symbol. */',
+        f'    .section {section}, "a"',
+        "    .balign 64",
+        "    .global merlin_far_const_blob_start",
+        "merlin_far_const_blob_start:",
+        f'    .incbin "{blob_path}"',
+        "    .global merlin_far_const_blob_end",
+        "merlin_far_const_blob_end:",
+        "",
+    ])
