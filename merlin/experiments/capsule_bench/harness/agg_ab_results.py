@@ -34,9 +34,12 @@ EXP = C.EXP
 # Generated output lives under out/artifacts/ (top-level artifacts/ is retired) — concern-first
 # capsule-bench/<target>, matching launch_ab_batch's ANSWER_SURFACES.
 REPORTS = C.REPORTS
-ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
-ARM_LABEL = {"baseline": "baseline (C++)", "merlin": "merlin (xDSL)",
-             "merlin_rtlchecks": "merlin+CIRCT"}
+# Keyed to agg_agentic_results.ARM_ORDER. cpp_merlininfra was absent from both, so a batch that ran it
+# aggregated to nothing: _arm_of resolved the rung correctly from the bundle id and the cell it belonged
+# to had never been created.
+ARM_ORDER = ["baseline", "cpp_merlininfra", "merlin", "merlin_rtlchecks"]
+ARM_LABEL = {"baseline": "baseline (C++)", "cpp_merlininfra": "C++ & merlin infra",
+             "merlin": "merlin (xDSL)", "merlin_rtlchecks": "merlin+CIRCT"}
 COND_ORDER = ["kernels", "no-kernels", "kernel-library"]
 
 

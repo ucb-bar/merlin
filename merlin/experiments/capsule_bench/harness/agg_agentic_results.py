@@ -26,7 +26,11 @@ import _common as C  # noqa: E402 — active target (descriptor-driven), bootstr
 
 EXP = C.EXP
 REPORTS = C.REPORTS
-RUN_DIRS = ["raw_baseline", "merlin_assisted"]   # both scanned; arm decided by bundle_id
+# Every run-dir subtree an arm can land in. cpp_merlininfra was missing, and it is its OWN
+# subtree (unlike arms 3/4, which share merlin_assisted/), so its runs were never scanned at all:
+# the C++/infra rung silently contributed nothing to any aggregate or plot while looking like an
+# arm nobody had run yet. Arm is still decided by bundle_id, never by the directory.
+RUN_DIRS = ["raw_baseline", "cpp_merlininfra", "merlin_assisted"]
 # Bundle id -> arm. Each arm ships several VARIANTS of its bundle (_public_v0, _realistic_v0,
 # _hwbringup_v0, _hwbringup_nokernel_v0), and the variant is a condition, not a different arm — so the
 # stem is matched structurally rather than enumerating every (arm x variant) pair. Order matters:
@@ -38,7 +42,7 @@ _ARM_STEMS = (
     ("merlin_assisted", "merlin"),
     ("raw_baseline", "baseline"),
 )
-ARM_ORDER = ["baseline", "merlin", "merlin_rtlchecks"]
+ARM_ORDER = ["baseline", "cpp_merlininfra", "merlin", "merlin_rtlchecks"]
 
 
 def arm_from_bundle_id(bundle_id: str | None) -> str | None:
