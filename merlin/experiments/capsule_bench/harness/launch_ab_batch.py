@@ -43,7 +43,7 @@ ARMS = {
     "baseline":         (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "raw_baseline"], "rb", "raw_baseline", "raw_baseline_hwbringup_v0", "raw_baseline_public_v0"),
     "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0", "merlin_assisted_public_v0"),
     "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0", "merlin_assisted_rtlchecks_public_v0"),
-    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0", "cpp_merlininfra_hwbringup_v0"),
+    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0", "cpp_merlininfra_public_v0"),
     "merlin_eqsat":     (SCRIPTS / "run_eqsat_qa_loop.py", [], "merlineqsat", "merlin_assisted", "merlin_assisted_eqsat_hwbringup_v0", "merlin_assisted_eqsat_public_v0"),
 }
 
@@ -109,6 +109,14 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     # measured at 5h30m past a round's own 4h timeout, with the round never grading.
     if getattr(a, "model_budget_s", None) is not None:
         cmd += ["--model-budget-s", str(a.model_budget_s)]
+    # Forwarded for the same reason as the three above: without it the batch's own setting is a lie and
+    # every arm silently takes the loop default. --qa-timeout is the per-grade ceiling (loop default 900,
+    # the reference run used 1200) and --sim-max-jobs is the simjob broker's concurrency (loop default 0
+    # -> the broker's own 4). Both only when set explicitly, so a batch that omits them is unchanged.
+    if getattr(a, "qa_timeout", None) is not None:
+        cmd += ["--qa-timeout", str(a.qa_timeout)]
+    if getattr(a, "sim_max_jobs", None) is not None:
+        cmd += ["--sim-max-jobs", str(a.sim_max_jobs)]
     cmd += extra
     # Agent driver + optional tier-within-agent models (default "" -> the per-driver default tier).
     if getattr(a, "driver", "auto") != "auto":
@@ -314,6 +322,13 @@ def main(argv=None):
                          "still failing (0 = disabled). Passed through to the arm driver.")
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
     ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
+    ap.add_argument("--qa-timeout", type=int, default=None,
+                    help="per-grade wall ceiling (s) forwarded to every arm. Unset = the loop default "
+                         "(900); the gemmini reference run used 1200.")
+    ap.add_argument("--sim-max-jobs", type=int, default=None,
+                    help="simjob broker concurrency forwarded to every arm. Unset = the loop default "
+                         "(0 -> the broker's own 4). Remember this is PER ARM: N arms in parallel put "
+                         "N*this many verilator/spike jobs on the host at once.")
     ap.add_argument("--model-budget-s", type=int, default=None,
                     help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
                          "Unset = the driver's default; 0 = no ceiling.")
