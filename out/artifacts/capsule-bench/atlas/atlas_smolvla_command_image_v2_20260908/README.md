@@ -65,8 +65,8 @@ Importantly, the inventory's 2,033 layout-bridge candidates are not all aliases.
 The executable proof classifies 1,675 `view`/`unsqueeze` regions as metadata
 aliases, while 246 `expand` regions still need a strided descriptor and 112
 `copy` regions require materialization. There are separately 2,430 semantic
-host-required regions. The fail-closed generic host lane now accepts 2,424 of
-them from their complete extracted pointwise/cast/scalar-DAG signature,
+host-required regions. The fail-closed generic host lane now accepts all 2,430
+of them from their complete extracted pointwise/cast/scalar-DAG signature,
 including exact affine constant-zero broadcasting. The second tranche adds all
 353 captured `pow`/`rsqrt`/trigonometric/sigmoid/GELU/reciprocal/clamp regions,
 with declared intermediate dtype conversion and BF16 round-to-nearest-even.
@@ -84,7 +84,12 @@ reductions—412 regions total. It validates static bounds, concat axes and
 shapes, reshape element counts, generic scalar dataflow, and declared dtypes;
 malformed shapes or operation bodies fail closed. Relative to the prior
 scoped-bridge baseline of 2,408 missing host regions, the exact missing count is
-now six, a reduction of 2,402. The
+now zero, a reduction of 2,408. The final six qualified regions are two exact
+embedding gathers, one two-index boolean gather, a linked mask-gather/index-put
+pair, and the 16x16-stride patch-embedding im2col convolution. Their complete
+affine/index/loop/reshape dataflow is signed; runtime indices and dynamic mask
+update counts are checked. Fresh real capture-shape execution matches
+independent numeric oracles, including the full 512x512 convolution input. The
 existing real p0243-to-p0244 bridge still replays 27 regions and exactly
 reproduces the saved p0244 activation hash, but the schedule no longer treats
 scoped provenance membership alone as executable semantic evidence. The
@@ -102,10 +107,10 @@ chains. Standalone layer norm and GELU instances are also exercised where
 accelerator boundaries prevent a host dependency. This is fresh host numeric
 evidence only.
 
-Consequently the hybrid schedule remains explicitly `e2e_blocked_fail_closed`:
-six host semantic regions (two embedding plus one convolution, mask gather,
-index put, and index gather), 388 accelerator partitions, and 358 layout
-bridges remain unresolved. See `HYBRID_RUNTIME_REPORT.md` and
+Host semantic coverage is now complete, but the hybrid schedule remains
+explicitly `e2e_blocked_fail_closed`: 388 accelerator partitions, 358 layout
+bridges, and the physical event/DMA runtime remain unresolved. See
+`HYBRID_RUNTIME_REPORT.md` and
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
 is added.
 

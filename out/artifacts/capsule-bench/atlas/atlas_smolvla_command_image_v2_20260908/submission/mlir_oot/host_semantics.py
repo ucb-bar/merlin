@@ -97,6 +97,10 @@ _REDUCTION_TOP_PATTERNS = {
     ),
 }
 _MOVEMENT_SEMANTICS = frozenset({"slice", "split", "slice_scatter", "cat"})
+_INDEXED_SEMANTICS = frozenset({"embedding", "index_gather", "mask_gather", "index_put"})
+_INDEXED_SEMANTICS = frozenset({
+    "embedding", "index_gather", "mask_gather", "index_put",
+})
 _CAST_OPS = frozenset({
     "arith.extf", "arith.truncf", "arith.sitofp", "arith.fptosi",
     "arith.index_cast",
@@ -956,6 +960,367 @@ def _extract_movement_program(
     )
 
 
+def _require_static_alias(op) -> None:
+    if op.name not in {"tensor.collapse_shape", "tensor.expand_shape"}:
+        raise UnsupportedHostRegion("expected one static reshape alias")
+    source_shape = _tensor_shape(op.operands[0])
+    result_shape = _tensor_shape(op.results[0])
+    if (source_shape is None or result_shape is None
+            or any(extent < 0 for extent in source_shape + result_shape)
+            or int(np.prod(source_shape, dtype=np.int64))
+            != int(np.prod(result_shape, dtype=np.int64))
+            or _dtype_name(op.operands[0]) != _dtype_name(op.results[0])):
+        raise UnsupportedHostRegion("indexed reshape is not an exact static alias")
+
+
+def _indexed_generic_signature(op, semantic: str) -> tuple[dict, object]:
+    if len(op.outputs) != 1 or len(op.results) != 1:
+        raise UnsupportedHostRegion("indexed generic output/result arity is unsupported")
+    output_shape = _tensor_shape(op.results[0])
+    if output_shape is None or any(extent < 0 for extent in output_shape):
+        raise UnsupportedHostRegion("indexed generic output is not statically ranked")
+    iterator_types = [getattr(item.data, "value", str(item.data)) for item in op.iterator_types]
+    if iterator_types != ["parallel"] * len(output_shape):
+        raise UnsupportedHostRegion("indexed generic has a non-parallel iterator")
+    mappings = list(op.indexing_maps)
+    operands = list(op.inputs) + list(op.outputs)
+    if len(mappings) != len(operands):
+        raise UnsupportedHostRegion("indexed generic map arity is inconsistent")
+    map_records = []
+    for value, mapping in zip(operands, mappings):
+        shape = _tensor_shape(value)
+        if shape is None or any(extent < 0 for extent in shape):
+            raise UnsupportedHostRegion("indexed generic operand is not statically ranked")
+        record = _general_affine_map_signature(mapping, shape, len(output_shape))
+        for item in record:
+            if (item["kind"] == "dim"
+                    and item["extent"] != output_shape[item["position"]]):
+                raise UnsupportedHostRegion("indexed map extent differs from its loop extent")
+            if item["kind"] == "constant" and item["extent"] != 1:
+                raise UnsupportedHostRegion("indexed broadcast is not a singleton axis")
+        map_records.append([
+            {key: value for key, value in item.items() if key != "extent"}
+            for item in record
+        ])
+    identity = [
+        {"kind": "dim", "position": axis} for axis in range(len(output_shape))
+    ]
+    if map_records[-1] != identity:
+        raise UnsupportedHostRegion("indexed generic output map is not identity")
+
+    block = op.body.blocks[0]
+    body = list(block.ops)
+    if semantic == "embedding":
+        expected = ("arith.index_cast", "linalg.index", "tensor.extract", "linalg.yield")
+        if (tuple(item.name for item in body) != expected or len(op.inputs) != 1
+                or len(block.args) != 2):
+            raise UnsupportedHostRegion("embedding scalar body is not the captured indexed load")
+        cast, index, extract, yielded = body
+        if (tuple(cast.operands) != (block.args[0],)
+                or _index_dimension(index) != len(output_shape) - 1
+                or tuple(extract.operands[1:]) != (cast.results[0], index.results[0])
+                or tuple(yielded.operands) != (extract.results[0],)):
+            raise UnsupportedHostRegion("embedding scalar dataflow is not the captured indexed load")
+        index_sources = [
+            {"kind": "input", "input": 0},
+            {"kind": "loop_dimension", "dimension": len(output_shape) - 1},
+        ]
+    elif semantic == "index_gather":
+        expected = (
+            "arith.index_cast", "arith.index_cast", "tensor.extract", "linalg.yield",
+        )
+        if (tuple(item.name for item in body) != expected or len(op.inputs) != 2
+                or len(block.args) != 3):
+            raise UnsupportedHostRegion("index_gather body is not the captured indexed load")
+        first, second, extract, yielded = body
+        if (tuple(first.operands) != (block.args[0],)
+                or tuple(second.operands) != (block.args[1],)
+                or tuple(extract.operands[1:]) != (first.results[0], second.results[0])
+                or tuple(yielded.operands) != (extract.results[0],)):
+            raise UnsupportedHostRegion("index_gather scalar dataflow is not the captured indexed load")
+        index_sources = [
+            {"kind": "input", "input": 0}, {"kind": "input", "input": 1},
+        ]
+    else:
+        raise UnsupportedHostRegion(f"indexed generic semantic {semantic} is unsupported")
+
+    table = body[-2].operands[0]
+    table_shape = _tensor_shape(table)
+    if (table_shape is None or len(table_shape) != len(index_sources)
+            or any(extent <= 0 for extent in table_shape)):
+        raise UnsupportedHostRegion("indexed load table is not a compatible static tensor")
+    if (_dtype_name(table) != _dtype_name(op.results[0])
+            or any(_dtype_name(value) not in {"i32", "i64", "index"} for value in op.inputs)):
+        raise UnsupportedHostRegion("indexed load table or index dtype is unsupported")
+    _numpy_dtype(_dtype_name(table))
+    return ({
+        "loop_shape": list(output_shape),
+        "operand_maps": map_records,
+        "input_shapes": [list(_tensor_shape(value) or ()) for value in op.inputs],
+        "input_dtypes": [_dtype_name(value) for value in op.inputs],
+        "output_shape": list(output_shape),
+        "output_dtype": _dtype_name(op.results[0]),
+        "table_shape": list(table_shape),
+        "table_dtype": _dtype_name(table),
+        "index_sources": index_sources,
+        "scalar_ops": [item.name for item in body[:-1]],
+    }, table)
+
+
+def _validate_masked_loop(
+    loop, *, mask, payload, initial, zero, one, upper, compact: bool,
+) -> None:
+    if (loop.lb is not zero or loop.ub is not upper or loop.step is not one
+            or tuple(loop.iter_args) != (initial, zero) or len(loop.results) != 2):
+        raise UnsupportedHostRegion("masked loop bounds or iterated values are inconsistent")
+    block = loop.body.blocks[0]
+    if len(block.args) != 3:
+        raise UnsupportedHostRegion("masked loop argument arity is inconsistent")
+    induction, destination, compact_index = block.args
+    top = list(block.ops)
+    if (tuple(op.name for op in top) != ("tensor.extract", "scf.if", "scf.yield")
+            or tuple(top[0].operands) != (mask, induction)
+            or tuple(top[1].operands) != tuple(top[0].results)
+            or tuple(top[2].operands) != tuple(top[1].results)):
+        raise UnsupportedHostRegion("masked loop control dataflow is inconsistent")
+    conditional = top[1]
+    then_ops = list(conditional.regions[0].blocks[0].ops)
+    else_ops = list(conditional.regions[1].blocks[0].ops)
+    if (tuple(op.name for op in then_ops)
+            != ("tensor.extract", "tensor.insert", "arith.addi", "scf.yield")
+            or tuple(op.name for op in else_ops) != ("scf.yield",)):
+        raise UnsupportedHostRegion("masked loop branch topology is inconsistent")
+    payload_index = induction if compact else compact_index
+    destination_index = compact_index if compact else induction
+    if (tuple(then_ops[0].operands) != (payload, payload_index)
+            or tuple(then_ops[1].operands)
+            != (then_ops[0].results[0], destination, destination_index)
+            or tuple(then_ops[2].operands) != (compact_index, one)
+            or tuple(then_ops[3].operands)
+            != (then_ops[1].results[0], then_ops[2].results[0])
+            or tuple(else_ops[0].operands) != (destination, compact_index)):
+        raise UnsupportedHostRegion("masked loop branch dataflow is inconsistent")
+
+
+def _extract_indexed_program(
+    region_id: str, semantic: str, aten: str, operations: tuple,
+) -> HostRegionProgram:
+    names = tuple(op.name for op in operations)
+    if semantic in {"embedding", "index_gather"}:
+        if names != ("linalg.generic",):
+            raise UnsupportedHostRegion(f"{semantic} is not one captured indexed generic")
+        generic = operations[0]
+        indexed, table = _indexed_generic_signature(generic, semantic)
+        input_values = tuple(generic.inputs) + (table,)
+        signature = {
+            "schema": "atlas_host_indexed_signature_v1",
+            "semantic": semantic,
+            "aten": aten,
+            "operation_sequence": list(names),
+            "input_shapes": indexed["input_shapes"] + [indexed["table_shape"]],
+            "input_dtypes": indexed["input_dtypes"] + [indexed["table_dtype"]],
+            "output_shape": indexed["output_shape"],
+            "output_dtype": indexed["output_dtype"],
+            "indexed_generic": indexed,
+            "bounds_rule": "every runtime integer index must be within its table axis",
+        }
+        return HostRegionProgram(
+            region_id, semantic, aten, operations, generic, input_values,
+            generic.results[0], signature,
+        )
+
+    if semantic == "mask_gather":
+        expected = (
+            "tensor.collapse_shape", "tensor.collapse_shape", "tensor.empty",
+            "linalg.generic", "arith.constant", "tensor.splat", "linalg.reduce",
+            "tensor.extract", "arith.index_cast", "arith.constant", "arith.constant",
+            "arith.constant", "tensor.empty", "scf.for",
+        )
+        nested = (
+            "scf.for", "tensor.extract", "scf.if", "tensor.extract",
+            "tensor.insert", "arith.addi", "scf.yield", "scf.yield", "scf.yield",
+        )
+    elif semantic == "index_put":
+        expected = (
+            "tensor.collapse_shape", "tensor.collapse_shape", "arith.constant",
+            "arith.constant", "arith.constant", "scf.for", "tensor.expand_shape",
+        )
+        nested = (
+            "scf.for", "tensor.extract", "scf.if", "tensor.extract",
+            "tensor.insert", "arith.addi", "scf.yield", "scf.yield", "scf.yield",
+        )
+    else:
+        raise UnsupportedHostRegion(f"indexed semantic {semantic} is unsupported")
+    if names != expected:
+        raise UnsupportedHostRegion(f"{semantic} does not match its complete captured topology")
+    if tuple(item.name for item in operations[-1 if semantic == "mask_gather" else -2].walk()) != nested:
+        raise UnsupportedHostRegion(f"{semantic} loop body does not match the captured topology")
+    _require_static_alias(operations[0])
+    _require_static_alias(operations[1])
+    data_shape = _tensor_shape(operations[0].operands[0])
+    mask_shape = _tensor_shape(operations[1].operands[0])
+    if (data_shape is None or data_shape != mask_shape
+            or _dtype_name(operations[1].operands[0]) != "i1"):
+        raise UnsupportedHostRegion(f"{semantic} data and mask shapes are incompatible")
+    extent = int(np.prod(data_shape, dtype=np.int64))
+
+    if semantic == "mask_gather":
+        generic = _generic_signature(operations[3])
+        reduction = _reduce_signature(operations[6])
+        if (generic["scalar_ops"] != ["arith.extui"]
+                or reduction["scalar_ops"] != ["arith.addi"]
+                or reduction["dimensions"] != [0]):
+            raise UnsupportedHostRegion("mask_gather count reduction is not exact")
+        constants = [int(_constant_value(op)) for op in operations if op.name == "arith.constant"]
+        if constants != [0, 0, 1, extent]:
+            raise UnsupportedHostRegion("mask_gather loop constants disagree with its extent")
+        _validate_masked_loop(
+            operations[-1], mask=operations[1].results[0],
+            payload=operations[0].results[0], initial=operations[12].results[0],
+            zero=operations[9].results[0], one=operations[10].results[0],
+            upper=operations[11].results[0], compact=True,
+        )
+        output_value = operations[-1].results[0]
+        input_values = (operations[0].operands[0], operations[1].operands[0])
+        output_shape_rule = ["mask_true_count"]
+    else:
+        _require_static_alias(operations[-1])
+        constants = [int(_constant_value(op)) for op in operations if op.name == "arith.constant"]
+        if constants != [0, 1, extent]:
+            raise UnsupportedHostRegion("index_put loop constants disagree with its extent")
+        loop = operations[-2]
+        nested_extracts = [item for item in loop.walk() if item.name == "tensor.extract"]
+        if len(nested_extracts) != 2:
+            raise UnsupportedHostRegion("index_put loop does not have mask/update loads")
+        updates = nested_extracts[1].operands[0]
+        update_shape = _tensor_shape(updates)
+        if (update_shape is not None and (len(update_shape) != 1 or update_shape[0] >= 0)
+                or _dtype_name(updates) != _dtype_name(operations[0].operands[0])):
+            raise UnsupportedHostRegion("index_put updates are not the captured dynamic vector")
+        _validate_masked_loop(
+            loop, mask=operations[1].results[0], payload=updates,
+            initial=operations[0].results[0], zero=operations[2].results[0],
+            one=operations[3].results[0], upper=operations[4].results[0],
+            compact=False,
+        )
+        output_value = operations[-1].results[0]
+        input_values = (operations[0].operands[0], operations[1].operands[0], updates)
+        output_shape_rule = list(data_shape)
+    input_dtypes = [_dtype_name(value) for value in input_values]
+    for dtype in input_dtypes:
+        _numpy_dtype(dtype)
+    signature = {
+        "schema": "atlas_host_indexed_signature_v1",
+        "semantic": semantic,
+        "aten": aten,
+        "operation_sequence": list(names),
+        "input_shapes": [
+            (list(_tensor_shape(value))
+             if (_tensor_shape(value) is not None
+                 and all(extent >= 0 for extent in _tensor_shape(value) or ()))
+             else ["mask_true_count"])
+            for value in input_values
+        ],
+        "input_dtypes": input_dtypes,
+        "output_shape": output_shape_rule,
+        "output_dtype": _dtype_name(output_value),
+        "flat_extent": extent,
+        "loop_body": list(nested),
+        "bounds_rule": "mask true count defines compact update/result extent",
+    }
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, None, input_values,
+        output_value, signature,
+    )
+
+
+def _extract_im2col_convolution_program(
+    region_id: str, semantic: str, aten: str, operations: tuple,
+) -> HostRegionProgram:
+    expected = (
+        "linalg.generic", "tensor.collapse_shape", "tensor.expand_shape",
+        "tensor.collapse_shape", "tensor.expand_shape", "arith.constant",
+        "tensor.splat", "linalg.matmul", "tensor.collapse_shape",
+        "tensor.expand_shape", "tensor.collapse_shape", "tensor.expand_shape",
+        "tensor.empty", "linalg.generic",
+    )
+    if tuple(op.name for op in operations) != expected:
+        raise UnsupportedHostRegion("im2col convolution does not match its captured topology")
+    image = operations[0].inputs[0]
+    weight = operations[3].operands[0]
+    bias = operations[-1].inputs[1]
+    image_shape = _tensor_shape(image)
+    weight_shape = _tensor_shape(weight)
+    bias_shape = _tensor_shape(bias)
+    output_shape = _tensor_shape(operations[-1].results[0])
+    if (image_shape is None or weight_shape is None or bias_shape is None
+            or output_shape is None or len(image_shape) != 4 or len(weight_shape) != 4
+            or len(bias_shape) != 1 or len(output_shape) != 4):
+        raise UnsupportedHostRegion("im2col convolution boundaries are not rank-compatible")
+    batch, channels, height, width = image_shape
+    out_channels, weight_channels, kernel_h, kernel_w = weight_shape
+    out_batch, result_channels, out_h, out_w = output_shape
+    if (batch != 1 or out_batch != batch or channels != weight_channels
+            or result_channels != out_channels or bias_shape != (out_channels,)
+            or height != out_h * kernel_h or width != out_w * kernel_w):
+        raise UnsupportedHostRegion("im2col convolution shapes do not encode the captured stride")
+    im2col_shape = _tensor_shape(operations[0].results[0])
+    if im2col_shape != (channels, kernel_h, kernel_w, batch, out_h, out_w):
+        raise UnsupportedHostRegion("im2col tensor shape is inconsistent with convolution bounds")
+    maps = list(operations[0].indexing_maps)
+    input_exprs = [str(expr) for expr in maps[0].data.results]
+    output_exprs = [str(expr) for expr in maps[1].data.results]
+    if (input_exprs != [
+            "d3", "d0", f"((d4 * {kernel_h}) + d1)",
+            f"((d5 * {kernel_w}) + d2)",
+        ] or output_exprs != [f"d{axis}" for axis in range(6)]):
+        raise UnsupportedHostRegion("im2col affine map is not the captured strided extraction")
+    first_body = list(operations[0].body.blocks[0].ops)
+    if (tuple(op.name for op in first_body) != ("linalg.yield",)
+            or first_body[0].operands[0] is not operations[0].body.blocks[0].args[0]):
+        raise UnsupportedHostRegion("im2col generic does not yield the sampled image value")
+    for op in (operations[1], operations[2], operations[3], operations[4],
+               operations[8], operations[9], operations[10], operations[11]):
+        _require_static_alias(op)
+    if (operations[1].operands[0] is not operations[0].results[0]
+            or operations[2].operands[0] is not operations[1].results[0]
+            or operations[4].operands[0] is not operations[3].results[0]
+            or tuple(operations[7].operands[:2])
+            != (operations[4].results[0], operations[2].results[0])
+            or operations[8].operands[0] is not operations[7].results[0]
+            or operations[9].operands[0] is not operations[8].results[0]
+            or operations[10].operands[0] is not operations[9].results[0]
+            or operations[11].operands[0] is not operations[10].results[0]
+            or operations[-1].inputs[0] is not operations[11].results[0]):
+        raise UnsupportedHostRegion("im2col convolution tensor dataflow is inconsistent")
+    zero = float(_constant_value(operations[5]))
+    bias_generic = _generic_signature(operations[-1])
+    if zero != 0.0 or bias_generic["scalar_ops"] != ["arith.addf"]:
+        raise UnsupportedHostRegion("im2col accumulator or bias epilogue is unsupported")
+    if any(_dtype_name(value) != "f32" for value in (image, weight, bias, operations[-1].results[0])):
+        raise UnsupportedHostRegion("im2col host lane currently requires captured f32 tensors")
+    signature = {
+        "schema": "atlas_host_im2col_convolution_signature_v1",
+        "semantic": semantic,
+        "aten": aten,
+        "operation_sequence": list(expected),
+        "input_shapes": [list(image_shape), list(weight_shape), list(bias_shape)],
+        "input_dtypes": ["f32", "f32", "f32"],
+        "output_shape": list(output_shape),
+        "output_dtype": "f32",
+        "kernel_shape": [kernel_h, kernel_w],
+        "stride": [kernel_h, kernel_w],
+        "padding": [0, 0],
+        "dilation": [1, 1],
+        "groups": 1,
+        "accumulation_rule": "captured f32 linalg.matmul followed by channel bias add",
+    }
+    return HostRegionProgram(
+        region_id, semantic, aten, operations, None, (image, weight, bias),
+        operations[-1].results[0], signature,
+    )
+
+
 def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     semantic = _str_attr(operations[0], "prov.op")
     aten = _str_attr(operations[0], "prov.aten")
@@ -964,6 +1329,12 @@ def _extract_program(region_id: str, operations: tuple) -> HostRegionProgram:
     if (semantic in _MOVEMENT_SEMANTICS or semantic in {"bitwise", "bucketize"}
             or (semantic == "select" and operations[0].name == "tensor.extract_slice")):
         return _extract_movement_program(region_id, semantic, aten, operations)
+    if semantic in _INDEXED_SEMANTICS:
+        return _extract_indexed_program(region_id, semantic, aten, operations)
+    if semantic == "convolution_im2col_matmul":
+        return _extract_im2col_convolution_program(
+            region_id, semantic, aten, operations
+        )
     if semantic == "fill":
         if tuple(op.name for op in operations) != ("arith.constant", "tensor.splat"):
             raise UnsupportedHostRegion("fill is not one scalar constant followed by tensor.splat")
@@ -1117,6 +1488,19 @@ class HostSemanticLane:
                             and block_operations[candidate].name == "linalg.reduce"):
                         stop = candidate
                 operations = block_operations[start:stop + 1]
+            elif semantic in {"convolution_im2col_matmul", "index_put"}:
+                start = operation_indices[operations[0]]
+                stop = operation_indices[operations[-1]]
+                operations = block_operations[start:stop + 1]
+            elif semantic == "mask_gather":
+                start = operation_indices[operations[0]]
+                stop = operation_indices[operations[-1]] + 1
+                while (stop < len(block_operations)
+                       and block_operations[stop].name != "scf.for"
+                       and not _str_attr(block_operations[stop], "prov.region_id")):
+                    stop += 1
+                if stop < len(block_operations) and block_operations[stop].name == "scf.for":
+                    operations = block_operations[start:stop + 1]
             try:
                 self.programs[region_id] = _extract_program(region_id, tuple(operations))
             except UnsupportedHostRegion as error:
@@ -1130,6 +1514,90 @@ class HostSemanticLane:
         if region_id not in self.programs:
             raise UnsupportedHostRegion(self.rejections.get(region_id, f"unknown region {region_id}"))
         program = self.programs[region_id]
+        if program.signature["schema"] == "atlas_host_indexed_signature_v1":
+            semantic = program.semantic
+            if semantic in {"embedding", "index_gather"}:
+                record = program.signature["indexed_generic"]
+                output_shape = tuple(record["output_shape"])
+                mapped = []
+                for value, mapping in zip(
+                    program.input_values[:-1], record["operand_maps"][:-1]
+                ):
+                    if value not in values:
+                        raise ValueError(f"missing runtime index value for {region_id}")
+                    mapped.append(_broadcast_operand(values[value], mapping, output_shape))
+                table_value = program.input_values[-1]
+                if table_value not in values:
+                    raise ValueError(f"missing runtime table value for {region_id}")
+                table = np.asarray(values[table_value])
+                if tuple(table.shape) != tuple(record["table_shape"]):
+                    raise ValueError(f"runtime table shape differs for {region_id}")
+                indices = []
+                for source in record["index_sources"]:
+                    if source["kind"] == "input":
+                        index = np.asarray(mapped[source["input"]], dtype=np.int64)
+                    else:
+                        index = np.indices(output_shape, dtype=np.int64)[source["dimension"]]
+                    indices.append(index)
+                if any(
+                    np.any(index < 0) or np.any(index >= table.shape[axis])
+                    for axis, index in enumerate(indices)
+                ):
+                    raise ValueError(f"runtime index is out of bounds for {region_id}")
+                result = _cast(table[tuple(indices)], record["output_dtype"])
+                values[program.output_value] = np.ascontiguousarray(result)
+                return values[program.output_value]
+            data_value, mask_value = program.input_values[:2]
+            if data_value not in values or mask_value not in values:
+                raise ValueError(f"missing runtime masked-index input for {region_id}")
+            data = np.asarray(values[data_value]).reshape(-1)
+            mask = np.asarray(values[mask_value], dtype=np.bool_).reshape(-1)
+            if data.size != program.signature["flat_extent"] or mask.size != data.size:
+                raise ValueError(f"runtime masked-index extent differs for {region_id}")
+            if semantic == "mask_gather":
+                result = np.array(data[mask], copy=True, order="C")
+            else:
+                updates_value = program.input_values[2]
+                if updates_value not in values:
+                    raise ValueError(f"missing runtime updates for {region_id}")
+                updates = np.asarray(values[updates_value]).reshape(-1)
+                if updates.size != int(np.count_nonzero(mask)):
+                    raise ValueError(f"runtime update count differs from mask for {region_id}")
+                result = np.array(data, copy=True, order="C")
+                result[mask] = updates
+                result = result.reshape(tuple(program.signature["output_shape"]))
+            result = _cast(result, program.signature["output_dtype"])
+            values[program.output_value] = np.ascontiguousarray(result)
+            return values[program.output_value]
+        if program.signature["schema"] == "atlas_host_im2col_convolution_signature_v1":
+            missing = [value for value in program.input_values if value not in values]
+            if missing:
+                raise ValueError(f"missing runtime convolution input for {region_id}")
+            image, weight, bias = [
+                np.asarray(values[value], dtype=np.float32)
+                for value in program.input_values
+            ]
+            expected_shapes = [tuple(shape) for shape in program.signature["input_shapes"]]
+            if [tuple(value.shape) for value in (image, weight, bias)] != expected_shapes:
+                raise ValueError(f"runtime convolution shape differs for {region_id}")
+            batch, channels, _, _ = image.shape
+            out_channels, _, kernel_h, kernel_w = weight.shape
+            _, _, out_h, out_w = tuple(program.signature["output_shape"])
+            patches = image.reshape(
+                batch, channels, out_h, kernel_h, out_w, kernel_w
+            ).transpose(1, 3, 5, 0, 2, 4)
+            matrix = np.matmul(
+                weight.reshape(out_channels, channels * kernel_h * kernel_w),
+                patches.reshape(channels * kernel_h * kernel_w, batch * out_h * out_w),
+            )
+            result = matrix.reshape(out_channels, batch, out_h, out_w).reshape(
+                tuple(program.signature["output_shape"])
+            )
+            result = np.asarray(
+                result + bias.reshape(1, out_channels, 1, 1), dtype=np.float32
+            )
+            values[program.output_value] = np.ascontiguousarray(result)
+            return values[program.output_value]
         if program.signature["schema"] == "atlas_host_movement_signature_v1":
             generic_index = 0
             slice_index = 0
@@ -1292,16 +1760,32 @@ class HostSemanticLane:
                     continue
                 shape = _tensor_shape(value)
                 dtype = _dtype_name(value)
-                if shape is None:
-                    raise ValueError("external pointwise input is not a ranked tensor")
+                if shape is None or any(extent < 0 for extent in shape):
+                    raise ValueError("external host input is not a static ranked tensor")
                 count = int(np.prod(shape, dtype=np.int64))
+                index_bounds = []
+                for selected_region_id in region_ids:
+                    selected = self.programs[selected_region_id]
+                    if (selected.signature["schema"] != "atlas_host_indexed_signature_v1"
+                            or selected.semantic not in {"embedding", "index_gather"}):
+                        continue
+                    indexed = selected.signature["indexed_generic"]
+                    for axis, source in enumerate(indexed["index_sources"]):
+                        if (source["kind"] == "input"
+                                and selected.input_values[source["input"]] is value):
+                            index_bounds.append(indexed["table_shape"][axis])
                 if dtype == "i1":
                     array = ((np.arange(count, dtype=np.int64) + seed_index) % 3) != 0
                 elif dtype.startswith("i") or dtype == "index":
-                    array = (
-                        (np.arange(count, dtype=np.int64) * (seed_index + 1) + seed_index)
-                        % 17
-                    ) + 1
+                    if index_bounds:
+                        array = (
+                            np.arange(count, dtype=np.int64) * (seed_index + 1) + seed_index
+                        ) % min(index_bounds)
+                    else:
+                        array = (
+                            (np.arange(count, dtype=np.int64) * (seed_index + 1) + seed_index)
+                            % 17
+                        ) + 1
                 else:
                     array = (
                         (np.arange(count, dtype=np.float32) * (seed_index + 1) + seed_index)
@@ -1344,8 +1828,13 @@ class HostSemanticLane:
                     elif getattr(value, "owner", None) not in selected_ops:
                         external.add(value)
                 produced.update(value for op in program.operations for value in op.results)
-            elements = sum(int(np.prod(_tensor_shape(value) or (), dtype=np.int64))
-                           for value in external)
+            external_shapes = [_tensor_shape(value) for value in external]
+            if any(shape is None or any(extent < 0 for extent in shape)
+                   for shape in external_shapes):
+                start = stop
+                continue
+            elements = sum(int(np.prod(shape, dtype=np.int64))
+                           for shape in external_shapes if shape is not None)
             if dependencies and elements <= max_external_elements:
                 candidates.append({
                     "region_ids": run,

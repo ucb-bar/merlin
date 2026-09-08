@@ -92,14 +92,19 @@
       "bucketize": 2,
       "cat": 95,
       "compare": 4,
+      "convolution_im2col_matmul": 1,
       "cos": 57,
       "cumsum": 4,
       "div": 56,
       "dtype_cast": 472,
       "elementwise": 3,
+      "embedding": 2,
       "fill": 50,
       "gelu": 12,
+      "index_gather": 1,
+      "index_put": 1,
       "layer_norm": 25,
+      "mask_gather": 1,
       "minmax": 2,
       "mul": 536,
       "pow": 123,
@@ -115,10 +120,10 @@
       "split": 56,
       "sub": 68
     },
-    "host_signature_regions_implemented": 2424,
+    "host_signature_regions_implemented": 2430,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
-    "missing_host_semantics_reduction": 2402,
+    "missing_host_semantics_reduction": 2408,
     "partition_host_region_overlap": [
       "conv_0"
     ],
@@ -143,23 +148,127 @@
   },
   "event_count": 6104,
   "fail_closed": {
-    "missing_host_semantics": 6,
-    "missing_host_semantics_by_semantic": {
-      "convolution_im2col_matmul": 1,
-      "embedding": 2,
-      "index_gather": 1,
-      "index_put": 1,
-      "mask_gather": 1
-    },
+    "missing_host_semantics": 0,
+    "missing_host_semantics_by_semantic": {},
     "unqualified_accelerator_partitions": 388,
     "unrealized_layout_bridges": 358
   },
+  "final_indexed_host_numeric_witnesses": [
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "bounded ordinal indices and a coordinate-derived exact table",
+      "label": "embedding_0",
+      "oracle_sha256": "bdacefd732ac7a5e13228d23ffb13d721fc560ae5b25f659a795d34298627509",
+      "output_dtype": "float32",
+      "output_sha256": "bdacefd732ac7a5e13228d23ffb13d721fc560ae5b25f659a795d34298627509",
+      "output_shape": [
+        1,
+        1024,
+        768
+      ],
+      "region_ids": [
+        "gather_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "embedding"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "bounded ordinal indices and a coordinate-derived exact table",
+      "label": "embedding_1",
+      "oracle_sha256": "894b00eded06f990583d55453cb654ee52693551f2610d95960aaf8856d006cb",
+      "output_dtype": "float32",
+      "output_sha256": "894b00eded06f990583d55453cb654ee52693551f2610d95960aaf8856d006cb",
+      "output_shape": [
+        1,
+        48,
+        960
+      ],
+      "region_ids": [
+        "gather_2"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "embedding"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "zero row plus reverse column permutation over a patterned boolean table",
+      "label": "index_gather",
+      "oracle_sha256": "d9de285d6296efbe561ba8c4ca2500196414c33d27ec8691fbfefe7c7e27b55a",
+      "output_dtype": "bool",
+      "output_sha256": "d9de285d6296efbe561ba8c4ca2500196414c33d27ec8691fbfefe7c7e27b55a",
+      "output_shape": [
+        1,
+        1,
+        1,
+        1024
+      ],
+      "region_ids": [
+        "gather_1"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "index_gather"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "patterned mask compacts coordinate data then scatters it into a fresh destination",
+      "label": "mask_gather_index_put",
+      "oracle_sha256": "5cf517a6a6dd474ba44be6645f86567e309c9f6115d0fc6755cfdadb3d4d1fd8",
+      "output_dtype": "int64",
+      "output_sha256": "5cf517a6a6dd474ba44be6645f86567e309c9f6115d0fc6755cfdadb3d4d1fd8",
+      "output_shape": [
+        1,
+        1024
+      ],
+      "region_ids": [
+        "mask_gather_0",
+        "mask_scatter_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "mask_gather",
+        "index_put"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "two sparse kernel taps plus per-channel bias over the full captured 512x512 input",
+      "label": "patch_embedding_convolution",
+      "oracle_sha256": "4b771284a86d49ccb40ff07622fc175169d301a2f77443339d8affa160c9c419",
+      "output_dtype": "float32",
+      "output_sha256": "4b771284a86d49ccb40ff07622fc175169d301a2f77443339d8affa160c9c419",
+      "output_shape": [
+        1,
+        768,
+        32,
+        32
+      ],
+      "region_ids": [
+        "conv_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "convolution_im2col_matmul"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    }
+  ],
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "1f154b82813404d94d5e648aaaf594866ef63490060c9aaadfe6a117894e0996"
+    "sha256": "9d7781cde8b5e3086bfcddd264d6b7300cf741faa9e154e46ebf2ddb2e41c6ac"
   },
   "generic_host_chain": {
-    "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+    "claim": "host semantic execution only; no device execution and not whole-model E2E",
     "dependency_edges": 17,
     "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
     "fresh_inputs": [
@@ -380,7 +489,7 @@
   },
   "generic_host_numeric_witnesses": [
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 17,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -600,7 +709,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -830,7 +939,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -915,7 +1024,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1072,7 +1181,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1228,103 +1337,154 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 3,
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
         {
-          "dtype": "bool",
+          "dtype": "int64",
           "ordinal": 0,
-          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "sha256": "79662f24afef4ba0321999a7093c8b5559a322c0930888c7d65b873a31728961",
           "shape": [
             1,
             1,
-            50,
-            163
+            1024,
+            1
           ]
         },
         {
-          "dtype": "float32",
+          "dtype": "int64",
           "ordinal": 1,
-          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "sha256": "5a97558fdc4a9b161846a91da48163a39d25233e6f495d42aaffa86783411ecb",
           "shape": [
             1,
-            15,
-            50,
-            163
+            1,
+            1024,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 2,
+          "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+          "shape": [
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 3,
+          "sha256": "1bf248fe925ddfdd6b0f8bf954be3f7931590248720a5f13bde965b095ad038b",
+          "shape": [
+            1,
+            1,
+            1,
+            1024
+          ]
+        },
+        {
+          "dtype": "bool",
+          "ordinal": 4,
+          "sha256": "ae6d522214c90982e60cd28013610e2586f81f9703e940967ffbb9bacaaaffad",
+          "shape": [
+            1,
+            1024
           ]
         }
       ],
       "label": "fill_dependency",
       "outputs": [
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "fill_34",
+          "region_id": "fill_2",
           "semantic": "fill",
-          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
-          "shape": []
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "shape": [],
+          "true_elements": 1
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "select_31",
-          "semantic": "select",
-          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
+          "region_id": "compare_0",
+          "semantic": "compare",
+          "sha256": "4940b07f1b76a31e7b17f2c5d46cbce51fc8c21825a74abaa3aba7ef5fe0f572",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1024,
+            1
+          ],
+          "true_elements": 540
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "softmax_28",
-          "semantic": "softmax",
-          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
+          "region_id": "bitwise_0",
+          "semantic": "bitwise",
+          "sha256": "4940b07f1b76a31e7b17f2c5d46cbce51fc8c21825a74abaa3aba7ef5fe0f572",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1024,
+            1
+          ],
+          "true_elements": 540
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "dtype_cast_254",
-          "semantic": "dtype_cast",
-          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "region_id": "gather_1",
+          "semantic": "index_gather",
+          "sha256": "c0d01b0710de4cf10d117db1bee2f76bafd84586112bdf7d944550bb60278e7c",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1,
+            1024
+          ],
+          "true_elements": 684
+        },
+        {
+          "dtype": "bool",
+          "finite": true,
+          "region_id": "bitwise_1",
+          "semantic": "bitwise",
+          "sha256": "66c0ab20e0db6415fcc56f2189deb63597dc10630e1a468eac32954ca3c2ee3e",
+          "shape": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "true_elements": 369360
         }
       ],
-      "region_count": 4,
+      "region_count": 5,
       "region_ids": [
-        "fill_34",
-        "select_31",
-        "softmax_28",
-        "dtype_cast_254"
+        "fill_2",
+        "compare_0",
+        "bitwise_0",
+        "gather_1",
+        "bitwise_1"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run where a captured fill output feeds a successor",
       "semantics": [
         "fill",
-        "select",
-        "softmax",
-        "dtype_cast"
+        "compare",
+        "bitwise",
+        "index_gather",
+        "bitwise"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1516,7 +1676,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1548,7 +1708,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "fill_36",
+          "region_id": "fill_34",
           "semantic": "fill",
           "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
           "shape": []
@@ -1556,7 +1716,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "select_33",
+          "region_id": "select_31",
           "semantic": "select",
           "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
           "shape": [
@@ -1569,7 +1729,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "softmax_30",
+          "region_id": "softmax_28",
           "semantic": "softmax",
           "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
           "shape": [
@@ -1582,7 +1742,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "dtype_cast_283",
+          "region_id": "dtype_cast_254",
           "semantic": "dtype_cast",
           "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
           "shape": [
@@ -1595,10 +1755,10 @@
       ],
       "region_count": 4,
       "region_ids": [
-        "fill_36",
-        "select_33",
-        "softmax_30",
-        "dtype_cast_283"
+        "fill_34",
+        "select_31",
+        "softmax_28",
+        "dtype_cast_254"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
@@ -1612,7 +1772,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1768,7 +1928,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1946,7 +2106,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 0,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2005,7 +2165,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2162,7 +2322,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2295,7 +2455,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2443,7 +2603,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2673,7 +2833,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2792,7 +2952,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2970,7 +3130,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 0,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [

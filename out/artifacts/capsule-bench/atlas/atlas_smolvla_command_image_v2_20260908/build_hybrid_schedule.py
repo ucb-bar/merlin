@@ -157,7 +157,7 @@ def _execute_host_witness(
         "schema": "atlas_real_capture_host_semantic_chain_v1",
         "label": label,
         "status": "fresh_numeric_execution_exactly_replayed",
-        "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+        "claim": "host semantic execution only; no device execution and not whole-model E2E",
         "selection": selection,
         "region_ids": region_ids,
         "semantics": [lane.programs[region_id].semantic for region_id in region_ids],
@@ -319,6 +319,127 @@ def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
     return selected[0], selected
 
 
+def final_indexed_host_witnesses(workload) -> list[dict]:
+    """Execute every formerly missing real region against an independent oracle."""
+    lane = HostSemanticLane(workload)
+    witnesses = []
+
+    def record(label: str, programs: list, actual: np.ndarray, expected: np.ndarray,
+               input_rule: str) -> None:
+        if not np.array_equal(actual, expected):
+            raise ValueError(f"independent numeric oracle failed for {label}")
+        witnesses.append({
+            "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+            "label": label,
+            "status": "fresh_numeric_execution_matches_independent_oracle",
+            "claim": "host semantic evidence only; not device or whole-model E2E execution",
+            "region_ids": [program.region_id for program in programs],
+            "semantics": [program.semantic for program in programs],
+            "input_rule": input_rule,
+            "output_shape": list(actual.shape),
+            "output_dtype": str(actual.dtype),
+            "output_sha256": array_sha256(actual),
+            "oracle_sha256": array_sha256(expected),
+        })
+
+    embeddings = sorted(
+        (program for program in lane.programs.values() if program.semantic == "embedding"),
+        key=lambda program: program.signature["indexed_generic"]["table_shape"],
+    )
+    for ordinal, program in enumerate(embeddings):
+        table_shape = program.signature["indexed_generic"]["table_shape"]
+        index_shape = program.signature["indexed_generic"]["input_shapes"][0]
+        indices = (
+            np.arange(np.prod(index_shape), dtype=np.int64) * (101 + ordinal)
+        ).reshape(index_shape) % table_shape[0]
+        if table_shape[0] <= 2048:
+            table = (
+                np.arange(table_shape[0], dtype=np.float32)[:, None] * np.float32(1000)
+                + np.arange(table_shape[1], dtype=np.float32)[None, :]
+            )
+        else:
+            row = np.arange(table_shape[1], dtype=np.float32) % np.float32(32)
+            table = np.broadcast_to(row, table_shape)
+        actual = lane.execute(
+            program.region_id,
+            {program.input_values[0]: indices, program.input_values[1]: table},
+        )
+        record(
+            f"embedding_{ordinal}", [program], actual, table[indices],
+            "bounded ordinal indices and a coordinate-derived exact table",
+        )
+
+    gather = next(
+        program for program in lane.programs.values() if program.semantic == "index_gather"
+    )
+    row_indices = np.zeros((1, 1, 1, 1), dtype=np.int64)
+    column_indices = np.arange(1023, -1, -1, dtype=np.int64).reshape(1, 1, 1, 1024)
+    bool_table = ((np.arange(1024) * 7) % 11 < 5).reshape(1, 1024)
+    actual = lane.execute(
+        gather.region_id,
+        {
+            gather.input_values[0]: row_indices,
+            gather.input_values[1]: column_indices,
+            gather.input_values[2]: bool_table,
+        },
+    )
+    record(
+        "index_gather", [gather], actual,
+        bool_table[row_indices, column_indices],
+        "zero row plus reverse column permutation over a patterned boolean table",
+    )
+
+    mask_gather = next(
+        program for program in lane.programs.values() if program.semantic == "mask_gather"
+    )
+    index_put = next(
+        program for program in lane.programs.values() if program.semantic == "index_put"
+    )
+    data = (np.arange(1024, dtype=np.int64) * 13 - 7).reshape(1, 1024)
+    mask = ((np.arange(1024) * 5) % 17 < 6).reshape(1, 1024)
+    values = {mask_gather.input_values[0]: data, mask_gather.input_values[1]: mask}
+    compact = lane.execute(mask_gather.region_id, values)
+    destination = np.full((1, 1024), -99, dtype=np.int64)
+    values[index_put.input_values[0]] = destination
+    values[index_put.input_values[1]] = mask
+    actual = lane.execute(index_put.region_id, values)
+    expected = destination.copy()
+    expected[mask] = data[mask]
+    record(
+        "mask_gather_index_put", [mask_gather, index_put], actual, expected,
+        "patterned mask compacts coordinate data then scatters it into a fresh destination",
+    )
+
+    convolution = next(
+        program for program in lane.programs.values()
+        if program.semantic == "convolution_im2col_matmul"
+    )
+    image_shape, weight_shape, bias_shape = convolution.signature["input_shapes"]
+    image = np.arange(np.prod(image_shape), dtype=np.float32).reshape(image_shape)
+    weight = np.zeros(weight_shape, dtype=np.float32)
+    weight[0, 0, 0, 0] = np.float32(2)
+    weight[1, 2, 15, 15] = np.float32(-1)
+    bias = (
+        np.arange(np.prod(bias_shape), dtype=np.float32) - np.float32(384)
+    ).reshape(bias_shape) / np.float32(8)
+    actual = lane.execute(
+        convolution.region_id,
+        {
+            convolution.input_values[0]: image,
+            convolution.input_values[1]: weight,
+            convolution.input_values[2]: bias,
+        },
+    )
+    expected = np.broadcast_to(bias.reshape(1, 768, 1, 1), actual.shape).copy()
+    expected[0, 0] += np.float32(2) * image[0, 0, 0::16, 0::16]
+    expected[0, 1] -= image[0, 2, 15::16, 15::16]
+    record(
+        "patch_embedding_convolution", [convolution], actual, expected,
+        "two sparse kernel taps plus per-channel bias over the full captured 512x512 input",
+    )
+    return witnesses
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
@@ -327,6 +448,7 @@ def main() -> int:
     workload = parse_verified(source)
     chain, bounded_regions = bounded_chain_witness()
     host_chain, host_witnesses = generic_host_witnesses(workload)
+    indexed_witnesses = final_indexed_host_witnesses(workload)
     schedule = build_hybrid_schedule(
         workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
@@ -341,6 +463,7 @@ def main() -> int:
     schedule["bounded_chain"] = chain
     schedule["generic_host_chain"] = host_chain
     schedule["generic_host_numeric_witnesses"] = host_witnesses
+    schedule["final_indexed_host_numeric_witnesses"] = indexed_witnesses
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -365,6 +488,7 @@ def main() -> int:
         "bounded_chain": chain,
         "generic_host_chain": host_chain,
         "generic_host_numeric_witnesses": host_witnesses,
+        "final_indexed_host_numeric_witnesses": indexed_witnesses,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),

@@ -59,14 +59,19 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
             "bucketize": 2,
             "cat": 95,
             "compare": 4,
+            "convolution_im2col_matmul": 1,
             "cos": 57,
             "cumsum": 4,
             "div": 56,
             "dtype_cast": 472,
             "elementwise": 3,
+            "embedding": 2,
             "fill": 50,
             "gelu": 12,
+            "index_gather": 1,
+            "index_put": 1,
             "layer_norm": 25,
+            "mask_gather": 1,
             "minmax": 2,
             "mul": 536,
             "pow": 123,
@@ -82,10 +87,10 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
             "split": 56,
             "sub": 68,
         },
-        "host_signature_regions_implemented": 2424,
+        "host_signature_regions_implemented": 2430,
         "layout_bridge_candidates": 2033,
         "materialized_copy_bridges": 112,
-        "missing_host_semantics_reduction": 2402,
+        "missing_host_semantics_reduction": 2408,
         "partition_host_region_overlap": ["conv_0"],
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
@@ -95,14 +100,8 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
-    assert schedule["fail_closed"]["missing_host_semantics"] == 6
-    assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {
-        "convolution_im2col_matmul": 1,
-        "embedding": 2,
-        "index_gather": 1,
-        "index_put": 1,
-        "mask_gather": 1,
-    }
+    assert schedule["fail_closed"]["missing_host_semantics"] == 0
+    assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {}
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 358
     assert schedule["conversion_boundaries"] == {
@@ -121,15 +120,15 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         row for row in schedule["events"]
         if row["kind"] == "host_region" and row["executable"]
     ]
-    assert len(qualified_host) == 2424
+    assert len(qualified_host) == 2430
     assert all(len(row["operation_signature_sha256"]) == 64 for row in qualified_host)
-    rejected_embedding = next(
+    qualified_convolution = next(
         row for row in schedule["events"]
-        if row.get("region_id") == "gather_0"
+        if row.get("region_id") == "conv_0" and row["kind"] == "host_region"
     )
-    assert rejected_embedding["semantic"] == "embedding"
-    assert rejected_embedding["executable"] is False
-    assert "operation_signature_sha256" not in rejected_embedding
+    assert qualified_convolution["semantic"] == "convolution_im2col_matmul"
+    assert qualified_convolution["executable"] is True
+    assert len(qualified_convolution["operation_signature_sha256"]) == 64
     assert schedule["device_activation_arena"]["allocation_count"] == 391
     assert schedule["device_activation_arena"]["reuse_count"] > 0
     assert schedule["device_activation_arena"]["peak_bytes"] < (
@@ -196,6 +195,26 @@ def test_new_scalar_families_have_fresh_real_capture_numeric_witnesses() -> None
         "reduce_sum", "slice", "split", "slice_scatter", "cat", "bitwise",
         "bucketize", "select",
     } <= covered
+
+
+def test_final_indexed_regions_have_fresh_independent_numeric_witnesses() -> None:
+    witnesses = load(PLAN_ROOT / "hybrid_schedule.json")[
+        "final_indexed_host_numeric_witnesses"
+    ]
+    assert [row["label"] for row in witnesses] == [
+        "embedding_0", "embedding_1", "index_gather",
+        "mask_gather_index_put", "patch_embedding_convolution",
+    ]
+    assert [region_id for row in witnesses for region_id in row["region_ids"]] == [
+        "gather_0", "gather_2", "gather_1",
+        "mask_gather_0", "mask_scatter_0", "conv_0",
+    ]
+    assert all(
+        row["status"] == "fresh_numeric_execution_matches_independent_oracle"
+        and row["output_sha256"] == row["oracle_sha256"]
+        and "not device or whole-model E2E" in row["claim"]
+        for row in witnesses
+    )
 
 
 def test_all_real_constructor_regions_are_extracted_and_execute_exactly(
@@ -614,6 +633,196 @@ def test_declared_bitwise_with_wrong_scalar_body_fails_closed() -> None:
     assert lane.signature_for("false_bitwise") is None
     assert lane.rejections["false_bitwise"] == (
         "generic scalar body contains an unsupported operation"
+    )
+
+
+def test_final_six_real_indexed_regions_execute_exactly(real_lane: HostSemanticLane) -> None:
+    final_ids = {
+        "conv_0", "mask_gather_0", "mask_scatter_0",
+        "gather_0", "gather_1", "gather_2",
+    }
+    assert final_ids <= real_lane.programs.keys()
+    assert len(real_lane.programs) == 2430
+    assert all(
+        real_lane.programs[region_id].signature["schema"] in {
+            "atlas_host_indexed_signature_v1",
+            "atlas_host_im2col_convolution_signature_v1",
+        }
+        for region_id in final_ids
+    )
+
+    embedding = real_lane.programs["gather_0"]
+    embedding_indices = np.arange(1023, -1, -1, dtype=np.int64).reshape(1, 1024)
+    embedding_table = (
+        np.arange(1024, dtype=np.float32)[:, None] * np.float32(1000)
+        + np.arange(768, dtype=np.float32)[None, :]
+    )
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            embedding.region_id,
+            {
+                embedding.input_values[0]: embedding_indices,
+                embedding.input_values[1]: embedding_table,
+            },
+        ),
+        embedding_table[embedding_indices],
+    )
+
+    bf16_embedding = real_lane.programs["gather_2"]
+    bf16_indices = (np.arange(48, dtype=np.int64) * 101).reshape(1, 48)
+    exact_bf16_row = np.arange(960, dtype=np.float32) % np.float32(32)
+    bf16_table = np.broadcast_to(exact_bf16_row, (49280, 960))
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            bf16_embedding.region_id,
+            {
+                bf16_embedding.input_values[0]: bf16_indices,
+                bf16_embedding.input_values[1]: bf16_table,
+            },
+        ),
+        np.broadcast_to(exact_bf16_row, (1, 48, 960)),
+    )
+
+    index_gather = real_lane.programs["gather_1"]
+    row_indices = np.zeros((1, 1, 1, 1), dtype=np.int64)
+    column_indices = np.arange(1023, -1, -1, dtype=np.int64).reshape(1, 1, 1, 1024)
+    bool_table = ((np.arange(1024) * 7) % 11 < 5).reshape(1, 1024)
+    np.testing.assert_array_equal(
+        real_lane.execute(
+            index_gather.region_id,
+            {
+                index_gather.input_values[0]: row_indices,
+                index_gather.input_values[1]: column_indices,
+                index_gather.input_values[2]: bool_table,
+            },
+        ),
+        bool_table[row_indices, column_indices],
+    )
+
+    mask_gather = real_lane.programs["mask_gather_0"]
+    data = (np.arange(1024, dtype=np.int64) * 13 - 7).reshape(1, 1024)
+    mask = ((np.arange(1024) * 5) % 17 < 6).reshape(1, 1024)
+    chain_values = {
+        mask_gather.input_values[0]: data,
+        mask_gather.input_values[1]: mask,
+    }
+    compact = real_lane.execute(mask_gather.region_id, chain_values)
+    np.testing.assert_array_equal(compact, data.reshape(-1)[mask.reshape(-1)])
+
+    index_put = real_lane.programs["mask_scatter_0"]
+    destination = np.full((1, 1024), -99, dtype=np.int64)
+    chain_values[index_put.input_values[0]] = destination
+    chain_values[index_put.input_values[1]] = mask
+    scattered = real_lane.execute(index_put.region_id, chain_values)
+    expected_scatter = destination.copy()
+    expected_scatter[mask] = compact
+    np.testing.assert_array_equal(scattered, expected_scatter)
+
+    convolution = real_lane.programs["conv_0"]
+    image = np.arange(1 * 3 * 512 * 512, dtype=np.float32).reshape(1, 3, 512, 512)
+    weight = np.zeros((768, 3, 16, 16), dtype=np.float32)
+    weight[0, 0, 0, 0] = np.float32(2)
+    weight[1, 2, 15, 15] = np.float32(-1)
+    bias = (np.arange(768, dtype=np.float32) - np.float32(384)) / np.float32(8)
+    actual_conv = real_lane.execute(
+        convolution.region_id,
+        {
+            convolution.input_values[0]: image,
+            convolution.input_values[1]: weight,
+            convolution.input_values[2]: bias,
+        },
+    )
+    expected_conv = np.broadcast_to(
+        bias.reshape(1, 768, 1, 1), actual_conv.shape
+    ).copy()
+    expected_conv[0, 0] += np.float32(2) * image[0, 0, 0::16, 0::16]
+    expected_conv[0, 1] -= image[0, 2, 15::16, 15::16]
+    np.testing.assert_array_equal(actual_conv, expected_conv)
+
+
+def test_indexed_runtime_bounds_and_update_count_fail_closed(
+    real_lane: HostSemanticLane,
+) -> None:
+    embedding = real_lane.programs["gather_0"]
+    with pytest.raises(ValueError, match="runtime index is out of bounds"):
+        real_lane.execute(
+            embedding.region_id,
+            {
+                embedding.input_values[0]: np.full((1, 1024), 1024, dtype=np.int64),
+                embedding.input_values[1]: np.zeros((1024, 768), dtype=np.float32),
+            },
+        )
+
+    index_put = real_lane.programs["mask_scatter_0"]
+    mask = np.zeros((1, 1024), dtype=np.bool_)
+    mask[0, :3] = True
+    with pytest.raises(ValueError, match="runtime update count differs from mask"):
+        real_lane.execute(
+            index_put.region_id,
+            {
+                index_put.input_values[0]: np.zeros((1, 1024), dtype=np.int64),
+                index_put.input_values[1]: mask,
+                index_put.input_values[2]: np.array([1, 2], dtype=np.int64),
+            },
+        )
+
+
+def test_declared_embedding_with_wrong_feature_index_fails_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%indices: tensor<1x2xi64>, %table: tensor<4x3xf32>)
+          -> tensor<1x2x3xf32> {
+        %empty = tensor.empty() : tensor<1x2x3xf32>
+        %result = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1, d2) -> (d0, d1)>,
+                           affine_map<(d0, d1, d2) -> (d0, d1, d2)>],
+          iterator_types = ["parallel", "parallel", "parallel"]
+        } ins(%indices : tensor<1x2xi64>) outs(%empty : tensor<1x2x3xf32>)
+          attrs = {prov.region_id = "false_embedding", prov.op = "embedding",
+                   prov.family = "gather_scatter", prov.aten = "aten.embedding.default"} {
+        ^bb0(%index: i64, %old: f32):
+          %row = arith.index_cast %index : i64 to index
+          %feature = linalg.index 1 : index
+          %value = tensor.extract %table[%row, %feature] : tensor<4x3xf32>
+          linalg.yield %value : f32
+        } -> tensor<1x2x3xf32>
+        return %result : tensor<1x2x3xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.signature_for("false_embedding") is None
+    assert lane.rejections["false_embedding"] == (
+        "embedding scalar dataflow is not the captured indexed load"
+    )
+
+
+def test_declared_mask_and_convolution_with_incomplete_topology_fail_closed() -> None:
+    workload = parse_verified(r'''builtin.module {
+      func.func @forward(%data: tensor<1x4xi64>, %image: tensor<1x1x2x2xf32>)
+          -> (tensor<4xi64>, tensor<1x1x2x2xf32>) {
+        %flat = tensor.collapse_shape %data [[0, 1]] {
+          prov.region_id = "false_mask", prov.op = "mask_gather",
+          prov.family = "gather_scatter", prov.aten = "aten.index.Tensor"
+        } : tensor<1x4xi64> into tensor<4xi64>
+        %empty = tensor.empty() : tensor<1x1x2x2xf32>
+        %copy = linalg.generic {
+          indexing_maps = [affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>,
+                           affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>],
+          iterator_types = ["parallel", "parallel", "parallel", "parallel"]
+        } ins(%image : tensor<1x1x2x2xf32>) outs(%empty : tensor<1x1x2x2xf32>)
+          attrs = {prov.region_id = "false_conv", prov.op = "convolution_im2col_matmul",
+                   prov.family = "contraction", prov.aten = "aten.convolution.default"} {
+        ^bb0(%value: f32, %old: f32):
+          linalg.yield %value : f32
+        } -> tensor<1x1x2x2xf32>
+        return %flat, %copy : tensor<4xi64>, tensor<1x1x2x2xf32>
+      }
+    }''')
+    lane = HostSemanticLane(workload)
+    assert lane.rejections["false_mask"] == (
+        "mask_gather does not match its complete captured topology"
+    )
+    assert lane.rejections["false_conv"] == (
+        "im2col convolution does not match its captured topology"
     )
 
 

@@ -64,10 +64,22 @@ admits only the captured ordered-less-equal/count reduction and executes as a
 row-major reduction. Fresh real-capture chains exercise every admitted family,
 and malformed multi-slice and unsupported-bitwise controls fail closed.
 
+The final indexed tranche admits the remaining six regions from their complete
+capture topology: two embeddings, one two-index boolean gather, a linked
+mask-gather/index-put pair, and the patch-embedding im2col convolution. Indexed
+loads sign their affine operand maps, table shapes and dtypes, scalar
+index-cast/extract dataflow, and enforce runtime bounds. The mask pair signs the
+complete count-reduction and `scf.for`/`scf.if` compaction/scatter topology;
+its dynamic update count must equal the mask population. The convolution signs
+the 16x16 no-overlap im2col affine map, every reshape/dataflow edge, f32 matmul,
+and channel-bias epilogue. All six execute on fresh real capture shapes against
+independent NumPy oracles, including the full 512x512 patch input. Malformed
+topologies and runtime bounds/count violations fail closed.
+
 The scheduler marks a host region executable only when that extracted
-signature is accepted. It now qualifies 2,424 regions. Missing host semantics
-fall from the prior 2,408 to six, an exact net reduction of 2,402. The
-difference between 2,424 qualified signatures and the 2,402 net reduction is
+signature is accepted. It now qualifies all 2,430 regions. Missing host
+semantics fall from the prior 2,408 to zero, an exact net reduction of 2,408.
+The difference between 2,430 qualified signatures and the 2,408 net reduction is
 the old 22-region scoped baseline; it is not hidden or double-counted.
 
 The schedule covers all 391 structural accelerator partitions, with explicit
@@ -108,24 +120,20 @@ Every witness replays to identical per-region hashes. This is host-only
 semantic evidence, not device or
 whole-model execution.
 
-The exact blockers are therefore measurable: six missing host semantic
-implementations, 388 unqualified accelerator partitions, and 358 unrealized
-layout bridges. Full schedule and compact summary are in
+Host semantic coverage is now complete. The remaining exact blockers are 388
+unqualified accelerator partitions and 358 unrealized layout bridges, plus the
+absent physical event/DMA runtime. Full schedule and compact summary are in
 `whole_capture_plan/hybrid_schedule.json` and
 `whole_capture_plan/hybrid_schedule_summary.json`.
 
 ## Prioritized enablement ladder
 
-1. Implement the remaining six irregular host regions: two `embedding`, and one
-   each of `mask_gather`, `index_put`, `index_gather`, and the host-refused
-   im2col convolution. These require exact indexed-memory and convolution
-   semantics; they are deliberately not approximated as affine movement.
-2. Realize all 358 blocking layout bridges. The 246 `expand` regions need
+1. Realize all 358 blocking layout bridges. The 246 `expand` regions need
    zero-stride descriptors or exact materialization; the 112 `copy` regions
    require real storage and copy events. Host materialization is sufficient for
    a first correctness run; descriptor propagation is the later performance
    path. The 1,675 already proven metadata aliases require no data movement.
-3. Continue accelerator numeric qualification across the 28 emitted kernel
+2. Continue accelerator numeric qualification across the 28 emitted kernel
    variants. Fresh batch evidence now compiles all 28/28 variants and maps them
    onto all 391 occurrences. RTL numerics tested four variants: three rank-2
    shapes pass, while batched `15x50x64x113` fails closed on VMEM capacity.
@@ -136,18 +144,18 @@ layout bridges. Full schedule and compact summary are in
    record. The schedule currently has 1,238 unqualified conversions: 688
    host-to-device activations/weights, 74 bias quantizations, 88 device
    requantizations, and 388 device-to-host dequantizations.
-4. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
+3. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
    materialize host/device conversions, launch split command images, propagate
    failures, and bind the 391 interval allocations. The proven allocator reuses
    387 allocations and has a 29,884,416-byte peak, but the current GSIM harness
    exposes only a 1 MiB alias-free DRAM window, so large partitions must remain
    sliced/staged unless that harness is changed and requalified.
 
-The first honest E2E becomes possible only when all four gates are zero at the
-same time: six missing host semantics, 358 unrealized bridges, 388
-unqualified partitions (and their 1,238 conversion events), and the absent
-physical event/DMA runtime. At that point one fresh full input must traverse the
-entire schedule and be compared with the source-model output. Kernel-variant
-coverage alone, structural 391-partition coverage, or replaying retained
-intermediates is not sufficient. Performance claims require a subsequent timed
-hardware run.
+The host-semantics gate is now zero. The first honest E2E becomes possible only
+when the remaining three gates are also zero at the same time: 358 unrealized
+bridges, 388 unqualified partitions (and their 1,238 conversion events), and
+the absent physical event/DMA runtime. At that point one fresh full input must
+traverse the entire schedule and be compared with the source-model output.
+Kernel-variant coverage alone, structural 391-partition coverage, or replaying
+retained intermediates is not sufficient. Performance claims require a
+subsequent timed hardware run.
