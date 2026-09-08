@@ -327,6 +327,37 @@ def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
     tensors = cb.get("tensors")
     if not isinstance(commands, list) or not isinstance(tensors, Mapping):
         raise KernelSelectionContractError("command buffer has no commands/tensors selection facts")
+    if (len(commands) == 2 and all(isinstance(command, Mapping) for command in commands)
+            and all(str(command.get("opcode") or "").upper() == "RMSNORM"
+                    for command in commands)):
+        first_ops, second_ops = commands[0].get("operands"), commands[1].get("operands")
+        if not isinstance(first_ops, Mapping) or not isinstance(second_ops, Mapping):
+            raise KernelSelectionContractError("chained RMSNORM operands are not mappings")
+        src, gamma1, intermediate = first_ops.get("src"), first_ops.get("gamma"), first_ops.get("dst")
+        gamma2, dst = second_ops.get("gamma"), second_ops.get("dst")
+        if second_ops.get("src") != intermediate:
+            raise KernelSelectionContractError("two RMSNORM commands do not form a chain")
+        if not all(isinstance(name, str) and name in tensors for name in (src, gamma1, gamma2, dst)):
+            raise KernelSelectionContractError("four-norm operands are absent from the tensor ABI")
+        src_spec, gamma1_spec, gamma2_spec, dst_spec = (
+            tensors[src], tensors[gamma1], tensors[gamma2], tensors[dst])
+        if not all(isinstance(spec, Mapping)
+                   for spec in (src_spec, gamma1_spec, gamma2_spec, dst_spec)):
+            raise KernelSelectionContractError("four-norm tensor specifications are not mappings")
+        src_shape = src_spec.get("shape")
+        if (not isinstance(src_shape, list) or len(src_shape) != 2
+                or gamma1_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
+                or gamma2_spec.get("shape") not in ([src_shape[1]], [1, src_shape[1]])
+                or dst_spec.get("shape") != src_shape):
+            raise KernelSelectionContractError("RMSNORM chain has incompatible tensor shapes")
+        raw_dtype = str(dst_spec.get("dtype") or src_spec.get("dtype") or "").lower()
+        dtype = _DTYPE_NAMES.get(raw_dtype)
+        if dtype is None:
+            raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
+        return KernelRequest.from_mapping({
+            "op": "decoder_four_norm", "dtype": dtype,
+            "shape": {"rows": src_shape[0], "cols": src_shape[1]},
+        })
     if len(commands) != 1 or not isinstance(commands[0], Mapping):
         raise KernelSelectionContractError(
             "semantic family extraction currently requires one command")

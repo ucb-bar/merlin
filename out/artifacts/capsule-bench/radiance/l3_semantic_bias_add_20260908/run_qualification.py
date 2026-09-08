@@ -20,7 +20,11 @@ from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
 from merlin.targetgen.linalg_lower import lower_linalg_to_cb
 
 
-CAPSULES = ("RP16_bias_add_fp32_pt", "RP5_layernorm_fp32_pt")
+CAPSULES = (
+    "RP16_bias_add_fp32_pt",
+    "RP5_layernorm_fp32_pt",
+    "RP13_gemma_4norm_bf16_pt",
+)
 MAX_CYCLES = 360_000
 
 

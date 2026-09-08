@@ -50,6 +50,16 @@ def _layernorm_cb():
     return lower_linalg_to_cb(parsed, target="radiance")
 
 
+def _four_norm_cb():
+    capsule = (
+        repo_root()
+        / "merlin/contract/capsules/radiance/model_slices/RP13_gemma_4norm_bf16_pt"
+        / "capsule.interface.mlir"
+    )
+    parsed = parse_linalg_mlir(capsule.read_text(encoding="utf-8"))
+    return lower_linalg_to_cb(parsed, target="radiance")
+
+
 def test_every_declared_family_has_one_compiler_rule():
     census = KS.validate_selection_contract(_contract())
     assert census["qualified_families"] == 21
@@ -221,3 +231,21 @@ def test_real_layernorm_lowering_selects_at_muon_emission_seam():
     assert report["selected_family"] == "kernels/layernorm"
     assert len(report["decisions"]) == 23
     assert "llvm.intr.sqrt" in mlir
+
+
+def test_four_norm_is_recognized_but_unqualified_emitter_fails_closed():
+    cb = _four_norm_cb()
+    with pytest.raises(
+        get_backend("muon").muon_codegen_mlir.MuonMlirCodegenError,
+        match="has no registered Muon MLIR emitter",
+    ):
+        get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(
+            cb,
+            selection_contract=_contract(),
+            hardware_contract={"features": ["simt"]},
+        )
+    report = cb["params"]["kernel_family_selection"]
+    assert report["request"] == {
+        "op": "decoder_four_norm", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["selected_family"] == "kernels/gemma_4norm"
+    assert [command["opcode"] for command in cb["commands"]] == ["RMSNORM", "RMSNORM"]

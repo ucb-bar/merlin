@@ -1,0 +1,61 @@
+{
+  "schema": "radiance_l3_semantic_family_qualification_v1",
+  "case": "positive",
+  "capsule": "RP13_gemma_4norm_bf16_pt",
+  "expected_control": "pass",
+  "numeric_verdict": {
+    "status": "fail",
+    "elements_checked": 256,
+    "policy": {
+      "compare": "tolerance_float",
+      "dtype": "bf16",
+      "atol": 0.03125,
+      "rtol": 0.015625
+    },
+    "witness": "final_rocket_pc",
+    "pass_symbol": "0x80000186",
+    "fail_symbol": "0x800001c6"
+  },
+  "timing": {
+    "build_s": 0.585,
+    "sim_active_s": 139.497,
+    "oracle_wait_s": 0.0
+  },
+  "bounded_observation": {
+    "max_cycles": 360000,
+    "performance_measurement": false
+  },
+  "oracle": {
+    "kind": "rtl_gsim_muon_numeric",
+    "derived_from_rtl": true,
+    "fidelity": "elaborated_rtl"
+  },
+  "result_page": {
+    "schema": "merlin.muon-result-mailbox.v2",
+    "status": {
+      "symbol": "merlin_result_status",
+      "muon_address": 268452032,
+      "soc_address": 4563419328
+    },
+    "mailbox": {
+      "symbol": "merlin_result_mailbox",
+      "muon_address": 268451904,
+      "soc_address": 4563419200,
+      "words": 32
+    },
+    "outputs": [
+      {
+        "name": "out",
+        "elements": 256,
+        "dtype": "f32"
+      }
+    ],
+    "soc_fuse_offset": 4294967296
+  },
+  "submitted_kernel_elf_sha256": "b4b6259d94dc13144e7dcecf0f713405270f0eb2e632aa5a85300ca04a52fa68",
+  "emulator_sha256": "458d11844538463e5f4ab1f2d6314934dc0d4fe71df07131eebc5aa29d2633be",
+  "selection_contract_sha256": "edbc6a6f7926efd9c21ef742e412a54da3d04d12124eecc75bdfa95e602a6e05",
+  "hardware_contract_sha256": "80fd957a11168bd1fbaffdf82e49f4432f16a0424131bcac55df999a5f026850",
+  "private_expected_output_published": false,
+  "reference_kernel_linked_or_dispatched": false
+}
