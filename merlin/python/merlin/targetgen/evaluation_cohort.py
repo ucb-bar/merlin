@@ -82,8 +82,104 @@ def engine_preflight(te: TargetExperiment, stage_name: str) -> dict[str, Any]:
     }
 
 
+def _predecessor_pass_evidence(
+    te: TargetExperiment,
+    stage_name: str,
+    candidate: Path,
+    predecessor_cohort: str | Path | None,
+    predecessor_score: str | Path | None,
+) -> dict[str, Any] | None:
+    """Validate the physical pass that gates a dependent evaluation stage.
+
+    A descriptor's ``after: <stage>_pass`` is an executable dependency, not documentation.  The
+    predecessor score must cover exactly the predecessor cohort, clear its mandatory physical tier,
+    and name the same byte-frozen package.  Both evidence files remain content-addressed dependencies
+    of the new cohort so editing a result after materialization is detected.
+    """
+    after = str(te.evaluation_cohort(stage_name)["after"])
+    if after == "search_converged":
+        if predecessor_cohort is not None or predecessor_score is not None:
+            raise ValueError(
+                f"evaluation stage {stage_name!r} follows search convergence, not an evaluation pass")
+        return None
+    if not after.endswith("_pass"):
+        raise ValueError(f"evaluation stage {stage_name!r} has unsupported dependency {after!r}")
+    predecessor_stage = after.removesuffix("_pass")
+    if predecessor_cohort is None or predecessor_score is None:
+        raise ValueError(
+            f"evaluation stage {stage_name!r} requires --predecessor-cohort and "
+            f"--predecessor-score proving {predecessor_stage!r} passed")
+
+    cohort_root = Path(predecessor_cohort)
+    score_path = Path(predecessor_score)
+    if cohort_root.is_symlink() or not cohort_root.is_dir():
+        raise ValueError(f"predecessor cohort is not a regular directory: {cohort_root}")
+    if score_path.is_symlink() or not score_path.is_file():
+        raise ValueError(f"predecessor score is not a regular file: {score_path}")
+    prior = validate_evaluation_cohort(cohort_root, te, candidate)
+    if prior.get("stage") != predecessor_stage:
+        raise ValueError(
+            f"predecessor cohort is stage {prior.get('stage')!r}, expected {predecessor_stage!r}")
+
+    score = json.loads(score_path.read_text(encoding="utf-8"))
+    expected_names = sorted(row["name"] for row in prior["capsules"])
+    expected_n = len(expected_names)
+    problems: list[str] = []
+    package = score.get("package")
+    if not isinstance(package, str) or Path(package).resolve() != candidate.resolve():
+        problems.append("score package does not resolve to the frozen candidate")
+    if score.get("integrity_status") != "clean":
+        problems.append("score integrity_status is not clean")
+    if score.get("gradeable") is not True:
+        problems.append("score is not gradeable")
+    if score.get("n_capsules") != expected_n or score.get("n_passed") != expected_n or expected_n == 0:
+        problems.append(
+            f"score is not an exact all-pass ({score.get('n_passed')}/{score.get('n_capsules')}, "
+            f"expected {expected_n}/{expected_n})")
+
+    rows = score.get("per_capsule")
+    if not isinstance(rows, list):
+        problems.append("score has no per_capsule evidence")
+        rows = []
+    row_names = [row.get("capsule") for row in rows if isinstance(row, dict)]
+    if len(row_names) != len(set(row_names)) or sorted(row_names) != expected_names:
+        problems.append("score per_capsule names do not exactly cover the predecessor cohort")
+    required_tier = str(prior["required_oracle_tier"])
+    for row in rows:
+        if not isinstance(row, dict):
+            problems.append("score contains a malformed per_capsule row")
+            continue
+        if row.get("status") != "pass" or (row.get("tiers") or {}).get(required_tier) != "pass":
+            problems.append(
+                f"{row.get('capsule', '<unnamed>')} did not pass required tier {required_tier}")
+    if (score.get("pass_evidence") or {}).get("rtl_backed") != expected_n:
+        problems.append("not every predecessor pass is backed by elaborated-RTL evidence")
+    if problems:
+        raise ValueError("predecessor pass evidence rejected: " + "; ".join(problems))
+
+    return {
+        "stage": predecessor_stage,
+        "cohort": str(cohort_root.resolve()),
+        "cohort_manifest_sha256": hashlib.sha256(
+            (cohort_root / ".evaluation_cohort.json").read_bytes()).hexdigest(),
+        "score": str(score_path.resolve()),
+        "score_sha256": hashlib.sha256(score_path.read_bytes()).hexdigest(),
+        "candidate_tree_sha256": prior["candidate_tree_sha256"],
+        "required_oracle_tier": required_tier,
+        "n_capsules": expected_n,
+        "n_passed": expected_n,
+        "rtl_backed": expected_n,
+    }
+
+
 def materialize_evaluation_cohort(
-    dest: str | Path, te: TargetExperiment, stage_name: str, candidate: str | Path,
+    dest: str | Path,
+    te: TargetExperiment,
+    stage_name: str,
+    candidate: str | Path,
+    *,
+    predecessor_cohort: str | Path | None = None,
+    predecessor_score: str | Path | None = None,
 ) -> dict[str, Any]:
     """Create one descriptor-declared frozen-candidate cohort at ``dest``.
 
@@ -98,6 +194,8 @@ def materialize_evaluation_cohort(
     if not any(path.is_file() for path in candidate.rglob("*")):
         raise ValueError(f"frozen evaluation candidate has no files: {candidate}")
     candidate_digest = _tree_sha256(candidate)
+    predecessor = _predecessor_pass_evidence(
+        te, stage_name, candidate, predecessor_cohort, predecessor_score)
     if dest.exists() and any(dest.iterdir()):
         raise ValueError(f"evaluation destination is not empty: {dest}")
     dest.mkdir(parents=True, exist_ok=True)
@@ -172,6 +270,8 @@ def materialize_evaluation_cohort(
         "n_capsules": len(written),
         "engine_preflight": preflight,
     }
+    if predecessor is not None:
+        record["predecessor_pass_evidence"] = predecessor
     record["materialized_tree_sha256"] = _tree_sha256(dest)
     (dest / ".evaluation_cohort.json").write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -211,6 +311,22 @@ def validate_evaluation_cohort(
     actual_digest = _tree_sha256(root, exclude=frozenset({record_path.name}))
     if actual_digest != expected_digest:
         raise ValueError("evaluation cohort content digest mismatch")
+    predecessor = record.get("predecessor_pass_evidence")
+    if predecessor is not None:
+        manifest_path = Path(str(predecessor.get("cohort", ""))) / ".evaluation_cohort.json"
+        score_path = Path(str(predecessor.get("score", "")))
+        if (
+            not manifest_path.is_file()
+            or hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+            != predecessor.get("cohort_manifest_sha256")
+        ):
+            raise ValueError("predecessor cohort evidence digest mismatch")
+        if (
+            not score_path.is_file()
+            or hashlib.sha256(score_path.read_bytes()).hexdigest()
+            != predecessor.get("score_sha256")
+        ):
+            raise ValueError("predecessor score evidence digest mismatch")
     return record
 
 
@@ -221,6 +337,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dest", required=True)
     parser.add_argument("--candidate", required=True,
                         help="frozen compiler package evaluated by this stage")
+    parser.add_argument("--predecessor-cohort",
+                        help="materialized predecessor cohort required by an after: *_pass stage")
+    parser.add_argument("--predecessor-score",
+                        help="grader score proving the predecessor cohort passed its physical tier")
     parser.add_argument("--replace-empty", action="store_true",
                         help="remove an existing empty destination before materializing")
     args = parser.parse_args(argv)
@@ -231,7 +351,11 @@ def main(argv: list[str] | None = None) -> int:
     dest = Path(args.dest)
     if args.replace_empty and dest.is_dir() and not any(dest.iterdir()):
         dest.rmdir()
-    record = materialize_evaluation_cohort(dest, te, args.stage, args.candidate)
+    record = materialize_evaluation_cohort(
+        dest, te, args.stage, args.candidate,
+        predecessor_cohort=args.predecessor_cohort,
+        predecessor_score=args.predecessor_score,
+    )
     validate_evaluation_cohort(dest, te, args.candidate)
     print(json.dumps(record, indent=2, sort_keys=True))
     if not record["engine_preflight"]["ok"]:

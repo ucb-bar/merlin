@@ -36,7 +36,7 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
     out = tmp_path / "derived-gsim"
     record = materialize_evaluation_cohort(out, te, "derived_gsim", candidate)
 
-    assert record["n_capsules"] == 14
+    assert record["n_capsules"] == len(te.evaluation_cohort("derived_gsim")["include_capsules"])
     assert record["after"] == "search_converged"
     assert record["engine_preflight"]["ok"] is True
     for name in te.evaluation_cohort("derived_gsim")["include_capsules"]:
@@ -113,3 +113,77 @@ def test_unknown_evaluation_stage_fails_closed():
     te = load_target_experiment(RADIANCE)
     with pytest.raises(KeyError, match="declared stages"):
         te.evaluation_cohort("not-a-stage")
+
+
+def _passing_predecessor_score(path: Path, candidate: Path, record: dict) -> None:
+    names = sorted(row["name"] for row in record["capsules"])
+    tier = record["required_oracle_tier"]
+    path.write_text(json.dumps({
+        "package": str(candidate.resolve()),
+        "integrity_status": "clean",
+        "gradeable": True,
+        "n_capsules": len(names),
+        "n_passed": len(names),
+        "per_capsule": [
+            {"capsule": name, "status": "pass", "tiers": {tier: "pass"}}
+            for name in names
+        ],
+        "pass_evidence": {"rtl_backed": len(names)},
+    }))
+
+
+def test_kernel_comparison_requires_exact_derived_gsim_pass(tmp_path, monkeypatch):
+    te = load_target_experiment(RADIANCE)
+    monkeypatch.setattr(
+        "merlin.targetgen.evaluation_cohort.engine_preflight",
+        lambda _te, stage: {"stage": stage, "ok": True},
+    )
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "schedule.mlir").write_text("module {}\n")
+
+    with pytest.raises(ValueError, match="requires --predecessor-cohort"):
+        materialize_evaluation_cohort(
+            tmp_path / "comparison-refused", te, "kernel_library_comparison", candidate)
+
+    derived = tmp_path / "derived"
+    prior = materialize_evaluation_cohort(derived, te, "derived_gsim", candidate)
+    score = tmp_path / "derived-score.json"
+    _passing_predecessor_score(score, candidate, prior)
+    comparison = tmp_path / "comparison"
+    record = materialize_evaluation_cohort(
+        comparison, te, "kernel_library_comparison", candidate,
+        predecessor_cohort=derived, predecessor_score=score)
+
+    evidence = record["predecessor_pass_evidence"]
+    assert evidence["stage"] == "derived_gsim"
+    assert evidence["n_passed"] == evidence["n_capsules"] == prior["n_capsules"]
+    assert evidence["candidate_tree_sha256"] == prior["candidate_tree_sha256"]
+    assert validate_evaluation_cohort(comparison, te, candidate) == record
+    score.write_text(score.read_text() + "\n")
+    with pytest.raises(ValueError, match="predecessor score evidence digest mismatch"):
+        validate_evaluation_cohort(comparison, te, candidate)
+
+
+def test_kernel_comparison_rejects_partial_or_nonphysical_predecessor(tmp_path, monkeypatch):
+    te = load_target_experiment(RADIANCE)
+    monkeypatch.setattr(
+        "merlin.targetgen.evaluation_cohort.engine_preflight",
+        lambda _te, stage: {"stage": stage, "ok": True},
+    )
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "schedule.mlir").write_text("module {}\n")
+    derived = tmp_path / "derived"
+    prior = materialize_evaluation_cohort(derived, te, "derived_gsim", candidate)
+    score = tmp_path / "derived-score.json"
+    _passing_predecessor_score(score, candidate, prior)
+    doc = json.loads(score.read_text())
+    doc["n_passed"] -= 1
+    doc["pass_evidence"]["rtl_backed"] -= 1
+    score.write_text(json.dumps(doc))
+
+    with pytest.raises(ValueError, match="predecessor pass evidence rejected"):
+        materialize_evaluation_cohort(
+            tmp_path / "comparison", te, "kernel_library_comparison", candidate,
+            predecessor_cohort=derived, predecessor_score=score)
