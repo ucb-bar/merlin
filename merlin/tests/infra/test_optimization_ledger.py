@@ -6,6 +6,11 @@ it did not help" from "never measured". A report in which those look alike is wo
 """
 from __future__ import annotations
 
+import json
+
+import pytest
+
+from merlin.perf import optimization_ledger as OL
 from merlin.perf.optimization_ledger import (SCOPES, VERDICTS, Attempt, Delta, Ledger,
                                              arithmetic_intensity)
 
@@ -108,3 +113,91 @@ def test_a_program_with_no_traffic_has_no_intensity():
 def test_the_vocabularies_are_closed():
     assert "host_lane" in SCOPES and "frontend" in SCOPES and "transformation" in SCOPES
     assert set(VERDICTS) == {"helped", "no_effect", "refuted", "blocked", "unmeasured"}
+
+
+class TestPersistence:
+    """A ledger that cannot be written and read back is not a campaign artifact."""
+
+    def _attempt(self, **kw):
+        base = dict(mechanism="m", scope="local", found_by="work_volume", verdict="helped",
+                    deltas=(OL.Delta(workload="w", metric="cycles", before=100.0, after=50.0,
+                                     instrument="firesim"),))
+        base.update(kw)
+        return OL.Attempt(**base)
+
+    def test_a_ledger_round_trips_through_disk_unchanged(self, tmp_path):
+        led = OL.Ledger(target="t", attempts=[self._attempt(iteration=0),
+                                              self._attempt(verdict="blocked", blocked_by="upstream",
+                                                            deltas=(), iteration=1)])
+        path = led.write(tmp_path / "ledger.json")
+        assert OL.read_ledger(path).to_dict() == led.to_dict()
+
+    def test_a_missing_file_is_an_empty_campaign_not_an_error(self, tmp_path):
+        led = OL.read_ledger(tmp_path / "absent.json", target="t")
+        assert led.attempts == [] and led.target == "t"
+
+    def test_a_corrupt_file_raises_rather_than_reading_as_empty(self, tmp_path):
+        """"The campaign tried nothing" and "the record is corrupt" must not look the same."""
+        path = tmp_path / "ledger.json"
+        path.write_text("{not json", encoding="utf-8")
+        with pytest.raises(ValueError, match="exists but could not be read"):
+            OL.read_ledger(path)
+
+    def test_an_unknown_schema_is_refused(self, tmp_path):
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps({"schema": "something_else_v9", "attempts": []}),
+                        encoding="utf-8")
+        with pytest.raises(ValueError, match="refusing to read a ledger"):
+            OL.read_ledger(path)
+
+    def test_appending_accumulates_across_immutable_iterations(self, tmp_path):
+        """The campaign's iteration records are chmod 0444; the history has to live somewhere else."""
+        path = tmp_path / "ledger.json"
+        OL.append_attempts(path, [self._attempt(iteration=0)], target="t")
+        led = OL.append_attempts(path, [self._attempt(iteration=1)], target="t")
+        assert len(led.attempts) == 2
+        assert [a.iteration for a in OL.read_ledger(path).attempts] == [0, 1]
+
+    def test_appending_a_different_target_refuses(self, tmp_path):
+        path = tmp_path / "ledger.json"
+        OL.append_attempts(path, [self._attempt()], target="t")
+        with pytest.raises(ValueError, match="mix two machines"):
+            OL.append_attempts(path, [self._attempt()], target="other")
+
+    def test_a_stored_problems_list_cannot_launder_an_unsound_row(self, tmp_path):
+        """`problems` is DERIVED on read, so a row written unsound stays unsound."""
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps({
+            "schema": OL.SCHEMA, "target": "t",
+            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "",
+                          "verdict": "helped", "deltas": [], "problems": []}]}), encoding="utf-8")
+        led = OL.read_ledger(path)
+        assert led.problems(), "an evidence-free 'helped' row must still report a problem"
+
+    def test_a_stored_ratio_is_recomputed_never_trusted(self, tmp_path):
+        """Otherwise the number a reader reports is whichever the writer's arithmetic produced."""
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps({
+            "schema": OL.SCHEMA, "target": "t",
+            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "i", "verdict": "helped",
+                          "deltas": [{"workload": "w", "metric": "cycles", "before": 100,
+                                      "after": 50, "instrument": "i", "ratio": 999.0}]}]}),
+            encoding="utf-8")
+        assert OL.read_ledger(path).attempts[0].deltas[0].ratio == pytest.approx(2.0)
+
+    @pytest.mark.parametrize("bad", ["not-a-number", float("nan"), float("inf"), True])
+    def test_a_non_numeric_metric_value_is_refused_never_coerced(self, tmp_path, bad):
+        path = tmp_path / "ledger.json"
+        path.write_text(json.dumps({
+            "schema": OL.SCHEMA, "target": "t",
+            "attempts": [{"mechanism": "m", "scope": "local", "found_by": "i", "verdict": "helped",
+                          "deltas": [{"workload": "w", "metric": "cycles", "before": 100,
+                                      "after": bad, "instrument": "i"}]}]}), encoding="utf-8")
+        with pytest.raises(ValueError, match="must be a number or null|must be finite"):
+            OL.read_ledger(path)
+
+    def test_a_write_is_atomic_so_a_reader_never_sees_a_partial_ledger(self, tmp_path):
+        path = tmp_path / "ledger.json"
+        OL.Ledger(target="t", attempts=[self._attempt()]).write(path)
+        assert not list(tmp_path.glob("*.partial")), "the temporary must be replaced, not left"
+        assert OL.read_ledger(path).attempts

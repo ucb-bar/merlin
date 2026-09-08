@@ -30,9 +30,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import json
+import os
+from pathlib import Path
 from typing import Any
 
-__all__ = ["SCOPES", "VERDICTS", "Delta", "Attempt", "Ledger", "arithmetic_intensity"]
+__all__ = ["SCOPES", "VERDICTS", "SCHEMA", "Delta", "Attempt", "Ledger", "arithmetic_intensity",
+           "read_ledger", "append_attempts"]
+
+#: The on-disk schema tag. A reader refuses anything else rather than best-effort parsing it: a
+#: ledger silently read as empty would report a campaign that tried nothing, which is the most
+#: flattering possible misreading of a failed run.
+SCHEMA = "merlin_optimization_ledger_v1"
 
 #: Where an optimization acts. Recorded because the cheap wins and the structural wins live at
 #: different scopes, and a campaign that only ever finds one scope's worth is not done.
@@ -57,6 +66,22 @@ VERDICTS = (
 )
 
 _ASSERTS_MEASUREMENT = frozenset({"helped", "no_effect", "refuted"})
+
+
+def _number(value: Any) -> float | None:
+    """A stored metric value as a float, or None. A non-numeric value is REFUSED, never coerced.
+
+    ``float("nan")`` and a string that happens to parse are both ways a metric nobody measured comes
+    back looking measured.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"a metric value must be a number or null, got {value!r}")
+    number = float(value)
+    if number != number or number in (float("inf"), float("-inf")):
+        raise ValueError("a metric value must be finite")
+    return number
 
 
 @dataclass(frozen=True)
@@ -97,6 +122,24 @@ class Delta:
                 "unit": self.unit, "note": self.note,
                 "lower_is_better": self.lower_is_better}
 
+    @classmethod
+    def from_dict(cls, row: Mapping[str, Any]) -> "Delta":
+        """Rebuild from :meth:`to_dict`. ``ratio`` is DERIVED and deliberately not read back.
+
+        Reading a stored ratio would let a writer's arithmetic disagree with this class's, and the
+        one that a reader then reports would be whichever was written -- so the ratio is recomputed
+        from the two numbers every time.
+        """
+        if not isinstance(row, Mapping):
+            raise ValueError("a delta must be a mapping")
+        lower = row.get("lower_is_better", True)
+        if lower is not None and not isinstance(lower, bool):
+            raise ValueError("lower_is_better must be true, false, or null")
+        return cls(workload=str(row.get("workload") or ""), metric=str(row.get("metric") or ""),
+                   before=_number(row.get("before")), after=_number(row.get("after")),
+                   instrument=str(row.get("instrument") or ""), unit=str(row.get("unit") or ""),
+                   note=str(row.get("note") or ""), lower_is_better=lower)
+
 
 @dataclass(frozen=True)
 class Attempt:
@@ -134,6 +177,27 @@ class Attempt:
                 "blocked_by": self.blocked_by, "evidence": self.evidence,
                 "iteration": self.iteration, "deltas": [d.to_dict() for d in self.deltas],
                 "problems": list(self.problems())}
+
+    @classmethod
+    def from_dict(cls, row: Mapping[str, Any]) -> "Attempt":
+        """Rebuild from :meth:`to_dict`. ``problems`` is DERIVED and not read back.
+
+        An attempt that was unsound when written stays unsound when read, because the check runs
+        again on the values -- a stored empty ``problems`` list cannot launder a bad row.
+        """
+        if not isinstance(row, Mapping):
+            raise ValueError("an attempt must be a mapping")
+        raw = row.get("deltas")
+        deltas = tuple(Delta.from_dict(d) for d in raw) if isinstance(raw, Sequence) \
+            and not isinstance(raw, (str, bytes)) else ()
+        iteration = row.get("iteration")
+        if iteration is not None and (isinstance(iteration, bool) or not isinstance(iteration, int)):
+            raise ValueError("iteration must be an integer or null")
+        return cls(mechanism=str(row.get("mechanism") or ""), scope=str(row.get("scope") or ""),
+                   found_by=str(row.get("found_by") or ""), verdict=str(row.get("verdict") or ""),
+                   hypothesis=str(row.get("hypothesis") or ""), deltas=deltas,
+                   blocked_by=str(row.get("blocked_by") or ""),
+                   evidence=str(row.get("evidence") or ""), iteration=iteration)
 
 
 @dataclass
@@ -194,19 +258,58 @@ class Ledger:
                 "problems": list(self.problems()),
                 "attempts": [a.to_dict() for a in self.attempts]}
 
+    @classmethod
+    def from_dict(cls, payload: Mapping[str, Any]) -> "Ledger":
+        """Rebuild from :meth:`to_dict`, refusing an unrecognized schema."""
+        if not isinstance(payload, Mapping):
+            raise ValueError("a ledger must be a mapping")
+        schema = payload.get("schema")
+        if schema != SCHEMA:
+            raise ValueError(f"expected schema {SCHEMA!r}, got {schema!r}; refusing to read a ledger "
+                             f"whose shape is unknown rather than reporting it as empty")
+        raw = payload.get("attempts")
+        if raw is None:
+            raw = []
+        if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+            raise ValueError("a ledger's attempts must be a sequence")
+        return cls(target=str(payload.get("target") or ""),
+                   attempts=[Attempt.from_dict(row) for row in raw])
+
+    def write(self, path: str | Path) -> Path:
+        """Serialise atomically, so a reader never sees a half-written ledger.
+
+        Written via a sibling temporary and one ``os.replace``: a campaign appends to this file while
+        report generators read it, and a truncate-then-write would let a reader observe a campaign
+        that had tried nothing.
+        """
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        scratch = target.with_name(target.name + f".{os.getpid()}.partial")
+        scratch.write_text(json.dumps(self.to_dict(), indent=2, sort_keys=False) + "\n",
+                           encoding="utf-8")
+        os.replace(scratch, target)
+        return target
+
     def format_table(self) -> str:
+        # Columns are sized to their CONTENT rather than to fixed guesses: an instrument name is a
+        # module path and overran a 22-character field, which pushed every mechanism out of
+        # alignment and made the report harder to read than the JSON it was rendering.
+        verdict_w = max([len("verdict")] + [len(a.verdict) for a in self.attempts])
+        scope_w = max([len("scope")] + [len(a.scope) for a in self.attempts])
+        found_w = max([len("found_by")] + [len(a.found_by) for a in self.attempts])
+        indent = " " * (verdict_w + scope_w + found_w + 3)
         rows = [f"== optimization ledger: {self.target} ({len(self.attempts)} attempts)",
-                f"{'verdict':11} {'scope':14} {'found_by':22} mechanism"]
+                f"{'verdict':{verdict_w}} {'scope':{scope_w}} {'found_by':{found_w}} mechanism"]
         order = {v: i for i, v in enumerate(VERDICTS)}
         for attempt in sorted(self.attempts, key=lambda a: order.get(a.verdict, 99)):
-            rows.append(f"{attempt.verdict:11} {attempt.scope:14} {attempt.found_by:22} "
-                        f"{attempt.mechanism}")
+            rows.append(f"{attempt.verdict:{verdict_w}} {attempt.scope:{scope_w}} "
+                        f"{attempt.found_by:{found_w}} {attempt.mechanism}")
             for delta in attempt.deltas:
                 ratio = "" if delta.ratio is None else f"  ({delta.ratio:.3f}x)"
-                rows.append(f"{'':11} {'':14} {'':22}   {delta.workload}: {delta.metric} "
+                rows.append(f"{indent}  {delta.workload}: {delta.metric} "
                             f"{delta.before} -> {delta.after}{ratio} [{delta.instrument}]")
             if attempt.blocked_by:
-                rows.append(f"{'':11} {'':14} {'':22}   BLOCKED BY: {attempt.blocked_by}")
+                rows.append(f"{indent}  BLOCKED BY: {attempt.blocked_by}")
         for why in self.problems():
             rows.append(f"  PROBLEM {why}")
         return "\n".join(rows)
@@ -237,3 +340,49 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
     out["machine_macs_per_byte"] = float(machine_macs_per_byte)
     out["bound_by"] = "compute" if intensity >= machine_macs_per_byte else "memory"
     return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# the campaign-level rollup
+# ---------------------------------------------------------------------------------------------------
+
+def read_ledger(path: str | Path, *, target: str = "") -> Ledger:
+    """The ledger at ``path``, or an EMPTY one when the file does not exist yet.
+
+    A missing file is the start of a campaign and is not an error. A file that exists but cannot be
+    read IS an error and raises, because "the campaign tried nothing" and "the record is corrupt"
+    must not arrive at a report as the same thing.
+    """
+    location = Path(path)
+    if not location.exists():
+        return Ledger(target=str(target))
+    try:
+        payload = json.loads(location.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"the ledger at {location} exists but could not be read: {exc}") from exc
+    return Ledger.from_dict(payload)
+
+
+def append_attempts(path: str | Path, attempts: Sequence[Attempt], *, target: str) -> Ledger:
+    """Add rows to the campaign's rollup and rewrite it, returning the whole ledger.
+
+    WHY APPEND RATHER THAN EMBED. A campaign's iteration records are written once and chmod'd 0444 --
+    immutable by design, which is right for a receipt and useless for a history that grows. So the
+    per-iteration record carries the rows produced BY that iteration, and this file carries the
+    campaign's whole history. Both exist; neither is derived from the other by guessing.
+
+    A target mismatch refuses: two campaigns' histories concatenated would report a ratio between
+    numbers measured on different machines.
+    """
+    existing = read_ledger(path, target=target)
+    if existing.attempts and existing.target and existing.target != str(target):
+        raise ValueError(f"the ledger at {path} records target {existing.target!r}, not "
+                         f"{str(target)!r}; appending would mix two machines' measurements")
+    existing.target = str(target)
+    for attempt in attempts:
+        if not isinstance(attempt, Attempt):
+            raise ValueError("append_attempts takes Attempt rows, so an unvalidated mapping cannot "
+                             "reach the ledger without passing Attempt.from_dict first")
+        existing.add(attempt)
+    existing.write(path)
+    return existing

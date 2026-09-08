@@ -104,19 +104,40 @@ def read_tool_spans(stage_dir: Path) -> tuple[SpanSet, int]:
         out.availability.set("spans", measured(SOURCE_TOOLS_JSONL))
     else:
         out.source = ""
+        # A GLOBAL CAMPAIGN NEVER HAS THIS FILE, and the reason is worth stating rather than
+        # leaving a reader to conclude the lane made no tool calls. `agent/tools.jsonl` is written
+        # by `perf_agent_stage.finalize_agent_telemetry`, which is called only from phase 1's
+        # `run_stage`; the global launcher never calls it. The raw driver stream IS on disk at
+        # `agent/events.NN.raw.jsonl` -- but spans are NOT reconstructed from it here, because
+        # arrival stamps are when an event reached the reader, not when the tool ran, and a
+        # plausible span built from the wrong clock is exactly the kind of number this package
+        # exists to refuse.
+        raw = sorted((stage_dir / "agent").glob("events.*.raw.jsonl")) \
+            if (stage_dir / "agent").is_dir() else []
         out.availability.set("spans", unavailable(
             f"{stage_dir.name} has no agent/tools.jsonl row carrying a start and end offset"
-            + (f" ({points} point event(s) were present but occupy no time)" if points else "")))
+            + (f" ({points} point event(s) were present but occupy no time)" if points else "")
+            + (f"; {len(raw)} raw driver event stream(s) are present but carry arrival stamps, "
+               f"not tool spans, and finalize_agent_telemetry (which writes the spans) is called "
+               f"only from the phase-1 stage" if raw else "")))
     return out, points
+
+
+#: Where a run keeps its broker receipts. A phase-1 stage writes ``control/``; a global phase-2
+#: campaign writes ``global_control/`` with four-digit round indices. BOTH are read, because reading
+#: one meant every global campaign's entire tool cost reported UNAVAILABLE while the receipts sat on
+#: disk -- and an availability report that cannot find its own evidence is worse than no report.
+CONTROL_DIRS = ("control", "global_control")
 
 
 def read_receipts(stage_dir: Path) -> list[BrokerCall]:
     """Every brokered action this stage invoked, in order, across all its rounds."""
     calls: list[BrokerCall] = []
-    control = stage_dir / "control"
-    if not control.is_dir():
+    directories = [stage_dir / name for name in CONTROL_DIRS]
+    if not any(d.is_dir() for d in directories):
         return calls
-    for receipts in sorted(control.glob("round_*/receipts.jsonl")):
+    for receipts in sorted(r for d in directories if d.is_dir()
+                           for r in d.glob("round_*/receipts.jsonl")):
         for row in _rows(receipts):
             action = str(row.get("action") or "")
             if not action:
