@@ -1,0 +1,53 @@
+{
+  "abi_version": "0.1",
+  "target": "atlas",
+  "backend": "atlas-xdsl",
+  "tensors": {
+    "X0": {
+      "shape": [
+        4,
+        8
+      ],
+      "dtype": "bf16",
+      "role": "input",
+      "base": 2415919104
+    },
+    "Y0": {
+      "shape": [
+        4,
+        8
+      ],
+      "dtype": "bf16",
+      "role": "output",
+      "base": 2415919168
+    }
+  },
+  "commands": [
+    {
+      "opcode": "MOVEMENT",
+      "operands": {
+        "src": "X0",
+        "dst": "Y0"
+      },
+      "attributes": {
+        "name": "Y0"
+      }
+    }
+  ],
+  "kernel_abi": {
+    "kind": "whole_program",
+    "args": [
+      {
+        "tensor": "X0",
+        "access": "read"
+      },
+      {
+        "tensor": "Y0",
+        "access": "write"
+      }
+    ],
+    "outputs": [
+      "Y0"
+    ]
+  }
+}

@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from mlir_oot.cmdbuf import write_command_buffer
+from mlir_oot.codegen import emit_program
+from mlir_oot.frontend import parse_verified
+from mlir_oot.lowering import lower_text
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--verify-diagnostics", action="store_true")
+    parser.add_argument("--convert-iface-to-atlas", action="store_true")
+    parser.add_argument("--emit-target-artifact", action="store_true")
+    parser.add_argument("--emit-command-buffer", default="")
+    parser.add_argument("input_mlir")
+    args = parser.parse_args()
+    try:
+        workload = parse_verified(Path(args.input_mlir).read_text(encoding="utf-8"))
+        if args.emit_command_buffer:
+            write_command_buffer(workload, args.emit_command_buffer)
+        if args.emit_target_artifact:
+            sys.stdout.write(emit_program(workload))
+        elif args.convert_iface_to_atlas:
+            sys.stdout.write(lower_text(workload))
+        return 0
+    except Exception as exc:
+        print(f"atlas-opt: error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

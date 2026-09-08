@@ -1,0 +1,153 @@
+{
+  "abi_version": "0.1",
+  "target": "atlas",
+  "backend": "atlas-xdsl",
+  "tensors": {
+    "W0": {
+      "shape": [
+        32,
+        8
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "weight",
+      "base": 2415919104
+    },
+    "A0": {
+      "shape": [
+        4,
+        32
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "input",
+      "base": 2415919360
+    },
+    "W1": {
+      "shape": [
+        8,
+        5
+      ],
+      "dtype": "bf16",
+      "role": "weight",
+      "base": 2415919488
+    },
+    "Y0": {
+      "shape": [
+        4,
+        8
+      ],
+      "dtype": "bf16",
+      "role": "output",
+      "base": 2415919584
+    },
+    "Y1": {
+      "shape": [
+        4,
+        5
+      ],
+      "dtype": "bf16",
+      "role": "output",
+      "base": 2415919648
+    }
+  },
+  "commands": [
+    {
+      "opcode": "RES_PACK",
+      "operands": {
+        "src": "W0",
+        "dst": "W0_resident"
+      },
+      "attributes": {
+        "layout": "packed_rhs"
+      }
+    },
+    {
+      "opcode": "RES_PACK",
+      "operands": {
+        "src": "W1",
+        "dst": "W1_resident"
+      },
+      "attributes": {
+        "layout": "packed_rhs"
+      }
+    },
+    {
+      "opcode": "MATMUL_RESIDENT",
+      "operands": {
+        "lhs": "A0",
+        "rhs": "W0_resident",
+        "dst": "acc0"
+      }
+    },
+    {
+      "opcode": "COMMIT",
+      "operands": {
+        "src": "acc0",
+        "dst": "Y0"
+      },
+      "attributes": {
+        "epilogue": [],
+        "output_dtype": "bf16"
+      }
+    },
+    {
+      "opcode": "MATMUL_RESIDENT",
+      "operands": {
+        "lhs": "Y0",
+        "rhs": "W1_resident",
+        "dst": "acc1"
+      }
+    },
+    {
+      "opcode": "COMMIT",
+      "operands": {
+        "src": "acc1",
+        "dst": "Y1"
+      },
+      "attributes": {
+        "epilogue": [],
+        "output_dtype": "bf16"
+      }
+    },
+    {
+      "opcode": "EVICT",
+      "operands": {
+        "handle": "W0_resident"
+      }
+    },
+    {
+      "opcode": "EVICT",
+      "operands": {
+        "handle": "W1_resident"
+      }
+    }
+  ],
+  "kernel_abi": {
+    "kind": "whole_program",
+    "args": [
+      {
+        "tensor": "W0",
+        "access": "read"
+      },
+      {
+        "tensor": "A0",
+        "access": "read"
+      },
+      {
+        "tensor": "W1",
+        "access": "read"
+      },
+      {
+        "tensor": "Y0",
+        "access": "write"
+      },
+      {
+        "tensor": "Y1",
+        "access": "write"
+      }
+    ],
+    "outputs": [
+      "Y0",
+      "Y1"
+    ]
+  }
+}

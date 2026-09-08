@@ -1,0 +1,35 @@
+{
+  "all_outputs_bit_exact": false,
+  "case": "bf16_movement_single",
+  "claim": "functional-model execution of one command image; not RTL cycle evidence",
+  "command_buffer_sha256": "8b6bcb6ecf31f468a2cd8ac5b291fca744a6b134cbe99b140d12968e5a66ebd7",
+  "commands": 1,
+  "comparisons": {
+    "Y0": {
+      "expected_shape": [
+        4,
+        8
+      ],
+      "max_abs_error": 2.0,
+      "mismatches": 26,
+      "shape": [
+        4,
+        8
+      ]
+    }
+  },
+  "cycles": 1140,
+  "engine": "functional",
+  "halted": true,
+  "instruction_words": 391,
+  "kernel_outputs": [
+    "Y0"
+  ],
+  "kernel_sha256": "05fce6be66b99b0f57f8eb7fd97c0a051d3bd14e733cde03ee458371ad654c76",
+  "oracle": {
+    "derived_from_rtl": false,
+    "fidelity": "functional_model",
+    "kind": "atlas-functional"
+  },
+  "schema": "atlas_multi_kernel_execution_v2"
+}

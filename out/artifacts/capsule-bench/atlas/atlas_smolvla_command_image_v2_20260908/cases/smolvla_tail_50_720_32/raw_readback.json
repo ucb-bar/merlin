@@ -1,0 +1,23 @@
+{
+  "all_outputs_bit_exact": true,
+  "comparisons": {
+    "Y0": {
+      "base": 2415978144,
+      "bytes": 3200,
+      "max_abs_error": 0.0,
+      "mismatches": 0,
+      "raw_sha256": "5978dd34bdfb5292cd4dfad79396e02ec386442a629f277dd1084ca8a45480e9"
+    }
+  },
+  "cycles": 300068,
+  "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim",
+  "engine_sha256": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+  "halted": true,
+  "kernel_binary_sha256": "fb5c448c873152489b31a642cc769464b81e9f52e64d73eff9678753600cf48a",
+  "provenance_note": "Expected values are computed after raw GSIM readback and are absent from raw_gsim_spec.json.",
+  "reads": 26347,
+  "returncode": 0,
+  "schema": "atlas_raw_gsim_readback_v1",
+  "spec_sha256": "d43e0cc33543bf396f8468223647d6562e5b040a46e1abcd80a8f6e6ab4b2bfa",
+  "writes": 100
+}

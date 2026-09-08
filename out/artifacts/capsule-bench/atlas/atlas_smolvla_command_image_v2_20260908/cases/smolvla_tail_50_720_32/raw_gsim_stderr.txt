@@ -1,0 +1,4 @@
+[1;31mAssertion failed: VPU: pair-write destination bank must be even
+[0m
+[1;31mAssertion failed: ASSERT FAIL: VPU pair-write destination bank must be even
+[0m

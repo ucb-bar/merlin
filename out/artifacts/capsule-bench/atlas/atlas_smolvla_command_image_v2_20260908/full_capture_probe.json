@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/submission/mlir_oot/atlas-opt",
+    "--emit-command-buffer=/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/full_capture_command_buffer.json",
+    "--emit-target-artifact",
+    "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir"
+  ],
+  "capture": "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir",
+  "capture_bytes": 4346305,
+  "capture_sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c",
+  "claim": "bounded integration probe only",
+  "command_buffer_produced": false,
+  "elapsed_seconds": 4.34839877000195,
+  "returncode": 1,
+  "schema": "atlas_full_capture_probe_v1",
+  "stderr_bytes": 364,
+  "stdout_bytes": 0,
+  "timed_out": false,
+  "timeout_seconds": 60
+}

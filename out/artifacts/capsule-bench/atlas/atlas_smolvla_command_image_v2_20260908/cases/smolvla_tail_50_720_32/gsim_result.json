@@ -1,0 +1,51 @@
+{
+  "all_outputs_bit_exact": true,
+  "case": "smolvla_tail_50_720_32",
+  "claim": "elaborated-RTL GSIM execution of one command image",
+  "command_buffer_sha256": "4343b361727b700e8aa93692ed9ad1f7f9d3309780addbfbb72644cf3d378d3a",
+  "commands": 4,
+  "comparisons": {
+    "Y0": {
+      "expected_shape": [
+        50,
+        32
+      ],
+      "max_abs_error": 0.0,
+      "mismatches": 0,
+      "shape": [
+        50,
+        32
+      ]
+    }
+  },
+  "cycles": 300068,
+  "engine": "gsim",
+  "halted": true,
+  "instruction_words": 12605,
+  "kernel_outputs": [
+    "Y0"
+  ],
+  "kernel_sha256": "fcd4ad1aeadf18d03bd1d13f43ce74f6b417d4c193771e35b4368953146e928a",
+  "oracle": {
+    "derived_from_rtl": true,
+    "engine": "gsim",
+    "fidelity": "elaborated_rtl",
+    "kind": "atlas-gsim-rtl",
+    "provenance": {
+      "adoption_record": {
+        "path": "/scratch/agustin/tmp/gsim-atlas-core/provenance.json",
+        "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+      },
+      "binaries": {
+        "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+        "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+        "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+        "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+      },
+      "engine": "gsim",
+      "engine_dir": "/scratch/agustin/tmp/gsim-atlas-core",
+      "wrapper": "gsim_run.py"
+    }
+  },
+  "schema": "atlas_multi_kernel_execution_v2"
+}

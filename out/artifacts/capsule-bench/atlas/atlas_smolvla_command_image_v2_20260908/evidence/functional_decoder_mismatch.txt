@@ -1,0 +1,30 @@
+Atlas DMA_CONFIG decode mismatch captured 2026-09-08
+
+RTL source:
+  /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/src/main/scala/atlas/scalar/Instructions.scala
+  full-file SHA-256: 83dd5f1467a0293aff0d2c47ed52f98165660558a1ebe0add4b354d2a4c28265
+  line 96:
+    def DMA_CONFIG_ANY = BitPat("b0000000_00000_?????_???_00000_1111111")
+  line 97:
+    def DMA_WAIT_ANY   = BitPat("b0000001_00000_00000_???_00000_1111111")
+
+Recovery compiler source:
+  submission/mlir_oot/encoder.py
+  full-file SHA-256: 3b57ccb60a6c6aabac64216a681b91422df077f0eba656c8a4eda218013ddb73
+  dma_config:
+    return r_type(0x7F, channel, 0, 0, rs1, 0)
+  dma_wait:
+    return r_type(0x7F, channel, 1, 0, 0, 0)
+
+Functional-model source:
+  /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model/configs/isa_definition.py
+  full-file SHA-256: d29fff81689e6652772a51ff597b807e48d1af788c88aa08a9c98d3d8c396fc0
+  DMA_CONFIG_CH0 at lines 1122-1129 assigns funct7=0b0000001.
+  DMA_WAIT_CH0 at lines 1214-1216 also assigns funct7=0b0000001.
+
+The RTL and compiler agree that config has funct7=0 and wait has funct7=1.
+The functional ISA description assigns funct7=1 to both.  Its raw result for
+the single-movement control (`cases/bf16_movement_single/functional_run/func_out.json`)
+accordingly reports the emitted config words 0x0002807f through 0x0002f07f as
+unsupported.  This proves an instruction-decoder instrumentation defect.  It
+does not prove this is the functional model's only defect.

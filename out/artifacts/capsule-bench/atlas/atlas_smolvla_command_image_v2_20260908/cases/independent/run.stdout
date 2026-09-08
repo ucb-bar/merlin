@@ -1,0 +1,47 @@
+{
+  "all_outputs_bit_exact": false,
+  "case": "independent",
+  "claim": "functional-model execution of one command image; not RTL cycle evidence",
+  "command_buffer_sha256": "d59b267bb32270042b1e7fdb29a6992bc1f617c2718305579b79309167c859c1",
+  "commands": 8,
+  "comparisons": {
+    "Y0": {
+      "expected_shape": [
+        4,
+        8
+      ],
+      "max_abs_error": 2.0,
+      "mismatches": 26,
+      "shape": [
+        4,
+        8
+      ]
+    },
+    "Y1": {
+      "expected_shape": [
+        3,
+        7
+      ],
+      "max_abs_error": 2.0,
+      "mismatches": 16,
+      "shape": [
+        3,
+        7
+      ]
+    }
+  },
+  "cycles": 7426,
+  "halted": true,
+  "instruction_words": 2359,
+  "kernel_outputs": [
+    "Y0",
+    "Y1"
+  ],
+  "kernel_sha256": "7fa7a5e2a9030b150490a56c5e450bc4da9199a2e90eaca43329a8c8809f1b88",
+  "oracle": {
+    "derived_from_rtl": false,
+    "fidelity": "functional_model",
+    "kind": "atlas-functional"
+  },
+  "schema": "atlas_multi_kernel_functional_v1"
+}

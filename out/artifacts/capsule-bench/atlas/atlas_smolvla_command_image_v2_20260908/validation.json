@@ -1,0 +1,109 @@
+{
+  "backend_source_tree_sha256": "ec6ffb91ef670e276834029d471cbcdc542dff4aec1020236d904e935335bbbe",
+  "focused_tests": {
+    "failed": 0,
+    "passed": 6
+  },
+  "full_capture_probe": {
+    "command_buffer_produced": false,
+    "first_blocker": "xDSL parser rejects captured tensor.expand_shape syntax: Expected '->'",
+    "returncode": 1
+  },
+  "functional_model": {
+    "definitive_decoder_mismatch": "DMA_CONFIG funct7=0 in RTL/compiler, funct7=1 in functional ISA",
+    "only_known_defect": false,
+    "usable_as_numeric_oracle_for_emitted_atlas_isa": false
+  },
+  "inherited_compile_coverage": {
+    "physical_contraction_layers_fitting_imem": 391,
+    "physical_contraction_layers_total": 391,
+    "unique_contraction_shapes_fitting_imem": 28,
+    "unique_contraction_shapes_total": 28
+  },
+  "ok": true,
+  "recovery_status": "representative_rtl_numeric",
+  "representative_cases": {
+    "bf16_movement_single": {
+      "all_outputs_bit_exact": true,
+      "command_buffer_sha256": "8b6bcb6ecf31f468a2cd8ac5b291fca744a6b134cbe99b140d12968e5a66ebd7",
+      "commands": 1,
+      "cycles": 1075,
+      "instruction_words": 391,
+      "kernel_sha256": "05fce6be66b99b0f57f8eb7fd97c0a051d3bd14e733cde03ee458371ad654c76",
+      "outputs": [
+        "Y0"
+      ]
+    },
+    "bf16_movements": {
+      "all_outputs_bit_exact": true,
+      "command_buffer_sha256": "de301caa237adfa3b2a2ab57c52e3346d436f9c23d8837cd175cdcb3c04efb36",
+      "commands": 2,
+      "cycles": 1877,
+      "instruction_words": 671,
+      "kernel_sha256": "5fee33a365e0caf736b3bf571a93c6736156c3b7be74b3c105efe94f38a42ab7",
+      "outputs": [
+        "Y0",
+        "Y1"
+      ]
+    },
+    "chained": {
+      "all_outputs_bit_exact": true,
+      "command_buffer_sha256": "467e9a6f7643318cf608a3f646fbab52230271ca7488784debf578f250d795e3",
+      "commands": 8,
+      "cycles": 7314,
+      "instruction_words": 1882,
+      "kernel_sha256": "ceb6ee8b63b66218c4325fcdc398060709c8185096460d50faff876f0bcd845d",
+      "outputs": [
+        "Y0",
+        "Y1"
+      ]
+    },
+    "independent": {
+      "all_outputs_bit_exact": true,
+      "command_buffer_sha256": "d59b267bb32270042b1e7fdb29a6992bc1f617c2718305579b79309167c859c1",
+      "commands": 8,
+      "cycles": 6010,
+      "instruction_words": 2359,
+      "kernel_sha256": "7fa7a5e2a9030b150490a56c5e450bc4da9199a2e90eaca43329a8c8809f1b88",
+      "outputs": [
+        "Y0",
+        "Y1"
+      ]
+    },
+    "smolvla_tail_50_720_32": {
+      "all_outputs_bit_exact": true,
+      "command_buffer_sha256": "4343b361727b700e8aa93692ed9ad1f7f9d3309780addbfbb72644cf3d378d3a",
+      "commands": 4,
+      "cycles": 300068,
+      "instruction_words": 12605,
+      "kernel_sha256": "fcd4ad1aeadf18d03bd1d13f43ce74f6b417d4c193771e35b4368953146e928a",
+      "outputs": [
+        "Y0"
+      ]
+    }
+  },
+  "rtl_numeric_smolvla_coverage": {
+    "cycles": 300068,
+    "instruction_words": 12605,
+    "mismatches": 0,
+    "outputs_checked": 1600,
+    "physical_contraction_occurrences": 1,
+    "physical_contraction_occurrences_total": 391,
+    "raw_output_sha256": "5978dd34bdfb5292cd4dfad79396e02ec386442a629f277dd1084ca8a45480e9",
+    "shape": [
+      50,
+      720,
+      32
+    ],
+    "unique_contraction_shapes": 1,
+    "unique_contraction_shapes_total": 28
+  },
+  "schema": "atlas_smolvla_command_image_validation_v2",
+  "unproven": [
+    "whole SmolVLA image",
+    "full-graph lowering/partition/dispatch",
+    "arbitrary FP8 accumulation correctness",
+    "performance of the full model",
+    "capsule score of this changed package"
+  ]
+}
