@@ -1,0 +1,45 @@
+{
+  "schema": "merlin_radiance_l3_gsim_functional_candidate_v1",
+  "status": "functional_positive_witness_not_numeric_certification",
+  "gsim": {
+    "source_repo": "/scratch/agustin/projects/gsim",
+    "base_commit": "65a1f89af195c62b365cd9a827fa4f5f2ca71d1f",
+    "tracked_diff_sha256": "eb05a2e8f8024cf9c69fed2533c386a133e234d1c7ddd4d26802129ad0fddf7c",
+    "guard_command": "make CXX=/scratch/agustin/projects/gsim/cxxwrap.sh stop-witness-check printf-filter-check",
+    "guard_exit_code": 0
+  },
+  "rtl": {
+    "firrtl_path": "/scratch/agustin/tmp/RadianceGsimConfig.l3-filtered.fir",
+    "firrtl_bytes": 1932945455,
+    "firrtl_sha256": "367be68f9feba9c5d519b22781dec31f1d5f34551cb538e56ca3bfae787aed8e",
+    "generated_translation_units": 225,
+    "generation_wall_time": "10:27",
+    "generation_max_rss_bytes": 79363710976
+  },
+  "emulator": {
+    "path": "bin/emulator",
+    "bytes": 79405896,
+    "sha256": "458d11844538463e5f4ab1f2d6314934dc0d4fe71df07131eebc5aa29d2633be"
+  },
+  "smoke": {
+    "capsule": "R0_gemm_fp32",
+    "soc_elf_path": ".claude/worktrees/codex-radiance-smoke/out/artifacts/capsule-bench/m0_gsim_probe2/runs/radiance-capsule-bench/R0_gemm_fp32/generated/kernel.soc.elf",
+    "soc_elf_sha256": "99c99066e65fe9dc9c0baef54657b083bf0e88d270f45a538d2982fd249890e2",
+    "max_cycles": 2000000,
+    "wall_timeout_seconds": 120,
+    "wall_seconds": 82.22,
+    "max_rss_kib": 81024,
+    "exit_code": 0,
+    "completion_witness": "GSIM model finished execution.",
+    "console_path": "evidence/r0_console.log",
+    "console_sha256": "65383141ec9684213de6f4df08f07673ce91b49ba06c2cc84c16e66bc6ed343c",
+    "dram_aw": 0,
+    "dram_w": 0,
+    "dram_ar": 317,
+    "dram_read_fires": 1268,
+    "writes_resultpage": 0,
+    "cvfpu_accepts": 19786,
+    "uart_chars": 0,
+    "independent_numeric_check": false
+  }
+}

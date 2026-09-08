@@ -1,0 +1,470 @@
+##############################################
+### User Settings
+##############################################
+
+dutName ?= ysyx3
+MODE ?= 0
+mainargs ?= ready-to-run/bin/linux.bin
+# uncomment this line to let this file be part of dependency of each .o file
+THIS_MAKEFILE = Makefile
+
+ifeq ($(dutName),ysyx3)
+	NAME ?= newtop
+	TEST_FILE = $(NAME)-ysyx3
+	GSIM_FLAGS += --supernode-max-size=20
+else ifeq ($(dutName),NutShell)
+	NAME ?= SimTop
+	TEST_FILE = $(NAME)-nutshell
+	GSIM_FLAGS += --supernode-max-size=20
+else ifeq ($(dutName),rocket)
+	NAME ?= TestHarness
+	TEST_FILE = $(NAME)-rocket
+	GSIM_FLAGS += --supernode-max-size=30 --cpp-max-size-KB=1024
+else ifeq ($(dutName),large-boom)
+	NAME ?= TestHarness
+	TEST_FILE = $(NAME)-LargeBoom
+	GSIM_FLAGS += --supernode-max-size=65 --cpp-max-size-KB=4096
+	VERI_THREADS = --threads 5
+else ifeq ($(dutName),small-boom)
+	NAME ?= TestHarness
+	TEST_FILE = $(NAME)-SmallBoom
+	GSIM_FLAGS += --supernode-max-size=90 --cpp-max-size-KB=4096
+	VERI_THREADS = --threads 5
+else ifeq ($(dutName),minimal-xiangshan)
+	NAME ?= SimTop
+	TEST_FILE = $(NAME)-xiangshan-minimal
+	GSIM_FLAGS += --supernode-max-size=60 --cpp-max-size-KB=8192
+	VERI_THREADS = --threads 16
+else ifeq ($(dutName),default-xiangshan)
+	NAME ?= SimTop
+	TEST_FILE = $(NAME)-xiangshan-default
+	GSIM_FLAGS += --supernode-max-size=2 --cpp-max-size-KB=8192
+	VERI_THREADS = --threads 16
+endif
+
+DIFF_VERSION ?= default-xiangshan
+REF_GSIM_DIR = diff/$(DIFF_VERSION)
+##############################################
+### Global Settings
+##############################################
+
+BUILD_DIR ?= build
+WORK_DIR = $(BUILD_DIR)/$(dutName)
+
+##############################################
+### Compiler/Toolchain
+##############################################
+include mk/toolchain.mk
+
+SHELL := /bin/bash
+TIME = /usr/bin/time
+LOG_FILE = $(WORK_DIR)/$(dutName).log
+
+CFLAGS_DUT = -DDUT_NAME=S$(NAME) -DDUT_HEADER=\"$(NAME).h\" -D__DUT_$(shell echo $(dutName) | tr - _)__
+
+# $(1): object file
+# $(2): source file
+# $(3): compile flags (for linker flags, use -Xlinker --xxx instead of -Wl,--xxx)
+# $(4): object file list
+# $(5): extra dependency
+define CXX_TEMPLATE =
+$(1): $(2) $(THIS_MAKEFILE) $(5)
+	@mkdir -p $$(@D) && echo + CXX $$<
+	@$(CXX) $$< $(3) -c -o $$@
+$(4) += $(1)
+endef
+
+# $(1): object file
+# $(2): source file
+# $(3): ld flags (use -Xlinker --xxx instead of -Wl,--xxx)
+define LD_TEMPLATE =
+$(1): $(2)
+	@mkdir -p $$(@D) && echo + LD $$@
+	@$(CXX) $(LDFLAGS) $$^ $(3) -o $$@
+endef
+
+ifeq ($(PERF),1)
+	CXXFLAGS += -DPERF
+	MODE_FLAGS += -DGSIM
+	EMU_CFLAGS += -DPERF -DACTIVE_FILE=\"logs/active-$(dutName).txt\" -O0 -Wno-format
+	target ?= run-emu
+else ifeq ($(MODE),0)
+	MODE_FLAGS += -DGSIM
+	EMU_CFLAGS += -O3 -Wno-format $(PGO_CFLAGS) $(BOLT_CFLAGS)
+	EMU_LDFLAGS += $(BOLT_LDFLAGS)
+	target ?= run-emu
+else ifeq ($(MODE), 1)
+	MODE_FLAGS += -DVERILATOR
+	target ?= run-veri
+else ifeq ($(MODE), 2)
+	CXXFLAGS += -DDIFFTEST_PER_SIG -DVERILATOR_DIFF
+	MODE_FLAGS += -DGSIM -DVERILATOR
+	SIG_COMMAND = python3 scripts/sigFilter.py $(WORK_DIR) $(NAME)
+	target ?= run-veri
+else
+	CXXFLAGS += -DDIFFTEST_PER_SIG -DGSIM_DIFF
+	MODE_FLAGS += -DGSIM -DGSIM_DIFF
+	EMU_CFLAGS += -I$(REF_GSIM_DIR) -DREF_NAME=Diff$(NAME)
+	SIG_COMMAND = python3 scripts/genSigDiff.py $(dutName) $(NAME) $(DIFF_VERSION)
+	target ?= run-emu
+	EMU_SRCS += $(shell find diff/$(DIFF_VERSION) -name "*.cpp" 2> /dev/null)
+endif
+
+# Pass from outside Design or internal Default
+ifdef GSIM_TARGET
+target = $(GSIM_TARGET)
+endif
+
+SIMPOINT_VAR = $(if $(filter 1,$(SIMPOINT)),-simpoint,)
+
+difftest: $(target)$(SIMPOINT_VAR)
+
+.PHONY: difftest
+
+##############################################
+### Building GSIM
+##############################################
+
+GSIM_BUILD_DIR = $(BUILD_DIR)/gsim
+GSIM_BIN = $(GSIM_BUILD_DIR)/gsim
+
+PARSER_DIR = parser
+LEXICAL_NAME = lexical
+SYNTAX_NAME = syntax
+PARSER_BUILD_DIR = $(GSIM_BUILD_DIR)/$(PARSER_DIR)
+PARSER_GEN_SRCS = $(foreach x, $(LEXICAL_NAME) $(SYNTAX_NAME), $(PARSER_BUILD_DIR)/$(x).cc)
+PARSER_GEN_HEADER = $(PARSER_BUILD_DIR)/$(SYNTAX_NAME).hh
+GSIM_SRCS = $(foreach x, src $(PARSER_DIR), $(wildcard $(x)/*.cpp))
+
+GSIM_INC_DIR = include $(PARSER_DIR)/include $(PARSER_BUILD_DIR)
+# NOTE:
+# 1) pthread symbols (pthread_create / pthread_join) were missing at link stage;
+#    with clang this is solved by adding -pthread to both compile & link flags.
+# 2) If you still see "DWARF error: invalid or unhandled FORM value: 0x25" from ld
+#    your binutils (ld) may be older than the DWARF version emitted by clang-19.
+#    You can force DWARF v4 by building with: make DWARF4=1 ... (see conditional below).
+CXXFLAGS += -ggdb -O3 -MMD $(addprefix -I,$(GSIM_INC_DIR)) -Wall -Werror --std=c++17 -pthread
+
+GSIM_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo UNKNOWN)
+GSIM_BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo UNKNOWN)
+GSIM_CXX_VERSION ?= $(shell $(CXX) --version 2>/dev/null | head -n 1 || echo UNKNOWN)
+CXXFLAGS += '-DGSIM_VERSION="$(GSIM_VERSION)"' '-DGSIM_BUILD_DATE="$(GSIM_BUILD_DATE)"' '-DGSIM_CXX_VERSION="$(GSIM_CXX_VERSION)"'
+
+ifeq ($(DWARF4),1)
+	CXXFLAGS += -gdwarf-4
+endif
+
+ifeq ($(DEBUG),1)
+	CXXFLAGS += -DDEBUG
+endif
+
+# Optional: build static binary (enable with `make STATIC=1 build-gsim`)
+ifeq ($(STATIC),1)
+# Link libstdc++ and libgcc statically; attempt full static if available
+LDFLAGS += -static -static-libstdc++ -static-libgcc
+endif
+
+$(PARSER_BUILD_DIR)/%.cc:  $(PARSER_DIR)/%.y
+	@mkdir -p $(@D)
+	bison -v -d $< -o $@
+
+$(PARSER_BUILD_DIR)/%.cc: $(PARSER_DIR)/%.l
+	@mkdir -p $(@D)
+	flex -Cf -o $@ $<
+
+$(PARSER_GEN_HEADER): $(PARSER_BUILD_DIR)/$(SYNTAX_NAME).cc
+
+$(foreach x, $(PARSER_GEN_SRCS), $(eval \
+	$(call CXX_TEMPLATE, $(PARSER_BUILD_DIR)/$(basename $(notdir $(x))).o, $(x), $(CXXFLAGS), GSIM_OBJS, $(PARSER_GEN_HEADER))))
+
+$(foreach x, $(GSIM_SRCS), $(eval \
+	$(call CXX_TEMPLATE, $(GSIM_BUILD_DIR)/$(basename $(x)).o, $(x), $(CXXFLAGS), GSIM_OBJS, $(PARSER_GEN_HEADER))))
+
+$(eval $(call LD_TEMPLATE, $(GSIM_BIN), $(GSIM_OBJS), $(CXXFLAGS) -lgmp))
+
+build-gsim: $(GSIM_BIN)
+
+# Dependency
+-include $(GSIM_OBJS:.o=.d)
+
+.PHONY: build-gsim
+
+##############################################
+### Running GSIM to generate cpp model
+##############################################
+
+FIRRTL_FILE = ready-to-run/$(TEST_FILE).fir
+GEN_CPP_DIR = $(WORK_DIR)/model
+
+FIR_TEST_INPUT_DIR ?= test
+FIR_TEST_OUTPUT_DIR ?= $(BUILD_DIR)/fir-tests
+FIR_TEST_CASES ?= $(basename $(notdir $(wildcard $(FIR_TEST_INPUT_DIR)/*.fir)))
+FIR_TEST_TIMEOUT ?=
+FIR_TEST ?=
+FIR_TEST_TIMEOUT_PREFIX = $(if $(strip $(FIR_TEST_TIMEOUT)),timeout $(FIR_TEST_TIMEOUT),)
+FIR_TEST_TARGETS = $(addprefix $(FIR_TEST_OUTPUT_DIR)/,$(addsuffix /.done,$(FIR_TEST_CASES)))
+
+$(GEN_CPP_DIR)/$(NAME)0.cpp: $(GSIM_BIN) $(FIRRTL_FILE)
+	@mkdir -p $(@D)
+	set -o pipefail && $(TIME) $(GSIM_BIN) $(GSIM_FLAGS) --dir $(@D) \
+		$(GSIM_FLAGS_EXTRA) $(FIRRTL_FILE) | tee $(BUILD_DIR)/gsim.log
+	$(SIG_COMMAND)
+
+compile: $(GEN_CPP_DIR)/$(NAME)0.cpp
+
+.PHONY: compile
+
+$(FIR_TEST_OUTPUT_DIR)/%/.done: $(FIR_TEST_INPUT_DIR)/%.fir $(GSIM_BIN)
+	@mkdir -p $(@D)
+	set -o pipefail && $(TIME) $(FIR_TEST_TIMEOUT_PREFIX) $(GSIM_BIN) --dir $(@D) \
+		$(GSIM_FLAGS_EXTRA) $< | tee $(@D)/gsim.log
+	@touch $@
+
+run-fir-test: $(GSIM_BIN)
+	@test -n "$(FIR_TEST)" || (echo "Usage: make run-fir-test FIR_TEST=<case-name>" >&2; exit 1)
+	@test -f "$(FIR_TEST_INPUT_DIR)/$(FIR_TEST).fir" || \
+		(echo "Missing FIR test: $(FIR_TEST_INPUT_DIR)/$(FIR_TEST).fir" >&2; exit 1)
+	@$(MAKE) $(FIR_TEST_OUTPUT_DIR)/$(FIR_TEST)/.done FIR_TEST_TIMEOUT="$(FIR_TEST_TIMEOUT)"
+
+fir-tests: $(GSIM_BIN) stop-witness-check printf-filter-check
+	@test -n "$(strip $(FIR_TEST_CASES))" || (echo "No FIR tests found under $(FIR_TEST_INPUT_DIR)" >&2; exit 1)
+	@$(MAKE) $(FIR_TEST_TARGETS) FIR_TEST_TIMEOUT="$(FIR_TEST_TIMEOUT)"
+
+stop-witness-check: $(FIR_TEST_OUTPUT_DIR)/stop-witness/.done
+	@test "$$(grep -R -F 'GSIM model finished execution.' $(FIR_TEST_OUTPUT_DIR)/stop-witness \
+		--include='*.cpp' | wc -l)" -eq 1 || \
+		(echo "Generated successful FIRRTL stop has no observable completion witness" >&2; exit 1)
+	@grep -R -F 'exit(1);' $(FIR_TEST_OUTPUT_DIR)/stop-witness --include='*.cpp' >/dev/null || \
+		(echo "Generated non-zero FIRRTL stop lost its failure exit" >&2; exit 1)
+
+printf-filter-check: $(FIR_TEST_OUTPUT_DIR)/printf-filter/.done
+	@grep -R -F 'GSIM_HW_PRINTF' $(FIR_TEST_OUTPUT_DIR)/printf-filter --include='*.cpp' >/dev/null || \
+		(echo "Generated hardware printf has no diagnostic-noise filter" >&2; exit 1)
+	@grep -R -F 'Timeout exceeded' $(FIR_TEST_OUTPUT_DIR)/printf-filter --include='*.cpp' >/dev/null || \
+		(echo "Generated hardware printf filter does not preserve timeout failures" >&2; exit 1)
+	@$(CXX) --std=c++17 -I$(FIR_TEST_OUTPUT_DIR)/printf-filter \
+		$(FIR_TEST_OUTPUT_DIR)/printf-filter/PrintfFilter0.cpp test/printf-filter-main.cpp \
+		-o $(FIR_TEST_OUTPUT_DIR)/printf-filter/run
+	@$(FIR_TEST_OUTPUT_DIR)/printf-filter/run \
+		2>$(FIR_TEST_OUTPUT_DIR)/printf-filter/default.stderr
+	@test ! -s $(FIR_TEST_OUTPUT_DIR)/printf-filter/default.stderr || \
+		(echo "Generated hardware printf emits diagnostic noise by default" >&2; exit 1)
+	@GSIM_HW_PRINTF=1 $(FIR_TEST_OUTPUT_DIR)/printf-filter/run \
+		2>$(FIR_TEST_OUTPUT_DIR)/printf-filter/enabled.stderr
+	@grep -F 'diagnostic noise' $(FIR_TEST_OUTPUT_DIR)/printf-filter/enabled.stderr >/dev/null || \
+		(echo "GSIM_HW_PRINTF=1 did not restore hardware diagnostics" >&2; exit 1)
+
+.PHONY: run-fir-test fir-tests stop-witness-check printf-filter-check
+
+##############################################
+### Building EMU from cpp model generated by GSIM
+##############################################
+
+EMU_BUILD_DIR = $(WORK_DIR)/emu
+EMU_BIN = $(WORK_DIR)/S$(NAME)
+
+ifeq ($(SIMPOINT),1)
+EMU_MAIN_SRCS = emu/emu-checkpoint.cpp emu/support/compress.cpp
+else
+EMU_MAIN_SRCS = emu/emu.cpp
+endif
+EMU_GEN_SRCS = $(shell find $(GEN_CPP_DIR) -name "*.cpp" 2> /dev/null)
+EMU_SRCS += $(EMU_MAIN_SRCS) $(EMU_GEN_SRCS)
+
+EMU_CFLAGS := -O1 -MMD $(addprefix -I, $(abspath $(GEN_CPP_DIR))) $(EMU_CFLAGS) # allow to overwrite optimization level
+EMU_CFLAGS += $(MODE_FLAGS) $(CFLAGS_DUT) -Wno-parentheses-equality
+EMU_CFLAGS += -fbracket-depth=2048
+#EMU_CFLAGS += -fsanitize=address -fsanitize-address-use-after-scope
+#EMU_CFLAGS += -fsanitize=undefined -fsanitize=pointer-compare -fsanitize=pointer-subtract
+#EMU_CFLAGS += -pg -ggdb
+ifeq ($(SIMPOINT),1)
+EMU_LDFLAGS += -lz -lzstd
+endif
+
+$(foreach x, $(EMU_SRCS), $(eval \
+	$(call CXX_TEMPLATE, $(EMU_BUILD_DIR)/$(basename $(notdir $(x))).o, $(x), $(EMU_CFLAGS), EMU_OBJS,)))
+
+$(eval $(call LD_TEMPLATE, $(EMU_BIN), $(EMU_OBJS), $(EMU_CFLAGS) $(EMU_LDFLAGS)))
+
+build-emu: $(EMU_BIN)
+
+run-emu-simpoint: $(EMU_BIN)
+	@echo 'Please run "$^ <gcpt> <checkpoint>" manually'
+
+run-emu: $(EMU_BIN)
+	$(TIME) taskset 0x1 $^ $(mainargs)
+
+clean-emu:
+	-rm -rf $(EMU_BUILD_DIR) $(EMU_BIN)
+
+# Dependency
+-include $(EMU_OBJS:.o=.d)
+
+.PHONY: run-emu clean-emu build-emu
+
+##############################################
+### Building EMU from Verilator
+##############################################
+
+CFLAGS_REF = -DREF_NAME=V$(NAME) -DREF_HEADER=\"V$(NAME)__Syms.h\"
+
+define escape_quote
+	$(subst \",\\\",$(1))
+endef
+
+VERI_BUILD_DIR = $(WORK_DIR)/verilator
+VERI_BIN = $(WORK_DIR)/V$(NAME)
+VERI_GEN_MK = $(VERI_BUILD_DIR)/V$(NAME).mk
+
+VERI_CFLAGS = $(call escape_quote,$(EMU_CFLAGS) $(CFLAGS_REF))
+VERI_LDFLAGS = -O1
+VERI_VFLAGS = --top $(NAME) -Wno-lint -j 8 --cc --exe +define+RANDOMIZE_GARBAGE_ASSIGN --max-num-width 1048576 --compiler clang
+ifeq ($(SIMPOINT),1)
+VERI_LDFLAGS += -lz -lzstd
+endif
+VERI_VFLAGS += -Mdir $(VERI_BUILD_DIR) -CFLAGS "$(VERI_CFLAGS)" -LDFLAGS "$(VERI_LDFLAGS)"
+VERI_VFLAGS += $(VERI_THREADS)
+#VERI_VFLAGS += --trace-fst
+
+VERI_VSRCS = ready-to-run/difftest/$(TEST_FILE).sv
+VERI_CSRCS-2 = $(EMU_GEN_SRCS)
+
+$(VERI_GEN_MK): $(VERI_VSRCS) $(VERI_CSRCS-$(MODE)) | $(EMU_MAIN_SRCS)
+	@mkdir -p $(@D)
+	verilator $(VERI_VFLAGS) $(abspath $^ $|)
+
+$(VERI_BIN): | $(VERI_GEN_MK)
+	$(TIME) $(MAKE) OPT_FAST="-O1" CXX=clang++ -s -C $(VERI_BUILD_DIR) -f $(abspath $|)
+	ln -sf $(abspath $(VERI_BUILD_DIR)/V$(NAME)) $@
+
+compile-veri: $(VERI_GEN_MK)
+
+run-veri-simpoint: $(VERI_BIN)
+	@echo 'Please run "$^ <gcpt> <checkpoint>" manually'
+
+run-veri: $(VERI_BIN)
+	$(TIME) $^ $(mainargs)
+
+.PHONY: compile-veri run-veri $(VERI_BIN)
+
+##############################################
+### Building EMU from cpp model generated by GSIM for reference
+##############################################
+
+#$(EMU_BUILD_DIR)/S$(NAME)_diff: $(VERI_OBJS) $(REF_GSIM_OBJS)
+#	echo $(REF_GSIM_OBJS)
+#	$(CXX) $^ $(EMU_CFLAGS) -lgmp -o $@
+#
+#$(GSIM_TARGET): $(VERI_OBJS)
+#	$(CXX) $^ $(EMU_CFLAGS) $(EMU_LDFLAGS) -lgmp -o $@
+
+
+##############################################
+### PGO
+##############################################
+
+LLVM_PROFDATA = llvm-profdata
+PGO_BUILD_DIR = $(WORK_DIR)/pgo
+
+pgo:
+	rm -rf $(PGO_BUILD_DIR)
+	mkdir -p $(PGO_BUILD_DIR)
+	$(MAKE) MODE=0 compile
+	$(MAKE) clean-emu
+	$(MAKE) run MODE=0 PGO_CFLAGS="-fprofile-generate=$(PGO_BUILD_DIR)"
+	$(LLVM_PROFDATA) merge -o $(PGO_BUILD_DIR)/default.profdata $(PGO_BUILD_DIR)/*.profraw
+	$(MAKE) clean-emu
+	$(MAKE) run MODE=0 PGO_CFLAGS="-fprofile-use=$(PGO_BUILD_DIR)/default.profdata"
+
+.PHONY: pgo
+
+##############################################
+### BOLT
+##############################################
+
+BOLT_BUILD_DIR = $(WORK_DIR)/bolt
+BOLT_INSTRUMENT ?= $(shell perf record -e cycles -j any,u -- ls >/dev/null 2>&1; echo $$?)
+
+bolt:
+	mkdir -p $(BOLT_BUILD_DIR)
+	$(MAKE) compile MODE=0
+	$(MAKE) clean-emu
+	$(MAKE) build-emu MODE=0 BOLT_CFLAGS="-DPERF_CYCLE" BOLT_LDFLAGS="-Xlinker --emit-relocs"
+ifeq ($(BOLT_INSTRUMENT), 0)
+	perf record -e cycles:u -j any,u -o $(BOLT_BUILD_DIR)/perf.data -- $(EMU_BIN) $(mainargs)
+	perf2bolt -p $(BOLT_BUILD_DIR)/perf.data -o $(BOLT_BUILD_DIR)/perf.fdata $(EMU_BIN)
+else
+	llvm-bolt $(EMU_BIN) -instrument -o $(BOLT_BUILD_DIR)/S$(NAME).inst --instrumentation-file=$(BOLT_BUILD_DIR)/perf.fdata
+	$(BOLT_BUILD_DIR)/S$(NAME).inst $(mainargs)
+endif
+	$(MAKE) clean-emu 
+	$(MAKE) build-emu MODE=0 BOLT_LDFLAGS="-Xlinker --emit-relocs"
+	llvm-bolt $(EMU_BIN) -o $(EMU_BIN).bolt \
+			-data=$(BOLT_BUILD_DIR)/perf.fdata \
+			-reorder-blocks=ext-tsp \
+			-reorder-functions=cdsort \
+			-split-functions \
+			-split-all-cold \
+			-split-eh
+	@mv $(EMU_BIN).bolt $(EMU_BIN)
+	$(MAKE) run MODE=0
+
+.PHONY: bolt
+
+##############################################
+### Miscellaneous
+##############################################
+
+clean:
+	-@rm -rf $(BUILD_DIR)
+
+run-internal:
+	$(MAKE) MODE=0 compile
+	$(MAKE) MODE=0 difftest
+
+diff-internal:
+	$(MAKE) MODE=2 compile-veri
+	$(MAKE) MODE=2 compile
+	$(MAKE) MODE=2 difftest
+
+run:
+	mkdir -p $(dir $(LOG_FILE))
+	set -o pipefail && $(TIME) $(MAKE) run-internal 2>&1 | tee $(LOG_FILE)
+
+diff:
+	mkdir -p $(dir $(LOG_FILE))
+	set -o pipefail && $(TIME) $(MAKE) diff-internal 2>&1 | tee $(LOG_FILE)
+
+init:
+	git submodule update --init
+	cd ready-to-run && bash init.sh
+
+gen-ref:
+	rm -rf $(REF_GSIM_DIR)
+	mkdir -p $(REF_GSIM_DIR)
+	bash scripts/genReference.sh $(NAME) $(dutName) $(DIFF_VERSION)
+
+perf: $(target)
+	sudo perf record -e branch-instructions,branch-misses,cache-misses,\
+	cache-references,instructions,L1-dcache-load-misses,L1-dcache-loads,\
+	L1-dcache-store,L1-icache-load-misses,LLC-load-misses,LLC-loads,\
+	LLC-store-misses,LLC-store,branch-load-misses,branch-loads,\
+	l2_rqsts.code_rd_miss,l2_rqsts.code_rd_hit,l2_rqsts.pf_hit,\
+	l2_rqsts.pf_miss,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_data_rd,\
+	l2_rqsts.miss $(target) $(mainargs)
+
+count:
+	find emu parser src include emu-src scripts -name "*.cpp" -o -name "*.h" -o -name "*.y" -o -name "*.l" -o -name "*.py" |grep -v "emu/obj*" |xargs wc
+
+gendoc:
+	doxygen
+	python3 -m http.server 8080 --directory doc/html
+
+format-obj:
+	@clang-format -i --style=file obj/$(NAME).cpp
+
+rocket-test: $(GSIM_BIN)
+	mkdir -p $(BUILD_DIR)/rocket
+	set -o pipefail && $(GSIM_BIN) --supernode-max-size=15 --cpp-max-size-KB=8192 --sep-mod=__DOT__ --sep-aggr=__DOT__ --dir $(BUILD_DIR)/rocket playground/Rocket-SimTop.fir | tee $(BUILD_DIR)/rocket/gsim.log
+
+.PHONY: clean run-internal diff-internal run diff init perf count gendoc format-obj
