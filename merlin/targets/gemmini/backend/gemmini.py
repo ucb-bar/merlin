@@ -92,6 +92,47 @@ def counter_partition_inputs() -> dict[str, Any]:
         "counter_module": "CounterController", "source": str(path)}
 
 
+def readout_epilogue_capability() -> list[dict[str, Any]]:
+    """Which epilogue stages each of this target's readouts APPLIES -- declared, not inferred.
+
+    Consumed by :func:`merlin.verify.epilogue_applicability.assess`, which states the general rule
+    (a declared stage must be applied by the readout the program selected) and knows nothing about
+    any target's readouts. This is the declaration for THIS one.
+
+    ⚠️ THE FULL-WIDTH READOUT APPLIES NOTHING, and that is the whole reason this exists. The RoCC
+    model computes the scaled and activated value and then, on the full-width path, writes the raw
+    accumulator instead::
+
+        auto shifted     = acc_scale(acc_value, gemmini_state.acc_shift);
+        elem_t activated = apply_activation_acc(shifted);
+        if (full) { write_to_dram<acc_t>(addr, acc_value);  }   // raw: pre-scale, pre-activation
+        else      { write_to_dram<elem_t>(addr, activated); }   // scale AND activation applied
+
+    Measured consequence: a capsule declaring ``output_dtype='i32' epilogue=['relu']`` returned 126
+    of 256 outputs negative (min -85) -- the raw accumulator -- while its command-buffer numeric floor
+    and trace both passed. Its sibling with the same declaration passes only because the default
+    stimulus is non-negative, so the activation is the identity and cannot be observed.
+
+    The stage names are the command-buffer ABI's own vocabulary
+    (``runtime.commandbuffer.EPILOGUE_STAGES``), and the narrowing readout's set is the one recorded
+    RTL-certified bit-exact by decision A in the requant reconciliation: float ``acc_scale``
+    (round-to-nearest-even) plus the activation, emitted as the accumulator address without the
+    full-width bit. ``requant`` is deliberately ABSENT from both: merlin's integer round-half-up
+    shift is not what this hardware's float scale computes, so it stays a host-side op rather than
+    being declared as something this readout applies.
+    """
+    return [
+        {"selector": "i8",
+         "applies": ["acc_scale", "relu", "bias_add", "bias", "maxpool"],
+         "evidence": "the narrowing readout applies the accumulator scale and the activation; "
+                     "RTL-certified bit-exact against Tensor.requant_acc_scale (decision A)"},
+        {"selector": "i32",
+         "applies": [],
+         "evidence": "the full-width readout writes the raw accumulator, discarding the scaled and "
+                     "activated value it computed (RoCC model, accumulator mvout path)"},
+    ]
+
+
 def counter_engine_kinds() -> dict[str, Any]:
     """Which RESOURCE KIND each counted engine is -- declared here, never read off a counter name.
 

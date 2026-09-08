@@ -201,3 +201,64 @@ class TestPersistence:
         OL.Ledger(target="t", attempts=[self._attempt()]).write(path)
         assert not list(tmp_path.glob("*.partial")), "the temporary must be replaced, not left"
         assert OL.read_ledger(path).attempts
+
+
+class TestARetiredBlockerStopsLookingLive:
+    """An append-only history keeps a `blocked` row forever; a reader must still see what is live.
+
+    Measured need: "establish the machine balance" was recorded blocked, then resolved two
+    iterations later by a saturating-bandwidth measurement. Both facts matter -- it WAS blocked, and
+    it is not any more -- and a verdict scan that shows only the first misdirects the next reader.
+    """
+
+    def _blocked(self, mechanism="do the thing"):
+        return Attempt(mechanism=mechanism, scope="global", found_by="census",
+                       verdict="blocked", blocked_by="nothing measures it")
+
+    def _resolver(self, resolves="do the thing"):
+        return Attempt(mechanism="measure it another way", scope="global", found_by="gsim",
+                       verdict="helped", resolves=resolves,
+                       deltas=(Delta(workload="w", metric="m", before=1.0, after=2.0,
+                                     instrument="gsim", lower_is_better=False),))
+
+    def test_an_unresolved_blocker_is_live(self):
+        led = Ledger(target="t", attempts=[self._blocked()])
+        assert len(led.live_blockers()) == 1 and led.resolved() == {}
+
+    def test_a_resolved_blocker_is_retired_and_names_what_retired_it(self):
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver()])
+        assert led.live_blockers() == ()
+        assert led.resolved() == {"do the thing": "measure it another way"}
+        assert "[RETIRED]" in led.format_table()
+        assert "RETIRED BY: measure it another way" in led.format_table()
+
+    def test_the_blocked_row_is_still_in_the_history(self):
+        """Retiring is not deleting: the dead branch must stay recorded so it is not re-walked."""
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver()])
+        assert led.by_verdict()["blocked"] == 1
+        assert any(a.verdict == "blocked" for a in led.attempts)
+
+    def test_a_resolves_name_matching_nothing_is_reported_not_ignored(self):
+        """A typo would silently leave a retired blocker looking live, or vice versa."""
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver("do the thign")])
+        assert any("matches no recorded attempt" in p for p in led.problems())
+
+    def test_a_blocked_or_unmeasured_row_cannot_retire_anything(self):
+        """Only a measured verdict may retire a blocker; otherwise nothing was established."""
+        for verdict, extra in (("blocked", {"blocked_by": "still stuck"}), ("unmeasured", {})):
+            bad = Attempt(mechanism="x", scope="global", found_by="f", verdict=verdict,
+                          resolves="do the thing", **extra)
+            led = Ledger(target="t", attempts=[self._blocked(), bad])
+            assert any("cannot resolve an earlier attempt" in p for p in led.problems())
+
+    def test_resolution_survives_a_disk_round_trip(self, tmp_path):
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver()])
+        path = led.write(tmp_path / "ledger.json")
+        back = OL.read_ledger(path)
+        assert back.resolved() == led.resolved() and back.live_blockers() == ()
+
+    def test_the_summary_counts_live_blockers_not_all_blocked_rows(self):
+        led = Ledger(target="t", attempts=[self._blocked(), self._resolver(),
+                                           self._blocked("another thing")])
+        d = led.to_dict()
+        assert d["by_verdict"]["blocked"] == 2 and d["n_live_blockers"] == 1

@@ -503,6 +503,42 @@ def operand_flow(cb: dict[str, Any]) -> tuple[set[str], set[str]]:
     return written, referenced
 
 
+#: Where a command buffer may declare the inclusive range its deterministic stimulus is drawn from.
+#: ABSENT means the historical default, so every existing buffer materializes byte-identically.
+STIMULUS_RANGE_KEY = "stimulus_range"
+
+#: The historical default. Non-negative, which is exactly why a ReLU capsule could not detect whether
+#: its activation was applied: with weights and inputs both in 0..3 the accumulator is never negative
+#: and ``max(0, x)`` is the identity on every value such a program can produce.
+DEFAULT_STIMULUS_RANGE = (0, 3)
+
+
+def stimulus_range(cb: Mapping[str, Any]) -> tuple[int, int]:
+    """The inclusive ``(lo, hi)`` this buffer's stimulus is drawn from.
+
+    Declared under ``params.stimulus_range``; absent, the historical default. A malformed
+    declaration RAISES rather than falling back, because a silently ignored range would fill one
+    side of a comparison from a different distribution than the other and report the difference as a
+    numeric failure of the datapath.
+    """
+    params = cb.get("params") if isinstance(cb.get("params"), Mapping) else {}
+    declared = params.get(STIMULUS_RANGE_KEY)
+    if declared is None:
+        return DEFAULT_STIMULUS_RANGE
+    if (not isinstance(declared, Sequence) or isinstance(declared, (str, bytes))
+            or len(declared) != 2
+            or any(isinstance(v, bool) or not isinstance(v, int) for v in declared)):
+        raise ValueError(
+            f"{STIMULUS_RANGE_KEY} must be a two-element [lo, hi] of integers, got {declared!r}; a "
+            f"malformed range is refused rather than defaulted, because filling one side of a "
+            f"comparison from a different distribution reports a stimulus difference as a datapath "
+            f"failure")
+    lo, hi = int(declared[0]), int(declared[1])
+    if hi < lo:
+        raise ValueError(f"empty {STIMULUS_RANGE_KEY} [{lo}, {hi}]")
+    return lo, hi
+
+
 def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None) -> dict[str, Tensor]:
     """Create the leaf input tensors declared in the command buffer's ``tensors`` table.
 
@@ -520,6 +556,7 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
         for key in ("dst",):
             if key in ops:
                 produced.add(ops[key])
+    lo, hi = stimulus_range(cb)
     env: dict[str, Tensor] = {}
     for name, spec in cb.get("tensors", {}).items():
         if name in produced:
@@ -529,8 +566,15 @@ def materialize_inputs(cb: dict[str, Any], inputs: dict[str, Any] | None = None)
         if name in inputs:
             flat = _flatten(inputs[name])
             env[name] = Tensor(shape, flat, dtype)
+        elif isinstance(spec.get("data"), (list, tuple)):
+            # VALUES CARRIED ON THE DECLARATION WIN OVER ANY FILL. A caller that has already
+            # materialized this leaf -- from a capsule's own declaration, say -- injects the exact
+            # numbers here, so the device computes on the same bytes the reference did rather than on
+            # a second fill that merely agrees by construction. Agreeing by construction is what
+            # breaks the moment either side's fill parameters change.
+            env[name] = Tensor(shape, _flatten(spec["data"]), dtype)
         else:
-            env[name] = Tensor.deterministic(name, shape, dtype)
+            env[name] = Tensor.deterministic(name, shape, dtype, lo, hi)
     # additive: overwrite derived im2col activations from their source leaf. Keyed off the shared
     # DERIVATION_RECIPE_KEYS so a recipe kind cannot be materialized here while staying invisible to
     # harness_derived_tensors (which is what decides whether the emitted program owes this gather).

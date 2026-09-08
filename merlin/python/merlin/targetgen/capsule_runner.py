@@ -45,6 +45,7 @@ from . import tier_policy as _tier_policy
 _CALIBRATION_CAP = 3
 
 from . import capsule_golden as CG
+from ..runtime import commandbuffer as _CB
 from .rocc import decode as RD
 from . import trace_check as TCK
 from .contract import compile as oot_compile
@@ -3788,6 +3789,21 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # shared front half: build + the 4 contract entrypoints (parse/target/cb/artifact), validated.
         pkg, cb, llvm_text = run_entrypoints(pkg, package_dir, capsule, paths, contract=contract,
                                              timeout=timeout, fourth_output_name=cfg.fourth_output_name)
+
+        # ONE DECLARED STIMULUS RANGE, READ BY ALL THREE SIDES. The golden materializes from the
+        # capsule (capsule_golden.materialize_capsule_leaves) while the reference interpreter and the
+        # device harness materialize from the command buffer (commandbuffer.materialize_inputs), and
+        # they agreed only because both used the same hardcoded default. Propagating the capsule's own
+        # declaration into the buffer is what lets a capsule choose a range at all -- and a capsule
+        # that needs one is not hypothetical: with the default 0..3 every operand is non-negative, so
+        # an accumulator is never negative and a fused ReLU is the identity on every value the program
+        # can produce. B1_linear_relu_i8 passes whether or not its activation is applied.
+        #
+        # A capsule that declares nothing leaves the buffer untouched, so every existing capsule's
+        # stimulus, golden and emitted harness are byte-identical.
+        _stim_lo, _stim_hi = CG.capsule_stimulus_range(capsule)
+        if (_stim_lo, _stim_hi) != _CB.DEFAULT_STIMULUS_RANGE:
+            cb.setdefault("params", {})[_CB.STIMULUS_RANGE_KEY] = [_stim_lo, _stim_hi]
 
         # A PERFORMANCE MEMBER MUST EMIT THE TRANSFORMATION ITS CYCLES ARE ATTRIBUTED TO.
         #

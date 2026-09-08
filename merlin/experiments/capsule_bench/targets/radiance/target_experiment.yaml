@@ -98,8 +98,11 @@ toolchain:
 # 2026-08-28: M0 joins them FOR A LADDER RUN, on the same "LOOP's budget" grounds stated above and now
 # measured rather than estimated. The note says "M0's 15 layers take ~45 min per arm"; on a 4-arm ladder
 # an arm sat on M0 for over 3 HOURS -- 4x that -- with its own grade dir still empty, because the
-# whole-model path drives ONE warp of the target's 2 cores x 8 warps (measured: 0.286 IPC on c0t0 while
-# c0t1/c1t0/c1t1 retire 37 instructions and park) and because its per-layer mesh sims land in /tmp, on a
+# whole-model path drove ONE warp of the then-selected Cyclotron model's 2 configured cores x 8 warps
+# (measured: 0.286 IPC on c0t0 while c0t1/c1t0/c1t1 retire 37 instructions and park). That model geometry
+# is not the hardware fact: the elaborated RadianceMuonConfig contains 1 MuonCore, so the two-core
+# Cyclotron setting is now treated as an explicit fidelity disagreement. The run was also slow because
+# its per-layer mesh sims land in /tmp, on a
 # root filesystem at 97%, rather than in the TMPDIR the launcher exports (the sandbox does not propagate
 # it). Four arms x that cost does not fit any budget, and the ladder's question is the OP corpus: what
 # does each nested bundle add? M0 answers a different question and answers it identically for every arm.

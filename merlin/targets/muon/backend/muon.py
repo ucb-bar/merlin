@@ -758,7 +758,9 @@ def _build_cache_key(kind: str, target: str, inputs: dict) -> "str | None":
 
 def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                           *, target: str = "radiance", num_warps: int = 1,
-                          result_page: bool = False) -> Path:
+                          result_page: bool = False,
+                          compact_expected: dict | None = None,
+                          compact_policy: dict | None = None) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
     COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
     gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
@@ -781,9 +783,20 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # the exact legacy key when result_page=False.
     _kernel_cb = {key: value for key, value in cb.items()
                   if not str(key).startswith("_oracle_")}
+    if result_page and compact_expected is not None:
+        raise MuonError("result_page and compact_expected are mutually exclusive")
     _cache_inputs = {"mlir": lowered_mlir_text, "cb": _kernel_cb, "num_warps": num_warps}
     if result_page:
         _cache_inputs["result_page"] = True
+    if compact_expected is not None:
+        # Unlike the GSIM result page, Cyclotron has no independent Rocket
+        # carrier.  Its trusted Muon harness performs the comparison, so the
+        # private bounds are part of that harness's build identity.  The cache
+        # stores only the resulting digest, never this payload as metadata.
+        _cache_inputs["compact_numeric"] = {
+            "expected": compact_expected,
+            "policy": compact_policy or {},
+        }
     _key = _build_cache_key("muon-mlir-forkfree", target, _cache_inputs)
     _hit = _bc.reuse(work, _key)
     if _hit is not None:
@@ -812,7 +825,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
 
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
     harness = muon_harness.external_main_from_cb(
-        cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page)
+        cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page,
+        compact_expected=compact_expected, compact_policy=compact_policy)
     if harness is None:
         raise MuonError("could not derive harness operands from the command buffer: "
                         + muon_harness.why_no_operands(cb))

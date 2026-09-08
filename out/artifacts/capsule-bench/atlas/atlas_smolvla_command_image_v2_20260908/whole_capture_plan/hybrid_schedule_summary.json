@@ -84,6 +84,11 @@
     "qualified": 12
   },
   "coverage": {
+    "host_materialized_layout_bridges": 358,
+    "host_materialized_layout_bridges_by_rule": {
+      "contiguous_identity_copy": 291,
+      "contiguous_zero_stride_broadcast": 67
+    },
     "host_signature_regions_by_semantic": {
       "add": 215,
       "arange": 63,
@@ -92,14 +97,19 @@
       "bucketize": 2,
       "cat": 95,
       "compare": 4,
+      "convolution_im2col_matmul": 1,
       "cos": 57,
       "cumsum": 4,
       "div": 56,
       "dtype_cast": 472,
       "elementwise": 3,
+      "embedding": 2,
       "fill": 50,
       "gelu": 12,
+      "index_gather": 1,
+      "index_put": 1,
       "layer_norm": 25,
+      "mask_gather": 1,
       "minmax": 2,
       "mul": 536,
       "pow": 123,
@@ -115,10 +125,10 @@
       "split": 56,
       "sub": 68
     },
-    "host_signature_regions_implemented": 2424,
+    "host_signature_regions_implemented": 2430,
     "layout_bridge_candidates": 2033,
     "materialized_copy_bridges": 112,
-    "missing_host_semantics_reduction": 2402,
+    "missing_host_semantics_reduction": 2408,
     "partition_host_region_overlap": [
       "conv_0"
     ],
@@ -126,6 +136,7 @@
     "previous_missing_host_semantics": 2408,
     "proven_metadata_aliases": 1675,
     "qualified_accelerator_partitions": 3,
+    "qualified_layout_bridges": 2033,
     "semantic_host_required_regions": 2430,
     "strided_broadcast_bridges": 246,
     "structural_accelerator_partitions": 391
@@ -143,23 +154,128 @@
   },
   "event_count": 6104,
   "fail_closed": {
-    "missing_host_semantics": 6,
-    "missing_host_semantics_by_semantic": {
-      "convolution_im2col_matmul": 1,
-      "embedding": 2,
-      "index_gather": 1,
-      "index_put": 1,
-      "mask_gather": 1
-    },
+    "missing_host_semantics": 0,
+    "missing_host_semantics_by_semantic": {},
+    "missing_physical_event_runtime": 1,
     "unqualified_accelerator_partitions": 388,
-    "unrealized_layout_bridges": 358
+    "unrealized_layout_bridges": 0
   },
+  "final_indexed_host_numeric_witnesses": [
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "bounded ordinal indices and a coordinate-derived exact table",
+      "label": "embedding_0",
+      "oracle_sha256": "bdacefd732ac7a5e13228d23ffb13d721fc560ae5b25f659a795d34298627509",
+      "output_dtype": "float32",
+      "output_sha256": "bdacefd732ac7a5e13228d23ffb13d721fc560ae5b25f659a795d34298627509",
+      "output_shape": [
+        1,
+        1024,
+        768
+      ],
+      "region_ids": [
+        "gather_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "embedding"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "bounded ordinal indices and a coordinate-derived exact table",
+      "label": "embedding_1",
+      "oracle_sha256": "894b00eded06f990583d55453cb654ee52693551f2610d95960aaf8856d006cb",
+      "output_dtype": "float32",
+      "output_sha256": "894b00eded06f990583d55453cb654ee52693551f2610d95960aaf8856d006cb",
+      "output_shape": [
+        1,
+        48,
+        960
+      ],
+      "region_ids": [
+        "gather_2"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "embedding"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "zero row plus reverse column permutation over a patterned boolean table",
+      "label": "index_gather",
+      "oracle_sha256": "d9de285d6296efbe561ba8c4ca2500196414c33d27ec8691fbfefe7c7e27b55a",
+      "output_dtype": "bool",
+      "output_sha256": "d9de285d6296efbe561ba8c4ca2500196414c33d27ec8691fbfefe7c7e27b55a",
+      "output_shape": [
+        1,
+        1,
+        1,
+        1024
+      ],
+      "region_ids": [
+        "gather_1"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "index_gather"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "patterned mask compacts coordinate data then scatters it into a fresh destination",
+      "label": "mask_gather_index_put",
+      "oracle_sha256": "5cf517a6a6dd474ba44be6645f86567e309c9f6115d0fc6755cfdadb3d4d1fd8",
+      "output_dtype": "int64",
+      "output_sha256": "5cf517a6a6dd474ba44be6645f86567e309c9f6115d0fc6755cfdadb3d4d1fd8",
+      "output_shape": [
+        1,
+        1024
+      ],
+      "region_ids": [
+        "mask_gather_0",
+        "mask_scatter_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "mask_gather",
+        "index_put"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host semantic evidence only; not device or whole-model E2E execution",
+      "input_rule": "two sparse kernel taps plus per-channel bias over the full captured 512x512 input",
+      "label": "patch_embedding_convolution",
+      "oracle_sha256": "4b771284a86d49ccb40ff07622fc175169d301a2f77443339d8affa160c9c419",
+      "output_dtype": "float32",
+      "output_sha256": "4b771284a86d49ccb40ff07622fc175169d301a2f77443339d8affa160c9c419",
+      "output_shape": [
+        1,
+        768,
+        32,
+        32
+      ],
+      "region_ids": [
+        "conv_0"
+      ],
+      "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+      "semantics": [
+        "convolution_im2col_matmul"
+      ],
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    }
+  ],
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "1f154b82813404d94d5e648aaaf594866ef63490060c9aaadfe6a117894e0996"
+    "sha256": "33f9769d00c6922c6bef19d0794766cf9bd43e0e9af99e036bfad2257f7f0fd8"
   },
   "generic_host_chain": {
-    "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+    "claim": "host semantic execution only; no device execution and not whole-model E2E",
     "dependency_edges": 17,
     "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
     "fresh_inputs": [
@@ -380,7 +496,7 @@
   },
   "generic_host_numeric_witnesses": [
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 17,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -600,7 +716,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -830,7 +946,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -915,7 +1031,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1072,7 +1188,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1228,103 +1344,154 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
-      "dependency_edges": 3,
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
+      "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
         {
-          "dtype": "bool",
+          "dtype": "int64",
           "ordinal": 0,
-          "sha256": "979d1885aa334213c0147e31b6673bbefcdb50c076291a5f9514f5857f4e7475",
+          "sha256": "79662f24afef4ba0321999a7093c8b5559a322c0930888c7d65b873a31728961",
           "shape": [
             1,
             1,
-            50,
-            163
+            1024,
+            1
           ]
         },
         {
-          "dtype": "float32",
+          "dtype": "int64",
           "ordinal": 1,
-          "sha256": "db71ee35486c6164d9a37fcb93be341253dc5fdeff4a733b0218c385905343ec",
+          "sha256": "5a97558fdc4a9b161846a91da48163a39d25233e6f495d42aaffa86783411ecb",
           "shape": [
             1,
-            15,
-            50,
-            163
+            1,
+            1024,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 2,
+          "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc",
+          "shape": [
+            1,
+            1,
+            1,
+            1
+          ]
+        },
+        {
+          "dtype": "int64",
+          "ordinal": 3,
+          "sha256": "1bf248fe925ddfdd6b0f8bf954be3f7931590248720a5f13bde965b095ad038b",
+          "shape": [
+            1,
+            1,
+            1,
+            1024
+          ]
+        },
+        {
+          "dtype": "bool",
+          "ordinal": 4,
+          "sha256": "ae6d522214c90982e60cd28013610e2586f81f9703e940967ffbb9bacaaaffad",
+          "shape": [
+            1,
+            1024
           ]
         }
       ],
       "label": "fill_dependency",
       "outputs": [
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "fill_34",
+          "region_id": "fill_2",
           "semantic": "fill",
-          "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
-          "shape": []
+          "sha256": "4bf5122f344554c53bde2ebb8cd2b7e3d1600ad631c385a5d7cce23c7785459a",
+          "shape": [],
+          "true_elements": 1
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "select_31",
-          "semantic": "select",
-          "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
+          "region_id": "compare_0",
+          "semantic": "compare",
+          "sha256": "4940b07f1b76a31e7b17f2c5d46cbce51fc8c21825a74abaa3aba7ef5fe0f572",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1024,
+            1
+          ],
+          "true_elements": 540
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "softmax_28",
-          "semantic": "softmax",
-          "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
+          "region_id": "bitwise_0",
+          "semantic": "bitwise",
+          "sha256": "4940b07f1b76a31e7b17f2c5d46cbce51fc8c21825a74abaa3aba7ef5fe0f572",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1024,
+            1
+          ],
+          "true_elements": 540
         },
         {
-          "dtype": "float32",
+          "dtype": "bool",
           "finite": true,
-          "region_id": "dtype_cast_254",
-          "semantic": "dtype_cast",
-          "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
+          "region_id": "gather_1",
+          "semantic": "index_gather",
+          "sha256": "c0d01b0710de4cf10d117db1bee2f76bafd84586112bdf7d944550bb60278e7c",
           "shape": [
             1,
-            15,
-            50,
-            163
-          ]
+            1,
+            1,
+            1024
+          ],
+          "true_elements": 684
+        },
+        {
+          "dtype": "bool",
+          "finite": true,
+          "region_id": "bitwise_1",
+          "semantic": "bitwise",
+          "sha256": "66c0ab20e0db6415fcc56f2189deb63597dc10630e1a468eac32954ca3c2ee3e",
+          "shape": [
+            1,
+            1,
+            1024,
+            1024
+          ],
+          "true_elements": 369360
         }
       ],
-      "region_count": 4,
+      "region_count": 5,
       "region_ids": [
-        "fill_34",
-        "select_31",
-        "softmax_28",
-        "dtype_cast_254"
+        "fill_2",
+        "compare_0",
+        "bitwise_0",
+        "gather_1",
+        "bitwise_1"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
       "selection": "first stable-ranked consecutive qualified run where a captured fill output feeds a successor",
       "semantics": [
         "fill",
-        "select",
-        "softmax",
-        "dtype_cast"
+        "compare",
+        "bitwise",
+        "index_gather",
+        "bitwise"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1516,7 +1683,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1548,7 +1715,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "fill_36",
+          "region_id": "fill_34",
           "semantic": "fill",
           "sha256": "abc4c4e7eee2ce04c6be04358adf5b3d0958255a80f712a8b6d4f4fdda588276",
           "shape": []
@@ -1556,7 +1723,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "select_33",
+          "region_id": "select_31",
           "semantic": "select",
           "sha256": "aaabeac572e9ef1af02afdfec3f3e0b42aa27d2b84a02ce6328ac322cbb6f263",
           "shape": [
@@ -1569,7 +1736,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "softmax_30",
+          "region_id": "softmax_28",
           "semantic": "softmax",
           "sha256": "e83dd2d26673eb5759139b23689d863567f392e857db99ca89cb656dc6f3ac23",
           "shape": [
@@ -1582,7 +1749,7 @@
         {
           "dtype": "float32",
           "finite": true,
-          "region_id": "dtype_cast_283",
+          "region_id": "dtype_cast_254",
           "semantic": "dtype_cast",
           "sha256": "9848c18aa4eb4d8cdf10046d8004e0d2015aa750528923554364da03866b4469",
           "shape": [
@@ -1595,10 +1762,10 @@
       ],
       "region_count": 4,
       "region_ids": [
-        "fill_36",
-        "select_33",
-        "softmax_30",
-        "dtype_cast_283"
+        "fill_34",
+        "select_31",
+        "softmax_28",
+        "dtype_cast_254"
       ],
       "replay_hashes_equal": true,
       "schema": "atlas_real_capture_host_semantic_chain_v1",
@@ -1612,7 +1779,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 4,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1768,7 +1935,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -1946,7 +2113,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 0,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2005,7 +2172,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2162,7 +2329,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2295,7 +2462,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2443,7 +2610,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 8,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2673,7 +2840,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 3,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2792,7 +2959,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 6,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -2970,7 +3137,7 @@
       "status": "fresh_numeric_execution_exactly_replayed"
     },
     {
-      "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+      "claim": "host semantic execution only; no device execution and not whole-model E2E",
       "dependency_edges": 0,
       "fresh_input_rule": "deterministic ordinal-dependent nonzero coordinate pattern",
       "fresh_inputs": [
@@ -3011,6 +3178,1747 @@
         "gelu"
       ],
       "status": "fresh_numeric_execution_exactly_replayed"
+    }
+  ],
+  "layout_bridge_census": {
+    "by_materialization": {
+      "contiguous_identity_copy": 291,
+      "contiguous_zero_stride_broadcast": 67
+    },
+    "by_semantic": {
+      "copy": 112,
+      "expand": 246
+    },
+    "shape_class_count": 25,
+    "shape_classes": [
+      {
+        "count": 1,
+        "dtype": "i1",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          1,
+          1024,
+          1024
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          1,
+          1024,
+          1024
+        ],
+        "region_ids": [
+          "expand_0"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 24,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          12,
+          1024,
+          64
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          12,
+          1024,
+          64
+        ],
+        "region_ids": [
+          "expand_1",
+          "expand_4",
+          "expand_5",
+          "expand_8",
+          "expand_9",
+          "expand_12",
+          "expand_13",
+          "expand_16",
+          "expand_17",
+          "expand_20",
+          "expand_21",
+          "expand_24",
+          "expand_25",
+          "expand_28",
+          "expand_29",
+          "expand_32",
+          "expand_33",
+          "expand_36",
+          "expand_37",
+          "expand_40",
+          "expand_41",
+          "expand_44",
+          "expand_45",
+          "expand_48"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 12,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          12,
+          64,
+          1024
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          12,
+          64,
+          1024
+        ],
+        "region_ids": [
+          "expand_2",
+          "expand_6",
+          "expand_10",
+          "expand_14",
+          "expand_18",
+          "expand_22",
+          "expand_26",
+          "expand_30",
+          "expand_34",
+          "expand_38",
+          "expand_42",
+          "expand_46"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 12,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          12,
+          1024,
+          1024
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          12,
+          1024,
+          1024
+        ],
+        "region_ids": [
+          "expand_3",
+          "expand_7",
+          "expand_11",
+          "expand_15",
+          "expand_19",
+          "expand_23",
+          "expand_27",
+          "expand_31",
+          "expand_35",
+          "expand_39",
+          "expand_43",
+          "expand_47"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 1,
+        "dtype": "i1",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          }
+        ],
+        "input_shape": [
+          1,
+          1
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          64
+        ],
+        "region_ids": [
+          "expand_49"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 1,
+        "dtype": "i1",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          }
+        ],
+        "input_shape": [
+          1,
+          113
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          113
+        ],
+        "region_ids": [
+          "expand_50"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 32,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          113,
+          15,
+          32
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          113,
+          15,
+          32
+        ],
+        "region_ids": [
+          "copy_0",
+          "copy_1",
+          "copy_4",
+          "copy_5",
+          "copy_8",
+          "copy_9",
+          "copy_12",
+          "copy_13",
+          "copy_16",
+          "copy_17",
+          "copy_20",
+          "copy_21",
+          "copy_24",
+          "copy_25",
+          "copy_28",
+          "copy_29",
+          "copy_32",
+          "copy_33",
+          "copy_36",
+          "copy_37",
+          "copy_40",
+          "copy_41",
+          "copy_44",
+          "copy_45",
+          "copy_48",
+          "copy_49",
+          "copy_52",
+          "copy_53",
+          "copy_56",
+          "copy_57",
+          "copy_60",
+          "copy_61"
+        ],
+        "semantic": "copy"
+      },
+      {
+        "count": 32,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          113,
+          5,
+          32
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          113,
+          5,
+          32
+        ],
+        "region_ids": [
+          "copy_2",
+          "copy_3",
+          "copy_6",
+          "copy_7",
+          "copy_10",
+          "copy_11",
+          "copy_14",
+          "copy_15",
+          "copy_18",
+          "copy_19",
+          "copy_22",
+          "copy_23",
+          "copy_26",
+          "copy_27",
+          "copy_30",
+          "copy_31",
+          "copy_34",
+          "copy_35",
+          "copy_38",
+          "copy_39",
+          "copy_42",
+          "copy_43",
+          "copy_46",
+          "copy_47",
+          "copy_50",
+          "copy_51",
+          "copy_54",
+          "copy_55",
+          "copy_58",
+          "copy_59",
+          "copy_62",
+          "copy_63"
+        ],
+        "semantic": "copy"
+      },
+      {
+        "count": 32,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          },
+          {
+            "kind": "dim",
+            "position": 4
+          }
+        ],
+        "input_shape": [
+          1,
+          113,
+          5,
+          1,
+          64
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          113,
+          5,
+          3,
+          64
+        ],
+        "region_ids": [
+          "expand_51",
+          "expand_52",
+          "expand_57",
+          "expand_58",
+          "expand_63",
+          "expand_64",
+          "expand_69",
+          "expand_70",
+          "expand_75",
+          "expand_76",
+          "expand_81",
+          "expand_82",
+          "expand_87",
+          "expand_88",
+          "expand_93",
+          "expand_94",
+          "expand_99",
+          "expand_100",
+          "expand_105",
+          "expand_106",
+          "expand_111",
+          "expand_112",
+          "expand_117",
+          "expand_118",
+          "expand_123",
+          "expand_124",
+          "expand_129",
+          "expand_130",
+          "expand_135",
+          "expand_136",
+          "expand_141",
+          "expand_142"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 24,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          113,
+          64
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          113,
+          64
+        ],
+        "region_ids": [
+          "expand_53",
+          "expand_59",
+          "expand_65",
+          "expand_71",
+          "expand_77",
+          "expand_83",
+          "expand_89",
+          "expand_95",
+          "expand_101",
+          "expand_107",
+          "expand_113",
+          "expand_119",
+          "expand_125",
+          "expand_131",
+          "expand_137",
+          "expand_143",
+          "expand_161",
+          "expand_173",
+          "expand_185",
+          "expand_197",
+          "expand_209",
+          "expand_221",
+          "expand_233",
+          "expand_245"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 24,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          64,
+          113
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          64,
+          113
+        ],
+        "region_ids": [
+          "expand_54",
+          "expand_60",
+          "expand_66",
+          "expand_72",
+          "expand_78",
+          "expand_84",
+          "expand_90",
+          "expand_96",
+          "expand_102",
+          "expand_108",
+          "expand_114",
+          "expand_120",
+          "expand_126",
+          "expand_132",
+          "expand_138",
+          "expand_144",
+          "expand_159",
+          "expand_171",
+          "expand_183",
+          "expand_195",
+          "expand_207",
+          "expand_219",
+          "expand_231",
+          "expand_243"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 16,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          113,
+          113
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          113,
+          113
+        ],
+        "region_ids": [
+          "expand_55",
+          "expand_61",
+          "expand_67",
+          "expand_73",
+          "expand_79",
+          "expand_85",
+          "expand_91",
+          "expand_97",
+          "expand_103",
+          "expand_109",
+          "expand_115",
+          "expand_121",
+          "expand_127",
+          "expand_133",
+          "expand_139",
+          "expand_145"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 16,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          113,
+          64
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          113,
+          64
+        ],
+        "region_ids": [
+          "expand_56",
+          "expand_62",
+          "expand_68",
+          "expand_74",
+          "expand_80",
+          "expand_86",
+          "expand_92",
+          "expand_98",
+          "expand_104",
+          "expand_110",
+          "expand_116",
+          "expand_122",
+          "expand_128",
+          "expand_134",
+          "expand_140",
+          "expand_146"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 1,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          }
+        ],
+        "input_shape": [
+          1,
+          1,
+          720
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          50,
+          720
+        ],
+        "region_ids": [
+          "expand_147"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 1,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          }
+        ],
+        "input_shape": [
+          1,
+          50
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          50
+        ],
+        "region_ids": [
+          "expand_148"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 1,
+        "dtype": "i1",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          }
+        ],
+        "input_shape": [
+          1,
+          1,
+          113
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          50,
+          113
+        ],
+        "region_ids": [
+          "expand_149"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 32,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          50,
+          15,
+          32
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          50,
+          15,
+          32
+        ],
+        "region_ids": [
+          "copy_64",
+          "copy_65",
+          "copy_68",
+          "copy_69",
+          "copy_70",
+          "copy_71",
+          "copy_74",
+          "copy_75",
+          "copy_76",
+          "copy_77",
+          "copy_80",
+          "copy_81",
+          "copy_82",
+          "copy_83",
+          "copy_86",
+          "copy_87",
+          "copy_88",
+          "copy_89",
+          "copy_92",
+          "copy_93",
+          "copy_94",
+          "copy_95",
+          "copy_98",
+          "copy_99",
+          "copy_100",
+          "copy_101",
+          "copy_104",
+          "copy_105",
+          "copy_106",
+          "copy_107",
+          "copy_110",
+          "copy_111"
+        ],
+        "semantic": "copy"
+      },
+      {
+        "count": 16,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          50,
+          5,
+          32
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          50,
+          5,
+          32
+        ],
+        "region_ids": [
+          "copy_66",
+          "copy_67",
+          "copy_72",
+          "copy_73",
+          "copy_78",
+          "copy_79",
+          "copy_84",
+          "copy_85",
+          "copy_90",
+          "copy_91",
+          "copy_96",
+          "copy_97",
+          "copy_102",
+          "copy_103",
+          "copy_108",
+          "copy_109"
+        ],
+        "semantic": "copy"
+      },
+      {
+        "count": 16,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          },
+          {
+            "kind": "dim",
+            "position": 4
+          }
+        ],
+        "input_shape": [
+          1,
+          163,
+          5,
+          1,
+          64
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          163,
+          5,
+          3,
+          64
+        ],
+        "region_ids": [
+          "expand_150",
+          "expand_151",
+          "expand_162",
+          "expand_163",
+          "expand_174",
+          "expand_175",
+          "expand_186",
+          "expand_187",
+          "expand_198",
+          "expand_199",
+          "expand_210",
+          "expand_211",
+          "expand_222",
+          "expand_223",
+          "expand_234",
+          "expand_235"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 16,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          50,
+          64
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          50,
+          64
+        ],
+        "region_ids": [
+          "expand_152",
+          "expand_158",
+          "expand_164",
+          "expand_170",
+          "expand_176",
+          "expand_182",
+          "expand_188",
+          "expand_194",
+          "expand_200",
+          "expand_206",
+          "expand_212",
+          "expand_218",
+          "expand_224",
+          "expand_230",
+          "expand_236",
+          "expand_242"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 8,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          64,
+          163
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          64,
+          163
+        ],
+        "region_ids": [
+          "expand_153",
+          "expand_165",
+          "expand_177",
+          "expand_189",
+          "expand_201",
+          "expand_213",
+          "expand_225",
+          "expand_237"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 8,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          50,
+          163
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          50,
+          163
+        ],
+        "region_ids": [
+          "expand_154",
+          "expand_166",
+          "expand_178",
+          "expand_190",
+          "expand_202",
+          "expand_214",
+          "expand_226",
+          "expand_238"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 8,
+        "dtype": "bf16",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          163,
+          64
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          163,
+          64
+        ],
+        "region_ids": [
+          "expand_155",
+          "expand_167",
+          "expand_179",
+          "expand_191",
+          "expand_203",
+          "expand_215",
+          "expand_227",
+          "expand_239"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 16,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "constant",
+            "value": 0
+          },
+          {
+            "kind": "dim",
+            "position": 4
+          }
+        ],
+        "input_shape": [
+          1,
+          113,
+          5,
+          1,
+          64
+        ],
+        "materialization": "contiguous_zero_stride_broadcast",
+        "output_shape": [
+          1,
+          113,
+          5,
+          3,
+          64
+        ],
+        "region_ids": [
+          "expand_156",
+          "expand_157",
+          "expand_168",
+          "expand_169",
+          "expand_180",
+          "expand_181",
+          "expand_192",
+          "expand_193",
+          "expand_204",
+          "expand_205",
+          "expand_216",
+          "expand_217",
+          "expand_228",
+          "expand_229",
+          "expand_240",
+          "expand_241"
+        ],
+        "semantic": "expand"
+      },
+      {
+        "count": 8,
+        "dtype": "f32",
+        "input_map": [
+          {
+            "kind": "dim",
+            "position": 0
+          },
+          {
+            "kind": "dim",
+            "position": 1
+          },
+          {
+            "kind": "dim",
+            "position": 2
+          },
+          {
+            "kind": "dim",
+            "position": 3
+          }
+        ],
+        "input_shape": [
+          1,
+          15,
+          50,
+          113
+        ],
+        "materialization": "contiguous_identity_copy",
+        "output_shape": [
+          1,
+          15,
+          50,
+          113
+        ],
+        "region_ids": [
+          "expand_160",
+          "expand_172",
+          "expand_184",
+          "expand_196",
+          "expand_208",
+          "expand_220",
+          "expand_232",
+          "expand_244"
+        ],
+        "semantic": "expand"
+      }
+    ]
+  },
+  "layout_bridge_numeric_witnesses": [
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 112,
+      "distinct_contiguous_storage": true,
+      "dtype": "f32",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "dim",
+          "position": 3
+        }
+      ],
+      "input_shape": [
+        1,
+        50,
+        5,
+        32
+      ],
+      "label": "copy_f32_contiguous_identity_copy_rank4",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "4767f16df4f7bb2178825d9c979faf81fb98ca67138361870bcb30b8e9a46447",
+      "output_sha256": "4767f16df4f7bb2178825d9c979faf81fb98ca67138361870bcb30b8e9a46447",
+      "output_shape": [
+        1,
+        50,
+        5,
+        32
+      ],
+      "representative_region_id": "copy_102",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "copy",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 48,
+      "distinct_contiguous_storage": true,
+      "dtype": "bf16",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "dim",
+          "position": 3
+        }
+      ],
+      "input_shape": [
+        1,
+        15,
+        113,
+        64
+      ],
+      "label": "expand_bf16_contiguous_identity_copy_rank4",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "1a53331517a7e71eca730e3227fd4ff0a7ad1dd0cc959e4e0e0879bbda87942f",
+      "output_sha256": "1a53331517a7e71eca730e3227fd4ff0a7ad1dd0cc959e4e0e0879bbda87942f",
+      "output_shape": [
+        1,
+        15,
+        113,
+        64
+      ],
+      "representative_region_id": "expand_104",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 48,
+      "distinct_contiguous_storage": true,
+      "dtype": "bf16",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "constant",
+          "value": 0
+        },
+        {
+          "kind": "dim",
+          "position": 4
+        }
+      ],
+      "input_shape": [
+        1,
+        113,
+        5,
+        1,
+        64
+      ],
+      "label": "expand_bf16_contiguous_zero_stride_broadcast_rank5",
+      "materialization": "contiguous_zero_stride_broadcast",
+      "oracle_sha256": "cf4e76b42eda684dd20f7f7b44ecacdab2cc4f900686303b620e8ebba41d684f",
+      "output_sha256": "cf4e76b42eda684dd20f7f7b44ecacdab2cc4f900686303b620e8ebba41d684f",
+      "output_shape": [
+        1,
+        113,
+        5,
+        3,
+        64
+      ],
+      "representative_region_id": "expand_100",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "f32",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        }
+      ],
+      "input_shape": [
+        1,
+        50
+      ],
+      "label": "expand_f32_contiguous_identity_copy_rank2",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "c9eea9ea313ebc903efe5a8b1cde036f2d48d1d72af7fbb700be10b737ae0ab0",
+      "output_sha256": "c9eea9ea313ebc903efe5a8b1cde036f2d48d1d72af7fbb700be10b737ae0ab0",
+      "output_shape": [
+        1,
+        50
+      ],
+      "representative_region_id": "expand_148",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 128,
+      "distinct_contiguous_storage": true,
+      "dtype": "f32",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "dim",
+          "position": 3
+        }
+      ],
+      "input_shape": [
+        1,
+        15,
+        50,
+        64
+      ],
+      "label": "expand_f32_contiguous_identity_copy_rank4",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "7653b557f5d93e4cfe78fe162500add98c5a9927358a05652ebf14d1fe7529f8",
+      "output_sha256": "7653b557f5d93e4cfe78fe162500add98c5a9927358a05652ebf14d1fe7529f8",
+      "output_shape": [
+        1,
+        15,
+        50,
+        64
+      ],
+      "representative_region_id": "expand_152",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "f32",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "constant",
+          "value": 0
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        }
+      ],
+      "input_shape": [
+        1,
+        1,
+        720
+      ],
+      "label": "expand_f32_contiguous_zero_stride_broadcast_rank3",
+      "materialization": "contiguous_zero_stride_broadcast",
+      "oracle_sha256": "cbf2d66799de3dd81d6d4b8bc2b5b2ab7edd3dd0b01d5631e74fd4d5c913939b",
+      "output_sha256": "cbf2d66799de3dd81d6d4b8bc2b5b2ab7edd3dd0b01d5631e74fd4d5c913939b",
+      "output_shape": [
+        1,
+        50,
+        720
+      ],
+      "representative_region_id": "expand_147",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 16,
+      "distinct_contiguous_storage": true,
+      "dtype": "f32",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "constant",
+          "value": 0
+        },
+        {
+          "kind": "dim",
+          "position": 4
+        }
+      ],
+      "input_shape": [
+        1,
+        113,
+        5,
+        1,
+        64
+      ],
+      "label": "expand_f32_contiguous_zero_stride_broadcast_rank5",
+      "materialization": "contiguous_zero_stride_broadcast",
+      "oracle_sha256": "cf4e76b42eda684dd20f7f7b44ecacdab2cc4f900686303b620e8ebba41d684f",
+      "output_sha256": "cf4e76b42eda684dd20f7f7b44ecacdab2cc4f900686303b620e8ebba41d684f",
+      "output_shape": [
+        1,
+        113,
+        5,
+        3,
+        64
+      ],
+      "representative_region_id": "expand_156",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "i1",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        }
+      ],
+      "input_shape": [
+        1,
+        113
+      ],
+      "label": "expand_i1_contiguous_identity_copy_rank2",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "79ef3364de7652edaf737f218a12564d49b2cf11a3207fcc920b30ed27d62ec7",
+      "output_sha256": "79ef3364de7652edaf737f218a12564d49b2cf11a3207fcc920b30ed27d62ec7",
+      "output_shape": [
+        1,
+        113
+      ],
+      "representative_region_id": "expand_50",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "i1",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "dim",
+          "position": 1
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        },
+        {
+          "kind": "dim",
+          "position": 3
+        }
+      ],
+      "input_shape": [
+        1,
+        1,
+        1024,
+        1024
+      ],
+      "label": "expand_i1_contiguous_identity_copy_rank4",
+      "materialization": "contiguous_identity_copy",
+      "oracle_sha256": "01a4b0adf02a6aff1adc71567117a16feea718f70d8c9eb4a1faa64a413c018b",
+      "output_sha256": "01a4b0adf02a6aff1adc71567117a16feea718f70d8c9eb4a1faa64a413c018b",
+      "output_shape": [
+        1,
+        1,
+        1024,
+        1024
+      ],
+      "representative_region_id": "expand_0",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "i1",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "constant",
+          "value": 0
+        }
+      ],
+      "input_shape": [
+        1,
+        1
+      ],
+      "label": "expand_i1_contiguous_zero_stride_broadcast_rank2",
+      "materialization": "contiguous_zero_stride_broadcast",
+      "oracle_sha256": "7c8975e1e60a5c8337f28edf8c33c3b180360b7279644a9bc1af3c51e6220bf5",
+      "output_sha256": "7c8975e1e60a5c8337f28edf8c33c3b180360b7279644a9bc1af3c51e6220bf5",
+      "output_shape": [
+        1,
+        64
+      ],
+      "representative_region_id": "expand_49",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
+    },
+    {
+      "claim": "host materialization evidence only; physical DMA/event execution is absent",
+      "class_region_count": 1,
+      "distinct_contiguous_storage": true,
+      "dtype": "i1",
+      "input_map": [
+        {
+          "kind": "dim",
+          "position": 0
+        },
+        {
+          "kind": "constant",
+          "value": 0
+        },
+        {
+          "kind": "dim",
+          "position": 2
+        }
+      ],
+      "input_shape": [
+        1,
+        1,
+        113
+      ],
+      "label": "expand_i1_contiguous_zero_stride_broadcast_rank3",
+      "materialization": "contiguous_zero_stride_broadcast",
+      "oracle_sha256": "03bb8580f93578beae48ead2eb274c2838ee84864a637d4d2b21a96a1caeac4c",
+      "output_sha256": "03bb8580f93578beae48ead2eb274c2838ee84864a637d4d2b21a96a1caeac4c",
+      "output_shape": [
+        1,
+        50,
+        113
+      ],
+      "representative_region_id": "expand_149",
+      "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+      "semantic": "expand",
+      "status": "fresh_numeric_execution_matches_independent_oracle"
     }
   ],
   "runnable_e2e": false,

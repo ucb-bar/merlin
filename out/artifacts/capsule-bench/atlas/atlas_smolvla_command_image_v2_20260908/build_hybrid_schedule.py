@@ -18,7 +18,11 @@ sys.path.insert(0, str(ROOT / "submission"))
 
 from mlir_oot.frontend import parse_verified  # noqa: E402
 from mlir_oot.hybrid_runtime import build_hybrid_schedule  # noqa: E402
-from mlir_oot.host_semantics import HostSemanticLane, array_sha256  # noqa: E402
+from mlir_oot.host_semantics import (  # noqa: E402
+    HostSemanticLane,
+    LayoutBridgeLane,
+    array_sha256,
+)
 from run_capture_partition import (  # noqa: E402
     PARTITIONS,
     _load_capture_values,
@@ -157,7 +161,7 @@ def _execute_host_witness(
         "schema": "atlas_real_capture_host_semantic_chain_v1",
         "label": label,
         "status": "fresh_numeric_execution_exactly_replayed",
-        "claim": "host pointwise execution only; no device execution and not whole-model E2E",
+        "claim": "host semantic execution only; no device execution and not whole-model E2E",
         "selection": selection,
         "region_ids": region_ids,
         "semantics": [lane.programs[region_id].semantic for region_id in region_ids],
@@ -319,6 +323,200 @@ def generic_host_witnesses(workload) -> tuple[dict, list[dict]]:
     return selected[0], selected
 
 
+def final_indexed_host_witnesses(workload) -> list[dict]:
+    """Execute every formerly missing real region against an independent oracle."""
+    lane = HostSemanticLane(workload)
+    witnesses = []
+
+    def record(label: str, programs: list, actual: np.ndarray, expected: np.ndarray,
+               input_rule: str) -> None:
+        if not np.array_equal(actual, expected):
+            raise ValueError(f"independent numeric oracle failed for {label}")
+        witnesses.append({
+            "schema": "atlas_real_capture_indexed_numeric_witness_v1",
+            "label": label,
+            "status": "fresh_numeric_execution_matches_independent_oracle",
+            "claim": "host semantic evidence only; not device or whole-model E2E execution",
+            "region_ids": [program.region_id for program in programs],
+            "semantics": [program.semantic for program in programs],
+            "input_rule": input_rule,
+            "output_shape": list(actual.shape),
+            "output_dtype": str(actual.dtype),
+            "output_sha256": array_sha256(actual),
+            "oracle_sha256": array_sha256(expected),
+        })
+
+    embeddings = sorted(
+        (program for program in lane.programs.values() if program.semantic == "embedding"),
+        key=lambda program: program.signature["indexed_generic"]["table_shape"],
+    )
+    for ordinal, program in enumerate(embeddings):
+        table_shape = program.signature["indexed_generic"]["table_shape"]
+        index_shape = program.signature["indexed_generic"]["input_shapes"][0]
+        indices = (
+            np.arange(np.prod(index_shape), dtype=np.int64) * (101 + ordinal)
+        ).reshape(index_shape) % table_shape[0]
+        if table_shape[0] <= 2048:
+            table = (
+                np.arange(table_shape[0], dtype=np.float32)[:, None] * np.float32(1000)
+                + np.arange(table_shape[1], dtype=np.float32)[None, :]
+            )
+        else:
+            row = np.arange(table_shape[1], dtype=np.float32) % np.float32(32)
+            table = np.broadcast_to(row, table_shape)
+        actual = lane.execute(
+            program.region_id,
+            {program.input_values[0]: indices, program.input_values[1]: table},
+        )
+        record(
+            f"embedding_{ordinal}", [program], actual, table[indices],
+            "bounded ordinal indices and a coordinate-derived exact table",
+        )
+
+    gather = next(
+        program for program in lane.programs.values() if program.semantic == "index_gather"
+    )
+    row_indices = np.zeros((1, 1, 1, 1), dtype=np.int64)
+    column_indices = np.arange(1023, -1, -1, dtype=np.int64).reshape(1, 1, 1, 1024)
+    bool_table = ((np.arange(1024) * 7) % 11 < 5).reshape(1, 1024)
+    actual = lane.execute(
+        gather.region_id,
+        {
+            gather.input_values[0]: row_indices,
+            gather.input_values[1]: column_indices,
+            gather.input_values[2]: bool_table,
+        },
+    )
+    record(
+        "index_gather", [gather], actual,
+        bool_table[row_indices, column_indices],
+        "zero row plus reverse column permutation over a patterned boolean table",
+    )
+
+    mask_gather = next(
+        program for program in lane.programs.values() if program.semantic == "mask_gather"
+    )
+    index_put = next(
+        program for program in lane.programs.values() if program.semantic == "index_put"
+    )
+    data = (np.arange(1024, dtype=np.int64) * 13 - 7).reshape(1, 1024)
+    mask = ((np.arange(1024) * 5) % 17 < 6).reshape(1, 1024)
+    values = {mask_gather.input_values[0]: data, mask_gather.input_values[1]: mask}
+    compact = lane.execute(mask_gather.region_id, values)
+    destination = np.full((1, 1024), -99, dtype=np.int64)
+    values[index_put.input_values[0]] = destination
+    values[index_put.input_values[1]] = mask
+    actual = lane.execute(index_put.region_id, values)
+    expected = destination.copy()
+    expected[mask] = data[mask]
+    record(
+        "mask_gather_index_put", [mask_gather, index_put], actual, expected,
+        "patterned mask compacts coordinate data then scatters it into a fresh destination",
+    )
+
+    convolution = next(
+        program for program in lane.programs.values()
+        if program.semantic == "convolution_im2col_matmul"
+    )
+    image_shape, weight_shape, bias_shape = convolution.signature["input_shapes"]
+    image = np.arange(np.prod(image_shape), dtype=np.float32).reshape(image_shape)
+    weight = np.zeros(weight_shape, dtype=np.float32)
+    weight[0, 0, 0, 0] = np.float32(2)
+    weight[1, 2, 15, 15] = np.float32(-1)
+    bias = (
+        np.arange(np.prod(bias_shape), dtype=np.float32) - np.float32(384)
+    ).reshape(bias_shape) / np.float32(8)
+    actual = lane.execute(
+        convolution.region_id,
+        {
+            convolution.input_values[0]: image,
+            convolution.input_values[1]: weight,
+            convolution.input_values[2]: bias,
+        },
+    )
+    expected = np.broadcast_to(bias.reshape(1, 768, 1, 1), actual.shape).copy()
+    expected[0, 0] += np.float32(2) * image[0, 0, 0::16, 0::16]
+    expected[0, 1] -= image[0, 2, 15::16, 15::16]
+    record(
+        "patch_embedding_convolution", [convolution], actual, expected,
+        "two sparse kernel taps plus per-channel bias over the full captured 512x512 input",
+    )
+    return witnesses
+
+
+def layout_bridge_witnesses(workload) -> list[dict]:
+    """Numerically qualify one real bridge per exact map/dtype/topology class."""
+    lane = LayoutBridgeLane(workload)
+    classes = {}
+    for program in lane.programs.values():
+        signature = program.signature
+        key = (
+            signature["semantic"], signature["dtype"],
+            signature["materialization"], len(signature["output_shape"]),
+            tuple((item["kind"], item.get("position"), item.get("value"))
+                  for item in signature["input_map"]),
+        )
+        classes.setdefault(key, []).append(program)
+    witnesses = []
+    for key, programs in sorted(classes.items()):
+        program = min(programs, key=lambda item: (
+            int(np.prod(item.signature["output_shape"], dtype=np.int64)),
+            item.region_id,
+        ))
+        signature = program.signature
+        count = int(np.prod(signature["input_shape"], dtype=np.int64))
+        ordinal = np.arange(count, dtype=np.int64).reshape(signature["input_shape"])
+        if signature["dtype"] == "i1":
+            source = (ordinal % 3) == 0
+        else:
+            source = ((ordinal % 31).astype(np.float32) - np.float32(7)) / np.float32(4)
+        actual = lane.execute(program.region_id, {program.input_values[0]: source})
+
+        index = tuple(
+            0 if item["kind"] == "constant" else slice(None)
+            for item in signature["input_map"]
+        )
+        reduced = source[index]
+        mapped = [
+            item["position"] for item in signature["input_map"]
+            if item["kind"] == "dim"
+        ]
+        if mapped:
+            reduced = np.transpose(reduced, axes=tuple(int(v) for v in np.argsort(mapped)))
+        reshape = [1] * len(signature["output_shape"])
+        for axis, dimension in enumerate(sorted(mapped)):
+            reshape[dimension] = reduced.shape[axis]
+        expected = np.array(
+            np.broadcast_to(reduced.reshape(reshape), signature["output_shape"]),
+            copy=True,
+            order="C",
+        )
+        if not np.array_equal(actual, expected):
+            raise ValueError(f"independent layout oracle failed for {program.region_id}")
+        if not actual.flags.c_contiguous or np.shares_memory(actual, source):
+            raise ValueError(f"layout bridge did not create distinct contiguous storage")
+        witnesses.append({
+            "schema": "atlas_real_capture_layout_bridge_numeric_witness_v1",
+            "label": "_".join((key[0], key[1], key[2], f"rank{key[3]}")),
+            "status": "fresh_numeric_execution_matches_independent_oracle",
+            "claim": (
+                "host materialization evidence only; physical DMA/event execution is absent"
+            ),
+            "representative_region_id": program.region_id,
+            "class_region_count": len(programs),
+            "semantic": signature["semantic"],
+            "dtype": signature["dtype"],
+            "input_shape": signature["input_shape"],
+            "output_shape": signature["output_shape"],
+            "input_map": signature["input_map"],
+            "materialization": signature["materialization"],
+            "output_sha256": array_sha256(actual),
+            "oracle_sha256": array_sha256(expected),
+            "distinct_contiguous_storage": True,
+        })
+    return witnesses
+
+
 def main() -> int:
     source_path = CAPTURE / "model.mlir"
     source = source_path.read_text(encoding="utf-8")
@@ -327,6 +525,8 @@ def main() -> int:
     workload = parse_verified(source)
     chain, bounded_regions = bounded_chain_witness()
     host_chain, host_witnesses = generic_host_witnesses(workload)
+    indexed_witnesses = final_indexed_host_witnesses(workload)
+    bridge_witnesses = layout_bridge_witnesses(workload)
     schedule = build_hybrid_schedule(
         workload, plan, inventory,
         qualified_partitions=set(QUALIFIED),
@@ -341,6 +541,8 @@ def main() -> int:
     schedule["bounded_chain"] = chain
     schedule["generic_host_chain"] = host_chain
     schedule["generic_host_numeric_witnesses"] = host_witnesses
+    schedule["final_indexed_host_numeric_witnesses"] = indexed_witnesses
+    schedule["layout_bridge_numeric_witnesses"] = bridge_witnesses
     schedule["device_activation_arena"]["alignment_source"] = (
         "the existing Atlas command-buffer allocator's 32-byte tensor-base alignment"
     )
@@ -365,6 +567,9 @@ def main() -> int:
         "bounded_chain": chain,
         "generic_host_chain": host_chain,
         "generic_host_numeric_witnesses": host_witnesses,
+        "final_indexed_host_numeric_witnesses": indexed_witnesses,
+        "layout_bridge_census": schedule["layout_bridge_census"],
+        "layout_bridge_numeric_witnesses": bridge_witnesses,
         "full_schedule": {
             "path": schedule_path.relative_to(ROOT).as_posix(),
             "sha256": sha256_file(schedule_path),

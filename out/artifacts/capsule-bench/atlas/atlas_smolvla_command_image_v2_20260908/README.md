@@ -63,10 +63,16 @@ storage. This is allocation planning, not a measured runtime result.
 
 Importantly, the inventory's 2,033 layout-bridge candidates are not all aliases.
 The executable proof classifies 1,675 `view`/`unsqueeze` regions as metadata
-aliases, while 246 `expand` regions still need a strided descriptor and 112
-`copy` regions require materialization. There are separately 2,430 semantic
-host-required regions. The fail-closed generic host lane now accepts 2,424 of
-them from their complete extracted pointwise/cast/scalar-DAG signature,
+aliases. It now also classifies and executes the other 358 as host
+materializations: 246 `expand` and 112 `copy` regions, divided into 291 identity
+copies and 67 constant-zero-axis broadcasts across 25 exact shape classes.
+Admission proves the complete affine map and scalar value-copy body; execution
+produces distinct C-contiguous storage. Eleven fresh real-capture witnesses
+cover every semantic/dtype/map/rank topology class against independent NumPy
+oracles. This does not implement zero-stride device descriptors or physical
+DMA. There are separately 2,430 semantic
+host-required regions. The fail-closed generic host lane now accepts all 2,430
+of them from their complete extracted pointwise/cast/scalar-DAG signature,
 including exact affine constant-zero broadcasting. The second tranche adds all
 353 captured `pow`/`rsqrt`/trigonometric/sigmoid/GELU/reciprocal/clamp regions,
 with declared intermediate dtype conversion and BF16 round-to-nearest-even.
@@ -84,7 +90,12 @@ reductions—412 regions total. It validates static bounds, concat axes and
 shapes, reshape element counts, generic scalar dataflow, and declared dtypes;
 malformed shapes or operation bodies fail closed. Relative to the prior
 scoped-bridge baseline of 2,408 missing host regions, the exact missing count is
-now six, a reduction of 2,402. The
+now zero, a reduction of 2,408. The final six qualified regions are two exact
+embedding gathers, one two-index boolean gather, a linked mask-gather/index-put
+pair, and the 16x16-stride patch-embedding im2col convolution. Their complete
+affine/index/loop/reshape dataflow is signed; runtime indices and dynamic mask
+update counts are checked. Fresh real capture-shape execution matches
+independent numeric oracles, including the full 512x512 convolution input. The
 existing real p0243-to-p0244 bridge still replays 27 regions and exactly
 reproduces the saved p0244 activation hash, but the schedule no longer treats
 scoped provenance membership alone as executable semantic evidence. The
@@ -102,10 +113,10 @@ chains. Standalone layer norm and GELU instances are also exercised where
 accelerator boundaries prevent a host dependency. This is fresh host numeric
 evidence only.
 
-Consequently the hybrid schedule remains explicitly `e2e_blocked_fail_closed`:
-six host semantic regions (two embedding plus one convolution, mask gather,
-index put, and index gather), 388 accelerator partitions, and 358 layout
-bridges remain unresolved. See `HYBRID_RUNTIME_REPORT.md` and
+Host semantic and layout-bridge coverage are now complete, but the hybrid
+schedule remains explicitly `e2e_blocked_fail_closed`: 388 accelerator
+partitions and the physical event/DMA runtime remain unresolved. See
+`HYBRID_RUNTIME_REPORT.md` and
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
 is added.
 
@@ -256,10 +267,11 @@ remain required.
 The 28 unique contraction programs do not fit one resident image. A real
 end-to-end SmolVLA result still requires:
 
-1. extraction/dispatch for all graph partitions, including 2,430 current host regions;
-2. IMEM-bounded scheduling of the remaining contractions;
-3. intermediate lifetime/address planning across partitions;
-4. broad FP8 numeric qualification and full-model golden comparison.
+1. capture-specific calibration and numeric qualification for the remaining 388
+   accelerator partitions and their 1,238 conversion events;
+2. a physical runtime for the already ordered 6,104 host, bridge, conversion,
+   and device events, including binding the interval-planned device arena;
+3. one fresh full-input execution and source-model output comparison.
 
 No whole-model image, whole-model numeric result, performance result, or new
 capsule score is claimed.
@@ -270,7 +282,7 @@ From this artifact directory:
 
 ```bash
 MERLIN_REPO_PYTHON=../../../../../.venv/bin/python
-$MERLIN_REPO_PYTHON -m pytest -q test_parser_compat.py test_full_graph_inventory.py test_first_partition.py test_compact_loops.py test_command_image.py test_partition_plan.py test_capture_bridge.py
+$MERLIN_REPO_PYTHON -m pytest -q test_*.py
 $MERLIN_REPO_PYTHON validate_recovery.py
 MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py state_proj
 MERLIN_ATLAS_GSIM_DIR=/path/to/atlas-gsim MERLIN_MLIR_INSTALL=/path/to/llvm-install $MERLIN_REPO_PYTHON run_capture_partition.py action_in_proj

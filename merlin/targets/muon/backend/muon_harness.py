@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import struct
 from dataclasses import dataclass
+from typing import Any
 
 @dataclass
 class TensorArg:
@@ -125,6 +126,92 @@ def _blob_bytes(arg: TensorArg) -> bytes:
         bits = _f32_bits(v) if arg.dtype == "f32" else (int(v) & 0xFFFFFFFF)
         out += bits.to_bytes(4, "little")
     return bytes(out)
+
+
+def _flat_values(value: Any) -> list[Any]:
+    """Flatten one trusted expected tensor without changing row-major order."""
+    if isinstance(value, dict) and "values" in value:
+        return _flat_values(value["values"])
+    if isinstance(value, (list, tuple)):
+        out: list[Any] = []
+        for item in value:
+            out.extend(_flat_values(item))
+        return out
+    return [value]
+
+
+def _words_blob(words: list[int]) -> bytes:
+    return b"".join((int(word) & 0xFFFFFFFF).to_bytes(4, "little") for word in words)
+
+
+def _compact_numeric_support(
+    outputs: list[TensorArg], expected: dict[str, Any], policy: dict[str, Any] | None,
+) -> tuple[list[str], list[str], dict[str, bytes], int]:
+    """Trusted, integer-only post-kernel comparison for the Cyclotron L2 path.
+
+    Full application-shaped outputs are too large to print through Muon's byte
+    MMIO aperture before Cyclotron's cycle cap.  The runner therefore links
+    private expected bounds as blobs and compares every produced word on Muon,
+    emitting one compact verdict.  The submitted kernel still computes the full
+    shape; only result transport changes.
+    """
+    compare = str((policy or {}).get("compare", "exact_int"))
+    atol = float((policy or {}).get("atol", 1e-3))
+    rtol = float((policy or {}).get("rtol", 0.0))
+    declarations = [
+        "static uint32_t _merlin_ordered_f32(uint32_t bits){"
+        "return (bits&0x80000000u)?~bits:(bits^0x80000000u);}",
+    ]
+    checks = ["  uint32_t _merlin_bad=0u;", "  uint32_t _merlin_checked=0u;"]
+    blobs: dict[str, bytes] = {}
+    total = 0
+    for index, out in enumerate(outputs):
+        if out.name not in expected:
+            raise ValueError(f"expected result has no declared output {out.name!r}")
+        values = _flat_values(expected[out.name])
+        count = int(out.rows) * int(out.cols)
+        if len(values) != count:
+            raise ValueError(
+                f"expected output {out.name!r} has {len(values)} elements, harness declares {count}")
+        arr = f"_out_{out.name}"
+        if compare in ("exact_int", "exact") and out.dtype == "i32":
+            symbol = f"_merlin_expected_{index}"
+            blobs[symbol] = _words_blob([int(value) for value in values])
+            checks += [
+                f"  for(uint32_t _i=0;_i<{count}u;++_i){{",
+                f"    _merlin_bad+=({arr}[_i]!={symbol}[_i]);",
+                "    ++_merlin_checked;",
+                "  }",
+            ]
+        else:
+            lower, upper = [], []
+            for value in values:
+                want = float(value)
+                tol = 0.0 if compare in ("exact_int", "exact") else atol + rtol * abs(want)
+                lower.append(_f32_bits(want - tol))
+                upper.append(_f32_bits(want + tol))
+            lo_symbol = f"_merlin_expected_lo_{index}"
+            hi_symbol = f"_merlin_expected_hi_{index}"
+            blobs[lo_symbol] = _words_blob(lower)
+            blobs[hi_symbol] = _words_blob(upper)
+            checks += [
+                f"  for(uint32_t _i=0;_i<{count}u;++_i){{",
+                f"    uint32_t _got={arr}[_i];",
+                "    uint32_t _nan=((_got&0x7f800000u)==0x7f800000u)&&(_got&0x007fffffu);",
+                "    uint32_t _key=_merlin_ordered_f32(_got);",
+                f"    _merlin_bad+=_nan||_key<_merlin_ordered_f32({lo_symbol}[_i])"
+                f"||_key>_merlin_ordered_f32({hi_symbol}[_i]);",
+                "    ++_merlin_checked;",
+                "  }",
+            ]
+        total += count
+    declarations += [f"extern const uint32_t {symbol}[];" for symbol in sorted(blobs)]
+    checks += [
+        '  _ps("MERLIN_NUMERIC ");',
+        '  _ps(_merlin_bad?"FAIL ":"PASS ");',
+        "  _pu(_merlin_checked);_pc(' ');_pu(_merlin_bad);_pc('\\n');",
+    ]
+    return declarations, checks, blobs, total
 
 
 def _emit_input(arr: str, arg: TensorArg, blobs: dict[str, bytes]) -> list[str]:
@@ -979,7 +1066,9 @@ def bind_from_declarations(cb: dict, env0: dict, vals) -> tuple[list[TensorArg],
 
 def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorArg],
                                *, kernel_symbol: str, model,
-                               result_page: bool = False) -> Harness:
+                               result_page: bool = False,
+                               compact_expected: dict[str, Any] | None = None,
+                               compact_policy: dict[str, Any] | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
@@ -988,6 +1077,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     for operands past :data:`_BLOB_MIN_ELEMS`, which are linked in as blobs and read in place, since the
     element-wise form is not buildable at model scale. Returns a :class:`Harness`: the source, plus the
     blobs the caller must assemble into the link."""
+    if result_page and compact_expected is not None:
+        raise ValueError("result_page and compact_expected are mutually exclusive")
     ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
     blobs: dict[str, bytes] = {}
     statics: list[str] = []
@@ -1008,16 +1099,27 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
             inner += _emit_output(arr, o, statics)
         call_ptrs.append(f"(void*){arr}")
 
+    compact_decls: list[str] = []
+    compact_checks: list[str] = []
+    if compact_expected is not None:
+        compact_decls, compact_checks, compact_blobs, _ = _compact_numeric_support(
+            out_args, compact_expected, compact_policy)
+        blobs.update(compact_blobs)
+
     # Blob and .bss symbols are file-scope, so they must be declared before main.
-    externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)]
     body: list[str] = [_render_helpers(model).strip(), ""]
-    body += externs + statics + result_decls + ([""] if (externs or statics or result_decls) else [])
+    # compact_decls are created after input blobs, so derive externs only after
+    # adding the private expected-bound blobs above.
+    externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)
+               if not sym.startswith("_merlin_expected")]
+    body += externs + statics + result_decls + compact_decls \
+        + ([""] if (externs or statics or result_decls or compact_decls) else [])
     body += [f"extern void {kernel_symbol}({ptrs});", "",
              "int main(void){", "  if(_hid()!=0)return 0;"]
     body += inner
     body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
-        if result_page:
+        if result_page or compact_expected is not None:
             continue
         arr = f"_out_{o.name}"
         body.append(f'  _ps("OUT {o.name} {o.rows} {o.cols}");')
@@ -1028,11 +1130,16 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         body.append("  _pc('\\n');")
     if result_page:
         body += _result_publish_lines(result_arrays)
+    elif compact_expected is not None:
+        body += compact_checks
+        body.append('  _ps("DONE\\n");')
     else:
         body.append('  _ps("DONE\\n");')
     body += ["  return 0;", "}"]
     return Harness(source="\n".join(body) + "\n", blobs=blobs,
-                   results=result_specs if result_page else None)
+                   results=(result_specs if result_page else
+                            [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype}
+                             for o in out_args] if compact_expected is not None else None))
 
 
 
@@ -1150,7 +1257,9 @@ def why_no_operands(cb: dict) -> str:
             f"(opcodes {sorted(set(ops))} were all modelled)")
 
 def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
-                          result_page: bool = False) -> Harness | None:
+                          result_page: bool = False,
+                          compact_expected: dict[str, Any] | None = None,
+                          compact_policy: dict[str, Any] | None = None) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1163,7 +1272,8 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
         return None
     in_args, out_args = derived
     return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model,
-                                      result_page=result_page)
+                                      result_page=result_page, compact_expected=compact_expected,
+                                      compact_policy=compact_policy)
 
 
 def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = False) -> str | None:
