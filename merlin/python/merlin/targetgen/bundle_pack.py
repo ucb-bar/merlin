@@ -49,7 +49,8 @@ import math
 from pathlib import Path
 from typing import Any
 
-__all__ = ["ArgRef", "PackedTensor", "PackPlan", "parse_arg_index", "read_only_prefix",
+__all__ = ["ArgRef", "PackedTensor", "PackPlan", "SessionState", "session_states_from_contract",
+           "ROLES", "parse_arg_index", "read_only_prefix",
            "element_bytes", "physical_nbytes", "plan", "row_pitch_from_manifest",
            "padded_tensor_bytes", "prepack_bytes", "write_const_blob", "WeightSource",
            "PREPACK_PERMUTATIONS",
@@ -108,12 +109,17 @@ class PackedTensor:
     shape: tuple[int, ...]
     sizing: str                  # "declared_storage_encoding" | "row_pitch"
     weight: str = ""             # the state-dict key this comes from, for a const tensor
+    #: ``argument`` -- the ABI passes a pointer to this. ``seed`` -- it holds a carried state's
+    #: INITIAL bytes in read-only memory and nothing points at it; the harness copies it into the
+    #: mutable working copy before the session runs, and again after the warm invocation.
+    role: str = "argument"
 
     def to_dict(self) -> dict[str, Any]:
         return {"tensor": self.tensor, "index": self.index, "storage": self.storage,
                 "offset": self.offset, "logical_bytes": self.logical_bytes,
                 "physical_bytes": self.physical_bytes, "dtype": self.dtype,
-                "shape": list(self.shape), "sizing": self.sizing, "weight": self.weight}
+                "shape": list(self.shape), "sizing": self.sizing, "weight": self.weight,
+                "role": self.role}
 
 
 @dataclass
@@ -129,6 +135,13 @@ class PackPlan:
     #: Argument indices declared by the program plan but ABSENT from the kernel ABI. Reported, never
     #: closed up: SmolVLA's arg809 is real and skipping it silently shifts every later tensor.
     absent_indices: tuple[int, ...] = ()
+    #: Tensor names in the kernel ABI's own pointer order. RECORDED rather than reconstructed: with
+    #: a recurrent session the const and mutable groups no longer partition the ABI in order, so
+    #: ``const + mutable`` is not the call's argument order and using it would pass every pointer
+    #: after the first carried state to the wrong parameter.
+    abi_order: tuple[str, ...] = ()
+    #: One row per declared carried state: which seed feeds which working copy from which output.
+    carried: tuple[dict[str, Any], ...] = ()
     notes: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,10 +149,27 @@ class PackPlan:
                 "const_bytes": self.const_bytes, "mutable_bytes": self.mutable_bytes,
                 "row_pitch_elements": self.row_pitch_elements, "alignment": self.alignment,
                 "absent_indices": list(self.absent_indices),
+                "abi_order": list(self.abi_order), "carried": [dict(c) for c in self.carried],
                 "n_const": len(self.const), "n_mutable": len(self.mutable),
                 "const": [t.to_dict() for t in self.const],
                 "mutable": [t.to_dict() for t in self.mutable],
                 "notes": list(self.notes)}
+
+    @property
+    def arguments(self) -> tuple[PackedTensor, ...]:
+        """Every row the ABI passes a pointer to, IN THE ABI's DECLARED ORDER.
+
+        The only correct source for a call's argument list. ``const + mutable`` happens to equal it
+        whenever every read argument precedes every write one -- true of a feed-forward model and
+        FALSE the moment a recurrent session moves a carried input into the mutable blob.
+        """
+        by_name = {t.tensor: t for t in (*self.const, *self.mutable) if t.role == "argument"}
+        missing = [name for name in self.abi_order if name not in by_name]
+        if missing:
+            raise BundlePackError(
+                f"the ABI declares argument(s) {missing[:8]} that this plan lays out no pointer "
+                f"for; a short pointer list shifts every later argument")
+        return tuple(by_name[name] for name in self.abi_order)
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True,
@@ -203,6 +233,71 @@ def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...],
     return tuple(read), tuple(write)
 
 
+#: What a packed row can be. A ``seed`` exists only because a carried state's initial bytes must
+#: survive in read-only memory: the session overwrites the working copy every step, and the warm
+#: invocation of a warm-then-measure profile overwrites it before the measured one -- so without a
+#: re-seed the measured invocation is a DIFFERENT program from the warm one, which is the quiet way
+#: a recurrent model's cycle count stops meaning anything.
+ROLES: tuple[str, ...] = ("argument", "seed")
+
+
+@dataclass(frozen=True)
+class SessionState:
+    """One value the session carries from an output back into an input, as the CAPTURE declares it.
+
+    A recurrent program's carried state is BOTH read and written, so it cannot live in the read-only
+    blob -- and the emitted command buffer cannot tell: within one invocation the state input really
+    is read-only, and only the session contract knows the loop writes it back. So the placement is
+    driven by the capture's declaration, and a state whose declaration does not match the ABI is
+    refused rather than placed on a guess.
+    """
+
+    name: str
+    input_arg: int
+    output_index: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"name": self.name, "input_arg": self.input_arg,
+                "output_index": self.output_index}
+
+
+def session_states_from_contract(contract: Mapping[str, Any]) -> tuple[SessionState, ...]:
+    """The carried states a session contract declares, parsed structurally.
+
+    Reads the contract's own ``states`` list. A contract declaring no states describes a
+    feed-forward program and yields ``()``, which plans exactly as before.
+    """
+    rows = contract.get("states")
+    if rows is None:
+        return ()
+    if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)):
+        raise BundlePackError("the session contract's 'states' is not a list of declarations")
+    states: list[SessionState] = []
+    for position, row in enumerate(rows):
+        if not isinstance(row, Mapping):
+            raise BundlePackError(f"session contract states[{position}] is not a mapping")
+        for required in ("input_arg", "output_index"):
+            if not isinstance(row.get(required), int):
+                raise BundlePackError(
+                    f"session contract states[{position}] declares no integer {required!r}; a "
+                    f"carried state whose endpoints are unknown cannot be placed, and placing its "
+                    f"input in read-only memory is a write fault at step 1")
+        states.append(SessionState(name=str(row.get("name") or f"state{position}"),
+                                   input_arg=int(row["input_arg"]),
+                                   output_index=int(row["output_index"])))
+    seen_in: dict[int, str] = {}
+    seen_out: dict[int, str] = {}
+    for state in states:
+        for key, table, label in ((state.input_arg, seen_in, "input_arg"),
+                                  (state.output_index, seen_out, "output_index")):
+            if key in table:
+                raise BundlePackError(
+                    f"session states {table[key]!r} and {state.name!r} both claim {label} {key}; "
+                    f"two states sharing one endpoint would each overwrite the other's carry")
+            table[key] = state.name
+    return tuple(states)
+
+
 def element_bytes(dtype: Any) -> int:
     """Bytes per element for a declared dtype, or a refusal naming it.
 
@@ -259,6 +354,7 @@ def row_pitch_from_manifest(manifest: Mapping[str, Any]) -> int:
 
 def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
          weight_manifest: Mapping[str, Any] | None = None,
+         session_states: Sequence[SessionState] = (),
          alignment: int = DEFAULT_ALIGNMENT) -> PackPlan:
     """Lay out the const and mutable blobs for one emitted program.
 
@@ -266,6 +362,12 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
     ``weights.safetensors.manifest.json`` shape). It is checked against the read-only prefix by INDEX
     rather than by count, so a gap like SmolVLA's missing ``arg809`` is reported instead of shifting
     every later tensor by one.
+
+    ``session_states`` are the carries the capture declares (:func:`session_states_from_contract`).
+    Each named input keeps its bytes in the const blob as a ``seed`` and gains a ``mutable`` working
+    copy that the ABI pointer targets, because the session writes the state back every step. Without
+    it the plan puts a written tensor in read-only memory: SmolVLA's three carries all land in the
+    const blob from the command buffer alone, since within ONE invocation they genuinely are reads.
     """
     tensors = command_buffer.get("tensors")
     if not isinstance(tensors, Mapping):
@@ -274,6 +376,48 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
     if not isinstance(abi, Mapping):
         raise BundlePackError("the command buffer declares no kernel ABI, so it has no pointer order")
     read, write = read_only_prefix(abi)
+    out_abi_order = tuple(ref.tensor for ref in (*read, *write))
+
+    # Resolve each declared carry against the ABI before laying anything out, so a contract that
+    # does not describe THIS program is refused rather than half-applied.
+    carried_by_tensor: dict[str, dict[str, Any]] = {}
+    if session_states:
+        read_by_index = {ref.index: ref for ref in read if ref.index >= 0}
+        for state in session_states:
+            source = read_by_index.get(state.input_arg)
+            if source is None:
+                write_hit = next((r for r in write if r.index == state.input_arg), None)
+                if write_hit is not None:
+                    continue  # already a write argument; nothing to reclassify
+                raise BundlePackError(
+                    f"session state {state.name!r} declares input_arg {state.input_arg}, which is "
+                    f"not a read argument of this kernel ABI; the contract does not describe this "
+                    f"program and applying it would move some other tensor into mutable memory")
+            if not 0 <= state.output_index < len(write):
+                raise BundlePackError(
+                    f"session state {state.name!r} declares output_index {state.output_index} but "
+                    f"the ABI has {len(write)} write argument(s); an out-of-range carry would read "
+                    f"the destination from whichever tensor happened to be there")
+            destination = write[state.output_index]
+            src_t = tensors.get(source.tensor)
+            dst_t = tensors.get(destination.tensor)
+            if not isinstance(src_t, Mapping) or not isinstance(dst_t, Mapping):
+                raise BundlePackError(
+                    f"session state {state.name!r} names tensors absent from the tensor table")
+            src_dtype, dst_dtype = str(src_t.get("dtype") or ""), str(dst_t.get("dtype") or "")
+            src_shape = tuple(int(v) for v in (src_t.get("shape") or ()))
+            dst_shape = tuple(int(v) for v in (dst_t.get("shape") or ()))
+            if src_dtype != dst_dtype or src_shape != dst_shape:
+                raise BundlePackError(
+                    f"session state {state.name!r} carries {destination.tensor} "
+                    f"({dst_dtype} {list(dst_shape)}) back into {source.tensor} "
+                    f"({src_dtype} {list(src_shape)}); a carry between different layouts copies "
+                    f"the right byte count into the wrong elements, which no size check can see")
+            carried_by_tensor[source.tensor] = {
+                "state": state.name, "input_arg": state.input_arg,
+                "output_index": state.output_index, "seed_tensor": source.tensor,
+                "output_tensor": destination.tensor, "dtype": src_dtype,
+                "shape": list(src_shape)}
 
     params = command_buffer.get("params") if isinstance(command_buffer.get("params"), Mapping) else {}
     encodings = params.get("storage_encodings")
@@ -309,7 +453,8 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 f"the weight manifest carries {len(extra)} entry/entries the ABI never reads "
                 f"({extra[:8]}); they are not packed")
 
-    for group, refs in (("const", read), ("mutable", write)):
+    carried_working: list[ArgRef] = [ref for ref in read if ref.tensor in carried_by_tensor]
+    for group, refs in (("const", read), ("mutable", (*write, *carried_working))):
         cursor = 0
         rows: list[PackedTensor] = []
         for ref in refs:
@@ -330,17 +475,40 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 physical = physical_nbytes(tensor, row_pitch_elements=row_pitch_elements)
                 sizing = "row_pitch"
             entry = (weight_manifest.get(str(ref.index)) or {}) if weight_manifest else {}
+            # A carried state's const row is the SEED -- nothing points at it; its working copy
+            # lives in the mutable blob and takes the ABI pointer.
+            role = "seed" if (group == "const" and ref.tensor in carried_by_tensor) else "argument"
             rows.append(PackedTensor(
                 tensor=ref.tensor, index=ref.index, storage=group, offset=cursor,
                 logical_bytes=logical, physical_bytes=physical, dtype=dtype, shape=shape,
                 sizing=sizing,
                 weight=next((str(entry[f]) for f in WEIGHT_KEY_FIELDS
-                             if isinstance(entry.get(f), str) and entry[f]), "")))
+                             if isinstance(entry.get(f), str) and entry[f]), ""),
+                role=role))
             cursor = _align(cursor + physical, alignment)
         if group == "const":
             out.const, out.const_bytes = rows, cursor
         else:
             out.mutable, out.mutable_bytes = rows, cursor
+
+    out.abi_order = out_abi_order
+    if carried_by_tensor:
+        seeds = {t.tensor: t for t in out.const if t.role == "seed"}
+        working = {t.tensor: t for t in out.mutable if t.tensor in carried_by_tensor}
+        produced = {t.tensor: t for t in out.mutable if t.role == "argument"}
+        rows_out = []
+        for name, row in carried_by_tensor.items():
+            rows_out.append({**row,
+                             "seed_offset": seeds[name].offset,
+                             "working_offset": working[name].offset,
+                             "output_offset": produced[row["output_tensor"]].offset,
+                             "bytes": working[name].physical_bytes})
+        out.carried = tuple(sorted(rows_out, key=lambda r: r["input_arg"]))
+        out.notes.append(
+            f"{len(out.carried)} carried session state(s) moved OUT of the read-only blob: their "
+            f"ABI pointers target mutable working copies and the const blob keeps a seed of each, "
+            f"because the session writes the state back every step and the warm invocation of a "
+            f"warm-then-measure profile would otherwise leave the measured one a different program")
 
     by_rule: dict[str, int] = {}
     for row in (*out.const, *out.mutable):

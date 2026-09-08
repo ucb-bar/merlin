@@ -24,19 +24,29 @@ repo's most expensive failure shape.
 """
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from merlin.targetgen.bundle_gate import CONSOLE_DUMP_CAP, CorrectnessGate
 from merlin.targetgen.bundle_pack import PackPlan
 
 __all__ = ["render_bundle_harness", "BundleHarnessError", "pointer_expression",
-           "CONST_SYMBOL", "MUTABLE_SYMBOL"]
+           "CONST_SYMBOL", "MUTABLE_SYMBOL", "TRAJECTORY_SYMBOL", "render_reseed",
+           "render_session_loop"]
 
 #: The linker symbols the blob objects expose. Named here once so the renderer and the packaging
 #: step cannot disagree about them.
+#: Bytes per C type this module may emit as an output element. Used only to REPORT the retain
+#: cost; the layout itself never depends on it.
+_CTYPE_BYTES: dict[str, int] = {"float": 4, "double": 8, "int": 4, "short": 2, "char": 1}
+
 CONST_SYMBOL = "merlin_const_blob_start"
 MUTABLE_SYMBOL = "merlin_mutable_blob"
+
+#: Where a session's per-step graded outputs are retained so the gate can run AFTER the measured
+#: window. The alternative -- grading inside the loop -- puts a printf per step inside a
+#: counter-bracketed region and charges it to the program.
+TRAJECTORY_SYMBOL = "merlin_trajectory"
 
 
 class BundleHarnessError(ValueError):
@@ -52,14 +62,91 @@ def pointer_expression(storage: str, offset: int) -> str:
     raise BundleHarnessError(f"storage {storage!r} is neither 'const' nor 'mutable'")
 
 
-def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str) -> str:
-    """The C for one declared gate. Every branch prints what it checked, not just a verdict."""
-    out = f"({output_ctype} *)({MUTABLE_SYMBOL} + {int(output_offset)})"
+def render_reseed(plan: PackPlan) -> str:
+    """Copy every carried state's SEED from the const blob into its mutable working copy.
+
+    WHY THIS IS NOT OPTIONAL. A recurrent session overwrites its carried state every step, so after
+    one session the working copies hold step-N state. A warm-then-measure profile invokes the
+    program twice; without a re-seed the measured invocation starts from the warm one's final state
+    and is therefore a DIFFERENT program from the one that was warmed and graded. The cycle count
+    would still be published, and would not be a count of the graded program -- a plausible number
+    for the wrong thing.
+
+    Emitted from the plan's declared carries, so a feed-forward plan yields an empty fragment and
+    the ordering is unchanged.
+    """
+    if not plan.carried:
+        return "/* no carried session state: nothing to re-seed */"
+    lines = ["/* Re-seed every carried state so this invocation runs the graded program. */"]
+    for row in plan.carried:
+        lines.append(
+            f"memcpy((void *)({MUTABLE_SYMBOL} + {int(row['working_offset'])}),"
+            f" (const void *)({CONST_SYMBOL} + {int(row['seed_offset'])}),"
+            f" {int(row['bytes'])}u);  /* {row['state']} */")
+    return "\n".join(lines)
+
+
+def render_session_loop(plan: PackPlan, *, steps: int, call: str,
+                        record: Mapping[str, Any] | None = None) -> str:
+    """The declared step loop: invoke, RECORD the graded output, then carry each output to its input.
+
+    WHY IT RECORDS RATHER THAN GRADES. The gate prints a line per step, and console output inside a
+    counter-bracketed window is charged to the program. But the warm and measured invocations MUST
+    be the same body -- a warm run that grades and a measured run that does not are two different
+    programs, and the cycle count would belong to the one that was never checked. So every step's
+    graded output is copied into :data:`TRAJECTORY_SYMBOL` and the gate runs once, after the closing
+    cycle read. ``record`` says how many bytes per step that costs, and the caller reports it: it is
+    real work inside the measured window, small but not zero, and an unstated overhead is one that
+    gets discovered as a discrepancy later.
+
+    The carry happens AFTER the record, so a step is recorded from the output it produced rather
+    than from state the next step has already overwritten.
+    """
+    if steps < 1:
+        raise BundleHarnessError("a session loop must run at least one step")
+    if steps > 1 and not plan.carried:
+        raise BundleHarnessError(
+            f"a {steps}-step session was asked for but the plan declares no carried state; every "
+            f"step would re-run the identical computation and the loop would report a trajectory "
+            f"that never advanced")
+    body = [f"for (int merlin_step_index = 0; merlin_step_index < {int(steps)}; "
+            f"++merlin_step_index) {{"]
+    body += ["  " + line for line in call.splitlines()]
+    if record is not None:
+        elements, ctype = int(record["elements"]), str(record["ctype"])
+        body.append(
+            f"  memcpy((void *)({TRAJECTORY_SYMBOL} + (long)merlin_step_index * {elements}),"
+            f" (const void *)({MUTABLE_SYMBOL} + {int(record['offset'])}),"
+            f" {elements}u * sizeof({ctype}));  /* retain step for the post-window gate */")
+    for row in plan.carried:
+        body.append(
+            f"  memcpy((void *)({MUTABLE_SYMBOL} + {int(row['working_offset'])}),"
+            f" (const void *)({MUTABLE_SYMBOL} + {int(row['output_offset'])}),"
+            f" {int(row['bytes'])}u);  /* carry {row['state']} */")
+    body.append("}")
+    return "\n".join(body)
+
+
+def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
+                step_expression: str = "0", from_trajectory: bool = False) -> str:
+    """The C for one declared gate. Every branch prints what it checked, not just a verdict.
+
+    ``step_expression`` selects this invocation's slice of the reference. For a trajectory the
+    reference is ``[steps][elements]`` and grading step 3 against ``merlin_reference[0..n)`` would
+    compare the right count of the wrong step -- and would PASS on any model whose trajectory barely
+    moves, which is the same invisibility as the discarded activation.
+    """
     n = int(gate.output_elements)
+    out = (f"{TRAJECTORY_SYMBOL} + (long)({step_expression}) * {n}" if from_trajectory
+           else f"({output_ctype} *)({MUTABLE_SYMBOL} + {int(output_offset)})")
     lines = [
         f"const {output_ctype} *merlin_out = {out};",
-        f'printf("MERLIN_GATE reference=%s comparison=%s atol=%.9g rtol=%.9g elements=%d\\n",',
-        f'       "{gate.reference_file}", "{gate.comparison}", {gate.atol!r}, {gate.rtol!r}, {n});',
+        f"const int merlin_step = (int)({step_expression});",
+        f"const {output_ctype} *merlin_want = merlin_reference + (long)merlin_step * {n};",
+        f'printf("MERLIN_GATE reference=%s comparison=%s atol=%.9g rtol=%.9g elements=%d '
+        f'step=%d/%d\\n",',
+        f'       "{gate.reference_file}", "{gate.comparison}", {gate.atol!r}, {gate.rtol!r}, {n},',
+        f"       merlin_step, {int(gate.steps)});",
         "int merlin_bad = 0, merlin_nonfinite = 0;",
         "unsigned long long merlin_digest = 1469598103934665603ULL;",
         f"int merlin_argmax = 0;",
@@ -70,7 +157,7 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str)
     ]
     if gate.comparison in ("exact_elementwise", "tolerance_and_topk", "trajectory"):
         lines += [
-            "  const double want = (double)merlin_reference[i];",
+            "  const double want = (double)merlin_want[i];",
             "  const double diff = got > want ? got - want : want - got;",
             "  const double mag  = want < 0.0 ? -want : want;",
             f"  if (diff > {gate.atol!r} + {gate.rtol!r} * mag) ++merlin_bad;",
@@ -110,7 +197,7 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str)
             "   is the right shape for a language model -- the ranking is the result. */",
             "int merlin_ref_argmax = 0;",
             f"for (int i = 0; i < {n}; ++i)",
-            "  if (merlin_reference[i] > merlin_reference[merlin_ref_argmax]) merlin_ref_argmax = i;",
+            "  if (merlin_want[i] > merlin_want[merlin_ref_argmax]) merlin_ref_argmax = i;",
             'printf("MERLIN_GATE_EXPECT argmax=%d\\n", merlin_ref_argmax);',
             "const int merlin_argmax_ok = (merlin_argmax == merlin_ref_argmax);",
         ]
@@ -124,7 +211,25 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str)
         "  return (merlin_bad != 0 || merlin_nonfinite != 0 || !merlin_argmax_ok) ? 1 : 0;",
     ]
     body = "\n".join("  " + line if line else line for line in lines[:-1])
-    return ("static int merlin_gate_check(void) {\n" + body + "\n" + lines[-1] + "\n}")
+    step_fn = ("static int merlin_gate_step(int merlin_step_index) {\n"
+               + body + "\n" + lines[-1] + "\n}")
+    if int(gate.steps) <= 1:
+        # A single-step gate: the aggregate IS the one step, and it grades step 0.
+        return (step_fn + "\n\n"
+                "static int merlin_gate_check(void) { return merlin_gate_step(0); }")
+    # A TRAJECTORY. Every step is graded and the failures are ACCUMULATED, because a session's last
+    # step passing says nothing about the nine before it -- and a carry defect shows up as a
+    # divergence that grows, so grading only the end is where it is largest and grading only the
+    # start is where it is invisible.
+    return (step_fn + "\n\n"
+            "static int merlin_gate_check(void) {\n"
+            "  int merlin_gate_failures = 0;\n"
+            f"  for (int s = 0; s < {int(gate.steps)}; ++s)\n"
+            "    merlin_gate_failures += merlin_gate_step(s);\n"
+            f'  printf("MERLIN_GATE_TRAJECTORY steps=%d failed=%d\\n", {int(gate.steps)},\n'
+            "         merlin_gate_failures);\n"
+            "  return merlin_gate_failures != 0 ? 1 : 0;\n"
+            "}")
 
 
 def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol: str,
@@ -147,11 +252,16 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     """
     if not entry_symbol or not entry_symbol.isidentifier():
         raise BundleHarnessError("the kernel entry symbol must be one plain C identifier")
-    args = [*plan.const, *plan.mutable]
+    # THE ABI's OWN ORDER, never `const + mutable`. Those two coincide only while every read
+    # argument precedes every write one; a recurrent session moves a carried input into the mutable
+    # blob, and the concatenation then passes every pointer after the first carry to the wrong
+    # parameter. Measured on SmolVLA: 1,163 arguments, and the concatenation disagrees.
+    args = list(plan.arguments) if plan.abi_order else [*plan.const, *plan.mutable]
     if not args:
         raise BundleHarnessError("the pack plan lays out no arguments, so there is nothing to call")
 
-    graded = next((t for t in plan.mutable if t.tensor == output_tensor), None)
+    graded = next((t for t in plan.mutable
+                   if t.tensor == output_tensor and t.role == "argument"), None)
     if graded is None:
         available = [t.tensor for t in plan.mutable]
         raise BundleHarnessError(
@@ -161,17 +271,25 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     graded_elements = 1
     for extent in graded.shape:
         graded_elements *= int(extent)
-    if gate.comparison != "trajectory" and graded_elements != gate.output_elements:
+    if graded_elements != gate.output_elements:
         raise BundleHarnessError(
-            f"the gate grades {gate.output_elements} element(s) but {output_tensor!r} holds "
-            f"{graded_elements}; a gate over a different count than the tensor has is checking "
-            f"either padding or someone else's tensor")
+            f"the gate grades {gate.output_elements} element(s) per step but "
+            f"{output_tensor!r} holds {graded_elements}; a gate over a different count than the "
+            f"tensor has is checking either padding or someone else's tensor")
 
-    gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype)
+    steps = int(gate.steps)
+    record = ({"offset": graded.offset, "elements": graded_elements, "ctype": output_ctype}
+              if steps > 1 else None)
+    gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype,
+                          step_expression="merlin_step_index", from_trajectory=steps > 1)
     declarations = "\n".join([
         f"extern const unsigned char {CONST_SYMBOL}[];",
         f"extern unsigned char {MUTABLE_SYMBOL}[];",
+        f"/* {steps} step(s) x {int(gate.output_elements)} element(s). */",
         f"extern const {output_ctype} merlin_reference[];",
+        *((f"/* Every step's graded output, retained so the gate runs after the counted window. */",
+           f"static {output_ctype} {TRAJECTORY_SYMBOL}[{steps * graded_elements}];")
+          if steps > 1 else ()),
         f"/* {len(args)} pointer arguments, in the kernel ABI's own declared order. */",
         f"extern void {entry_symbol}(" + ", ".join(["void *"] * len(args)) + ");",
         "",
@@ -180,17 +298,31 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
 
     pointers = ",\n    ".join(pointer_expression(t.storage, t.offset) for t in args)
     call = f"{entry_symbol}(\n    {pointers});"
+    reseed = render_reseed(plan)
+    session = plan.carried or steps > 1
+    body = (render_session_loop(plan, steps=steps, call=call, record=record) if session else call)
+    recorded_bytes = (steps * graded_elements * _CTYPE_BYTES.get(output_ctype, 0)
+                      if record is not None else 0)
 
     return {
         "declarations": declarations,
-        "call": call,
+        # ONE body for both the warm and the measured invocation -- they must be the same program.
+        "call": body,
+        "reseed": reseed,
+        "steps": steps,
+        "carried": [dict(row) for row in plan.carried],
+        # Host work this shape adds INSIDE the measured window, stated rather than absorbed: the
+        # per-step retain copy, plus the carries the session genuinely requires.
+        "in_window_host_bytes": {
+            "trajectory_retain": recorded_bytes,
+            "state_carry": steps * sum(int(row["bytes"]) for row in plan.carried)},
         # The metric is published only on a clean gate. The check runs after the closing cycle
         # read, so its own cost is outside the measured window.
         "validate": "merlin_gate_check()",
         "gate": gate_fn,
         "n_arguments": len(args),
         "graded_output": {"tensor": graded.tensor, "offset": graded.offset,
-                          "elements": graded_elements},
+                          "elements": graded_elements, "steps": steps},
         "const_bytes": plan.const_bytes,
         "mutable_bytes": plan.mutable_bytes,
         "gate_declaration": gate.to_dict(),

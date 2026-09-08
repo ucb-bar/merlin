@@ -351,3 +351,181 @@ class TestThePrepackIsAppliedFromTheDeclaredRecipe:
         receipt = BP.write_const_blob(plan, lambda k: bytes(range(16)), tmp_path / "c.bin",
                                       prepack_recipes=[{"tensor": "somethingelse"}])
         assert receipt["tensors"][0]["prepack"] is None
+
+
+class TestARecurrentSessionsCarriedStateCannotLiveInReadOnlyMemory:
+    """The fifth defect, and the one the command buffer cannot possibly report.
+
+    Within ONE invocation a carried state's input genuinely is a read, so the emitted ABI marks it
+    ``read`` and the planner puts it in the const blob. Only the capture's session contract knows
+    the loop writes the output back into it every step. Measured on SmolVLA's flow_denoise: all
+    three carries (``prefix_kv_cache`` 2,314,240 B, ``flow_state`` 6,400 B, ``timestep`` 64 B) land
+    in the read-only blob from the command buffer alone.
+
+    So the placement is driven by the declaration, and each carried input keeps a ``seed`` row in
+    the const blob while its ABI pointer targets a mutable working copy.
+    """
+
+    def _buffer(self):
+        tensors = {"arg0": _t((4, 4), "i8"), "arg1": _t((1, 8), "f32"),
+                   "Y0": _t((1, 8), "f32"), "Y1": _t((1, 4), "i32")}
+        return _buffer([_arg("arg0"), _arg("arg1"),
+                        _arg("Y0", "write"), _arg("Y1", "write")], tensors)
+
+    def _states(self):
+        return (BP.SessionState(name="hidden", input_arg=1, output_index=0),)
+
+    def test_without_the_contract_the_carried_input_is_READ_ONLY(self):
+        """The state the defect lives in, pinned so the fix cannot be mistaken for a no-op."""
+        plan = BP.plan(self._buffer(), row_pitch_elements=16)
+        assert [t.tensor for t in plan.const] == ["arg0", "arg1"]
+        assert all(t.role == "argument" for t in plan.const)
+
+    def test_with_the_contract_it_gains_a_mutable_working_copy_and_a_const_seed(self):
+        plan = BP.plan(self._buffer(), row_pitch_elements=16, session_states=self._states())
+        seeds = [t for t in plan.const if t.role == "seed"]
+        assert [t.tensor for t in seeds] == ["arg1"]
+        working = [t for t in plan.mutable if t.tensor == "arg1"]
+        assert len(working) == 1 and working[0].role == "argument"
+        assert working[0].physical_bytes == seeds[0].physical_bytes
+
+    def test_the_carry_row_names_all_three_offsets(self):
+        plan = BP.plan(self._buffer(), row_pitch_elements=16, session_states=self._states())
+        assert len(plan.carried) == 1
+        row = plan.carried[0]
+        assert row["state"] == "hidden" and row["input_arg"] == 1
+        assert row["output_tensor"] == "Y0"
+        for key in ("seed_offset", "working_offset", "output_offset", "bytes"):
+            assert key in row
+        assert row["bytes"] > 0
+
+    def test_the_ABI_ORDER_is_recorded_and_const_plus_mutable_is_NOT_it(self):
+        """The latent bug a second model surfaced: the harness built its pointer list as
+        ``const + mutable``, which equals the ABI order only while every read precedes every write.
+        """
+        plan = BP.plan(self._buffer(), row_pitch_elements=16, session_states=self._states())
+        assert plan.abi_order == ("arg0", "arg1", "Y0", "Y1")
+        assert [t.tensor for t in plan.arguments] == list(plan.abi_order)
+        concatenated = [t.tensor for t in (*plan.const, *plan.mutable)]
+        assert concatenated != list(plan.abi_order), \
+            "if these agree the test proves nothing; the whole point is that they diverge"
+
+    def test_a_feed_forward_plan_is_BYTE_FOR_BYTE_unchanged(self):
+        """No carries declared must mean nothing moves -- the ResNet-50 acceptance test still holds."""
+        buffer = self._buffer()
+        assert BP.plan(buffer, row_pitch_elements=16).digest() == \
+            BP.plan(buffer, row_pitch_elements=16, session_states=()).digest()
+
+    def test_the_const_blob_size_is_unchanged_by_the_reclassification(self):
+        """The seed keeps the bytes, so a packed const blob is identical; only mutable grows."""
+        plain = BP.plan(self._buffer(), row_pitch_elements=16)
+        session = BP.plan(self._buffer(), row_pitch_elements=16, session_states=self._states())
+        assert session.const_bytes == plain.const_bytes
+        assert session.mutable_bytes > plain.mutable_bytes
+
+    def test_a_state_naming_an_input_the_ABI_does_not_READ_is_REFUSED(self):
+        with pytest.raises(BundlePackError, match="does not describe this program"):
+            BP.plan(self._buffer(), row_pitch_elements=16,
+                    session_states=(BP.SessionState("bogus", input_arg=97, output_index=0),))
+
+    def test_an_out_of_range_output_index_is_REFUSED(self):
+        with pytest.raises(BundlePackError, match="out-of-range carry"):
+            BP.plan(self._buffer(), row_pitch_elements=16,
+                    session_states=(BP.SessionState("hidden", input_arg=1, output_index=9),))
+
+    def test_a_carry_between_MISMATCHED_layouts_is_REFUSED(self):
+        """The failure no size check can see: Y1 is i32[1,4] = 16 B and arg1 is f32[1,8] = 32 B, but
+        a carry between two tensors of the SAME byte count and different shapes copies the right
+        number of bytes into the wrong elements."""
+        tensors = {"arg0": _t((4, 4), "i8"), "arg1": _t((1, 8), "f32"),
+                   "Y0": _t((2, 4), "f32"), "Y1": _t((1, 4), "i32")}
+        buffer = _buffer([_arg("arg0"), _arg("arg1"),
+                          _arg("Y0", "write"), _arg("Y1", "write")], tensors)
+        with pytest.raises(BundlePackError, match="copies the right byte count into the wrong"):
+            BP.plan(buffer, row_pitch_elements=16,
+                    session_states=(BP.SessionState("hidden", input_arg=1, output_index=0),))
+
+    def test_a_state_whose_input_is_ALREADY_a_write_argument_needs_no_move(self):
+        """A backend that emits the carried state as a write argument has already done the work."""
+        tensors = {"arg0": _t((4, 4), "i8"), "arg5": _t((1, 8), "f32")}
+        buffer = _buffer([_arg("arg0"), _arg("arg5", "write")], tensors)
+        plan = BP.plan(buffer, row_pitch_elements=16,
+                       session_states=(BP.SessionState("s", input_arg=5, output_index=0),))
+        assert plan.carried == ()
+        assert [t.tensor for t in plan.mutable] == ["arg5"]
+        assert all(t.role == "argument" for t in (*plan.const, *plan.mutable))
+
+
+class TestTheContractsStateListIsParsedStructurally:
+    def test_it_reads_the_declared_states(self):
+        states = BP.session_states_from_contract(
+            {"states": [{"name": "kv", "input_arg": 809, "output_index": 1},
+                        {"name": "flow", "input_arg": 810, "output_index": 0}]})
+        assert [s.name for s in states] == ["kv", "flow"]
+        assert [s.input_arg for s in states] == [809, 810]
+
+    def test_a_feed_forward_contract_yields_no_states(self):
+        assert BP.session_states_from_contract({"version": 1}) == ()
+
+    def test_a_state_missing_an_endpoint_is_REFUSED(self):
+        for row in ({"name": "kv", "output_index": 1}, {"name": "kv", "input_arg": 809}):
+            with pytest.raises(BundlePackError, match="write fault at step 1"):
+                BP.session_states_from_contract({"states": [row]})
+
+    def test_two_states_sharing_an_endpoint_are_REFUSED(self):
+        with pytest.raises(BundlePackError, match="overwrite the other's carry"):
+            BP.session_states_from_contract(
+                {"states": [{"name": "a", "input_arg": 1, "output_index": 0},
+                            {"name": "b", "input_arg": 1, "output_index": 1}]})
+        with pytest.raises(BundlePackError, match="overwrite the other's carry"):
+            BP.session_states_from_contract(
+                {"states": [{"name": "a", "input_arg": 1, "output_index": 0},
+                            {"name": "b", "input_arg": 2, "output_index": 0}]})
+
+    def test_a_non_list_states_field_is_REFUSED(self):
+        with pytest.raises(BundlePackError, match="not a list"):
+            BP.session_states_from_contract({"states": "kv"})
+
+
+class TestTheRealSmolVLAContractPlansAgainstTheRealCommandBuffer:
+    """The acceptance test for the session path: the shipped contract against the emitted buffer."""
+
+    def _inputs(self):
+        import glob
+        import json
+
+        from merlin.common.paths import artifacts_dir
+        from merlin.common.yaml import load_yaml
+        capture = (artifacts_dir() / "recaptures" / "smolvla_int8_w8a8_consistent"
+                   / "stages" / "flow_denoise")
+        if not capture.is_dir():
+            pytest.skip("no smolvla recapture in this tree")
+        found = glob.glob(str(artifacts_dir() / "perf-bench" / "gemmini"
+                              / "_global_phase2_baseline_emission_cache_v1" / "*"
+                              / "command_buffer.json"))
+        buffers = []
+        for path in sorted(found):
+            with open(path, encoding="utf-8") as handle:
+                buffer = json.load(handle)
+            abi = (buffer.get("kernel_abi") or {}).get("args") or []
+            if len(abi) > 1000:
+                buffers.append(buffer)
+        if not buffers:
+            pytest.skip("no emitted smolvla-sized command buffer in this tree")
+        return buffers[0], load_yaml(capture / "session_contract.yaml")
+
+    def test_all_three_declared_carries_resolve_and_move_out_of_read_only(self):
+        buffer, contract = self._inputs()
+        states = BP.session_states_from_contract(contract)
+        assert len(states) == 3
+        plan = BP.plan(buffer, row_pitch_elements=16, session_states=states)
+        assert {row["state"] for row in plan.carried} == {"prefix_kv_cache", "flow_state",
+                                                          "timestep"}
+        assert len([t for t in plan.const if t.role == "seed"]) == 3
+
+    def test_the_concatenation_the_harness_used_to_build_DISAGREES_with_the_ABI(self):
+        buffer, contract = self._inputs()
+        plan = BP.plan(buffer, row_pitch_elements=16,
+                       session_states=BP.session_states_from_contract(contract))
+        assert [t.tensor for t in plan.arguments] == list(plan.abi_order)
+        assert [t.tensor for t in (*plan.const, *plan.mutable)] != list(plan.abi_order)
