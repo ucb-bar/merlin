@@ -274,6 +274,41 @@ def _portfolio_selection_experiment(tmp_path, monkeypatch, *, changing_capsules,
     return experiment, candidate, calls
 
 
+def _install_fixture_isolated_worker(experiment, tmp_path):
+    """Give a synthetic portfolio the production probe-compiler policy seam."""
+    from merlin.perf.analysis_worker import IsolatedAnalysisWorker
+
+    delegate = experiment.analyzer
+
+    def sandbox_factory(baseline, package, scratch):
+        return {arm: {
+            "package_path": str(Path(selected).resolve()),
+            "scratch_path": str(Path(scratch).resolve()),
+            "compiler_dependencies": experiment._compiler_dependencies(Path(selected)),
+            "command_prefix": ["bwrap", "--clearenv", "PAYLOAD"],
+            "bwrap_argv_length": 2,
+            "answer_surfaces": [],
+            "overlay_trees": {},
+        } for arm, selected in (("baseline", baseline), ("candidate", package))}
+
+    class FixtureIsolatedWorker(IsolatedAnalysisWorker):
+        calls = 0
+
+        def __call__(self, baseline, package, objective, *, artifact_sink=None, **kwargs):
+            type(self).calls += 1
+            scratch = tmp_path / f"fixture_action_worker_{type(self).calls}"
+            scratch.mkdir()
+            self.completed_sandboxes = self.sandbox_factory(baseline, package, scratch)
+            return delegate(baseline, package, objective, artifact_sink=artifact_sink, **kwargs)
+
+    experiment.analyzer = FixtureIsolatedWorker(
+        stage_path=Path(PAS.__file__), sandbox_factory=sandbox_factory,
+        output=tmp_path / "fixture_action_worker")
+    # The real controller creates one worker per member. This fixture remains deterministic by
+    # using its synthetic worker serially while exercising the same IsolatedAnalysisWorker APIs.
+    experiment._member_analyzer = lambda: experiment.analyzer
+
+
 def _make_test_source_snapshot(tmp_path, name, policy_text):
     snapshot_tool = importlib.import_module("perf_snapshot")
     source = tmp_path / (name + "_source")
@@ -633,6 +668,127 @@ def test_changed_region_member_artifact_tamper_refuses_before_provider(
             candidate, timeout_s=30,
             provider=lambda **kwargs: called.append(kwargs) or {"status": "passed"})
     assert called == []
+
+
+def test_changed_region_action_bounds_integrity_checks_around_both_compiler_arms(
+        tmp_path, monkeypatch):
+    """A real qualifier action must spend its deadline compiling, not rehashing inputs."""
+    import subprocess
+
+    from merlin.perf import analysis_worker as worker
+    from merlin.targetgen import oot_runner
+
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name="bounded_action_integrity")
+    _install_fixture_isolated_worker(experiment, tmp_path)
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change secondary lowering mechanism")
+
+    clock = [0.0]
+    integrity_checks = []
+    original_check_inputs = experiment._check_inputs
+
+    def check_inputs():
+        integrity_checks.append(clock[0])
+        clock[0] += 4.0
+        original_check_inputs()
+
+    observed_compiler_timeouts = []
+
+    def compile_entrypoint(*args, **kwargs):
+        observed_compiler_timeouts.append(kwargs["timeout_s"])
+        assert kwargs["timeout_s"] > 0
+        return subprocess.CompletedProcess([], 0, "module {}", "")
+
+    monkeypatch.setattr(experiment, "_check_inputs", check_inputs)
+    monkeypatch.setattr(G.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(oot_runner, "load_package", lambda path: object())
+    monkeypatch.setattr(worker, "run_sandboxed_entrypoint", compile_entrypoint)
+
+    assert experiment.selected_changed_portfolio_context(candidate)["selection"][
+        "capsule"] == "secondary-model"
+    assert len(integrity_checks) == 1
+    integrity_checks.clear()
+    clock[0] = 0.0
+
+    def provider(*, candidate, experiment, timeout_s, portfolio_member):
+        started = G.time.monotonic()
+        selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+        for index, compile_method in enumerate((
+                experiment.compile_previous_probe_candidate,
+                experiment.compile_probe_candidate)):
+            result = compile_method(
+                candidate, selected["current"]["interface"],
+                tmp_path / f"bounded_action_probe_{index}",
+                timeout_s=timeout_s - (G.time.monotonic() - started))
+            assert result.returncode == 0
+        selected = experiment.selected_changed_portfolio_context(candidate, portfolio_member)
+        return {"status": "passed", "portfolio_member_binding": {
+            "selection": selected["selection"],
+            "previous": selected["previous"]["member_binding"],
+            "current": selected["current"]["member_binding"],
+        }}
+
+    receipt = experiment.qualify_changed_region(candidate, provider=provider, timeout_s=60)
+
+    assert receipt["evidence"]["status"] == "passed"
+    assert len(observed_compiler_timeouts) == 2
+    # The immutable experiment is checked once at entry and once before accepting evidence;
+    # compiler-arm boundaries still rehash the live candidate/submission/dependency identities.
+    assert len(integrity_checks) == 2
+    assert clock[0] == 8.0
+
+
+@pytest.mark.parametrize("tamper", ["candidate", "submitted_snapshot", "dependencies"])
+def test_changed_region_compiler_action_rechecks_revision_after_external_execution(
+        tmp_path, monkeypatch, tamper):
+    """Action-local reuse must not cross the untrusted compiler execution boundary."""
+    import subprocess
+
+    from merlin.perf import analysis_worker as worker
+    from merlin.targetgen import oot_runner
+
+    experiment, candidate, _ = _portfolio_selection_experiment(
+        tmp_path, monkeypatch, changing_capsules={"secondary-model"},
+        name=f"compiler_action_tamper_{tamper}")
+    _install_fixture_isolated_worker(experiment, tmp_path)
+    experiment.analyze(candidate, hypothesis="initial portfolio emission")
+    (candidate / "source.txt").write_text("candidate-v2")
+    experiment.analyze(candidate, hypothesis="change secondary lowering mechanism")
+    original_dependencies = experiment._compiler_dependencies
+    dependency_tampered = [False]
+
+    def dependencies(path):
+        result = original_dependencies(path)
+        if dependency_tampered[0] and Path(path).resolve() == candidate.resolve():
+            return {**result, "compiler_implementation_sha256": "f" * 64}
+        return result
+
+    def compile_entrypoint(*args, **kwargs):
+        if tamper == "candidate":
+            (candidate / "source.txt").write_text("tampered-during-compiler")
+        elif tamper == "submitted_snapshot":
+            submitted = Path(experiment.iterations[-2]["submitted_snapshot"])
+            source = submitted / "source.txt"
+            source.chmod(0o644)
+            source.write_text("tampered-during-compiler")
+            source.chmod(0o444)
+        else:
+            dependency_tampered[0] = True
+        return subprocess.CompletedProcess([], 0, "module {}", "")
+
+    monkeypatch.setattr(experiment, "_compiler_dependencies", dependencies)
+    monkeypatch.setattr(oot_runner, "load_package", lambda path: object())
+    monkeypatch.setattr(worker, "run_sandboxed_entrypoint", compile_entrypoint)
+
+    selected = experiment.selected_changed_portfolio_context(candidate)
+    with pytest.raises(ValueError, match=(
+            "candidate changed|compiler dependencies changed|compiler identity changed")):
+        experiment.compile_previous_probe_candidate(
+            candidate, selected["current"]["interface"],
+            tmp_path / f"tampered_action_probe_{tamper}", timeout_s=30)
 
 
 def test_changed_region_cross_member_artifact_substitution_refuses(tmp_path, monkeypatch):

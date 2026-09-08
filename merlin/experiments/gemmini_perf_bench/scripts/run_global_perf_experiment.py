@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import argparse
 import ast
-import copy
 import concurrent.futures
+import copy
 import hashlib
 import json
 import math
@@ -19,11 +19,13 @@ import shutil
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
 import perf_agent_stage as PAS
+
 from merlin.benchharness import hash_tree
 from merlin.perf.execution_policy import (
     FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
@@ -1217,6 +1219,10 @@ class GlobalPerfExperiment:
         self.machine_build_policy = _current_machine_build_policy(target)
         self.iterations: list[dict[str, Any]] = []
         self._analysis_lock = threading.Lock()
+        # Semantic providers compose several strict public accessors. Keep their verified current
+        # revision thread-local for one synchronous host action; explicit external-execution
+        # checkpoints refresh it below. This is never a cross-action or time-based cache.
+        self._integrity_action_local = threading.local()
         self._cross_run_seed_attempted = False
         self._artifacts: dict[str, Any] = {}
         self._previous_artifacts: Mapping[str, Any] | None = None
@@ -2002,17 +2008,21 @@ class GlobalPerfExperiment:
         return {**copy.deepcopy(result), "receipt": {
             "path": str(path.resolve()), "sha256": PAS._sha256_file(path)}}
 
-    def validate_candidate_scope(self, candidate: Path) -> dict[str, Any]:
+    def _validate_candidate_scope_after_input_check(self, candidate: Path) -> dict[str, Any]:
         from merlin.perf.compiler_edit_scope import inspect_compiler_edits
         if self.edit_contract is None:
             return {"status": "unconfigured_development_only"}
-        self._check_inputs()
         result = inspect_compiler_edits(self.edit_scope_seed, candidate, self.edit_contract)
         if result["status"] != "allowed":
             self._write(f"edit_scope_refusal_{time.time_ns()}.json", {
                 **result, "candidate_sha256": hash_tree(candidate)["sha256"]})
             raise ValueError("candidate edit exceeds host-frozen authority: " + str(result["violations"]))
         return result
+
+    def validate_candidate_scope(self, candidate: Path) -> dict[str, Any]:
+        if self.edit_contract is not None:
+            self._check_inputs()
+        return self._validate_candidate_scope_after_input_check(candidate)
 
     def inspect_optimization_surfaces(self, candidate: Path) -> dict[str, Any]:
         """Expose current AST locations with host-frozen semantics, never self-granted permissions."""
@@ -3312,15 +3322,10 @@ class GlobalPerfExperiment:
             "licence": "structural accounting only; fewer dispatches do not prove fewer cycles",
         }
 
-    def _matching_current(self, candidate: Path, *, require_ready: bool) -> dict[str, Any]:
-        """Return the exact analyzed revision, optionally requiring promotion readiness.
-
-        A blocked analysis is still valuable authoring evidence: it binds the candidate bytes to
-        every portfolio member and tells the next compiler round what remains unsupported.  It is
-        never sufficient for probes, execution, or the promotable global-candidate seal.
-        """
-        self._check_inputs()
-        self.validate_candidate_scope(candidate)
+    def _matching_current_after_input_check(
+            self, candidate: Path, *, require_ready: bool) -> dict[str, Any]:
+        """Resolve an analyzed revision after the experiment-wide inputs were checked."""
+        self._validate_candidate_scope_after_input_check(candidate)
         if not self.iterations:
             raise ValueError("compile the complete-model graph before requesting a probe or sealing")
         digest = hash_tree(candidate)["sha256"]
@@ -3336,6 +3341,74 @@ class GlobalPerfExperiment:
         if require_ready and row["readiness"]["status"] != "ready_for_probe_admission":
             raise ValueError("global iteration is not ready: " + ", ".join(row["readiness"]["blockers"]))
         return row
+
+    def _matching_current_fresh(self, candidate: Path, *, require_ready: bool) -> dict[str, Any]:
+        self._check_inputs()
+        return self._matching_current_after_input_check(candidate, require_ready=require_ready)
+
+    def _matching_current(self, candidate: Path, *, require_ready: bool) -> dict[str, Any]:
+        """Return the exact analyzed revision, optionally requiring promotion readiness.
+
+        A blocked analysis is still valuable authoring evidence: it binds the candidate bytes to
+        every portfolio member and tells the next compiler round what remains unsupported. It is
+        never sufficient for probes, execution, or the promotable global-candidate seal. Nested
+        accessors in one host action reuse only the revision verified by that action; no result is
+        retained across actions or across an external compiler/runtime boundary.
+        """
+        state = getattr(self._integrity_action_local, "state", None)
+        if state is None:
+            return self._matching_current_fresh(candidate, require_ready=require_ready)
+        candidate_key = str(Path(candidate).resolve(strict=True))
+        if candidate_key != state["candidate_key"]:
+            raise ValueError("one integrity action cannot substitute another candidate")
+        row = state["row"]
+        if require_ready and row["readiness"]["status"] != "ready_for_probe_admission":
+            raise ValueError("global iteration is not ready: " + ", ".join(row["readiness"]["blockers"]))
+        return row
+
+    @contextmanager
+    def _integrity_action(self, candidate: Path):
+        """Deduplicate strict reads only inside one synchronous host-controlled action."""
+        candidate_key = str(Path(candidate).resolve(strict=True))
+        state = getattr(self._integrity_action_local, "state", None)
+        if state is not None:
+            if candidate_key != state["candidate_key"]:
+                raise ValueError("one integrity action cannot substitute another candidate")
+            state["depth"] += 1
+            try:
+                yield state["row"], False
+            finally:
+                state["depth"] -= 1
+            return
+        row = self._matching_current_fresh(candidate, require_ready=True)
+        state = {"candidate_key": candidate_key, "row": row, "depth": 1}
+        self._integrity_action_local.state = state
+        try:
+            yield row, True
+        finally:
+            del self._integrity_action_local.state
+
+    def _accept_refreshed_integrity_action_row(
+            self, candidate: Path, row: dict[str, Any]) -> dict[str, Any]:
+        state = getattr(self._integrity_action_local, "state", None)
+        if state is not None:
+            if (str(Path(candidate).resolve(strict=True)) != state["candidate_key"]
+                    or row["iteration"] != state["row"]["iteration"]
+                    or row["candidate_sha256"] != state["row"]["candidate_sha256"]
+                    or row["compiler_dependencies"] != state["row"]["compiler_dependencies"]):
+                raise ValueError("current compiler revision changed during the integrity action")
+            state["row"] = row
+        return row
+
+    def _revalidate_integrity_action_revision(self, candidate: Path) -> dict[str, Any]:
+        """Rehash the live candidate/dependencies without repeating action-wide immutable reads."""
+        row = self._matching_current_after_input_check(candidate, require_ready=True)
+        return self._accept_refreshed_integrity_action_row(candidate, row)
+
+    def _refresh_integrity_action(self, candidate: Path) -> dict[str, Any]:
+        """Recheck every immutable input and live revision before leaving an action."""
+        row = self._matching_current_fresh(candidate, require_ready=True)
+        return self._accept_refreshed_integrity_action_row(candidate, row)
 
     def _current(self, candidate: Path) -> dict[str, Any]:
         return self._matching_current(candidate, require_ready=True)
@@ -3512,10 +3585,11 @@ class GlobalPerfExperiment:
 
     def select_changed_portfolio_member(self, candidate: Path) -> dict[str, Any]:
         """Select an emitted-changed member by exact known host-work deltas and stable order."""
-        contexts = [(self.previous_portfolio_member_context(candidate, index=index),
-                     self.current_portfolio_member_context(candidate, index=index))
-                    for index in range(len(self.portfolio_sentinels))]
-        return self._select_changed_portfolio_contexts(contexts)
+        with self._integrity_action(candidate):
+            contexts = [(self.previous_portfolio_member_context(candidate, index=index),
+                         self.current_portfolio_member_context(candidate, index=index))
+                        for index in range(len(self.portfolio_sentinels))]
+            return self._select_changed_portfolio_contexts(contexts)
 
     @staticmethod
     def _select_changed_portfolio_contexts(contexts) -> dict[str, Any]:
@@ -3572,13 +3646,14 @@ class GlobalPerfExperiment:
             self, candidate: Path, selection: Mapping[str, Any] | None = None
             ) -> dict[str, Any]:
         """Recompute and validate a selected member before a host qualifier consumes it."""
-        expected = self.select_changed_portfolio_member(candidate)
-        if selection is not None and dict(selection) != expected:
-            raise ValueError("changed portfolio member selection is stale or caller-substituted")
-        index = expected["portfolio_index"]
-        return {"selection": expected,
-                "previous": self.previous_portfolio_member_context(candidate, index=index),
-                "current": self.current_portfolio_member_context(candidate, index=index)}
+        with self._integrity_action(candidate):
+            expected = self.select_changed_portfolio_member(candidate)
+            if selection is not None and dict(selection) != expected:
+                raise ValueError("changed portfolio member selection is stale or caller-substituted")
+            index = expected["portfolio_index"]
+            return {"selection": expected,
+                    "previous": self.previous_portfolio_member_context(candidate, index=index),
+                    "current": self.current_portfolio_member_context(candidate, index=index)}
 
     def current_probe_binding(self, candidate: Path) -> ProbeBinding:
         row = self._current(candidate)
@@ -3692,64 +3767,82 @@ class GlobalPerfExperiment:
     def _compile_probe_revision(self, candidate: Path, interface: Path, scratch: Path,
                                 *, timeout_s: float, emit_command_buffer: bool, previous: bool,
                                 optimization_baseline: bool = False):
-        from merlin.perf.analysis_worker import IsolatedAnalysisWorker, run_sandboxed_entrypoint, _read_output
+        from merlin.perf.analysis_worker import IsolatedAnalysisWorker, _read_output, run_sandboxed_entrypoint
         from merlin.targetgen import oot_runner
         started = time.monotonic()
-        self._current(candidate)
-        if not isinstance(self.analyzer, IsolatedAnalysisWorker):
-            raise ValueError("short candidate compilation requires the production isolated compiler policy")
-        if optimization_baseline:
-            import math
-            if not math.isfinite(timeout_s) or not 0 < timeout_s <= ITERATION_MAX_SECONDS:
-                raise ValueError("optimization-baseline probe needs a finite bounded timeout")
-            timeout_s = min(timeout_s, self.timeout_s - self._current(candidate)["elapsed_seconds"])
-            if timeout_s <= 0:
-                raise TimeoutError("optimization-baseline probe exhausted its iteration budget")
-        if previous and optimization_baseline:
-            raise ValueError("preceding candidate and optimization baseline are distinct arms")
-        binding = (self.optimization_baseline_artifact_binding(candidate) if optimization_baseline else
-                   self.previous_probe_binding(candidate) if previous else self.current_probe_binding(candidate))
-        selected = self.iterations[-2] if previous else self.iterations[-1]
-
-        def check_revision():
-            self._current(candidate)
+        with self._integrity_action(candidate) as (_row, owns_action):
+            if not isinstance(self.analyzer, IsolatedAnalysisWorker):
+                raise ValueError("short candidate compilation requires the production isolated compiler policy")
             if optimization_baseline:
-                if self.optimization_baseline_artifact_binding(candidate) != binding:
-                    raise ValueError("optimization-baseline witness binding changed")
-                return
-            actual = self.previous_probe_binding(candidate) if previous else self.current_probe_binding(candidate)
-            submitted = Path(selected["submitted_snapshot"])
-            if (actual != binding or hash_tree(submitted)["sha256"] != selected["candidate_sha256"]
-                    or self._compiler_dependencies(submitted) != selected["compiler_dependencies"]):
-                raise ValueError("selected short-witness compiler identity changed")
+                if not math.isfinite(timeout_s) or not 0 < timeout_s <= ITERATION_MAX_SECONDS:
+                    raise ValueError("optimization-baseline probe needs a finite bounded timeout")
+                timeout_s = min(timeout_s, self.timeout_s - self._current(candidate)["elapsed_seconds"])
+                if timeout_s <= 0:
+                    raise TimeoutError("optimization-baseline probe exhausted its iteration budget")
+            if previous and optimization_baseline:
+                raise ValueError("preceding candidate and optimization baseline are distinct arms")
+            binding = (self.optimization_baseline_artifact_binding(candidate)
+                       if optimization_baseline else self.previous_probe_binding(candidate)
+                       if previous else self.current_probe_binding(candidate))
+            selected = self.iterations[-2] if previous else self.iterations[-1]
 
-        check_revision()
-        scratch.mkdir()
-        source = scratch / "interface.mlir"
-        source.write_bytes(interface.read_bytes())
-        sandbox = (self._probe_sandbox(candidate, scratch, optimization_baseline=True) if optimization_baseline
-                   else self._probe_sandbox(candidate, scratch, previous=previous))
-        package = oot_runner.load_package(Path(sandbox["package_path"]))
-        lowered = run_sandboxed_entrypoint(
-            package, "lower_target_to_llvm", source,
-            sandbox=sandbox, timeout_s=timeout_s - (time.monotonic() - started))
-        if not emit_command_buffer:
-            check_revision()
-            return lowered
-        buffer_result = None
-        command_buffer = None
-        if lowered.returncode == 0:
-            buffer_path = scratch / "command_buffer.json"
-            buffer_result = run_sandboxed_entrypoint(
-                package, "emit_command_buffer", source, buffer_path,
-                sandbox=sandbox, timeout_s=timeout_s - (time.monotonic() - started))
-            if buffer_result.returncode == 0:
-                command_buffer = json.loads(_read_output(buffer_path))
-                if not isinstance(command_buffer, dict):
-                    raise ValueError("probe command buffer must be a JSON object")
-        check_revision()
-        return {"lowered": lowered, "command_buffer_emission": buffer_result,
-                "command_buffer": command_buffer}
+            def check_revision(*, revalidate: bool, full: bool = False) -> None:
+                if full:
+                    self._refresh_integrity_action(candidate)
+                elif revalidate:
+                    self._revalidate_integrity_action_revision(candidate)
+                else:
+                    self._current(candidate)
+                if optimization_baseline:
+                    if self.optimization_baseline_artifact_binding(candidate) != binding:
+                        raise ValueError("optimization-baseline witness binding changed")
+                    return
+                actual = (self.previous_probe_binding(candidate)
+                          if previous else self.current_probe_binding(candidate))
+                submitted = Path(selected["submitted_snapshot"])
+                if (actual != binding
+                        or hash_tree(submitted)["sha256"] != selected["candidate_sha256"]
+                        or self._compiler_dependencies(submitted)
+                        != selected["compiler_dependencies"]):
+                    raise ValueError("selected short-witness compiler identity changed")
+
+            # The outermost action was freshly verified on entry. A provider-owned parent action
+            # may have done arbitrary host work since its last checkpoint, so refresh before use.
+            check_revision(revalidate=not owns_action)
+            scratch.mkdir()
+            source = scratch / "interface.mlir"
+            source.write_bytes(interface.read_bytes())
+            sandbox = (self._probe_sandbox(candidate, scratch, optimization_baseline=True)
+                       if optimization_baseline else
+                       self._probe_sandbox(candidate, scratch, previous=previous))
+            package = oot_runner.load_package(Path(sandbox["package_path"]))
+            compiler_invoked = False
+            try:
+                compiler_invoked = True
+                lowered = run_sandboxed_entrypoint(
+                    package, "lower_target_to_llvm", source,
+                    sandbox=sandbox, timeout_s=timeout_s - (time.monotonic() - started))
+                if not emit_command_buffer:
+                    return lowered
+                buffer_result = None
+                command_buffer = None
+                if lowered.returncode == 0:
+                    buffer_path = scratch / "command_buffer.json"
+                    buffer_result = run_sandboxed_entrypoint(
+                        package, "emit_command_buffer", source, buffer_path,
+                        sandbox=sandbox, timeout_s=timeout_s - (time.monotonic() - started))
+                    if buffer_result.returncode == 0:
+                        command_buffer = json.loads(_read_output(buffer_path))
+                        if not isinstance(command_buffer, dict):
+                            raise ValueError("probe command buffer must be a JSON object")
+                return {"lowered": lowered, "command_buffer_emission": buffer_result,
+                        "command_buffer": command_buffer}
+            finally:
+                if compiler_invoked:
+                    # A containing semantic action owns the expensive immutable-input audit and
+                    # repeats it once before accepting evidence. Always rehash the candidate,
+                    # selected submitted snapshot and compiler dependencies at this boundary.
+                    check_revision(revalidate=True, full=owns_action)
 
     def _probe_sandbox(self, candidate: Path, scratch: Path, *, previous: bool = False,
                        optimization_baseline: bool = False) -> Mapping[str, Any]:
@@ -3834,8 +3927,26 @@ class GlobalPerfExperiment:
         The host provider selects the runner and owns its reference comparison. Native candidate
         instructions never execute in the host interpreter or inherit access to host answers.
         """
+        with self._integrity_action(candidate) as (_row, owns_action):
+            if not owns_action:
+                self._revalidate_integrity_action_revision(candidate)
+            try:
+                return self._run_native_probe_after_action_check(
+                    candidate, scratch, argv, timeout_s=timeout_s,
+                    _build_dependencies=_build_dependencies,
+                    _execution_dependencies=_execution_dependencies)
+            finally:
+                if owns_action:
+                    self._refresh_integrity_action(candidate)
+                else:
+                    self._revalidate_integrity_action_revision(candidate)
+
+    def _run_native_probe_after_action_check(
+            self, candidate: Path, scratch: Path, argv: Sequence[str], *, timeout_s: float,
+            _build_dependencies=None, _execution_dependencies=None):
         import math
         import subprocess
+
         from merlin.perf.analysis_worker import IsolatedAnalysisWorker, _kill_group
         started = time.monotonic()
         row = self._current(candidate)
@@ -3885,7 +3996,6 @@ class GlobalPerfExperiment:
                     _build_dependencies.revalidate(argv)
                 if _execution_dependencies is not None:
                     _execution_dependencies.revalidate(argv)
-        self._current(candidate)
         return result
 
     def charge_probe_preparation(self, candidate: Path, elapsed_seconds: float) -> None:
@@ -4074,62 +4184,72 @@ class GlobalPerfExperiment:
     def qualify_changed_region(self, candidate: Path, *, provider: Callable[..., Mapping[str, Any]],
                                timeout_s: float) -> dict[str, Any]:
         """Record a host-selected semantic mechanism witness without upgrading model timing."""
-        row = self._current(candidate)
-        selected = self.selected_changed_portfolio_context(candidate)
-        selection = selected["selection"]
-        previous = selected["previous"]
-        current = selected["current"]
-        binding = current["probe_binding"]
-        member_binding = {"selection": selection,
-                          "previous": previous["member_binding"],
-                          "current": current["member_binding"]}
-        previous_record = self.output / f"iteration_{self.iterations[-2]['iteration']:04d}.json"
-        previous_pointer = {
-            "previous_iteration_record": str(previous_record.absolute()),
-            "previous_iteration_record_sha256": PAS._sha256_file(previous_record),
-            "previous_portfolio_iteration_sha256": PAS._document_sha256(
-                self.iterations[-2]["portfolio"]),
-        }
-        started = time.monotonic()
-        remaining = min(float(timeout_s), self.timeout_s - row["elapsed_seconds"])
-        if remaining <= 0:
-            raise TimeoutError("changed-region qualification exhausted its iteration budget")
-        try:
-            evidence = dict(provider(candidate=candidate, experiment=self, timeout_s=remaining,
-                                     portfolio_member=selection))
-            selected_after = self.selected_changed_portfolio_context(candidate, selection)
-            actual_member_binding = {"selection": selected_after["selection"],
-                "previous": selected_after["previous"]["member_binding"],
-                "current": selected_after["current"]["member_binding"]}
-            if (actual_member_binding != member_binding
-                    or selected_after["current"]["probe_binding"] != binding
-                    or evidence.get("portfolio_member_binding") != member_binding):
-                raise ValueError("compiler, portfolio member, source, plan, or artifacts changed during qualification")
-            elapsed = time.monotonic() - started
-            if elapsed > remaining:
-                raise TimeoutError("changed-region semantic qualification exceeded its wall budget")
-            receipt = {
-                "schema": "global_changed_region_semantic_receipt_v2",
-                "iteration": row["iteration"], "binding": binding.to_dict(),
-                **previous_pointer,
-                "portfolio_member_binding": member_binding,
-                "previous_artifact_sha256": previous["member_binding"]["lowered_sha256"],
-                "current_artifact_sha256": current["member_binding"]["lowered_sha256"],
-                "evidence": evidence, "elapsed_seconds": elapsed,
-                "scope": "selected changed mechanism and tested reduced domain only",
-                "full_model_numerics_qualified": False, "global_speedup_proven": False,
-                "full_model_cycles": None,
+        with self._integrity_action(candidate):
+            row = self._current(candidate)
+            selected = self.selected_changed_portfolio_context(candidate)
+            selection = selected["selection"]
+            previous = selected["previous"]
+            current = selected["current"]
+            binding = current["probe_binding"]
+            member_binding = {"selection": selection,
+                              "previous": previous["member_binding"],
+                              "current": current["member_binding"]}
+            previous_record = self.output / f"iteration_{self.iterations[-2]['iteration']:04d}.json"
+            previous_pointer = {
+                "previous_iteration_record": str(previous_record.absolute()),
+                "previous_iteration_record_sha256": PAS._sha256_file(previous_record),
+                "previous_portfolio_iteration_sha256": PAS._document_sha256(
+                    self.iterations[-2]["portfolio"]),
             }
-            _verify_changed_region_semantic_receipt(
-                receipt, iteration=row, portfolio_identity=self.portfolio_identity,
-                target_sha256=self.target_sha256, experiment_root=self.output)
-            path = self._write(f"semantic_{row['iteration']:04d}_{time.time_ns()}.json", receipt)
-            row.setdefault("semantic_receipts", []).append(
-                {"path": str(path), "sha256": PAS._sha256_file(path)})
-            return receipt
-        finally:
-            # Charge failures too; the provider never charges these same seconds a second time.
-            self.charge_probe_preparation(candidate, time.monotonic() - started)
+            started = time.monotonic()
+            remaining = min(float(timeout_s), self.timeout_s - row["elapsed_seconds"])
+            if remaining <= 0:
+                raise TimeoutError("changed-region qualification exhausted its iteration budget")
+            final_integrity_checked = False
+            try:
+                evidence = dict(provider(candidate=candidate, experiment=self, timeout_s=remaining,
+                                         portfolio_member=selection))
+                # The provider may execute compilers/runtimes or otherwise yield control. Recheck
+                # the complete immutable experiment and live candidate before consuming evidence.
+                self._refresh_integrity_action(candidate)
+                final_integrity_checked = True
+                selected_after = self.selected_changed_portfolio_context(candidate, selection)
+                actual_member_binding = {"selection": selected_after["selection"],
+                    "previous": selected_after["previous"]["member_binding"],
+                    "current": selected_after["current"]["member_binding"]}
+                if (actual_member_binding != member_binding
+                        or selected_after["current"]["probe_binding"] != binding
+                        or evidence.get("portfolio_member_binding") != member_binding):
+                    raise ValueError(
+                        "compiler, portfolio member, source, plan, or artifacts changed during qualification")
+                elapsed = time.monotonic() - started
+                if elapsed > remaining:
+                    raise TimeoutError("changed-region semantic qualification exceeded its wall budget")
+                receipt = {
+                    "schema": "global_changed_region_semantic_receipt_v2",
+                    "iteration": row["iteration"], "binding": binding.to_dict(),
+                    **previous_pointer,
+                    "portfolio_member_binding": member_binding,
+                    "previous_artifact_sha256": previous["member_binding"]["lowered_sha256"],
+                    "current_artifact_sha256": current["member_binding"]["lowered_sha256"],
+                    "evidence": evidence, "elapsed_seconds": elapsed,
+                    "scope": "selected changed mechanism and tested reduced domain only",
+                    "full_model_numerics_qualified": False, "global_speedup_proven": False,
+                    "full_model_cycles": None,
+                }
+                _verify_changed_region_semantic_receipt(
+                    receipt, iteration=row, portfolio_identity=self.portfolio_identity,
+                    target_sha256=self.target_sha256, experiment_root=self.output)
+                path = self._write(f"semantic_{row['iteration']:04d}_{time.time_ns()}.json", receipt)
+                row.setdefault("semantic_receipts", []).append(
+                    {"path": str(path), "sha256": PAS._sha256_file(path)})
+                return receipt
+            finally:
+                # Charge failures too; the provider never charges these same seconds a second
+                # time. A failed callback/compile still gets a fresh post-boundary integrity check.
+                if not final_integrity_checked:
+                    self._refresh_integrity_action(candidate)
+                self.charge_probe_preparation(candidate, time.monotonic() - started)
 
     def profile_controlled_context(self, candidate: Path, *, provider: Callable[..., Mapping[str, Any]],
                                    timeout_s: float) -> dict[str, Any]:
