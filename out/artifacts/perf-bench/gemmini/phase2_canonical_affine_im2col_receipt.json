@@ -1,0 +1,159 @@
+{
+  "schema": "merlin_phase2_canonical_multimodel_affine_im2col_v1",
+  "status": "qualified_default_opt_in_and_affine_exact_target_transfer",
+  "scope": "fresh isolated canonical child artifact; no shared source edit, commit, L3 run, FireSim run, or queue action",
+  "lineage": {
+    "canonical_parent": "out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908",
+    "canonical_parent_compiler_tree_sha256": "38e42aea90f29e271ddc510daca09901cc36970323e2926d1d9426a6e6ee1fdf",
+    "affine_source": "out/artifacts/perf-bench/gemmini/development_bf62_affine_im2col_spans_20260908",
+    "affine_source_compiler_tree_sha256": "696536fe2b24297a470849a63e28bc6180c02ffd05a84257cc137cd5e6556a38"
+  },
+  "compiler": {
+    "path": "out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908",
+    "tree_sha256": "8f7dae852ed8e8f80e8a67207582e8842af098d3d131f6bdba1da3680315adb6",
+    "tree_files": 42,
+    "support_merlin_tree_sha256": "0714adc43f25efb2421afc37519190f9a2b58c75ad75d7a08b9ff3537936498a",
+    "support_merlin_tree_files": 1016,
+    "changed_files_from_canonical_parent": {
+      "compiler/mlir_oot/codegen/llvm_emit.py": "b5d0a4011667b6bf22825775b2de7e33b8d6e2dc0aa7570b298ffac5a4653328",
+      "compiler/manifest.yaml": "586ced7c261430d9ca3159181de51d8bd6d8c4d42e6cf6b8506899f3f13a6bfc",
+      "tests/test_affine_im2col_spans.py": "74c58cb2163edbf69cf6c34096c86b14ab7e0ef42bf8106c4d2411d5f023f79a"
+    },
+    "patch": {
+      "path": "canonical_affine_im2col.patch",
+      "sha256": "1d97f05590b894108eaf37277a254c91e4005bcdaa170dd95f6d98b09e3302ab",
+      "lines": 275,
+      "applies_cleanly_to_canonical_parent": true
+    }
+  },
+  "merge_conflicts": {
+    "status": "resolved_without_semantic_conflict",
+    "overlap": [
+      "mlir_oot/codegen/llvm_emit.py is also the native LOOP_CONV emitter"
+    ],
+    "resolution": [
+      "preserved loop_conv import",
+      "preserved Emitter.emit_loop_conv_ws byte-for-byte",
+      "preserved loop_conv_ws build dispatch and ownership tagging",
+      "changed only the affine span helper and Emitter.emit_im2col_row"
+    ],
+    "dynamic_weight_bridge_overlap": false,
+    "all_other_canonical_compiler_files_byte_identical": true
+  },
+  "mechanisms": {
+    "native_scalar_lowering": {
+      "preserved": true,
+      "default_enabled": true
+    },
+    "native_loop_conv": {
+      "preserved": true,
+      "default_enabled": true,
+      "selection_policy": "capability_geometry_layout_semantics_v1"
+    },
+    "dynamic_weight_quant_bridge": {
+      "preserved": true,
+      "default_enabled": false,
+      "cli": "--dynamic-weight-only-contract symmetric_per_output_channel_roundeven_v1",
+      "source_f32_bit_equivalence": "NOT_CLAIMED"
+    },
+    "affine_window_packing_specialization": {
+      "preserved_from_source_artifact": true,
+      "default_enabled_for_row_streamed_im2col": true,
+      "model_layer_or_shape_specific": false,
+      "accelerator_schedule_dma_or_fence_change": false
+    }
+  },
+  "tests": {
+    "status": "passed",
+    "count": 39,
+    "seconds": 1.11,
+    "includes": [
+      "canonical native scalar tests",
+      "native LOOP_CONV selection, fallback, capability, and reduction tests",
+      "dynamic weight bridge positive and fail-closed tests",
+      "host workspace and resident LOOP_WS tests",
+      "26730 exhaustive affine span geometries",
+      "500 deterministic signed-i8 segmented-versus-naive im2col cases",
+      "six invalid geometry refusals"
+    ]
+  },
+  "default_four_model_compile": {
+    "status": "passed_sequentially",
+    "peak_sequential_compile_rss_kb": 308824,
+    "resnet50": {
+      "wall_seconds": 31.62,
+      "max_rss_kb": 202272,
+      "target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+      "command_buffer_sha256": "3b64d7cd49c3962418f4347f65161a2830af3bd93e3a7c9f96738838024ac6b6",
+      "canonical_parent_command_buffer_byte_identical": true,
+      "native_loop_conv_selected": 0,
+      "native_loop_conv_refused": 53
+    },
+    "tinyllama": {
+      "wall_seconds": 1.32,
+      "max_rss_kb": 54912,
+      "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5",
+      "command_buffer_sha256": "0e9611bfb0dafbdd0c2dbbd6ce73b2c8fbfc7a4a186dc0a026babe5a0a962ba8",
+      "canonical_parent_target_and_command_buffer_byte_identical": true
+    },
+    "lstmnetvit": {
+      "wall_seconds": 50.97,
+      "max_rss_kb": 189096,
+      "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7",
+      "command_buffer_sha256": "2397fa42eff271ae72110002e2f9522e2ec474712a6529d5259bbc14730cb463",
+      "canonical_parent_target_and_command_buffer_byte_identical": true
+    },
+    "smolvla": {
+      "wall_seconds": 47.02,
+      "max_rss_kb": 308824,
+      "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b",
+      "command_buffer_sha256": "ab9f7b1aa2f11849dbf390b95c9f0a2be236d7dd1c6f8286b0f617fe0daf1113",
+      "canonical_parent_target_and_command_buffer_byte_identical": true
+    }
+  },
+  "dynamic_weight_opt_in_gate": {
+    "status": "passed",
+    "wall_seconds": 2.46,
+    "max_rss_kb": 59016,
+    "target_sha256": "a1d39869e27efe2d5f3b4be5f8cb75020746423b761e69d96e69c1ec7d015082",
+    "command_buffer_sha256": "2e1360a6a9f87047ca5fbaadef6ae942c0b694c8c181701d1053544ae3724e19",
+    "canonical_parent_target_and_command_buffer_byte_identical": true,
+    "commands": 45,
+    "eligible_dynamic_activation_contractions": 15,
+    "source_f32_bit_equivalence": "NOT_CLAIMED"
+  },
+  "native_loop_conv_reexecution": {
+    "status": "passed",
+    "receipt_sha256": "ee7391225dd4f768462859d34036cf2d189be389a96deed4f54712e82646d56b",
+    "cases": [
+      {
+        "name": "stride2_padding1_single_tile",
+        "cycles": 63,
+        "outputs": 192
+      },
+      {
+        "name": "reduction_tiled_k1024",
+        "cycles": 79,
+        "outputs": 144
+      }
+    ]
+  },
+  "affine_full_model_evidence": {
+    "status": "transferred_by_executable_target_identity",
+    "integrated_resnet_target_byte_identical_to_affine_source": true,
+    "affine_source_exact_spike_console_sha256": "25a320f2ee3bbb614ee557334ec711e34b92ef3fc30bd9111fd65f04ac39f659",
+    "baseline_cycles": 751827143,
+    "candidate_cycles": 506265226,
+    "cycles_saved": 245561917,
+    "cycle_reduction_percent": 32.66201802985451,
+    "speedup": 1.4850459885230198,
+    "correctness": "1000/1000 exact, bad=0, nonfinite=0, top1=258, checksum=c6e777c3fe0aae90",
+    "performance_role": "Spike comparative proxy only; not FPGA performance evidence"
+  },
+  "hardware": {
+    "firesim_run_performed": false,
+    "l3_run_performed": false,
+    "queue_action_performed": false,
+    "recommended_for_next_queued_measurement": true
+  }
+}

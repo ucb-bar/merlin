@@ -7,20 +7,21 @@ Date: 2026-09-08. Branch: `feat/target-generalization`.
 The current usable optimized compiler is the canonical multi-model assembly:
 
 ```text
-out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908
+out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908
 ```
 
 Its compiler tree SHA-256 is
-`38e42aea90f29e271ddc510daca09901cc36970323e2926d1d9426a6e6ee1fdf` over 42 files.
-Run `verify.py` and the 31-test suite before use. This assembly contains the q534 native-scalar
-lowering, the exact/fail-closed native `LOOP_CONV_WS` route, and the default-off dynamic-weight
-contraction bridge under one compiler identity. Its default ResNet target LLVM is byte-identical to
-q534, so the q534 hardware result transfers without another expensive run.
+`8f7dae852ed8e8f80e8a67207582e8842af098d3d131f6bdba1da3680315adb6` over 42 files.
+Run `verify.py` and the 39-test suite before use. This assembly contains the q534 native-scalar
+lowering, the exact/fail-closed native `LOOP_CONV_WS` route, the default-off dynamic-weight
+contraction bridge, and the q535 generic affine-im2col lowering under one compiler identity. Its
+default ResNet target LLVM is byte-identical to the q535 hardware candidate, so the exact
+1,316,619,699-cycle result transfers by executable-target identity.
 
-The canonical code delta from the slot-complete/workspace base is preserved in
-`phase2_canonical_multimodel.patch` (SHA-256
-`c9b013aa93b315a067a574cb7e48559cdb08ca4f5342a4b7f65dd260b15019e6`), and its portable
-evidence summary is `phase2_canonical_multimodel_receipt.json`.
+The original canonical assembly remains preserved in `phase2_canonical_multimodel.patch`. The
+reviewable affine integration delta is `phase2_canonical_affine_im2col.patch` (SHA-256
+`1d97f05590b894108eaf37277a254c91e4005bcdaa170dd95f6d98b09e3302ab`), and its portable evidence
+summary is `phase2_canonical_affine_im2col_receipt.json`.
 
 The standalone native-scalar source artifact remains
 `development_bf62_target_neutral_epilogue_fusion_20260908`. The small reviewable compiler delta is
@@ -92,7 +93,7 @@ Portable evidence is in `q535_affine_im2col_hardware_result_20260908.md`,
 ## Invoke this compiler directly
 
 ```sh
-artifact=/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_20260908
+artifact=/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908
 input=/absolute/path/to/model.mlir
 output_dir=/absolute/path/to/output
 mkdir -p "$output_dir"
@@ -124,10 +125,10 @@ sequentially with at most 308,860 KiB compiler RSS:
 | SmolVLA denoise | 11,910 | 116 | 4,934 | compiles after generic `i1` storage sizing |
 
 The non-ResNet command buffers and targets are byte-identical to the q534 scalar artifact. ResNet's
-target is also byte-identical; its command buffer adds only a structured audit explaining why all
-53 convolutions retain the proven fallback. This optimization is therefore a general lowering
-improvement with a measured ResNet benefit; it does not claim that the other models are already
-performance-complete.
+target is byte-identical to the q535 affine-im2col hardware candidate; its command buffer differs
+from q534 only by the structured audit explaining why all 53 convolutions retain the proven
+fallback. This optimization is therefore a general lowering improvement with a measured ResNet
+benefit; it does not claim that the other models are already performance-complete.
 
 TinyLLaMA can additionally be compiled with the explicit default-off contract
 `--dynamic-weight-only-contract symmetric_per_output_channel_roundeven_v1`. That route moves 15
