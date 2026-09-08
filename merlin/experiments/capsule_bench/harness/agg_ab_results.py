@@ -143,11 +143,19 @@ def plot(agg: dict, outdir: Path) -> list[Path]:
         return []
     outdir.mkdir(parents=True, exist_ok=True)
     written = []
-    colors = {"baseline": "#7a7a7a", "merlin": "#4878a8", "merlin_rtlchecks": "#3a8a5a"}
+    # One entry per rung in ARM_ORDER, and a fallback rather than a KeyError: a batch that ran the C++
+    # infra rung crashed here AFTER writing ab_results.json, so the numbers existed and the figures did
+    # not. `.get` keeps a future arm from doing the same before someone picks it a colour.
+    colors = {"baseline": "#7a7a7a", "cpp_merlininfra": "#b08a3a", "merlin": "#4878a8",
+              "merlin_rtlchecks": "#3a8a5a"}
     # one grouped bar chart per metric: x = condition, grouped bars = arm, error bar = std
     for mk in ("cost_usd", "wall_s", "n_rounds", "sims_skipped"):
         fig, ax = plt.subplots(figsize=(7, 4.2))
-        width = 0.25
+        # Bar geometry follows ARM_ORDER instead of assuming three arms. The old `0.25` with an
+        # `(i - 1)` offset centred a 3-arm group; a 4th arm overlapped its neighbour and the whole
+        # group sat off-centre over its tick.
+        n_arms = max(1, len(ARM_ORDER))
+        width = 0.8 / n_arms
         xs = range(len(COND_ORDER))
         any_data = False
         for i, arm in enumerate(ARM_ORDER):
@@ -157,9 +165,10 @@ def plot(agg: dict, outdir: Path) -> list[Path]:
                 means.append(m["mean"] if m["mean"] is not None else 0)
                 errs.append(m["std"] if (m["std"] is not None and m["n"] > 1) else 0)
                 any_data = any_data or (m["mean"] is not None)
-            offs = [x + (i - 1) * width for x in xs]
-            ax.bar(offs, means, width, yerr=errs, capsize=4, label=ARM_LABEL[arm],
-                   color=colors[arm], edgecolor="white")
+            offs = [x + (i - (n_arms - 1) / 2) * width for x in xs]
+            ax.bar(offs, means, width, yerr=errs, capsize=4,
+                   label=ARM_LABEL.get(arm, arm), color=colors.get(arm, "#999999"),
+                   edgecolor="white")
         unit = next(v for k, v in [(mk, METRICS[mk][2])])
         label = METRICS[mk][1]
         ax.set_xticks(list(xs)); ax.set_xticklabels(COND_ORDER)

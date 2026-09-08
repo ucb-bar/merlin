@@ -402,7 +402,17 @@ def fig4_summary(audit: dict, runs: list[dict], out: Path) -> Path:
         ax.set_xticks(xpos + w * (len(bk) - 1) / 2)
         ax.set_xticklabels(classes, rotation=35, ha="right", fontsize=8)
         ax.set_ylabel("fraction of class passing"); ax.set_ylim(0, 1.12)
-        ax.legend(); ax.set_title("Coverage by workload class (full 25-capsule audit)")
+        # NAME THE AUDIT, do not imply it describes the runs in this figure. full_suite_audit.json is
+        # a single file in the reports dir that whatever ran last left behind: measured 2026-09-08, a
+        # 3-arm batch on the 97-capsule corpus rendered these two panels from a SIX-WEEK-OLD 25-capsule
+        # audit of one unrelated run, under this batch's title and with no date anywhere. The corpus
+        # grew 11 -> 97 over the study, so a coverage fraction from another cell is not comparable --
+        # putting its backend list and size in the title is what stops the figure asserting otherwise.
+        _bk = ", ".join(sorted(backends)) or "none"
+        _n = audit.get("n_capsules", "?")
+        ax.legend(fontsize=6.5)
+        ax.set_title(f"Coverage by workload class\n(full_suite_audit.json: {_n} capsules, "
+                     f"backends: {_bk})", fontsize=8)
         # callout: the classes a pilot-only backend never implemented
         zero = [c for c in classes if all(cov[c].get(b, 0) == 0 for b in bk)]
         if zero:
