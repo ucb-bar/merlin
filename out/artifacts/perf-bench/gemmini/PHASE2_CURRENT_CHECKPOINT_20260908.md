@@ -90,6 +90,25 @@ ELF, staged ELF, and executed ELF all have SHA-256
 Portable evidence is in `q535_affine_im2col_hardware_result_20260908.md`,
 `q535_affine_im2col_hardware_receipt.json`, and `phase2_affine_im2col_q535.patch`.
 
+## Native-convolution hardware headroom (hybrid diagnostic only)
+
+FireSim queue job 536 measured **555,991,472 cycles** with all 1,000 int8 logits exact. It used the
+required queue-only `firesim kill -> firesim infrasetup -> firesim runworkload -> firesim kill`
+lifecycle. This is decisive evidence that the native `LOOP_CONV` route has enough hardware headroom
+to cross one billion cycles, but it is **not** an end-to-end Merlin compiler score.
+
+The q536 executable combines 53 Merlin-generated native-convolution kernels with a TVM-generated
+host runner that still owns the activation arena, call graph, residual blocks, first-layer
+padding/max-pool, global average pool, flatten, and dense output. Its apparent 2.368x ratio versus
+q535 is therefore not an apples-to-apples compiler speedup. The hybrid stitcher and TVM arena must
+not enter the canonical compiler. Only the target-neutral mechanisms—narrow scalar epilogues, i32
+bias loads, descriptor guards, and warm/reentrant tests—are eligible for integration through
+Merlin's source graph.
+
+The complete ownership audit is `q536_native_loopconv_hybrid_diagnostic_20260908.md`; the portable
+machine receipt is `q536_native_loopconv_hybrid_receipt.json`. Until those reusable mechanisms pass
+the canonical four-model and exact full-model gates, q535 remains the accepted compiler result.
+
 ## Invoke this compiler directly
 
 ```sh
