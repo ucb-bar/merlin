@@ -1,0 +1,338 @@
+{
+  "compiler_analyzed_work": {
+    "formal_builder_admission": "refused",
+    "formal_command_buffer_recovery": {
+      "exact_macs": null,
+      "is_lower_bound": true,
+      "known_lower_bound_macs": 2048000,
+      "refusal_count": 53,
+      "refusal_summary": "Serialized CONV2D commands omit enough input/output geometry for work_from_command_buffer to prove their MAC counts."
+    },
+    "macs": 4091330560,
+    "mesh_dimension": 16,
+    "source": "content-addressed q530 global-lever analysis",
+    "transfer_to_q534": "q534 hardware receipt attests accelerator schedule and DMA unchanged; the compiled workload is the same frozen model.",
+    "unit": "macs"
+  },
+  "date": "2026-09-08",
+  "exact_arithmetic_diagnostics": {
+    "execute_active_share": 0.02032673759983764,
+    "gemmini_dma_bytes_per_measured_cycle": 0.7785435413757061,
+    "gemmini_dma_intensity_macs_per_byte": 3.4181432676850654,
+    "gemmini_read_dma_intensity_macs_per_byte": 3.580066378500821,
+    "gemmini_write_dma_intensity_macs_per_byte": 75.57401613573452,
+    "geometry": {
+      "basis": "16x16 mesh geometry; not a measured sustainable peak",
+      "compute_only_ideal_cycles": 15981760,
+      "loop_active_rate_fraction_of_geometry": 0.29883738506966406,
+      "macs_per_cycle_ceiling": 256,
+      "whole_window_rate_fraction_of_geometry": 0.010395208455285387
+    },
+    "interpretation_limit": "Ratios use exact integer inputs, but they are diagnostics rather than a roofline bound because sustainable rates and overlap composition are absent.",
+    "loop_matmul_active_share": 0.03478550199755659,
+    "macs_per_loop_matmul_active_cycle": 76.502370577834,
+    "macs_per_measured_cycle": 2.661173364553059,
+    "reservation_station_active_share": 0.035054074065817314
+  },
+  "exact_hardware_observation": {
+    "correctness": {
+      "bad": 0,
+      "checksum_fnv1a64": "c6e777c3fe0aae90",
+      "expected_top1": 258,
+      "logits_checked": 1000,
+      "max_abs_bits": "00000000",
+      "max_rel_bits": "00000000",
+      "nonfinite": 0,
+      "qdq_max_abs_bits": "3e31e2aa",
+      "status": "passed",
+      "top1": 258
+    },
+    "cycles": 1537416019,
+    "elf_sha256": "0b3284a815da3bd6f8b8e0a014f936b0ffc5c5a2c6666916ced45f6c716f62c5",
+    "exe_active_cycles": 31250652,
+    "gemmini_dma_interface": {
+      "read_bytes": 1142808576,
+      "scope_warning": "These are Gemmini DMA-interface counter bytes, not a complete per-level DRAM/cache traffic decomposition.",
+      "total_bytes": 1196945312,
+      "write_bytes": 54136736
+    },
+    "instret": 751827149,
+    "loop_matmul_active_cycles": 53479788,
+    "main_ex_cycles": 3592907,
+    "main_ld_cycles": 11976682,
+    "main_st_cycles": 2745877,
+    "queue_job": 534,
+    "queue_order_passed": true,
+    "reservation_station_active_cycles": 53892695
+  },
+  "formal_empirical_roofline": {
+    "composition": null,
+    "composition_eta": "UNKNOWN",
+    "composition_provenance": "",
+    "coverage": {
+      "complete": false,
+      "cycle_weighted_resolved_share": 0.0,
+      "expected": [
+        "resnet50_w8a8_q534"
+      ],
+      "missing": [],
+      "observed": [
+        "resnet50_w8a8_q534"
+      ],
+      "resolved": [],
+      "unexpected": []
+    },
+    "points": {
+      "resnet50_w8a8_q534": {
+        "bound_cycles": "UNKNOWN",
+        "efficiency": "UNKNOWN",
+        "envelope": null,
+        "intensity_by_level": {},
+        "intensity_unit": "/byte",
+        "is_valid_lower_bound": "UNKNOWN",
+        "limiter": "UNKNOWN",
+        "margin_share": "UNKNOWN",
+        "margin_to_second": "UNKNOWN",
+        "measured_cycles": 1537416019,
+        "measured_rate": "UNKNOWN",
+        "measured_rate_unit": "/cycle",
+        "moved_bytes": {},
+        "provenance": {
+          "cycles": "FireSim/U250 queue job 534 warm-then-measured window; sha256:0bf58c0304aed6aae5d5eec8e4d0e2a67edd065ab11591eed2b022a6395c3c6f",
+          "fixed_terms": {},
+          "moved_bytes": {},
+          "peaks": {},
+          "work": ""
+        },
+        "refusals": [
+          {
+            "detail": "the empirical report never defaults to textbook max",
+            "missing": [
+              "an explicitly measured Composition"
+            ],
+            "what": "roofline composition"
+          },
+          {
+            "detail": "",
+            "missing": [
+              "a measured eta in [0, 1]"
+            ],
+            "what": "roofline composition eta"
+          },
+          {
+            "detail": "",
+            "missing": [
+              "composition provenance"
+            ],
+            "what": "roofline composition"
+          },
+          {
+            "detail": "a typed EvidenceReceipt is absent",
+            "missing": [
+              "RTL-counter partition receipt"
+            ],
+            "what": "roofline composition evidence"
+          },
+          {
+            "detail": "work is never inferred from shape, geometry, or a MAC conversion",
+            "missing": [
+              "an explicit measured work quantity and unit"
+            ],
+            "what": "roofline point 'resnet50_w8a8_q534'"
+          },
+          {
+            "detail": "an explicit empty sequence means measured zero terms; an absent entry is UNKNOWN",
+            "missing": [
+              "an explicit fixed-term measurement set"
+            ],
+            "what": "roofline fixed terms for 'resnet50_w8a8_q534'"
+          },
+          {
+            "detail": "algorithmic bytes and zero are not substitutes for an absent bus measurement",
+            "missing": [
+              "actual moved bytes at one or more memory levels"
+            ],
+            "what": "roofline point 'resnet50_w8a8_q534'"
+          }
+        ],
+        "resolved": false,
+        "work": "UNKNOWN",
+        "work_unit": "",
+        "workload": "resnet50_w8a8_q534"
+      }
+    },
+    "refusals": [
+      {
+        "detail": "the empirical report never defaults to textbook max",
+        "missing": [
+          "an explicitly measured Composition"
+        ],
+        "what": "roofline composition"
+      },
+      {
+        "detail": "",
+        "missing": [
+          "a measured eta in [0, 1]"
+        ],
+        "what": "roofline composition eta"
+      },
+      {
+        "detail": "",
+        "missing": [
+          "composition provenance"
+        ],
+        "what": "roofline composition"
+      },
+      {
+        "detail": "a typed EvidenceReceipt is absent",
+        "missing": [
+          "RTL-counter partition receipt"
+        ],
+        "what": "roofline composition evidence"
+      },
+      {
+        "detail": "work is never inferred from shape, geometry, or a MAC conversion",
+        "missing": [
+          "an explicit measured work quantity and unit"
+        ],
+        "what": "roofline point 'resnet50_w8a8_q534'"
+      },
+      {
+        "detail": "an explicit empty sequence means measured zero terms; an absent entry is UNKNOWN",
+        "missing": [
+          "an explicit fixed-term measurement set"
+        ],
+        "what": "roofline fixed terms for 'resnet50_w8a8_q534'"
+      },
+      {
+        "detail": "algorithmic bytes and zero are not substitutes for an absent bus measurement",
+        "missing": [
+          "actual moved bytes at one or more memory levels"
+        ],
+        "what": "roofline point 'resnet50_w8a8_q534'"
+      }
+    ],
+    "schema": "empirical_roofline_v1",
+    "status": "refused"
+  },
+  "formal_inputs_absent": [
+    {
+      "code": "UNKNOWN_EXACT_COMMAND_BUFFER_WORK",
+      "current": "exact_macs=UNKNOWN; only 2048000 MACs form a proven lower bound",
+      "required": "complete compiler command-buffer convolution geometry"
+    },
+    {
+      "code": "UNKNOWN_RTL_BOUND_TRAFFIC",
+      "current": "q534 reports DMA bytes but does not carry the required RTL binding receipt",
+      "required": "raw traffic readings plus counter-byte bindings tied to the exact RTL facts digest"
+    },
+    {
+      "code": "UNKNOWN_CALIBRATED_PEAKS",
+      "current": "no q534-matched compute or movement calibration sweep",
+      "required": "at least 4 distinct plan-matched raw samples on one exact positive affine line per resource"
+    },
+    {
+      "code": "UNKNOWN_FIXED_TERMS",
+      "current": "no protocol-matched empty-run calibration set",
+      "required": "at least 4 distinct structurally-empty runs for the exact warm/measured protocol"
+    },
+    {
+      "code": "UNKNOWN_COMPOSITION",
+      "current": "q534 has marginal active counters only; their overlap and union are not observed",
+      "required": "complete joint engine-occupancy counter partition tied to the exact CIRCT/RTL digest, producing measured eta and a consistent operator"
+    },
+    {
+      "code": "UNKNOWN_RTL_PLAN_BINDING",
+      "current": "not packaged with the q534 workload receipt",
+      "required": "RTL facts with the full elaborated CIRCT SHA-256 and provenance-bearing harness capabilities"
+    }
+  ],
+  "goal_headroom": {
+    "cycles_over_goal": 537416019,
+    "goal_cycles": 1000000000,
+    "interpretation": "The two-point scalar-only extrapolation barely reaches the goal and is not a bound. A robust result requires both host-work deletion and movement/im2col deletion.",
+    "required_reduction_fraction_from_q534": 0.3495579676277589,
+    "sensitivity_intercept_margin_below_goal_cycles": 8013691.617267784
+  },
+  "inputs": {
+    "empirical_roofline_api": {
+      "path": "merlin/python/merlin/perf/roofline.py",
+      "sha256": "095569bc1d1782f4f8be9a5abc6d4cef993915e60a163f74da86aa159bc06192"
+    },
+    "q530_global_lever_analysis": {
+      "path": "out/artifacts/perf-bench/gemmini/reports/q530_target_neutral_global_levers_20260908/analysis.json",
+      "sha256": "69b59f26152518294e9f9909a64224c80558d3112a83a318dc05458aba0bbf86"
+    },
+    "q530_hardware_receipt": {
+      "path": "out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_loop_ws_slot_complete_w8a8_warm_measured_firesim_candidate_20260908/validation/firesim_queue_job_530_success.json",
+      "sha256": "0ab96f2e5288a63f10e69cf4f08ce68bdc4c4d40c1d5535a435a3c7190c9e4bf"
+    },
+    "q534_command_buffer": {
+      "path": "out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_native_scalar_ops_w8a8_warm_measured_firesim_candidate_20260908/compiler/command_buffer.json",
+      "sha256": "3f95b35ddeddd6e49f9e93c1737cf412ce51b8b18cb718892342d32d09f5dfb6"
+    },
+    "q534_hardware_receipt": {
+      "path": "out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_native_scalar_ops_w8a8_warm_measured_firesim_candidate_20260908/validation/firesim_queue_job_534_success.json",
+      "sha256": "0bf58c0304aed6aae5d5eec8e4d0e2a67edd065ab11591eed2b022a6395c3c6f"
+    },
+    "rtl_roofline_builder": {
+      "path": "merlin/experiments/gemmini_perf_bench/scripts/build_rtl_roofline.py",
+      "sha256": "bd7756c25f1af7dce47e42c3b23eb070aed371ba6df9d535697d102e50188193"
+    }
+  },
+  "phase2_decision": {
+    "macro_dominant_lever": "Delete whole host epilogue/residual task boundaries while narrowing values, then delete spatial im2col and repeated movement with capability-selected lowering.",
+    "next_candidate_evidence": [
+      "exact source semantics and ownership across the four-model portfolio",
+      "lower host task/dynamic-operation counts and fewer i32 device-host boundaries",
+      "lower encoded boundary bytes and spatial im2col/repeated-weight bytes",
+      "unchanged legality, capacity, residency, and hazard checks",
+      "cheap warm exact A/B ranking before any new queued hardware confirmation"
+    ],
+    "remaining_headroom_proof": [
+      "complete command-buffer work geometry",
+      "RTL-bound per-resource physical byte counters",
+      "four-or-more-point calibrated compute and movement ceilings",
+      "four exact empty-run measurements for the same protocol",
+      "a complete joint-occupancy partition establishing overlap eta"
+    ],
+    "why": [
+      "q530->q534 removed 229,709,973 instructions with identical measured DMA and saved 166,648,204 hardware cycles.",
+      "Only 3.48% of q534 measured cycles carry loop_matmul_active and 3.51% carry reservation-station activity; more tile micro-tuning is not the first lever.",
+      "q534 still reports 1,196,945,312 Gemmini DMA-interface bytes, while the prior content-addressed static analysis identifies full-width boundaries and spatial im2col expansion."
+    ]
+  },
+  "q530_to_q534_controlled_sensitivity": {
+    "candidate_cycles": 1537416019,
+    "candidate_instret": 751827149,
+    "cycles_saved": 166648204,
+    "instructions_removed": 229709973,
+    "intercept_exact": {
+      "denominator": 229709973,
+      "numerator": 227869148114967091
+    },
+    "loop_matmul_active_cycles_delta": 4052,
+    "predecessor_cycles": 1704064223,
+    "predecessor_instret": 981537122,
+    "predecessor_queue_job": 530,
+    "read_dma_bytes_delta": 0,
+    "reservation_station_active_cycles_delta": 3289,
+    "slope_exact": {
+      "denominator": 229709973,
+      "numerator": 166648204
+    },
+    "target_cycles_saved_per_instruction_removed": 0.7254722197020153,
+    "two_point_zero_instruction_intercept_cycles": 991986308.3827323,
+    "warning": "This local two-point response is causal evidence for this lowering change, not a general latency model or physical fixed-cost intercept.",
+    "write_dma_bytes_delta": 0
+  },
+  "schema": "q534_whole_model_headroom_v1",
+  "scope": {
+    "formal_claim": "Exact measured counters and arithmetic diagnostics only; no calibrated empirical roofline, bandwidth ceiling, overlap composition, or predicted end-to-end bound.",
+    "measurement": "one warm invocation, untimed arena reset, one measured invocation",
+    "new_target_execution": false,
+    "target": "Gemmini Universal DIM=16 on FireSim/U250",
+    "workload": "frozen ResNet-50 W8A8"
+  },
+  "status": "measured_diagnostics_complete_formal_roofline_refused"
+}

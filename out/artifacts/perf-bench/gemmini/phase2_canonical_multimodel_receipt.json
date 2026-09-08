@@ -1,0 +1,130 @@
+{
+  "schema": "merlin_phase2_canonical_multimodel_compiler_v1",
+  "status": "qualified_default_and_opt_in",
+  "scope": "isolated compiler artifact; no main-worktree mutation, L3 run, FireSim run, or queue action",
+  "compiler": {
+    "tree_sha256": "38e42aea90f29e271ddc510daca09901cc36970323e2926d1d9426a6e6ee1fdf",
+    "tree_files": 42,
+    "support_merlin_tree_sha256": "0714adc43f25efb2421afc37519190f9a2b58c75ad75d7a08b9ff3537936498a",
+    "support_merlin_tree_files": 1016
+  },
+  "mechanisms": {
+    "native_scalar_lowering": {
+      "default_enabled": true,
+      "model_or_shape_specific": false,
+      "semantic_contract": "standard llvm.intr.roundeven plus llvm.fptosi; no fast math or reassociation",
+      "source_artifact": "development_bf62_target_neutral_epilogue_fusion_20260908",
+      "fpbuilder_sha256": "46a2651e788c34ebd07937d2f0fd6a4a661678c37bb8ceb6110eb757787c4deb"
+    },
+    "native_loop_conv": {
+      "default_enabled": true,
+      "model_or_shape_specific": false,
+      "selection_policy": "capability_geometry_layout_semantics_v1",
+      "source_artifact": "development_native_loop_conv_target_neutral_20260908",
+      "reduced_exact_spike_receipt_sha256": "92098d2599a073d85135e75690ce622db531849e69a74a70c5151f589abe1684",
+      "resnet_selected": 0,
+      "resnet_refused": 53,
+      "resnet_refusal": "loop_conv_store_is_narrow_only for the current i32 NCHW boundary"
+    },
+    "dynamic_weight_quant_bridge": {
+      "default_enabled": false,
+      "cli": "--dynamic-weight-only-contract symmetric_per_output_channel_roundeven_v1",
+      "model_or_shape_specific": false,
+      "source_f32_bit_equivalence": "NOT_CLAIMED",
+      "source_artifact": "development_bf62_dynamic_weight_quant_bridge_20260908",
+      "integer_prepare_sha256": "d4d4da0bd4b9b3d314f6b3495acefa8c41f918e054d6e1d09b292d62a140869b",
+      "gemmini_opt_sha256": "dc7f61a645f086545b77c21890003214235c49d3de8dedceb190f962ba98cc60"
+    },
+    "i1_byte_storage": true
+  },
+  "tests": {
+    "status": "passed",
+    "count": 31,
+    "seconds": 0.92,
+    "includes": [
+      "native scalar semantic edges and general shapes",
+      "native LOOP_CONV positive, fallback, capability, and K-reduction cases",
+      "dynamic weight quantization positive and fail-closed cases",
+      "host workspace and resident LOOP_WS invariants"
+    ]
+  },
+  "default_four_model_compile": {
+    "status": "passed",
+    "peak_sequential_compile_rss_kb": 308860,
+    "resnet50": {
+      "wall_seconds": 18.80,
+      "command_buffer_sha256": "3b64d7cd49c3962418f4347f65161a2830af3bd93e3a7c9f96738838024ac6b6",
+      "normalized_command_buffer_sha256": "b4ddb7e829bd73ee2cfb25406455910efa47ac39e7688cbe8c3c3af455df0ab1",
+      "target_sha256": "82c53f2172ac606696b8554077c962ea2cf2b796a142ddc7a552a38d4dbca530",
+      "q534_target_byte_identical": true,
+      "only_command_buffer_delta": "audited native-convolution selection/refusal metadata"
+    },
+    "tinyllama": {
+      "wall_seconds": 1.39,
+      "command_buffer_sha256": "0e9611bfb0dafbdd0c2dbbd6ce73b2c8fbfc7a4a186dc0a026babe5a0a962ba8",
+      "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5",
+      "q534_scalar_artifact_byte_identical": true,
+      "known_gap": "all host without the explicit dynamic-weight contract"
+    },
+    "lstmnetvit": {
+      "wall_seconds": 51.22,
+      "command_buffer_sha256": "2397fa42eff271ae72110002e2f9522e2ec474712a6529d5259bbc14730cb463",
+      "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7",
+      "q534_scalar_artifact_byte_identical": true,
+      "known_gap": "mixed host-heavy"
+    },
+    "smolvla": {
+      "wall_seconds": 46.85,
+      "command_buffer_sha256": "ab9f7b1aa2f11849dbf390b95c9f0a2be236d7dd1c6f8286b0f617fe0daf1113",
+      "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b",
+      "q534_scalar_artifact_byte_identical": true,
+      "known_gap": "mixed host-heavy"
+    }
+  },
+  "tinyllama_opt_in": {
+    "status": "compile_and_frozen_witness_numeric_qualified",
+    "wall_seconds": 2.43,
+    "mesh_regions": 15,
+    "host_regions": 232,
+    "accelerator_declared_macs": 3424256,
+    "accelerator_declared_boundary_bytes": 540032,
+    "command_buffer_sha256": "2e1360a6a9f87047ca5fbaadef6ae942c0b694c8c181701d1053544ae3724e19",
+    "bridge_command_buffer_byte_identical": true,
+    "target_sha256": "a1d39869e27efe2d5f3b4be5f8cb75020746423b761e69d96e69c1ec7d015082",
+    "native_scalar_sites": {
+      "roundeven": 15,
+      "fptosi": 15
+    },
+    "numeric_qualification": {
+      "artifact": "development_bf62_dynamic_weight_quant_numeric_qualification_20260908",
+      "result_sha256": "4bc85836fbbf5f940f86fba9e6074071a3688c3ad4c7ee8be669c711a09f9c64",
+      "scope": "exact frozen compiler-correctness witness only",
+      "violations": 0,
+      "elements": 2048,
+      "max_abs": 0.018019676,
+      "relative_l2": 0.007236148,
+      "cosine": 0.999973894,
+      "top1_preserved": "8/8",
+      "dataset_or_model_accuracy_claim": false,
+      "target_performance_claim": false
+    }
+  },
+  "hardware_transfer": {
+    "status": "q534_evidence_transfers_to_default_resnet_target_only",
+    "reason": "canonical default ResNet target LLVM is byte-identical to the q534 target",
+    "queue_job": 534,
+    "receipt_sha256": "0bf58c0304aed6aae5d5eec8e4d0e2a67edd065ab11591eed2b022a6395c3c6f",
+    "measured_cycles": 1537416019,
+    "predecessor_cycles": 1704064223,
+    "cycles_saved": 166648204,
+    "cycle_reduction_percent": 9.779455595084107,
+    "speedup": 1.1083949965009439,
+    "correctness": "1000/1000 exact, bad=0, nonfinite=0, top1=258, checksum=c6e777c3fe0aae90"
+  },
+  "limitations": [
+    "The current ResNet source boundary prevents native LOOP_CONV selection; the mechanism is qualified but contributes no q534 speedup.",
+    "TinyLLaMA dynamic-weight promotion is default-off and is not source-f32 bit equivalent.",
+    "LSTMNetViT and SmolVLA are compile-qualified here, not executed.",
+    "No new FireSim run is justified because the default ResNet target is byte-identical to q534."
+  ]
+}
