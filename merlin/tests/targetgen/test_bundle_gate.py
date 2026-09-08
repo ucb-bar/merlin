@@ -734,3 +734,152 @@ class TestFreestandingSupportIsDeclaredNotPatchedIn:
              "-Wno-gcc-install-dir-libstdcxx", "-c", str(source), "-o", str(tmp_path / "shim.o")],
             capture_output=True, text=True)
         assert build.returncode == 0, build.stderr[:2000]
+
+
+class TestAFarConstBlobIsAddressedAbsolutelyNotByRelocation:
+    """tiny_llama's plan projects 2.237 GiB, past the PC-relative reach.
+
+    Linking its 1.209 GiB const blob beside the code pushes ordinary symbols out of the window, and
+    the failure is silent: the program links and reads the wrong bytes. The repo has solved this
+    twice in linker scripts -- the blob goes to a fixed absolute address reached by a compile-time
+    LITERAL, which compiles to `li` and emits no relocation at all.
+    """
+
+    def _plan(self, *, const_rows, mutable_rows):
+        """Y0 is always the small graded output; the caller's mutable rows follow it.
+
+        Keeping the graded tensor a fixed 128 elements lets these tests vary the BLOB sizes without
+        also tripping the gate's element-count check, which is a different rule.
+        """
+        tensors = {"Y0": {"shape": [8, 16], "dtype": "i8"}}
+        args = []
+        for index, count in enumerate(const_rows):
+            tensors[f"arg{index}"] = {"shape": [count, 16], "dtype": "i8"}
+            args.append({"tensor": f"arg{index}", "access": "read"})
+        args.append({"tensor": "Y0", "access": "write"})
+        for index, count in enumerate(mutable_rows):
+            tensors[f"Y{index + 1}"] = {"shape": [count, 16], "dtype": "i8"}
+            args.append({"tensor": f"Y{index + 1}", "access": "write"})
+        return BP.plan({"tensors": tensors, "kernel_abi": {"args": args}, "params": {}},
+                       row_pitch_elements=16)
+
+    def _gate(self, elements):
+        return BG.gate_for(model="m", datapath="w8a8", reference_kind="w8a8_independent",
+                           comparison="tolerance_and_topk", atol=1e-4, rtol=1e-4,
+                           output_elements=elements, expected_argmax=0)
+
+    def test_by_default_the_const_blob_is_a_LINKER_SYMBOL(self):
+        plan = self._plan(const_rows=[64], mutable_rows=[8])
+        h = BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k", output_tensor="Y0")
+        assert h["const_addressing"] == "linker_symbol"
+        assert f"extern const unsigned char {BH.CONST_SYMBOL}[]" in h["declarations"]
+        assert BH.CONST_SYMBOL in h["call"]
+        assert BH.CONST_BASE_MACRO not in h["call"]
+
+    def test_a_far_blob_is_reached_from_a_compile_time_literal(self):
+        plan = self._plan(const_rows=[64], mutable_rows=[8])
+        h = BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k", output_tensor="Y0",
+                                     const_blob_base=0x200000000)
+        assert h["const_addressing"] == "absolute_literal"
+        assert h["const_blob_base"] == 0x200000000
+        assert BH.CONST_BASE_MACRO in h["call"]
+        assert BH.CONST_SYMBOL not in h["call"], "no symbol means no relocation"
+        # And the harness refuses to BUILD without the literal, rather than defaulting to zero.
+        assert f"#ifndef {BH.CONST_BASE_MACRO}" in h["declarations"]
+        assert "#error" in h["declarations"]
+
+    def test_the_reseed_uses_the_SAME_addressing_as_the_arguments(self):
+        """A carried state's seed is read from the const blob; two addressings would read one of
+        them from an unreachable symbol."""
+        tensors = {"arg0": {"shape": [4, 4], "dtype": "i8"},
+                   "arg1": {"shape": [1, 8], "dtype": "f32"},
+                   "Y0": {"shape": [1, 8], "dtype": "f32"},
+                   "Y1": {"shape": [1, 8], "dtype": "f32"}}
+        buffer = {"tensors": tensors, "params": {}, "kernel_abi": {"args": [
+            {"tensor": "arg0", "access": "read"}, {"tensor": "arg1", "access": "read"},
+            {"tensor": "Y0", "access": "write"}, {"tensor": "Y1", "access": "write"}]}}
+        plan = BP.plan(buffer, row_pitch_elements=16,
+                       session_states=(BP.SessionState("s", input_arg=1, output_index=0),))
+        gate = BG.gate_for(model="m", datapath="w8a8", reference_kind="eager_same_precision",
+                           comparison="trajectory", atol=1e-4, rtol=1e-4, output_elements=8,
+                           steps=4, session_key="a")
+        h = BH.render_bundle_harness(plan, gate, entry_symbol="k", output_tensor="Y0",
+                                     const_blob_base=0x200000000)
+        assert BH.CONST_BASE_MACRO in h["reseed"]
+        assert BH.CONST_SYMBOL not in h["reseed"]
+
+    def test_a_near_only_image_past_the_reach_is_REFUSED_and_names_the_remedy(self):
+        # 2.5 GiB of const beside the code: the whole image must be reachable and is not.
+        plan = self._plan(const_rows=[(5 * (1 << 30)) // (2 * 16)], mutable_rows=[8])
+        with pytest.raises(BH.BundleHarnessError) as excinfo:
+            BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k", output_tensor="Y0")
+        message = str(excinfo.value)
+        assert "PC-relative reach" in message and "reads the wrong bytes" in message
+        assert "const_blob_base" in message, "the refusal must name the remedy"
+
+    def test_the_same_plan_with_a_far_blob_is_ACCEPTED(self):
+        """Which is the point: the const bytes stop needing to be reachable."""
+        plan = self._plan(const_rows=[(5 * (1 << 30)) // (2 * 16)], mutable_rows=[8])
+        h = BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                     output_tensor="Y0", const_blob_base=0x200000000)
+        assert h["reachable_bytes"] < BH.PC_RELATIVE_REACH_BYTES
+        assert h["reachable_bytes"] == plan.mutable_bytes
+
+    def test_a_NEAR_region_past_the_reach_is_refused_even_with_a_far_blob(self):
+        """A far blob does not make the mutable arena reachable, and must not appear to."""
+        plan = self._plan(const_rows=[8], mutable_rows=[(5 * (1 << 30)) // (2 * 16)])
+        with pytest.raises(BH.BundleHarnessError) as excinfo:
+            BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                     output_tensor="Y0", const_blob_base=0x200000000)
+        assert "even with the const blob addressed absolutely" in str(excinfo.value)
+
+    def test_the_compilers_own_static_arena_counts_against_the_near_region(self):
+        """It is .bss in the same image, reached by relocation. Passed in, since the plan cannot
+        see it -- and it is 95.3 MiB on SmolVLA, which is not a rounding error."""
+        plan = self._plan(const_rows=[8], mutable_rows=[(1 << 30) // 16])
+        ok = BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                      output_tensor="Y0", const_blob_base=0x200000000)
+        assert ok["reachable_bytes"] == plan.mutable_bytes
+        with pytest.raises(BH.BundleHarnessError, match="near region"):
+            BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k", output_tensor="Y0",
+                                     const_blob_base=0x200000000,
+                                     near_additional_bytes=1 << 30)
+
+    def test_a_negative_allowance_and_a_bad_base_are_refused(self):
+        plan = self._plan(const_rows=[64], mutable_rows=[8])
+        with pytest.raises(BH.BundleHarnessError):
+            BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                     output_tensor="Y0", near_additional_bytes=-1)
+        for bad in (0, -1):
+            with pytest.raises(BH.BundleHarnessError, match="positive absolute address"):
+                BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                         output_tensor="Y0", const_blob_base=bad)
+
+    def test_the_reach_is_the_same_constant_the_liveness_rule_uses(self):
+        """Two spellings of the ISA's window would let one path admit what the other refuses."""
+        import inspect
+
+        from merlin.liveness import preconditions
+        source = inspect.getsource(preconditions.medany_span)
+        assert "1 << 31" in source
+        assert BH.PC_RELATIVE_REACH_BYTES == 1 << 31
+
+    @pytest.mark.skipif(_CC is None, reason="no C compiler on this host")
+    def test_a_far_harness_COMPILES_only_with_the_literal_defined(self, tmp_path):
+        plan = self._plan(const_rows=[64], mutable_rows=[8])
+        h = BH.render_bundle_harness(plan, self._gate(128), entry_symbol="k",
+                                     output_tensor="Y0", const_blob_base=0x200000000)
+        source = tmp_path / "far.c"
+        source.write_text("#include <stdio.h>\n#include <string.h>\n" + h["declarations"]
+                          + "\nint use(void);\nint use(void) {\n" + h["call"]
+                          + "\n  return merlin_gate_check();\n}\n", encoding="utf-8")
+        def build(extra):
+            return subprocess.run(
+                [_CC, "-std=c11", "-Wall", "-Wextra", "-Werror",
+                 "-Wno-gcc-install-dir-libstdcxx", *extra, "-c", str(source),
+                 "-o", str(tmp_path / "far.o")], capture_output=True, text=True)
+        without = build([])
+        assert without.returncode != 0, "an undefined base must not silently become zero"
+        assert BH.CONST_BASE_MACRO in without.stderr
+        withit = build([f"-D{BH.CONST_BASE_MACRO}=0x200000000UL"])
+        assert withit.returncode == 0, withit.stderr[:2000]

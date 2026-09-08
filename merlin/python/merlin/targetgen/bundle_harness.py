@@ -31,8 +31,9 @@ from merlin.targetgen.bundle_gate import CONSOLE_DUMP_CAP, CorrectnessGate
 from merlin.targetgen.bundle_pack import PackPlan
 
 __all__ = ["render_bundle_harness", "BundleHarnessError", "pointer_expression",
-           "CONST_SYMBOL", "MUTABLE_SYMBOL", "TRAJECTORY_SYMBOL", "render_reseed",
-           "render_session_loop"]
+           "CONST_SYMBOL", "MUTABLE_SYMBOL", "TRAJECTORY_SYMBOL", "CONST_BASE_MACRO",
+           "PC_RELATIVE_REACH_BYTES", "render_reseed", "render_session_loop",
+           "render_freestanding_support", "unresolved_symbols", "FREESTANDING_SHIMS"]
 
 #: The linker symbols the blob objects expose. Named here once so the renderer and the packaging
 #: step cannot disagree about them.
@@ -42,6 +43,17 @@ _CTYPE_BYTES: dict[str, int] = {"float": 4, "double": 8, "int": 4, "short": 2, "
 
 CONST_SYMBOL = "merlin_const_blob_start"
 MUTABLE_SYMBOL = "merlin_mutable_blob"
+
+#: The preprocessor name a far const blob's base address arrives under. It must be a COMPILE-TIME
+#: LITERAL, not a linker symbol: taking a symbol's address emits a relocation, and a relocation is
+#: exactly what a PC-relative code model cannot satisfy across a multi-gigabyte image. A literal
+#: compiles to `li` and has no reach at all.
+CONST_BASE_MACRO = "MERLIN_CONST_BLOB_BASE"
+
+#: The reach of a PC-relative reference on this ISA: +/-2 GiB. A property of the RISC-V code model,
+#: not of any target -- the same constant `liveness.preconditions.medany_span` uses, and the reason
+#: a large blob must be addressed absolutely rather than linked beside the code.
+PC_RELATIVE_REACH_BYTES = 1 << 31
 
 #: Where a session's per-step graded outputs are retained so the gate can run AFTER the measured
 #: window. The alternative -- grading inside the loop -- puts a printf per step inside a
@@ -53,16 +65,24 @@ class BundleHarnessError(ValueError):
     """The harness cannot be rendered, and the message says what is missing."""
 
 
-def pointer_expression(storage: str, offset: int) -> str:
-    """The C expression for one argument's pointer. Offsets come from the plan, never from order."""
+def pointer_expression(storage: str, offset: int, *, const_is_far: bool = False) -> str:
+    """The C expression for one argument's pointer. Offsets come from the plan, never from order.
+
+    ``const_is_far`` addresses the const blob from :data:`CONST_BASE_MACRO` instead of its linker
+    symbol. That is the difference between a relocation and an `li`, and for an image past the
+    PC-relative reach it is the difference between a program that runs and one that links and reads
+    the wrong bytes.
+    """
     if storage == "const":
+        if const_is_far:
+            return f"(void *)((unsigned char *){CONST_BASE_MACRO} + {int(offset)})"
         return f"(void *)({CONST_SYMBOL} + {int(offset)})"
     if storage == "mutable":
         return f"(void *)({MUTABLE_SYMBOL} + {int(offset)})"
     raise BundleHarnessError(f"storage {storage!r} is neither 'const' nor 'mutable'")
 
 
-def render_reseed(plan: PackPlan) -> str:
+def render_reseed(plan: PackPlan, *, const_is_far: bool = False) -> str:
     """Copy every carried state's SEED from the const blob into its mutable working copy.
 
     WHY THIS IS NOT OPTIONAL. A recurrent session overwrites its carried state every step, so after
@@ -79,9 +99,10 @@ def render_reseed(plan: PackPlan) -> str:
         return "/* no carried session state: nothing to re-seed */"
     lines = ["/* Re-seed every carried state so this invocation runs the graded program. */"]
     for row in plan.carried:
+        seed = pointer_expression("const", int(row["seed_offset"]), const_is_far=const_is_far)
         lines.append(
             f"memcpy((void *)({MUTABLE_SYMBOL} + {int(row['working_offset'])}),"
-            f" (const void *)({CONST_SYMBOL} + {int(row['seed_offset'])}),"
+            f" (const void *){seed},"
             f" {int(row['bytes'])}u);  /* {row['state']} */")
     return "\n".join(lines)
 
@@ -235,7 +256,9 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
 def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol: str,
                           output_tensor: str, output_ctype: str = "float",
                           counter_bracket: object = None,
-                          reset_after_warm: str | None = None) -> dict[str, Any]:
+                          reset_after_warm: str | None = None,
+                          const_blob_base: int | None = None,
+                          near_additional_bytes: int = 0) -> dict[str, Any]:
     """``{"declarations", "call", "validate", "gate"}`` C fragments for one bundle's harness.
 
     ``declarations`` already contains the gate as ``merlin_gate_check()`` and ``validate`` is a call
@@ -249,6 +272,14 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     ``output_tensor`` names the tensor the gate grades and is REQUIRED: its offset is read from the
     plan rather than assumed to be the first write argument, which is true of ResNet-50 and is a
     property of that layout rather than of the ABI.
+
+    ``const_blob_base`` moves the const blob to a FIXED ABSOLUTE address, addressed by a
+    compile-time literal. Required when the image would otherwise exceed the PC-relative reach:
+    tiny_llama's plan projects 2.237 GiB, and linking its 1.209 GiB blob beside the code pushes
+    ordinary symbols out of the window -- a failure that is silent, because the program links and
+    reads the wrong bytes. With it, only the near region (the mutable arena, the compiler's static
+    arena, code) has to be reachable, and ``near_additional_bytes`` is what the plan cannot see of
+    that. Both are checked here rather than discovered after a link.
     """
     if not entry_symbol or not entry_symbol.isidentifier():
         raise BundleHarnessError("the kernel entry symbol must be one plain C identifier")
@@ -259,6 +290,28 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     args = list(plan.arguments) if plan.abi_order else [*plan.const, *plan.mutable]
     if not args:
         raise BundleHarnessError("the pack plan lays out no arguments, so there is nothing to call")
+
+    if near_additional_bytes < 0:
+        raise BundleHarnessError("near_additional_bytes cannot be negative")
+    far = const_blob_base is not None
+    # WHAT HAS TO BE REACHABLE. With a far blob, only the near region does; without one, the whole
+    # image does. Checked here so an unreachable layout is refused rather than linked.
+    near_bytes = int(plan.mutable_bytes) + int(near_additional_bytes)
+    reachable_bytes = near_bytes if far else near_bytes + int(plan.const_bytes)
+    if reachable_bytes >= PC_RELATIVE_REACH_BYTES:
+        detail = ("even with the const blob addressed absolutely, the near region "
+                  if far else
+                  "the const blob is linked beside the code, so the whole image ")
+        raise BundleHarnessError(
+            f"{detail}spans {reachable_bytes} bytes, at or past the {PC_RELATIVE_REACH_BYTES}-byte "
+            f"PC-relative reach. A reference that cannot be reached does not fail to link: it "
+            f"reads the wrong bytes. "
+            + ("Reduce the near region -- the mutable arena and the compiler's static arena are "
+               "what it holds." if far else
+               f"Pass const_blob_base to address the {plan.const_bytes}-byte const blob from a "
+               f"compile-time literal instead."))
+    if far and int(const_blob_base) <= 0:
+        raise BundleHarnessError("const_blob_base must be a positive absolute address")
 
     graded = next((t for t in plan.mutable
                    if t.tensor == output_tensor and t.role == "argument"), None)
@@ -282,8 +335,18 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
               if steps > 1 else None)
     gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype,
                           step_expression="merlin_step_index", from_trajectory=steps > 1)
+    const_declaration = (
+        [f"/* The const blob is NOT a symbol here: it lives at the fixed absolute address",
+         f"   {CONST_BASE_MACRO}, supplied as a compile-time literal so every reference to it",
+         f"   compiles to `li` and emits no relocation. A relocation is what a PC-relative code",
+         f"   model cannot satisfy across a {plan.const_bytes}-byte blob. */",
+         f"#ifndef {CONST_BASE_MACRO}",
+         f'#error "{CONST_BASE_MACRO} must be defined: the const blob is addressed absolutely"',
+         "#endif"]
+        if far else
+        [f"extern const unsigned char {CONST_SYMBOL}[];"])
     declarations = "\n".join([
-        f"extern const unsigned char {CONST_SYMBOL}[];",
+        *const_declaration,
         f"extern unsigned char {MUTABLE_SYMBOL}[];",
         f"/* {steps} step(s) x {int(gate.output_elements)} element(s). */",
         f"extern const {output_ctype} merlin_reference[];",
@@ -296,9 +359,10 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
         gate_fn,
     ])
 
-    pointers = ",\n    ".join(pointer_expression(t.storage, t.offset) for t in args)
+    pointers = ",\n    ".join(pointer_expression(t.storage, t.offset, const_is_far=far)
+                               for t in args)
     call = f"{entry_symbol}(\n    {pointers});"
-    reseed = render_reseed(plan)
+    reseed = render_reseed(plan, const_is_far=far)
     session = plan.carried or steps > 1
     body = (render_session_loop(plan, steps=steps, call=call, record=record) if session else call)
     recorded_bytes = (steps * graded_elements * _CTYPE_BYTES.get(output_ctype, 0)
@@ -325,6 +389,10 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
                           "elements": graded_elements, "steps": steps},
         "const_bytes": plan.const_bytes,
         "mutable_bytes": plan.mutable_bytes,
+        "const_blob_base": (int(const_blob_base) if far else None),
+        "const_addressing": ("absolute_literal" if far else "linker_symbol"),
+        "reachable_bytes": reachable_bytes,
+        "pc_relative_reach_bytes": PC_RELATIVE_REACH_BYTES,
         "gate_declaration": gate.to_dict(),
     }
 
