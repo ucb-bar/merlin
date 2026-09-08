@@ -24,6 +24,11 @@ kernel_abi:
   kind: whole_program
   args: "ordered [{tensor: declared_tensor_name, access: read|write|readwrite}, ...]"
   outputs: "non-empty [tensor_name, ...], exactly the tensors whose declared role is output"
+  launch: >-
+    Optional {kind: simt_single_warp}. Requests an evaluator-owned launch wrapper which activates every
+    RTL-derived lane in the current warp before calling the submitted external kernel, then restores
+    manager-only execution before the harness continues. The buffer supplies no lane count, CSR, opcode,
+    or mask: those are derived from the target runtime/RTL facts and checked against `resources`.
   invariants: >-
     Every tensor declared in `tensors` appears in args exactly once and every arg names a declared
     tensor. input/weight/bias/scale roles have read access; output/intermediate roles have write access.

@@ -65,6 +65,19 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "launch": {
+          "type": "object",
+          "description": "Optional semantic launch contract. simt_single_warp asks the evaluator-owned harness to activate every RTL-derived lane in the current warp before entering the external kernel and restore manager-only execution on return. The submission supplies no geometry or instruction encodings.",
+          "required": [
+            "kind"
+          ],
+          "properties": {
+            "kind": {
+              "const": "simt_single_warp"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

@@ -1074,7 +1074,9 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                                result_page: bool = False,
                                compact_expected: dict[str, Any] | None = None,
                                compact_policy: dict[str, Any] | None = None,
-                               compact_symbol_tag: str | None = None) -> Harness:
+                               compact_symbol_tag: str | None = None,
+                               launch: dict[str, Any] | None = None,
+                               resource_claims: dict[str, Any] | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
@@ -1126,10 +1128,17 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                if not sym.startswith("_merlin_private_")]
     body += externs + statics + result_decls + compact_decls \
         + ([""] if (externs or statics or result_decls or compact_decls) else [])
-    body += [f"extern void {kernel_symbol}({ptrs});", "",
+    launch_wrapper = _external_kernel_launch_wrapper(
+        launch, resource_claims, kernel_symbol=kernel_symbol, ptrs=ptrs,
+        argument_count=len(in_args) + len(out_args), model=model)
+    call_symbol = "__merlin_simt_launch" if launch_wrapper else kernel_symbol
+    body += [f"extern void {kernel_symbol}({ptrs});"]
+    if launch_wrapper:
+        body += [launch_wrapper]
+    body += ["",
              "int main(void){", "  if(_hid()!=0)return 0;"]
     body += inner
-    body.append(f"  {kernel_symbol}({', '.join(call_ptrs)});")
+    body.append(f"  {call_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
         if result_page or compact_expected is not None:
             continue
@@ -1152,6 +1161,106 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                    results=(result_specs if result_page else
                             [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype}
                              for o in out_args] if compact_expected is not None else None))
+
+
+def _external_kernel_launch_wrapper(
+    launch: dict[str, Any] | None,
+    resource_claims: dict[str, Any] | None,
+    *,
+    kernel_symbol: str,
+    ptrs: str,
+    argument_count: int,
+    model,
+) -> str:
+    """Render the evaluator-owned wrapper for a declared SIMT launch contract.
+
+    The fork-free BSP enters ``main`` with manager lane zero active. A normal C
+    call therefore initializes argument/prologue state only for that lane. The
+    wrapper publishes pointer arguments and caller RA while lane zero is active,
+    enables the target-derived lanes, reloads the pointers, and calls the
+    submitted kernel. On return it unconditionally restores mask one and the
+    saved caller RA, so comparator execution cannot become multi-lane even when
+    the submitted kernel forgets to restore the manager mask.
+
+    The command buffer selects only the semantic launch kind. Geometry and
+    instruction encoding come from reviewed RTL/runtime facts and are checked
+    against the buffer's resource claims; no submitted asm fields are accepted.
+    """
+    if launch is None:
+        return ""
+    if not isinstance(launch, dict) or launch != {"kind": "simt_single_warp"}:
+        raise ValueError(
+            "kernel_abi.launch must be exactly {'kind': 'simt_single_warp'}")
+    if not isinstance(resource_claims, dict):
+        raise ValueError("simt_single_warp launch requires command-buffer resource claims")
+
+    from merlin.targetgen.rtl.facts import load_facts
+
+    document = load_facts(model.target)
+    facts = document.get("facts") if isinstance(document, dict) else None
+    simt = facts.get("simt") if isinstance(facts, dict) else None
+    names = ("cores", "warps_per_core", "lanes_per_warp")
+    geometry = {name: simt.get(name) if isinstance(simt, dict) else None for name in names}
+    bad = {name: value for name, value in geometry.items()
+           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
+    if bad:
+        raise ValueError(f"target RTL facts have invalid SIMT geometry: {bad}")
+    mismatches = {name: {"claimed": resource_claims.get(name), "rtl": geometry[name]}
+                  for name in names if resource_claims.get(name) != geometry[name]}
+    if mismatches:
+        raise ValueError(f"command-buffer SIMT resources disagree with target RTL facts: {mismatches}")
+
+    runtime_abi = model.runtime_abi if isinstance(model.runtime_abi, dict) else {}
+    xlen = runtime_abi.get("xlen")
+    if xlen not in (32, 64):
+        raise ValueError(f"simt_single_warp requires derived XLEN 32 or 64, got {xlen!r}")
+    if geometry["lanes_per_warp"] > xlen:
+        raise ValueError(
+            f"derived lane mask ({geometry['lanes_per_warp']} lanes) does not fit XLEN {xlen}")
+    if not isinstance(argument_count, int) or not 0 < argument_count <= 8:
+        raise ValueError(
+            f"simt_single_warp supports 1..8 pointer ABI arguments, got {argument_count!r}")
+    if model.base_isa_family() != f"riscv{xlen}":
+        raise ValueError(
+            f"SIMT launch base ISA {model.base_isa_family()!r} disagrees with derived XLEN {xlen}")
+    tmc = model.sfu_op("tmc")
+    opcode, funct3 = tmc.get("opcode"), tmc.get("funct3")
+    if (not isinstance(opcode, int) or isinstance(opcode, bool) or not 0 <= opcode < (1 << 7)
+            or not isinstance(funct3, int) or isinstance(funct3, bool)
+            or not 0 <= funct3 < (1 << 3)):
+        raise ValueError(f"invalid derived TMC encoding: {tmc}")
+
+    word_bytes = xlen // 8
+    store, load = ("sw", "lw") if xlen == 32 else ("sd", "ld")
+    mask = (1 << geometry["lanes_per_warp"]) - 1
+    param_types = [part.strip() for part in ptrs.split(",")]
+    if len(param_types) != argument_count:
+        raise ValueError("pointer declaration and kernel_abi argument count disagree")
+    definition = ", ".join(f"{typ} arg{i}" for i, typ in enumerate(param_types))
+    stores = "\n".join(
+        f'    "{store} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
+    loads = "\n".join(
+        f'    "{load} a{i}, {i * word_bytes}(t0)\\n"' for i in range(argument_count))
+    ra_offset = argument_count * word_bytes
+    return f'''static volatile uintptr_t __merlin_simt_call_state[{argument_count + 1}]
+    __attribute__((used,aligned({word_bytes})));
+__attribute__((naked,noinline,used)) static void __merlin_simt_launch({definition}){{
+  __asm__ volatile(
+    "la t0, __merlin_simt_call_state\\n"
+{stores}
+    "{store} ra, {ra_offset}(t0)\\n"
+    "fence rw, rw\\n"
+    "li t1, {mask}\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "la t0, __merlin_simt_call_state\\n"
+{loads}
+    "call {kernel_symbol}\\n"
+    "li t1, 1\\n"
+    ".insn r {opcode}, {funct3}, 0, x0, t1, x0\\n"
+    "la t0, __merlin_simt_call_state\\n"
+    "{load} ra, {ra_offset}(t0)\\n"
+    "ret\\n");
+}}'''
 
 
 
@@ -1287,7 +1396,9 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
     return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model,
                                       result_page=result_page, compact_expected=compact_expected,
                                       compact_policy=compact_policy,
-                                      compact_symbol_tag=compact_symbol_tag)
+                                      compact_symbol_tag=compact_symbol_tag,
+                                      launch=(cb.get("kernel_abi") or {}).get("launch"),
+                                      resource_claims=cb.get("resources"))
 
 
 def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = False) -> str | None:
