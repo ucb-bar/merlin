@@ -419,6 +419,18 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
             source_text=source_text, lowered_text=lowered_text, command_buffer=command_buffer)
         if physical_transitions.get("status") == "refused":
             problems.append("declared physical transition fails actual address/dataflow verification")
+    # The logical graph and physical ABI are intentionally separate records.  Join them only here,
+    # after both have been verified against the same source SSA values.  This gives whole-model
+    # optimization a source-buffer address contract and source/task epilogue ownership without
+    # teaching shared analysis any target instruction names.
+    from .source_plan_metadata import build_source_plan_metadata
+    source_plan_metadata = build_source_plan_metadata(
+        block=block, operations=ops, graph=graph, owners=owner,
+        task_kinds=declared_task_kinds, value_tensors=value_tensors, tensors=tensors,
+        storage_encodings=checked_encodings,
+        is_contraction=_source_has_multiply_accumulate)
+    if source_plan_metadata["status"] == "refused":
+        problems.append("source/physical plan metadata could not be joined exactly")
     return {
         "schema": "compiler_global_plan_verification_v1",
         "status": "refused" if problems else "verified",
@@ -434,6 +446,7 @@ def verify_compiler_global_plan(*, source_text: str, lowered_text: str,
         "shared_immutable_constants": shared_constants,
         "compiler_temporaries": sorted(temporary_names),
         "storage_encodings": checked_encodings,
+        "source_plan_metadata": source_plan_metadata,
         "physical_transition_evidence": physical_transitions,
         "control_flow": cfg_evidence,
         "host_activity": host_activity,
