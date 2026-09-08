@@ -110,6 +110,23 @@ def _ranked_source_witness_options(candidates):
             for kind in _SOURCE_WITNESS_KINDS)
 
 
+def _bounded_source_witness_options(candidates, *, max_ranked_tasks: int = 1):
+    """Bound expensive source parses to the highest-value changed host task.
+
+    Each option reparses the complete source module today.  Trying every mechanism for every
+    changed task can therefore outlive the short-probe budget without producing any evidence.
+    The full-model accounting already ranks tasks by separately reported payload and integer-work
+    deltas, so a failed top task is recorded as an explicit qualification refusal.  A later work
+    order can bind another task instead of turning one action into an unbounded search.
+    """
+    if type(max_ranked_tasks) is not int or max_ranked_tasks < 1:
+        raise ValueError("source witness selection requires a positive ranked-task budget")
+    ranked = sorted(candidates, key=lambda candidate: candidate[0], reverse=True)
+    return ((kind, row)
+            for row in ranked[:max_ranked_tasks]
+            for kind in _SOURCE_WITNESS_KINDS)
+
+
 def pointwise_concat_emission_evidence(
         extraction: Mapping[str, Any], before_activity: Mapping[str, Any],
         after_activity: Mapping[str, Any], *, emitted_operation_names,
@@ -383,8 +400,16 @@ class HostChangedRegionQualifier:
             candidates, unresolved = changed_host_task_candidates(
                 previous["command_buffer"]["params"]["global_program_plan"]["tasks"], tasks, tables)
             record["unresolved_host_task_attribution"] = unresolved
-            options = _ranked_source_witness_options(candidates)
+            options = _bounded_source_witness_options(candidates)
             record["probe_selection_attempts"] = []
+            record["source_extraction_policy"] = {
+                "candidate_tasks": len(candidates),
+                "max_ranked_tasks": 1,
+                "mechanisms_per_task": len(_SOURCE_WITNESS_KINDS),
+                "maximum_source_parses": len(_SOURCE_WITNESS_KINDS),
+                "scope": "highest-ranked changed host task; later tasks require a bound work order",
+            }
+            record["source_extraction_attempts"] = []
             if not callable(getattr(experiment, "compile_previous_probe_candidate", None)):
                 raise ValueError("changed-region qualification needs an exact preceding-compiler probe compilation hook")
             for kind, (_, task, payload) in options:
@@ -411,8 +436,20 @@ class HostChangedRegionQualifier:
                     else:
                         probe_text, extraction = extract_pointwise_chain(
                             source_text, task["source_op_indices"], mechanism=kind)
-                except ValueError:
+                except ValueError as exc:
+                    record["source_extraction_attempts"].append({
+                        "kind": kind,
+                        "task_index": task["task_index"],
+                        "status": "refused",
+                        "reason": str(exc)[:1000],
+                    })
                     continue
+                record["source_extraction_attempts"].append({
+                    "kind": kind,
+                    "task_index": task["task_index"],
+                    "status": "extracted",
+                    "probe_source_sha256": extraction["probe_source_sha256"],
+                })
                 if len(record["probe_selection_attempts"]) >= 4:
                     break
                 attempt = work / f"selection_{len(record['probe_selection_attempts'])}"
