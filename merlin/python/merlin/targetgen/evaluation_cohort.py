@@ -106,7 +106,8 @@ def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
     Search deliberately stops at Cyclotron L2.  Successful self-check rows are compact: ``pass`` and
     ``barrier_status`` are the numeric verdict, while ``execution_digest`` binds the executed artifact.
     Failed rows retain the detailed ``numeric`` block.  Requiring a field that successful rows omit
-    would make a genuine 15/15 impossible to seal, so this validator follows that schema explicitly.
+    would make a genuine exact all-pass impossible to seal, so this validator follows that schema
+    explicitly.  The expected count is derived from the declared cohort rather than duplicated here.
     """
     if not isinstance(score, dict):
         return ["search score is not a JSON object"]
@@ -150,7 +151,7 @@ def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
 def create_search_pass_seal(
     dest: str | Path, te: TargetExperiment, candidate: str | Path, score: str | Path,
 ) -> dict[str, Any]:
-    """Seal one exact 15/15 L2 pass together with the candidate and source-tree identities.
+    """Seal one exact all-pass L2 result with the candidate and source-tree identities.
 
     The seal lives outside the candidate so creating it cannot change the digest it freezes.  It is a
     gate for this admitted covering set only; it is deliberately not an end-to-end readiness claim.
@@ -696,9 +697,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--create-search-pass-seal",
                         help="write a digest-bound exact-search-pass seal at this absent path")
     parser.add_argument("--search-score",
-                        help="15/15 L2 self-check score consumed when creating a search-pass seal")
+                        help="exact all-pass L2 self-check score used to create a search-pass seal")
     parser.add_argument("--search-pass-seal",
-                        help="sealed 15/15 L2 evidence required by the derived GSIM stage")
+                        help="sealed exact all-pass L2 evidence required by the derived GSIM stage")
     parser.add_argument("--predecessor-cohort",
                         help="materialized predecessor cohort required by an after: *_pass stage")
     parser.add_argument("--predecessor-score",
