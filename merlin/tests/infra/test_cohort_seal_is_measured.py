@@ -60,9 +60,11 @@ def test_the_frozen_source_count_is_what_the_corpus_holds(path, te):
 
 
 @pytest.mark.parametrize("path,te", _sealed(), ids=lambda x: getattr(x, "name", ""))
-def test_the_frozen_admitted_count_is_source_minus_the_declared_exclusions(path, te):
+def test_the_frozen_admitted_count_matches_the_declared_admission_policy(path, te):
     names = set(_discovered(te))
-    excluded = set(te.graded_exclude)
+    # An explicit include is itself an admission policy: everything else is excluded.  Reading only
+    # ``graded_exclude`` audited inclusion-based search cohorts as if all source capsules were admitted.
+    excluded = set(te.effective_exclusions(names))
     assert not (excluded - names), (
         f"{path}: excludes {sorted(excluded - names)}, which is in no corpus root. An exclusion that "
         "matches nothing silently GROWS the graded set.")

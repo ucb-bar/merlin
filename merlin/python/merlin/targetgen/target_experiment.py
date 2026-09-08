@@ -412,6 +412,12 @@ class TargetExperiment:
     # available; this field controls only the public/dev denominator of the agentic search campaign.
     graded_include: tuple[str, ...] = ()
     graded_cohort_policy: str | None = None
+    # Optional frozen-candidate cohorts that run AFTER the paid search.  These are deliberately
+    # separate from ``graded_include``: search is feedback to the compiler, while an evaluation cohort
+    # is held out until the candidate is frozen.  Each stage records its own capsule names, required
+    # oracle tier/engine and predecessor, so a target cannot quietly use its external comparison suite
+    # as the workload it optimizes against.
+    evaluation_cohorts: dict[str, dict[str, Any]] | None = None
     # Optional decomposition of ``graded_exclude`` for formal cohort provenance.  Capability exclusions
     # must be independently proven by the frozen hardware predicate; resource exclusions must be an
     # explicit model-only allowlist under a named policy, with the retained representative models named.
@@ -633,6 +639,14 @@ class TargetExperiment:
         """A defensive copy of the treatment declared for ``variant`` (or an empty mapping)."""
         return copy.deepcopy((self.information_sets or {}).get(variant) or {})
 
+    def evaluation_cohort(self, name: str) -> dict[str, Any]:
+        """Return one declared post-search cohort, failing closed on an unknown stage."""
+        cohorts = self.evaluation_cohorts or {}
+        if name not in cohorts:
+            raise KeyError(
+                f"unknown evaluation cohort {name!r}; declared stages: {sorted(cohorts)}")
+        return copy.deepcopy(cohorts[name])
+
     def effective_exclusions(self, source_names) -> tuple[str, ...]:
         """Resolve the descriptor's exclusion or inclusion policy against a concrete source set."""
         source = {str(name) for name in source_names}
@@ -717,11 +731,13 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
     expected_cohort = grading.get("expected_cohort") or {}
     hidden_admission = grading.get("hidden_capability_admission") or {}
     search_cohort = grading.get("search_cohort") or {}
+    raw_evaluation_cohorts = grading.get("evaluation_cohorts") or {}
     for field, value in (("grading.resource_bound", resource_bound),
                          ("grading.phase_bound", phase_bound),
                          ("grading.expected_cohort", expected_cohort),
                          ("grading.hidden_capability_admission", hidden_admission),
-                         ("grading.search_cohort", search_cohort)):
+                         ("grading.search_cohort", search_cohort),
+                         ("grading.evaluation_cohorts", raw_evaluation_cohorts)):
         if not isinstance(value, dict):
             raise ValueError(f"{p}: {field} must be a mapping")
 
@@ -742,6 +758,39 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         if not isinstance(value, int) or isinstance(value, bool) or value < 0:
             raise ValueError(f"{p}: {field}.{key} must be a non-negative integer")
         return value
+
+    evaluation_cohorts: dict[str, dict[str, Any]] = {}
+    for stage, raw_stage in raw_evaluation_cohorts.items():
+        field = f"grading.evaluation_cohorts.{stage}"
+        if (not isinstance(stage, str) or not stage or Path(stage).name != stage):
+            raise ValueError(f"{p}: evaluation-cohort name {stage!r} must be one safe name")
+        if not isinstance(raw_stage, dict):
+            raise ValueError(f"{p}: {field} must be a mapping")
+        include = names(raw_stage.get("include_capsules"),
+                        field=f"{field}.include_capsules")
+        if not include:
+            raise ValueError(f"{p}: {field}.include_capsules must not be empty")
+        policy = raw_stage.get("policy")
+        predecessor = raw_stage.get("after")
+        tier = raw_stage.get("oracle_tier")
+        engine = raw_stage.get("oracle_engine")
+        for key, value in (("policy", policy), ("after", predecessor),
+                           ("oracle_engine", engine)):
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{p}: {field}.{key} must be a non-empty string")
+        if tier not in {"L0", "L1", "L2", "L3", "L4", "L5"}:
+            raise ValueError(f"{p}: {field}.oracle_tier must be one of L0..L5")
+        roles = names(raw_stage.get("require_source_roles"),
+                      field=f"{field}.require_source_roles")
+        evaluation_cohorts[stage] = {
+            **copy.deepcopy(raw_stage),
+            "policy": policy.strip(),
+            "after": predecessor.strip(),
+            "oracle_tier": tier,
+            "oracle_engine": engine.strip(),
+            "include_capsules": include,
+            "require_source_roles": roles,
+        }
 
     raw_information_sets = doc.get("information_sets") or {}
     if not isinstance(raw_information_sets, dict):
@@ -905,6 +954,7 @@ def load_target_experiment(descriptor: str | Path) -> TargetExperiment:
         graded_exclude=legacy_exclude or split_exclude,
         graded_include=search_include,
         graded_cohort_policy=(search_policy.strip() if isinstance(search_policy, str) else None),
+        evaluation_cohorts=evaluation_cohorts,
         graded_capability_exclude=capability_exclude,
         graded_resource_exclude=resource_exclude,
         graded_resource_policy=(lambda s: str(s) if s else None)(resource_bound.get("policy")),

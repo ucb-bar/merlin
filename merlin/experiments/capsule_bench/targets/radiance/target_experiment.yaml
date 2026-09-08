@@ -108,47 +108,94 @@ toolchain:
 # demonstrated in BOTH directions (v20 gated it out at 54%; v21 earned it), so the capability is evidenced.
 # It goes back in the loop once warp utilization makes it affordable -- that is the fix, not a smaller model.
 grading:
-  # Repeated search is deliberately a compact, identical cohort for every information arm. The full
-  # 166-member public corpus is retained for frozen-candidate validation; hidden (12), performance (4),
-  # and whole-model capstones run at their separate stages. Historical L2 timing puts the 24 measured
-  # members below 2.5 minutes serial; the five synthesized witnesses are small. In particular this keeps
-  # the two known-incomplete attention kernels and all eight multi-invocation model capsules out of an
-  # otherwise runaway per-round loop.
+  # THREE DIFFERENT QUESTIONS, THREE DIFFERENT STAGES.
+  #
+  # 1. SEARCH learns to compile the shapes actually derived from the declared applications.  It uses
+  #    the fourteen full application-shape L2 members; no PR-kernel-shaped capsule is allowed to steer
+  #    convergence.
+  # 2. DERIVED GSIM EVALUATION freezes the candidate and reruns those exact fourteen capsules directly
+  #    on the elaborated-RTL GSIM engine.  The smaller `_l3` siblings remain useful smoke tests, but must
+  #    not substitute for this same-workload evaluation.  Encoding/protocol/numerics become certification
+  #    evidence here, once after search rather than once per paid round.
+  # 3. KERNEL-LIBRARY COMPARISON runs only after the derived GSIM stage passes.  It asks whether the
+  #    frozen compiler independently recovered the schedules represented by Radiance PR #1; the library
+  #    remains read-only authoring evidence and is never copied, linked, called, or used for dispatch.
+  #
+  # Keeping these stages separate prevents the previous 29-member mixture from teaching to the external
+  # kernel suite while simultaneously calling that suite an evaluation.  It also cuts each convergence
+  # grade from 29 capsules to 14 without dropping any application-derived behavioural class.
   expected_cohort:
     source_capsules: 166
-    admitted_capsules: 29
+    admitted_capsules: 14
   search_cohort:
-    policy: radiance_pr1_representative_search_v1
+    policy: radiance_model_derived_l2_convergence_v1
     include_capsules:
-      - R0_gemm_fp32
-      - R1_gemm_fp16
-      - R2_gemm_bf16
-      - R4_rmsnorm_fp32
-      - R5_mx_tile_mxfp8
-      - R6_mx_tile_mxfp6
-      - R7_mx_tile_mxfp4
-      - R8_flash_attention_mx
-      - R9_flash_attn_mx_gqa
-      - R11_gemv_batched_mx
-      - R13_flash_attn_mx_fp4
-      - RF0_rmsnorm_qkv_fp16
-      - RF1_rope_qkv_bf16
-      - RP4_softmax_fp32_pt
-      - RP5_layernorm_fp32_pt
-      - RP6_geglu_bf16_pt
-      - RP7_attn_full_fp16_pt
-      - RP11_logit_softcap_fp32_pt
-      - RP12_embed_scale_fp32_pt
-      - RP13_gemma_4norm_bf16_pt
-      - RP14_patch_embed_bf16_pt
-      - RP15_fused_matmul_bias_bf16_pt
-      - RP16_bias_add_fp32_pt
-      - RP17_k_chain_fp16_pt
-      - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l3
-      - SY_conv_k3x3_s2x2_d1x1_pad1x1
-      - SY_contraction_i8_sub_tile
-      - SY_movement_bf16_sub_tile
-      - SY_reduction_bf16_sub_tile
+      - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2
+      - SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2
+      - SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
+      - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
+  evaluation_cohorts:
+    derived_gsim:
+      policy: radiance_model_derived_l3_frozen_candidate_v1
+      after: search_converged
+      oracle_tier: L3
+      oracle_engine: gsim
+      require_source_roles: [model_derived]
+      include_capsules:
+        - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_gemv_like_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_small_dispatch_fragment_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_squareish_gemm_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_tall_skinny_l2
+        - SY_app_contraction_f32_partial_unknown_rank3_wide_skinny_l2
+        - SY_app_contraction_i8_aligned_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_i8_aligned_unknown_rank2_wide_skinny_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_projection_like_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
+        - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
+    kernel_library_comparison:
+      policy: radiance_pr1_frozen_candidate_comparison_v1
+      after: derived_gsim_pass
+      oracle_tier: L3
+      oracle_engine: gsim
+      include_capsules:
+        - R0_gemm_fp32
+        - R1_gemm_fp16
+        - R2_gemm_bf16
+        - R4_rmsnorm_fp32
+        - R5_mx_tile_mxfp8
+        - R6_mx_tile_mxfp6
+        - R7_mx_tile_mxfp4
+        - R8_flash_attention_mx
+        - R9_flash_attn_mx_gqa
+        - R11_gemv_batched_mx
+        - R13_flash_attn_mx_fp4
+        - RF0_rmsnorm_qkv_fp16
+        - RF1_rope_qkv_bf16
+        - RP4_softmax_fp32_pt
+        - RP5_layernorm_fp32_pt
+        - RP6_geglu_bf16_pt
+        - RP7_attn_full_fp16_pt
+        - RP11_logit_softcap_fp32_pt
+        - RP12_embed_scale_fp32_pt
+        - RP13_gemma_4norm_bf16_pt
+        - RP14_patch_embed_bf16_pt
+        - RP15_fused_matmul_bias_bf16_pt
+        - RP16_bias_add_fp32_pt
+        - RP17_k_chain_fp16_pt
 
 answer_surfaces:
   # Both of these are WORKING radiance compilers sitting in out/artifacts/targets/radiance/, which is

@@ -99,16 +99,35 @@ def test_targets_that_declare_nothing_are_unaffected():
     assert seen, "no descriptor without a grading block — this test would be vacuous"
 
 
-def test_the_radiance_search_cohort_is_the_declared_29_member_set():
-    """Repeated kernel-library search is bounded explicitly; models remain separate capstones."""
+def test_radiance_search_and_evaluation_cohorts_are_staged_and_disjoint():
+    """Learn from derived applications first; do GSIM and PR comparison only after freeze."""
     desc = EXP / "radiance/target_experiment.yaml"
     if not desc.is_file():
         pytest.skip("radiance descriptor absent in this checkout")
     te = load_target_experiment(desc)
     roots = [te.capsule_corpus] + [repo_root() / s for s in te.corpus_siblings()]
-    present = {d.name for r in roots for d in r.glob("*") if (d / "capsule.yaml").is_file()}
-    assert len(te.graded_include) == 29
-    assert set(te.graded_include) <= present
-    assert not any(name.startswith(("M", "MX", "SY_model", "SY_micro_model"))
-                   for name in te.graded_include)
-    assert len(te.effective_exclusions(present)) == len(present) - 29
+    docs = {
+        d.name: yaml.safe_load((d / "capsule.yaml").read_text())
+        for r in roots for d in r.glob("*") if (d / "capsule.yaml").is_file()
+    }
+
+    search = set(te.graded_include)
+    derived_gsim = te.evaluation_cohort("derived_gsim")
+    kernel_comparison = te.evaluation_cohort("kernel_library_comparison")
+    derived_names = set(derived_gsim["include_capsules"])
+    kernel_names = set(kernel_comparison["include_capsules"])
+
+    assert len(search) == len(derived_names) == 14
+    assert search | derived_names | kernel_names <= set(docs)
+    # The GSIM evaluation is intentionally the *same* derived workload set, not reduced lookalikes.
+    assert search == derived_names
+    assert not (search & kernel_names)
+    assert all((docs[name] or {}).get("source_role") == "model_derived" for name in search)
+    assert all((docs[name] or {}).get("source_role") == "model_derived" for name in derived_names)
+    assert all(name.endswith("_l2") for name in search)
+    assert all(name.endswith("_l2") for name in derived_names)
+    assert derived_gsim["after"] == "search_converged"
+    assert kernel_comparison["after"] == "derived_gsim_pass"
+    assert derived_gsim["oracle_tier"] == kernel_comparison["oracle_tier"] == "L3"
+    assert derived_gsim["oracle_engine"] == kernel_comparison["oracle_engine"] == "gsim"
+    assert len(te.effective_exclusions(docs)) == len(docs) - 14
