@@ -1,0 +1,216 @@
+{
+  "schema": "canonical_multimodel_affine_im2col_exact_residual_epilogue_v1",
+  "status": "passed_exact_full_model_and_portfolio",
+  "lineage": {
+    "parent": "development_phase2_canonical_multimodel_affine_im2col_20260908",
+    "feature_source": "development_bf62_residual_epilogue_fusion_20260908",
+    "hardware_protocol_source": "resnet50_merlin_phase2_affine_im2col_spans_w8a8_warm_measured_firesim_candidate_20260908",
+    "shared_main_tree_mutated": false,
+    "commit_created": false
+  },
+  "implementation": {
+    "semantic_scope": "target-neutral exact true second-tensor residual epilogue",
+    "formed_chain": [
+      "ordered i32-to-f32 branch conversion",
+      "accumulator scale",
+      "per-channel scale",
+      "per-channel bias",
+      "second-tensor add with exact affine broadcasting maps",
+      "optional ReLU",
+      "reciprocal output scale",
+      "round-to-nearest-even",
+      "zero point",
+      "clamp to signed i8"
+    ],
+    "selected_lowering": "one exact host traversal with optional live f32 boundary write",
+    "source_f32_operation_order_preserved": true,
+    "reassociation": false,
+    "target_or_model_shape_special_cases": false,
+    "fail_closed": true,
+    "optimization_surface": "exact_second_tensor_residual_epilogue"
+  },
+  "qualification": {
+    "tests": {
+      "status": "passed",
+      "count": 50,
+      "files": [
+        "tests/test_reduction_resident_loop_ws.py",
+        "tests/test_host_workspace.py",
+        "tests/test_native_scalar_epilogue.py",
+        "tests/test_native_loop_conv.py",
+        "tests/test_dynamic_weight_quant_bridge.py",
+        "tests/test_affine_im2col_spans.py",
+        "tests/test_residual_epilogue_fusion.py"
+      ],
+      "residual_positive_coverage": [
+        "four unrelated static shapes",
+        "projected and constant-coordinate broadcasting",
+        "optional ReLU absent",
+        "exact f32-bit and i8 numerical witness"
+      ],
+      "residual_negative_coverage": [
+        "reordered arithmetic",
+        "ordinary second-tensor add without a complete i32 branch",
+        "non-roundeven quantizer",
+        "fanout and non-unique sink"
+      ]
+    },
+    "parent_verifier": "passed",
+    "four_model_compile": "passed_sequentially",
+    "full_model_spike": "passed_same_process_warm_then_measured"
+  },
+  "resnet50_structural_ab": {
+    "source_ops_owned_exactly_once": [1240, 1240],
+    "tasks": [109, 105],
+    "host_tasks": [55, 51],
+    "accelerator_tasks": [54, 54],
+    "kernel_abi_pointers": [393, 389],
+    "logical_tensor_bytes": [116646848, 109306816],
+    "physical_intermediate_bytes": [90079488, 82739456],
+    "physical_intermediate_bytes_saved": 7340032,
+    "host_workspace_requested_bytes": [23405568, 7349248],
+    "host_workspace_global_peak_bytes": [7341056, 7341056],
+    "host_allocations": [66, 54],
+    "host_boundary_writes": [122, 118],
+    "device_to_host_boundaries": [54, 50],
+    "host_to_device_boundaries": [50, 50],
+    "target_ir_bytes": [12471103, 12362410],
+    "target_ir_bytes_saved": 108693,
+    "target_sites": {
+      "llvm.load": [1867, 1827],
+      "llvm.store": [1682, 1666],
+      "llvm.br": [4584, 4416],
+      "llvm.cond_br": [2292, 2208],
+      "llvm.fmul": [158, 158],
+      "llvm.fadd": [121, 121],
+      "llvm.intr.roundeven": [50, 50],
+      "llvm.fptosi": [50, 50]
+    },
+    "residual_sites": {
+      "formed": 15,
+      "selected": 15,
+      "deferred_projection_branches": 4,
+      "selected_residual_add_source_indices": [109, 180, 251, 332, 403, 474, 545, 626, 697, 768, 839, 910, 981, 1062, 1133],
+      "refused": [
+        {
+          "source_op_index": 1204,
+          "reason": "residual float result has no unique exact roundeven/clamp i8 sink"
+        }
+      ]
+    },
+    "accelerator_commands_unchanged": {
+      "RES_PACK": 54,
+      "CONV2D": 53,
+      "MATMUL_RESIDENT": 1,
+      "COMMIT": 1
+    }
+  },
+  "portfolio": {
+    "resnet50": {
+      "wall_seconds": 30.11,
+      "max_rss_kb": 201180,
+      "target_sha256": "c29ba22408242dcad9aa215c33a4bbca8ac45d12f87352360afeb16ee5167883",
+      "command_buffer_sha256": "a0148a37091ce83f7395014503045196a3c9e47010c6acaa3b5f5209f439f996",
+      "residual_sites": 15
+    },
+    "tinyllama": {
+      "wall_seconds": 1.32,
+      "max_rss_kb": 55216,
+      "source_ops": 718,
+      "tasks": 1,
+      "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5",
+      "target_byte_identical_to_parent": true,
+      "normalized_command_buffer_identical_to_parent": true,
+      "residual_sites": 0
+    },
+    "lstmnetvit": {
+      "wall_seconds": 51.09,
+      "max_rss_kb": 188028,
+      "source_ops": 2302,
+      "tasks": 75,
+      "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7",
+      "target_byte_identical_to_parent": true,
+      "normalized_command_buffer_identical_to_parent": true,
+      "residual_sites": 0
+    },
+    "smolvla": {
+      "wall_seconds": 47.46,
+      "max_rss_kb": 302524,
+      "source_ops": 11910,
+      "tasks": 233,
+      "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b",
+      "target_byte_identical_to_parent": true,
+      "normalized_command_buffer_identical_to_parent": true,
+      "residual_sites": 0
+    }
+  },
+  "full_model_spike_ab": {
+    "role": "exact functional qualification and within-engine comparative proxy; not FPGA performance evidence",
+    "simulator": "/scratch2/agustin/chipyard/.conda-env/riscv-tools/bin/spike",
+    "arguments": ["--isa=rv64gc_zicntr", "--extension=gemmini"],
+    "external_extension_loaded": false,
+    "warmup_invocations": 1,
+    "measured_invocations": 1,
+    "warm_reset": "zero 82743488-byte mutable arena outside timed region",
+    "measured_kernel_instrumentation": "none",
+    "captured_primary_metric": "cycles",
+    "baseline": {
+      "target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+      "command_buffer_sha256": "3b64d7cd49c3962418f4347f65161a2830af3bd93e3a7c9f96738838024ac6b6",
+      "elf_sha256": "86aea9b8bc6aad86487e652a51629f76dcd472201c85e19077ecb7fac3dbde78",
+      "cycles": 506265226,
+      "instret": 506265232
+    },
+    "candidate": {
+      "elf_sha256": "656c51fd559eeede7c9c7204104a78a9ab2d0be6c4f473018f20d0d935ab383c",
+      "object_sha256": "85667761f7c426bf709536198771c9f20af3687b2fac5f875192a17207e329e3",
+      "cycles": 492147976,
+      "instret": 492147980,
+      "wall_seconds": 46.39,
+      "max_rss_kb": 239616
+    },
+    "cycles_saved": 14117250,
+    "cycle_reduction_percent": 2.7885087252664675,
+    "speedup": 1.028684970148084,
+    "correctness": {
+      "logits_checked": 1000,
+      "bad": 0,
+      "nonfinite": 0,
+      "top1": 258,
+      "expected_top1": 258,
+      "checksum_fnv1a64": "c6e777c3fe0aae90",
+      "max_abs_bits": "00000000",
+      "max_rel_bits": "00000000"
+    }
+  },
+  "simulator_extension_diagnosis": {
+    "status": "resolved_invocation_mismatch",
+    "symptom": "SIGSEGV in stale external Gemmini extension write_to_dram during warmup",
+    "stale_external_extension_sha256": "f3de40ced95c6697e5b27acf938803c4a961d811ab0fa04000f992cb45a2b124",
+    "installed_extension_sha256": "4645ba20f62c057e9544456e760b23ffd90616b4d9584066e8800ae52efe30c0",
+    "control": "the unchanged q535 ELF reproduced the SIGSEGV only when the stale --extlib was added and passed at 506265226 cycles with receipt-matched arguments",
+    "regression_guard": "verifier requires the exact two simulator arguments and forbids an external extension"
+  },
+  "stack_preflight": {
+    "status": "passed",
+    "frame_bytes": 1296,
+    "max_static_bytes": 65536,
+    "headroom_bytes": 64240
+  },
+  "hashes": {
+    "compiler_tree_sha256": "6fe21d20a4f4b138102bfa9506b460c74eaa21a4ea64941a5192d78275daf19a",
+    "compiler_tree_files": 43,
+    "support_tree_sha256": "0714adc43f25efb2421afc37519190f9a2b58c75ad75d7a08b9ff3537936498a",
+    "support_tree_files": 1016,
+    "review_patch_sha256": "d4382a84f7f93e898f795d935c3f8c320d71cee88c202aef054d92c8820603af",
+    "spike_console_sha256": "a0ee2c2739bb8677c5f7dcb1f7f75e52c38a9839d2b4bfb55a202accc47a42b5",
+    "spike_stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "constant_blob_sha256": "4abaa482660e88f04de05d406e2dbcb4aa2205c9f55cc2652f2d64dc3b76501c"
+  },
+  "hardware": {
+    "firesim_run_performed": false,
+    "l3_run_performed": false,
+    "queue_action_performed": false,
+    "hardware_claim": "none"
+  }
+}
