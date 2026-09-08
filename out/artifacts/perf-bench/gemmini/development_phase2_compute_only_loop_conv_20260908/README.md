@@ -23,13 +23,17 @@ PYTHONDONTWRITEBYTECODE=1 /scratch/agustin/projects/oscar-merlin/.venv/bin/pytho
 ```
 
 The verifier checks the compiler tree, the payload-free two-descriptor exact Spike witness, the
-1/53 census, the non-hardware qualification label, and all 51 unit tests (plus six MVOUT-width
-subtests). The full model input, trusted 1,000-logit vector, constant blob, and diagnostic working
-tree are intentionally excluded from the public proof bundle. Their hashes and aggregate results
-are recorded in `validation/compute_only_loop_conv_receipt.json`.
+1/53 census, q545's hardware rejection receipt and sanitized UART summary, and all 51 unit tests
+(plus six MVOUT-width subtests). The full model input, trusted 1,000-logit vector, constant blob,
+and diagnostic working tree are intentionally excluded from the public proof bundle. Their hashes
+and aggregate results are recorded in `validation/compute_only_loop_conv_receipt.json`.
 
 ## Hardware state
 
-No FireSim/FPGA run has completed for this compiler. Independent audit passed, and the candidate is
-ready for the root agent to submit using q535's immutable Jack Universal bitstream/runtime authority.
-q535's successful hardware result remains baseline provenance, not qualification of this candidate.
+FireSim queue job 545 completed successfully and preserved exact correctness, but measured
+1,383,906,735 cycles versus q535's 1,316,619,699: 67,287,036 additional cycles, a 5.11059%
+regression. The candidate is therefore rejected for performance, is not promoted, and the exact ELF
+is blocked from resubmission. Although `instret` fell by 10,025,224, `main_ex` rose by 39,100,793
+(1097.0%), accelerator-active cycles by 36,306,485 (116.2%), and reservation-station-active cycles
+by 40,037,604 (74.23%). Those counters explain why the extra zero-fill/MVOUT command traffic erased
+the host-side saving. q535 remains the hardware champion.

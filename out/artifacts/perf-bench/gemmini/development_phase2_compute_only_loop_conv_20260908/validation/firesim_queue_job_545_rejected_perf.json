@@ -1,0 +1,75 @@
+{
+  "schema": "merlin_resnet50_compute_only_loop_conv_firesim_result_v1",
+  "status": "hardware_tested_rejected_perf",
+  "qualification": "exact_correctness_hardware_pass_performance_regression",
+  "promoted": false,
+  "resubmission_blocked": true,
+  "queue_job": {
+    "id": 545,
+    "state": "DONE",
+    "return_code": 0,
+    "wall_seconds": 325.0779,
+    "project": "resnet50-merlin-compute-only-loop-conv-w8a8-warm-measured"
+  },
+  "artifact_identity": {
+    "submitted_elf_sha256": "aa70e8aaffaea946f021da952570bcf270962948d6c5b4ac09532a9fb8b20366",
+    "executed_elf_sha256": "aa70e8aaffaea946f021da952570bcf270962948d6c5b4ac09532a9fb8b20366",
+    "identity_passed": true,
+    "hwdb_sha256": "c8ab5a86d7feab25160423f689db5fac3b94731be486ae8f81b008d713e3f706"
+  },
+  "measured_metrics": {
+    "cycles": 1383906735,
+    "instret": 496240008,
+    "main_ld_cycles": 13280079,
+    "main_st_cycles": 2714486,
+    "main_ex_cycles": 42665060,
+    "exe_active_cycle": 67561554,
+    "loop_matmul_active_cycles": 57948257,
+    "rdma_bytes_rec": 1145952896,
+    "wdma_bytes_sent": 54136736,
+    "reservation_station_active_cycles": 93972533,
+    "total_simulator_cycles_excluded": 4077692012
+  },
+  "correctness": {
+    "logits_checked": 1000,
+    "bad": 0,
+    "nonfinite": 0,
+    "top1": 258,
+    "expected_top1": 258,
+    "checksum_fnv1a64": "c6e777c3fe0aae90",
+    "max_abs_bits": "00000000",
+    "max_rel_bits": "00000000"
+  },
+  "q535_comparison": {
+    "q535_cycles": 1316619699,
+    "candidate_cycles": 1383906735,
+    "additional_cycles": 67287036,
+    "regression_percent": 5.1105901006,
+    "candidate_over_q535": 1.051105901,
+    "counter_deltas": {
+      "instret": {"q535": 506265232, "candidate": 496240008, "delta": -10025224},
+      "main_ex_cycles": {"q535": 3564267, "candidate": 42665060, "delta": 39100793, "increase_percent": 1097.021996388, "share_of_total_cycle_regression_percent": 58.1098492764},
+      "exe_active_cycle": {"q535": 31255069, "candidate": 67561554, "delta": 36306485, "increase_percent": 116.161909609},
+      "reservation_station_active_cycles": {"q535": 53934929, "candidate": 93972533, "delta": 40037604, "increase_percent": 74.2331634478},
+      "loop_matmul_active_cycles": {"q535": 53520245, "candidate": 57948257, "delta": 4428012, "increase_percent": 8.2735271485},
+      "rdma_bytes_rec": {"q535": 1142808576, "candidate": 1145952896, "delta": 3144320, "increase_percent": 0.2751396923},
+      "wdma_bytes_sent": {"q535": 54136736, "candidate": 54136736, "delta": 0}
+    }
+  },
+  "structural_command_delta": {
+    "removed": {"im2col_row_host_calls": 112, "im2col_publish_fences": 112, "loop_ws_descriptors": 112},
+    "added": {"loop_conv_descriptors": 120, "load3_zero_configurations": 120, "load3_zero_mvins": 4480, "full_width_i32_mvouts": 4480},
+    "interpretation": "Host instruction count fell, but command/execute and reservation-station activity rose enough to dominate on RTL."
+  },
+  "public_evidence": {
+    "sanitized_uart_log": "firesim_queue_job_545_uart_public.log",
+    "sanitized_uart_log_sha256": "8dcc70bf3488599661d0cc8d4f9e0558d15e91d91bb10e8fef942c45719c7f5c",
+    "private_raw_evidence_hashes": {
+      "runworkload_full_json_sha256": "ac433e7c10dcb24e00b2a4abecbb70c773a0c7647d5486e047d62a1efa384ce7",
+      "stdout_sha256": "71f73e03e83e1707f8889762d81116d06638542936018ca48c29ac5b295df78a",
+      "stderr_sha256": "2b63642ce74f1fc24972c90f95343c3ec4f394a44facf501e0e1953e4a354f55",
+      "uart_sha256": "cf8cd8e2947fd9165a1b7f6b974566aa204889ccc9c6888631a8ab27bc9a88fd",
+      "config_runtime_sha256": "5ec4f00fb14134ba786d8798ac35f0c386546247d15fb76876c64cd54214beea"
+    }
+  }
+}

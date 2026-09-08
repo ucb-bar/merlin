@@ -1,5 +1,5 @@
 {
-  "artifact_status": "exact_local_spike_pass_firesim_ready",
+  "artifact_status": "hardware_tested_rejected_perf",
   "mechanism": "native LOOP_CONV compute-only plus explicit LOAD3 C clear and full-width i32 MVOUT",
   "canonical_resnet50": {
     "native_convolutions": 1,
@@ -14,10 +14,13 @@
     "tests": "51 passed plus 6 parameterized subtests",
     "two_descriptor_micro_spike": "512/512 exact, three repeat-stable runs",
     "whole_model_spike": "clean warm-progress ELF passed exact",
-    "firesim": "not run",
-    "safe_to_submit": true,
+    "firesim": "job 545 DONE rc0; exact but 5.1105901006% slower than q535",
+    "firesim_cycles": 1383906735,
+    "safe_to_submit": false,
+    "promoted": false,
+    "resubmission_blocked": true,
     "independent_audit": "passed",
-    "firesim_owner": "root agent"
+    "q535_status": "retained champion"
   },
   "evidence": "validation/compute_only_loop_conv_receipt.json"
 }

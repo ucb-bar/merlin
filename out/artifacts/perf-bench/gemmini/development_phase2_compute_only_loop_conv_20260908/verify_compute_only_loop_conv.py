@@ -66,9 +66,36 @@ def verify_private_candidate(candidate: Path, receipt: dict) -> None:
     require("MERLIN_STEM" not in full_log, "diagnostic stem dump leaked into final log")
     readiness = json.loads(
         (candidate / "validation/firesim_submission_readiness.json").read_text())
-    require(readiness["safe_to_submit"] is True and readiness["firesim_run"] is False and
-            readiness["independent_audit"] == "passed",
+    require(readiness["safe_to_submit"] is False and readiness["firesim_run"] is True and
+            readiness["independent_audit"] == "passed" and
+            readiness["status"] == "hardware_tested_rejected_perf",
             "candidate audit/readiness state changed")
+    hardware = json.loads(
+        (candidate / "validation/firesim_queue_job_545_rejected_perf.json").read_text())
+    require(hardware["status"] == "hardware_tested_rejected_perf" and
+            hardware["promoted"] is False and hardware["resubmission_blocked"] is True,
+            "q545 disposition changed")
+    require(hardware["queue_job"]["state"] == "DONE" and
+            hardware["queue_job"]["return_code"] == 0,
+            "q545 did not complete successfully")
+    require(hardware["measured_metrics"]["cycles"] == 1383906735 and
+            hardware["q535_comparison"]["additional_cycles"] == 67287036,
+            "q545 performance result changed")
+    require(hardware["correctness"]["logits_checked"] == 1000 and
+            hardware["correctness"]["bad"] == 0 and
+            hardware["correctness"]["top1"] == 258,
+            "q545 correctness changed")
+    evidence = hardware["evidence"]
+    for relative, key in (
+        ("validation/firesim_queue_job_545_runworkload_full.json",
+         "runworkload_full_json_sha256"),
+        ("validation/firesim_queue_job_545_stdout.log", "stdout_sha256"),
+        ("validation/firesim_queue_job_545_stderr.log", "stderr_sha256"),
+        ("validation/firesim_queue_job_545_uart.log", "uart_sha256"),
+        ("validation/firesim_queue_job_545_config_runtime.yaml", "config_runtime_sha256"),
+    ):
+        require(sha256(candidate / relative) == evidence[key],
+                f"q545 evidence changed: {relative}")
     authority = readiness["hardware_authority"]
     for relative, key in (
         ("firesim.tar.gz", "firesim_tar_sha256"),
@@ -109,7 +136,7 @@ def verify_private_candidate(candidate: Path, receipt: dict) -> None:
 def main() -> int:
     receipt = json.loads(
         (ROOT / "validation/compute_only_loop_conv_receipt.json").read_text())
-    require(receipt["status"] == "passed_exact_local_spike_not_hardware_qualified",
+    require(receipt["status"] == "hardware_tested_rejected_perf",
             "unexpected qualification status")
     require(hash_tree(ROOT / "compiler") ==
             (receipt["compiler"]["tree_sha256"], receipt["compiler"]["tree_files"]),
@@ -163,9 +190,51 @@ def main() -> int:
             "whole-model mismatch recorded")
     require(model["top1"] == 258,
             "wrong whole-model top1")
-    require(receipt["hardware"]["firesim_run"] is False and
-            receipt["hardware"]["safe_to_submit"] is True,
-            "candidate audit/readiness receipt changed")
+    require(receipt["hardware"]["firesim_run"] is True and
+            receipt["hardware"]["safe_to_submit"] is False and
+            receipt["hardware"]["promoted"] is False and
+            receipt["hardware"]["cycles"] == 1383906735,
+            "candidate hardware rejection receipt changed")
+
+    public_hardware_path = ROOT / "validation/firesim_queue_job_545_rejected_perf.json"
+    public_hardware = json.loads(public_hardware_path.read_text())
+    require(public_hardware["status"] == "hardware_tested_rejected_perf" and
+            public_hardware["promoted"] is False and
+            public_hardware["resubmission_blocked"] is True,
+            "public q545 disposition changed")
+    require(public_hardware["queue_job"]["id"] == 545 and
+            public_hardware["queue_job"]["state"] == "DONE" and
+            public_hardware["queue_job"]["return_code"] == 0,
+            "public q545 queue result changed")
+    metrics = public_hardware["measured_metrics"]
+    comparison = public_hardware["q535_comparison"]
+    require(metrics["cycles"] == 1383906735 and
+            comparison["q535_cycles"] == 1316619699 and
+            comparison["additional_cycles"] == 67287036 and
+            abs(comparison["regression_percent"] - 5.1105901006) < 1e-10,
+            "public q545 cycle comparison changed")
+    require(comparison["counter_deltas"]["main_ex_cycles"]["delta"] == 39100793 and
+            comparison["counter_deltas"]["reservation_station_active_cycles"]["delta"] == 40037604 and
+            comparison["counter_deltas"]["rdma_bytes_rec"]["delta"] == 3144320 and
+            comparison["counter_deltas"]["wdma_bytes_sent"]["delta"] == 0,
+            "public q545 counter diagnosis changed")
+    correctness = public_hardware["correctness"]
+    require(correctness["logits_checked"] == 1000 and correctness["bad"] == 0 and
+            correctness["nonfinite"] == 0 and correctness["top1"] == 258 and
+            correctness["checksum_fnv1a64"] == "c6e777c3fe0aae90",
+            "public q545 correctness changed")
+    public_uart_path = ROOT / "validation/firesim_queue_job_545_uart_public.log"
+    require(sha256(public_uart_path) ==
+            public_hardware["public_evidence"]["sanitized_uart_log_sha256"],
+            "public q545 UART summary changed")
+    public_uart = public_uart_path.read_text()
+    for witness in (
+        "MERLIN_METRIC cycles=1383906735",
+        "MERLIN_RESULT checksum_fnv1a64=c6e777c3fe0aae90",
+        "MERLIN_RESULT logits_checked=1000 bad=0 nonfinite=0 top1=258 expected_top1=258",
+        "MERLIN_DISPOSITION status=hardware_tested_rejected_perf promoted=false resubmission_blocked=true",
+    ):
+        require(witness in public_uart, f"missing public q545 witness: {witness}")
 
     env = os.environ.copy()
     env["PYTHONPATH"] = os.pathsep.join(
@@ -173,8 +242,8 @@ def main() -> int:
     subprocess.run(
         [sys.executable, "-m", "pytest", "-q", "tests"],
         cwd=ROOT, env=env, check=True)
-    print("Compute-only LOOP_CONV public gate passed: exact micro + 51 tests; "
-          "independent audit passed, but no FireSim result is claimed.")
+    print("Compute-only LOOP_CONV gate passed: exact micro + 51 tests; "
+          "q545 exact hardware result is performance-rejected.")
     return 0
 
 

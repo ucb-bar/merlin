@@ -1,6 +1,6 @@
 {
   "schema": "merlin_gemmini_compute_only_loop_conv_v1",
-  "status": "passed_exact_local_spike_not_hardware_qualified",
+  "status": "hardware_tested_rejected_perf",
   "provenance": {
     "owner": "Merlin canonical compiler and source graph",
     "hybrid_or_tvm_graph_ownership": false,
@@ -83,9 +83,16 @@
     "parameterized_subtests": 6
   },
   "hardware": {
-    "firesim_run": false,
-    "fpga_submission": false,
-    "safe_to_submit": true,
-    "readiness": "independent audit passed; root owns submission"
+    "firesim_run": true,
+    "fpga_submission": true,
+    "safe_to_submit": false,
+    "promoted": false,
+    "queue_job_id": 545,
+    "cycles": 1383906735,
+    "q535_cycles": 1316619699,
+    "additional_cycles": 67287036,
+    "regression_percent": 5.1105901006,
+    "correctness": "1000/1000 exact, top1 258, checksum c6e777c3fe0aae90",
+    "readiness": "hardware-tested and rejected for performance; exact ELF resubmission blocked"
   }
 }

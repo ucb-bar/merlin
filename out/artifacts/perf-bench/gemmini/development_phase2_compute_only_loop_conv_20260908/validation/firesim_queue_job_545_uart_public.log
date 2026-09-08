@@ -1,0 +1,22 @@
+MERLIN_PUBLIC_EVIDENCE queue_job=545 state=DONE return_code=0 wall_seconds=325.0779
+MERLIN_ARTIFACT elf_sha256=aa70e8aaffaea946f021da952570bcf270962948d6c5b4ac09532a9fb8b20366
+MERLIN_MODEL resnet50_w8a8_torchao_pt2e
+MERLIN_INPUT universal_resnet50_dog_sha256_92994d4d2219bc51
+MERLIN_INVOCATIONS warmup=1 measured=1 batch=1
+MERLIN_WARM_PROGRESS checkpoints=8
+MERLIN_METRIC cycles=1383906735
+MERLIN_METRIC instret=496240008
+MERLIN_METRIC main_ld_cycles=13280079
+MERLIN_METRIC main_st_cycles=2714486
+MERLIN_METRIC main_ex_cycles=42665060
+MERLIN_METRIC exe_active_cycle=67561554
+MERLIN_METRIC loop_matmul_active_cycles=57948257
+MERLIN_METRIC rdma_bytes_rec=1145952896
+MERLIN_METRIC wdma_bytes_sent=54136736
+MERLIN_METRIC reservation_station_active_cycles=93972533
+MERLIN_RESULT checksum_fnv1a64=c6e777c3fe0aae90
+MERLIN_RESULT max_abs_bits=00000000 max_rel_bits=00000000
+MERLIN_RESULT logits_checked=1000 bad=0 nonfinite=0 top1=258 expected_top1=258
+MERLIN_COMPARISON q535_cycles=1316619699 additional_cycles=67287036 regression_percent=5.1105901006
+MERLIN_DISPOSITION status=hardware_tested_rejected_perf promoted=false resubmission_blocked=true
+PASS: FireSim exactness; REJECT: hardware performance regression
