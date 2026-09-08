@@ -24,6 +24,29 @@ commands:
     argv: ["{tool}", "--source-convolution", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
 
 optimization_surfaces:
+  - id: native_aligned_i32_bias_scalar_epilogue
+    scope: canonicalization
+    path: mlir_oot/frontend/native_aligned_epilogue.py
+    symbol: fold
+    effects: [fusion, movement, encoding]
+    cca_axes: [compute.epilogue, communication.intermediate_materialized,
+      communication.resident_across_calls]
+    mechanism: >-
+      Under the explicit native_aligned_i32_bias_scalar_requant_v1 contract, recognize an i32
+      bias whose scale is exactly the float32 product of the two scalar operand scales, combine
+      those scales with the static output scale once, and form accumulator bias followed by one
+      scalar round-even/saturating i8 readout with optional ReLU.
+    emitted_delta: >-
+      Replace the represented f32 bias/QDQ traversal and full-width accumulator boundary with a
+      repeating i32 D preload plus target CONFIG_ST scale and native i8 readout.
+    validation: >-
+      Independently re-recognize the canonical source form at target selection; exercise exact
+      boundary values and optional ReLU; refuse mismatched bias scale, nonzero zero point, and a
+      non-column bias; compile the complete public ResNet source under a 120-second cap.
+    abandonment: >-
+      Default off for every other integer contract. Refuse dynamic/nonpositive scales, nonzero
+      zero points, non-i32 bias, shared or malformed chains, non-round-even quantization, and any
+      bias that is not Gemmini's hardware N axis.
   - id: exact_per_tensor_qdq_layout_reuse
     scope: canonicalization
     path: mlir_oot/frontend/gemmini_friendly_quant.py

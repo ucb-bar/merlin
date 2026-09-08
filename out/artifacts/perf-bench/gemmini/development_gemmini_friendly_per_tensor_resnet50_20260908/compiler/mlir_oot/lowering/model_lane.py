@@ -31,6 +31,10 @@ from ..frontend.quantized_epilogue import (
     exact_identity_narrowing,
     recognize as recognize_quantized_epilogue,
 )
+from ..frontend.native_aligned_epilogue import (
+    NativeAlignedEpilogue,
+    recognize as recognize_native_aligned_epilogue,
+)
 from ..frontend.requantization_contract import (
     AccuracyPolicy,
     NativeNarrowCapability,
@@ -55,7 +59,7 @@ NATIVE_NARROW_CAPABILITY = NativeNarrowCapability(
     name="accumulator_narrow_i8_scalar_scale_v1",
     scale_granularities=("per_tensor",),
     scale_axis=None,
-    bias_domains=("none",),
+    bias_domains=("none", "accumulator_i32"),
     output_zero_points=(0,),
     rounding=("round_to_nearest_even",),
     saturation=(-128, 127),
@@ -420,7 +424,7 @@ class MixedBuilder:
         self.im2col_recipes: list[dict[str, Any]] = []
         self.batched_contractions: list[dict[str, Any]] = []
         self.host_tensor_spills: dict[str, SSAValue] = {}
-        self.native_epilogues: dict[Operation, QuantizedEpilogue] = {}
+        self.native_epilogues: dict[Operation, QuantizedEpilogue | NativeAlignedEpilogue] = {}
         self.native_epilogue_accuracy: dict[Operation, RequantizationDecision] = {}
         self.epilogue_refusals: list[dict[str, Any]] = []
         self.requantization_policy = requantization_policy
@@ -675,6 +679,10 @@ class MixedBuilder:
     def _select_exact_native_epilogues(self, mesh_ops: list[Operation]) -> None:
         """Prefer universal proof; consult an explicit held-out budget only when opted in."""
         for producer in mesh_ops:
+            native_aligned = recognize_native_aligned_epilogue(producer)
+            if native_aligned is not None:
+                self.native_epilogues[producer] = native_aligned
+                continue
             result = recognize_quantized_epilogue(producer)
             if isinstance(result, EpilogueRefusal):
                 row = result.receipt(self.source_indices)
@@ -710,6 +718,9 @@ class MixedBuilder:
             self.native_epilogues[producer] = result
 
     def _native_requant_scale(self, producer: Operation) -> float:
+        formation = self.native_epilogues.get(producer)
+        if isinstance(formation, NativeAlignedEpilogue):
+            return formation.multiplier
         decision = self.native_epilogue_accuracy.get(producer)
         if decision is None:
             return 1.0
@@ -720,8 +731,8 @@ class MixedBuilder:
         return float(decision.candidate.scales[0])
 
     def _native_requant_stages(self, producer: Operation,
-                               formation: QuantizedEpilogue) -> list[str]:
-        stages = []
+                               formation: QuantizedEpilogue | NativeAlignedEpilogue) -> list[str]:
+        stages = ["bias"] if isinstance(formation, NativeAlignedEpilogue) else []
         if self._native_requant_scale(producer) != 1.0:
             stages.append("acc_scale")
         if formation.relu:
@@ -744,7 +755,8 @@ class MixedBuilder:
             if hasattr(task, "activation"):
                 return ([task.activation, task.weight]
                         + ([task.bias] if getattr(task, "bias", None) else []), [task.dst])
-            return ([task.lhs, task.rhs], [task.dst])
+            return ([task.lhs, task.rhs]
+                    + ([task.epilogue.bias] if task.epilogue.bias else []), [task.dst])
 
         def encoding(name: str):
             value = self.buffers[name].storage_encoding
@@ -851,7 +863,8 @@ class MixedBuilder:
         }
 
     def _exclusive_epilogue_owners(
-            self, producer: Operation, formation: QuantizedEpilogue) -> set[Operation]:
+            self, producer: Operation,
+            formation: QuantizedEpilogue | NativeAlignedEpilogue) -> set[Operation]:
         """Return the complete, single-use source slice erased by native formation.
 
         Besides the four linalg stages, the slice owns their tensor.empty initializers,
@@ -888,13 +901,17 @@ class MixedBuilder:
         native_stages = (self._native_requant_stages(op, formation)
                          if formation is not None else [])
         out_v = formation.output if formation is not None else spec.output
-        for operand in (lhs_v, rhs_v):
+        native_bias_v = formation.bias if isinstance(formation, NativeAlignedEpilogue) else None
+        for operand in (lhs_v, rhs_v, *([native_bias_v] if native_bias_v is not None else [])):
             if operand not in in_dram:
                 raise LoweringDeclined(
                     "a mesh contraction reads an operand no earlier segment left in DRAM",
                     op="model_lane")
         lhs = self.of_value.get(lhs_v) or self.buffer_for(lhs_v)
         rhs = self.of_value.get(rhs_v) or self.buffer_for(rhs_v)
+        native_bias = ((self.of_value.get(native_bias_v)
+                        or self.buffer_for(native_bias_v, "bias"))
+                       if native_bias_v is not None else None)
         dst = self.of_value.get(out_v) or self.buffer_for(out_v)
         m, k, n = spec.batch * spec.m, spec.k, spec.n
         if spec.block_diagonal:
@@ -942,6 +959,8 @@ class MixedBuilder:
                               "output_dtype": F.ACCUMULATOR_DTYPE if modular else out_dtype}
         if "acc_scale" in native_stages:
             command_attributes["acc_scale"] = native_scale
+        if native_bias is not None:
+            command_attributes["bias"] = native_bias
         self.commands.append({"opcode": "COMMIT",
                               "operands": {"src": acc, "dst": temporary or dst},
                               "attributes": command_attributes})
@@ -951,6 +970,7 @@ class MixedBuilder:
                         epilogue=Epilogue(
                             stages=native_stages,
                             output_dtype=out_dtype, acc_scale=native_scale,
+                            bias=native_bias,
                             integer_output_policy=("saturate" if formation is not None
                                                    else "modular")),
                         accumulator_temporary=temporary))
@@ -1012,7 +1032,9 @@ class MixedBuilder:
                          "kind": "host" if isinstance(task, HostSegment) else "contraction",
                          "source_op_indices": list(task.source_op_indices),
                          "reads": [n for _, n in task.inputs] if isinstance(task, HostSegment)
-                                  else [task.lhs, task.rhs],
+                                  else ([task.lhs, task.rhs]
+                                        + ([task.epilogue.bias]
+                                           if task.epilogue.bias else [])),
                          "writes": [n for _, n in task.outputs] if isinstance(task, HostSegment)
                                    else [task.dst] + ([task.accumulator_temporary]
                                                      if task.accumulator_temporary else []),
@@ -1059,13 +1081,27 @@ class MixedBuilder:
             boundary_bytes += full_width_bytes
             source_ops += len(self.absorbed_by.get(producer, ()))
             row = formation.receipt(self.source_indices)
-            source_contract = contract_from_formation(formation).receipt()
+            source_contract = (
+                {"schema": "native_aligned_i32_epilogue_contract_v1",
+                 "bias_domain": "accumulator_i32",
+                 "scale_granularity": "per_tensor",
+                 "scales": [formation.multiplier],
+                 "rounding": "round_to_nearest_even",
+                 "saturation": [-128, 127],
+                 "output_zero_point": 0}
+                if isinstance(formation, NativeAlignedEpilogue)
+                else contract_from_formation(formation).receipt())
             decision = self.native_epilogue_accuracy.get(producer)
             row.update({
                 "semantic_contract": source_contract,
-                "selected_lowering": ("native_identity_scale_i8_readout" if decision is None
-                                      else "accuracy_bounded_native_narrow_i8_readout"),
-                "selection_proof": ("universal_exact" if decision is None
+                "selected_lowering": (
+                    "native_i32_bias_scalar_scale_i8_readout"
+                    if isinstance(formation, NativeAlignedEpilogue)
+                    else "native_identity_scale_i8_readout" if decision is None
+                    else "accuracy_bounded_native_narrow_i8_readout"),
+                "selection_proof": ("canonical_source_semantics"
+                                    if isinstance(formation, NativeAlignedEpilogue)
+                                    else "universal_exact" if decision is None
                                     else "empirical_heldout_accuracy_budget"),
                 **({} if decision is None else {"accuracy_gate": dict(decision.receipt)}),
                 "logical_device_to_host_boundary_eliminated": 1,

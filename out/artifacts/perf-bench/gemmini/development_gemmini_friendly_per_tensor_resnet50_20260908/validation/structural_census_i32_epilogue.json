@@ -1,0 +1,101 @@
+{
+  "bundle": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908",
+  "command_buffer": {
+    "accelerator_task_count": 54,
+    "command_count": 162,
+    "host_segment_count": 55,
+    "host_task_count": 55,
+    "maximal_accelerator_region_count": 54,
+    "opcode_histogram": {
+      "COMMIT": 54,
+      "MATMUL_RESIDENT": 54,
+      "RES_PACK": 54
+    },
+    "task_count": 109,
+    "task_kind_histogram": {
+      "contraction": 54,
+      "host": 55
+    }
+  },
+  "delta_vs_baseline": {
+    "baseline": "out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/validation/structural_census_after.json",
+    "host_source_operations": -24,
+    "host_source_operations_percent": -0.8421052631578947,
+    "normalized_bytes": -5213
+  },
+  "fusion": {
+    "native_narrow_epilogue_count": 1,
+    "native_narrow_source_ops_absorbed": 9,
+    "residual_epilogue_formed_count": 0,
+    "residual_epilogue_selected_count": 0
+  },
+  "host_residual": {
+    "operation_histogram": {
+      "arith.constant": 752,
+      "linalg.generic": 539,
+      "linalg.reduce": 1,
+      "linalg.transpose": 1,
+      "tensor.collapse_shape": 214,
+      "tensor.empty": 540,
+      "tensor.expand_shape": 214,
+      "tensor.insert_slice": 18,
+      "tensor.splat": 547
+    },
+    "source_operation_count": 2826,
+    "spill_bytes": 28555648,
+    "spill_tensor_count": 179
+  },
+  "input": {
+    "normalized_bytes": 1018068,
+    "normalized_sha256": "3be5754b81b1fa0eb292eec8140ccb0af2122f3d5f23857122d368c0aee213c0",
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_native_aligned_per_tensor_i8_20260908/validation/native_aligned_capture/linalg.mlir",
+    "source_bytes": 873174,
+    "source_sha256": "b62e3713ea06eb842b4023101caa2ed57e6fa55a71e1af77dd0d0b5b18427486"
+  },
+  "interpretation": {
+    "accelerator_contraction_tasks": 54,
+    "conv_capture_form": "model2MLIR im2col plus rank-2 matmul",
+    "direct_loop_conv_tasks": 0,
+    "full_llvm_emission_performed": false
+  },
+  "preparation": {
+    "c_interface_funcs": 1,
+    "dead_tensor_ops_pruned": 348,
+    "integer_pass_counts": {
+      "contraction_int8": 54,
+      "conv_int8": 0,
+      "gelu_int": 0,
+      "rsqrt_int": 0,
+      "silu_int": 0,
+      "softmax_int": 0
+    },
+    "integer_pass_report": {
+      "contraction_int8": {
+        "prequant_gather_erased_ops": 462,
+        "static_per_tensor_layout_reused": 108
+      },
+      "conv_int8": {
+        "compound_map_generics": 1,
+        "conv_prov_ops": 670,
+        "dynamic_activation_quantized": 0,
+        "generics_scanned": 126,
+        "lowered": 0,
+        "static_activation_reused": 0,
+        "windowed_map_generics": 1
+      }
+    },
+    "native_aligned_i32_epilogue": {
+      "admitted": 1,
+      "refused": {
+        "bias_axis_not_gemmini_column": 53
+      },
+      "source_contract": "i32_bias_then_one_f32_multiplier_roundeven_saturate_i8"
+    },
+    "quant_ext_lowered": 210
+  },
+  "schema": "gemmini_friendly_resnet50_structural_census_v1",
+  "timing_seconds": {
+    "parse_and_plan": 1.6080077560036443,
+    "prepare": 2.4678342760016676
+  }
+}

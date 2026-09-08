@@ -15,6 +15,7 @@ from merlin.llvmlower.quant_passes import apply_quant
 from merlin.xdsl_dialects._common import text as module_to_text
 
 from . import gemmini_friendly_quant
+from .native_aligned_epilogue import fold as fold_native_aligned_epilogues
 
 
 def _splat_constant(value):
@@ -75,7 +76,7 @@ def static_input_prologue(source_text: str) -> dict | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
-def prepare_int8_text(source_text: str) -> tuple[str, dict]:
+def prepare_int8_text(source_text: str, *, native_aligned_epilogue: bool = False) -> tuple[str, dict]:
     """Return upstream MLIR plus an auditable, per-pass preparation report.
 
     This is model- and target-independent: the same registered integer passes
@@ -94,10 +95,15 @@ def prepare_int8_text(source_text: str) -> tuple[str, dict]:
         quant_counts = apply_quant(module, report_out=quant_report)
     finally:
         canonical_quant_impl.lower_contraction_int8 = canonical
+    native_epilogue_report: dict = {"enabled": False}
+    if native_aligned_epilogue:
+        native_epilogue_report = {}
+        fold_native_aligned_epilogues(module, native_epilogue_report)
     upstream_text, common_stats = passes_xdsl.preprocess_text(module_to_text(module))
     return upstream_text, {
         "integer_pass_counts": quant_counts,
         "integer_pass_report": quant_report,
+        "native_aligned_i32_epilogue": native_epilogue_report,
         **common_stats,
     }
 

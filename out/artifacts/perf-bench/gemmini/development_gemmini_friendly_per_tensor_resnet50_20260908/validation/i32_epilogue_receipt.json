@@ -1,0 +1,107 @@
+{
+  "schema": "gemmini_native_aligned_i32_epilogue_receipt_v1",
+  "status": "compiler_passed_deployment_gate_rejected",
+  "source": {
+    "sha256": "b62e3713ea06eb842b4023101caa2ed57e6fa55a71e1af77dd0d0b5b18427486",
+    "numeric_contract": "native_aligned_i32_bias_scalar_requant_v1",
+    "original_pt2e_qdq_bit_equivalence": "NOT_CLAIMED"
+  },
+  "preparation": {
+    "eligible_sites": 1,
+    "refused_sites": 53,
+    "refusal_histogram": {
+      "bias_axis_not_gemmini_column": 53
+    },
+    "admitted_site": "model.fc",
+    "source_semantics": "i32 accumulator plus i32 bias, one f32 multiplier, round-nearest-even, saturate i8, optional ReLU"
+  },
+  "delta_vs_pre_epilogue_compiler": {
+    "native_narrow_epilogues": 1,
+    "source_operations_absorbed": 9,
+    "residual_host_source_operations": -24,
+    "host_spill_tensors": -3,
+    "host_spill_bytes": -4160,
+    "full_width_boundary_bytes_eliminated": 4000,
+    "output_dma_bytes_eliminated": 3000,
+    "host_tasks": 0,
+    "maximal_accelerator_regions": 0,
+    "commands": 0
+  },
+  "whole_model_after": {
+    "commands": 162,
+    "opcode_histogram": {
+      "RES_PACK": 54,
+      "MATMUL_RESIDENT": 54,
+      "COMMIT": 54
+    },
+    "tasks": 109,
+    "accelerator_contraction_tasks": 54,
+    "host_tasks": 55,
+    "maximal_accelerator_regions": 54,
+    "residual_host_source_operations": 2826,
+    "host_spill_tensors": 179,
+    "host_spill_bytes": 28555648,
+    "host_workspace_bytes": 10953728,
+    "native_narrow_epilogues": 1,
+    "direct_loop_conv_tasks": 0
+  },
+  "terminal_fc": {
+    "shape": [1, 1000],
+    "bias_tensor": "arg54",
+    "combined_multiplier_f32": 0.016916487365961075,
+    "commit_epilogue": ["bias", "acc_scale"],
+    "output_dtype": "i8",
+    "task_reads_include_bias": true,
+    "emitted_bias_d_preload": true,
+    "emitted_config_st_scale": true
+  },
+  "full_compile": {
+    "status": "passed",
+    "exit_status": 0,
+    "timeout_seconds": 120,
+    "wall_seconds": 52.38,
+    "user_seconds": 51.46,
+    "system_seconds": 0.82,
+    "maximum_resident_kbytes": 919664,
+    "command_buffer": {
+      "path": "full_compile_i32_epilogue/command_buffer.json",
+      "bytes": 1121943,
+      "sha256": "ba6f8b1e7adc01a34a655a4e8f51f88bd7d9445bd8a77c3f14b42e196c5532ac",
+      "schema_valid": true
+    },
+    "target": {
+      "compressed_path": "full_compile_i32_epilogue/target.mlir.gz",
+      "compressed_bytes": 1467323,
+      "compressed_sha256": "2a4991278491f82becdfb95aaf73ec10708c8325ae01a003eb8859165523e799",
+      "uncompressed_bytes": 75581175,
+      "uncompressed_sha256": "64deb2e9a43e289ce85d6c3d66faa3614422577bce4edf644325ecb4ac068ab2",
+      "global_task_attribute_count": 378224,
+      "global_task_ids_present": "all IDs -1 through 108"
+    }
+  },
+  "deployment_gate": {
+    "promotion_eligible": false,
+    "failed_checks": [
+      "cosine_vs_fp32",
+      "max_abs_vs_fp32",
+      "executorch_export",
+      "executorch_execute",
+      "same_qdq_graph",
+      "fresh_heldout_qualification",
+      "imagenet_validation_complete",
+      "imagenet_top1",
+      "imagenet_top1_drop"
+    ],
+    "cosine_vs_fp32": 0.8852356672286987,
+    "max_abs_vs_fp32": 1.8770968914031982,
+    "top1": 258
+  },
+  "limitations": {
+    "convolution_epilogues_recovered": 0,
+    "reason": "im2col matmuls are physically [Co,K]x[K,P], but Gemmini repeating D bias preload broadcasts along M and therefore needs channel on N",
+    "next_implementation_seam": "recover direct source convolution or choose a globally propagated [P,Co] physical output layout, then fuse post-convolution ReLU/maxpool and maintain NHWC residency",
+    "firesim_run": false,
+    "private_payload_used": false,
+    "compiler_92_96_modified": false
+  }
+}

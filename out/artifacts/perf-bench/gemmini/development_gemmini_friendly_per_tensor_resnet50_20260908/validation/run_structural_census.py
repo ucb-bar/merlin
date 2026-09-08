@@ -31,10 +31,11 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def census(input_path: Path) -> dict:
+def census(input_path: Path, *, native_aligned_epilogue: bool = False) -> dict:
     source = input_path.read_text()
     started = time.monotonic()
-    normalized, preparation = prepare_int8_text(source)
+    normalized, preparation = prepare_int8_text(
+        source, native_aligned_epilogue=native_aligned_epilogue)
     prepared_s = time.monotonic() - started
     started = time.monotonic()
     module = mlir_parse.parse_module(normalized)
@@ -103,8 +104,9 @@ def main() -> int:
     parser.add_argument("input", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--native-aligned-epilogue", action="store_true")
     args = parser.parse_args()
-    result = census(args.input.resolve())
+    result = census(args.input.resolve(), native_aligned_epilogue=args.native_aligned_epilogue)
     if args.baseline:
         baseline = json.loads(args.baseline.read_text())
         old = baseline["host_residual"]["source_operation_count"]

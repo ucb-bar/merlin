@@ -208,7 +208,10 @@ class Pipeline:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="gemmini-opt", add_help=True)
     ap.add_argument("--source-convolution", action="store_true", help="enable source-derived integer convolution task scheduling")
-    ap.add_argument("--integer-contract", choices=["designated_i32_staged_f32_v1"], help="explicitly adopt integer accumulation plus staged f32 epilogue; NOT original QDQ bit-equivalence")
+    ap.add_argument("--integer-contract", choices=[
+        "designated_i32_staged_f32_v1",
+        "native_aligned_i32_bias_scalar_requant_v1",
+    ], help="explicitly adopt a named integer arithmetic contract; NOT original QDQ bit-equivalence")
     ap.add_argument("--dynamic-weight-only-contract", choices=["symmetric_per_output_channel_roundeven_v1"], help="structurally bridge calibrated i8 weights plus f32/QDQ activations to integer contractions; explicit numeric contract, NOT f32 bit-equivalence")
     ap.add_argument("--externalize-static-input-quantizer", action="store_true", help="explicit deployment ABI/timing boundary change; requires designated integer contract")
     ap.add_argument("--requant-accuracy-policy", metavar="PATH", help="explicit opt-in, source-bound held-out error budget for non-exact native narrow readout")
@@ -231,7 +234,10 @@ def main(argv: list[str] | None = None) -> int:
         ap.error("external input prologue requires an explicit designated integer contract")
     if args.integer_contract is not None:
         from mlir_oot.frontend.integer_prepare import prepare_int8_text, static_input_prologue
-        text, preparation = prepare_int8_text(original_text)
+        text, preparation = prepare_int8_text(
+            original_text,
+            native_aligned_epilogue=(
+                args.integer_contract == "native_aligned_i32_bias_scalar_requant_v1"))
         if args.externalize_static_input_quantizer:
             input_prologue = static_input_prologue(original_text)
             if input_prologue is None:

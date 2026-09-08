@@ -14,8 +14,12 @@
     "direct_loop_conv_tasks": 0,
     "host_tasks": 55,
     "accelerator_regions": 54,
-    "native_narrow_epilogues": 0,
-    "residual_host_source_operations": 2850
+    "native_narrow_epilogues": 1,
+    "native_epilogue_refusals": {
+      "bias_axis_not_gemmini_column": 53
+    },
+    "residual_host_source_operations": 2826,
+    "host_spill_bytes": 28555648
   },
   "full_compile": {
     "wall_seconds": 46.90,
@@ -23,7 +27,14 @@
     "commands": 162,
     "target_uncompressed_bytes": 68293031
   },
-  "next_seam": "canonical i32 bias plus scalar requant/round/saturate/ReLU epilogue, followed by NHWC propagation and source-conv recovery",
+  "native_epilogue_full_compile": {
+    "contract": "native_aligned_i32_bias_scalar_requant_v1",
+    "wall_seconds": 52.38,
+    "maximum_resident_kbytes": 919664,
+    "commands": 162,
+    "target_uncompressed_bytes": 75581175
+  },
+  "next_seam": "source-conv recovery or globally propagated [P,Co]/NHWC orientation for the 53 row-bias convolution epilogues",
   "firesim_run": false,
   "private_payload_used": false,
   "compiler_92_96_modified": false
