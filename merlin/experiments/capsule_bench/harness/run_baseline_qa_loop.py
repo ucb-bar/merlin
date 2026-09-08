@@ -1541,6 +1541,64 @@ def _is_owned_submission_target(word: str, workspace: Path | None) -> bool:
         return False
 
 
+def _submission_path_kind(word: str, workspace: Path | None) -> str | None:
+    """Classify a path spelled through this run's lexical ``submission/`` root.
+
+    Looking only for answer-token substrings misses an important provenance boundary: an agent is
+    allowed to read its own authored submission, but a symlink or ``..`` component below that spelling
+    must not turn the exemption into an arbitrary host read.  Recognize the lexical boundary first,
+    then resolve it to distinguish a genuine owned read from an escape.
+    """
+    if workspace is None or not word:
+        return None
+    raw = word.strip().strip("'\";,()[]{}")
+    if not raw:
+        return None
+    ws = Path(workspace).resolve(strict=False)
+    owned = ws / "submission"
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            lexical = candidate.is_relative_to(owned)
+        except (OSError, RuntimeError):
+            lexical = False
+    else:
+        spelling = raw[2:] if raw.startswith("./") else raw
+        lexical = spelling == "submission" or spelling.startswith("submission/")
+        candidate = ws / candidate
+    if not lexical:
+        return None
+    try:
+        return ("owned_read" if candidate.resolve(strict=False).is_relative_to(
+            owned.resolve(strict=False)) else "path_read")
+    except (OSError, RuntimeError):
+        return "path_read"
+
+
+def _submission_bash_read(cmd: str, workspace: Path | None) -> tuple[str, str] | None:
+    """Return ``(kind, operand)`` for a direct content read through ``submission/``.
+
+    This is deliberately independent of the answer-token registry: the ownership exception applies
+    to all files the agent authored, and its escape check must run even when the external target has a
+    different filename.  Shell segments that cannot be tokenized are ignored here and remain subject
+    to the existing fail-closed answer-token/oracle checks.
+    """
+    if workspace is None:
+        return None
+    for segment in re.split(r"[;&|\n]+", cmd):
+        if not _READ_RE.search(segment):
+            continue
+        try:
+            words = shlex.split(segment)
+        except ValueError:
+            words = segment.split()
+        for word in words:
+            kind = _submission_path_kind(word, workspace)
+            if kind is not None:
+                return kind, word
+    return None
+
+
 def _classify_bash_read(cmd: str, result_text, answer_tokens, word: str = "", tok: str = "",
                        granted: frozenset = frozenset(), workspace: Path | None = None) -> str:
     """Classify a flagged Bash read, cheapest-and-most-benign explanation first:
@@ -1612,8 +1670,14 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
             name = b.get("name")
             if name == "Read":
                 fp = inp.get("file_path") or ""
+                submission_kind = _submission_path_kind(fp, workspace)
                 tok = next((t for t in path_tokens if t in fp), None)
-                if tok:
+                if submission_kind is not None:
+                    kind = ("blocked_probe" if _read_was_blocked(results.get(b.get("id")))
+                            else submission_kind)
+                    hits.append({"tool": name, "kind": kind, "token": "submission/",
+                                 "input": fp[:200]})
+                elif tok:
                     if _read_was_blocked(results.get(b.get("id"))):
                         kind = "blocked_probe"
                     elif _is_owned_submission_target(fp, workspace):
@@ -1625,8 +1689,15 @@ def audit_transcript(tpath: Path, arm: str = "raw_baseline", bundle: str | None 
                     hits.append({"tool": name, "kind": kind, "token": tok, "input": fp[:200]})
             elif name == "Bash":
                 cmd = inp.get("command") or ""
+                submission_read = _submission_bash_read(cmd, workspace)
                 match = _answer_read_match(cmd, path_tokens)
-                if match:
+                if submission_read is not None:
+                    kind, word = submission_read
+                    if _read_was_blocked(results.get(b.get("id"))):
+                        kind = "blocked_probe"
+                    hits.append({"tool": name, "kind": kind, "token": "submission/",
+                                 "input": cmd[:200], "target": word[:200]})
+                elif match:
                     tok, word = match
                     kind = _classify_bash_read(cmd, results.get(b.get("id")), _ANSWER_TOKENS,
                                                word=word, tok=tok, granted=granted,
