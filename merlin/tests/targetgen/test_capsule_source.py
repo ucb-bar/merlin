@@ -48,13 +48,15 @@ def test_unknown_op_fails_closed():
         CSrc.build_loader_src({"op": "not_a_real_op", "M": 16, "K": 16})
 
 
-def test_elementwise_loader_preserves_explicit_captured_rank_and_rejects_bad_shapes():
-    src = CSrc.build_loader_src({"op": "add", "shape": [1, 113, 1], "dtype": "fp32", "seed": 7})
+@pytest.mark.parametrize("op,symbol", [("add", "+"), ("mul", "*")])
+def test_elementwise_loader_preserves_explicit_captured_rank_and_rejects_bad_shapes(op, symbol):
+    src = CSrc.build_loader_src({"op": op, "shape": [1, 113, 1], "dtype": "fp32", "seed": 7})
     assert src.count("_r(1, 113, 1)") == 2
-    compile(src, "<loader:add-rank3>", "exec")
+    assert f"return a {symbol} b" in src
+    compile(src, f"<loader:{op}-rank3>", "exec")
     for bad in ([], [1, 0, 1], [1, True, 1], "1x113x1"):
         with pytest.raises(ValueError, match="non-empty sequence of positive integers"):
-            CSrc.build_loader_src({"op": "add", "shape": bad, "dtype": "fp32", "seed": 7})
+            CSrc.build_loader_src({"op": op, "shape": bad, "dtype": "fp32", "seed": 7})
 
 
 def test_fused_capsule_metadata_preserves_authored_model_derived_role():

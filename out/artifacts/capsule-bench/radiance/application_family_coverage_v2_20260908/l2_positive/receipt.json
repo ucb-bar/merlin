@@ -1,0 +1,42 @@
+{
+  "schema": "radiance_application_elementwise_l2_v2",
+  "case": "positive",
+  "capsule": "SY_app_elementwise_mul_f32_rank1_32_l2",
+  "expected_control": "pass",
+  "numeric": {
+    "policy": "tolerance_float",
+    "golden_source": "host_torch_eager",
+    "status": "pass",
+    "mismatch_count": 0,
+    "max_abs_error": 0,
+    "max_rel_error": 0.0,
+    "first_mismatch": null,
+    "per_output": {
+      "out": {
+        "status": "pass",
+        "mismatch_count": 0,
+        "max_abs_error": 0,
+        "max_rel_error": 0.0,
+        "n_elements": 32,
+        "saturated": false
+      }
+    }
+  },
+  "oracle": {
+    "kind": "cyclotron_perf_model",
+    "derived_from_rtl": false
+  },
+  "timing": {
+    "build_s": 0.644,
+    "sim_active_s": 1.459,
+    "oracle_wait_s": 0.0
+  },
+  "cycles": 46481,
+  "toolchain": "fork-free",
+  "capsule_yaml_sha256": "6d74ac70881c43eaa1d5499e63c9111718bb1f3054b0327d6b3ab68530a5c47b",
+  "capsule_interface_sha256": "e57013f2ecf9b6d791e4be7ff67c7757041f7c03a2ef289fbb112c1a4f488228",
+  "lowered_llvm_mlir_sha256": "0bed7314f13123abedfddd2548fdbf8148edb65565cecff2f499320ebfdaba00",
+  "oracle_scope": "L2 Cyclotron functional/performance model; not GSIM and not physical RTL",
+  "private_expected_output_published": false,
+  "pr_kernel_used_as_application_evidence": false
+}

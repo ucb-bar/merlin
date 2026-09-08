@@ -19,6 +19,7 @@ import pytest
 from merlin.common import quant_formats as qf
 from merlin.common.paths import repo_root
 from merlin.targetgen import coverage_report as CV
+from merlin.targetgen import capsule_source
 from merlin.targetgen.capsule_common import discover_capsules, load_capsule
 from merlin.targetgen.contract.schemas import (ContractViolation, load_schema,
                                                validate_capsule)
@@ -83,6 +84,13 @@ def test_the_op_enum_covers_every_builder():
     enum = set(load_schema("capsule")["properties"]["operation"]["properties"]["op"]["enum"])
     missing = sorted(set(BUILDERS) - enum)
     assert not missing, f"corpus_spec.BUILDERS can emit {missing}, which capsule.schema.json rejects"
+
+
+def test_the_op_enum_covers_every_grounded_source_writer():
+    """A PyTorch-backed linalg capsule is just as load-bearing as a corpus_spec-built capsule."""
+    enum = set(load_schema("capsule")["properties"]["operation"]["properties"]["op"]["enum"])
+    missing = sorted(set(capsule_source.supported_ops()) - enum)
+    assert not missing, f"capsule_source can write {missing}, which capsule.schema.json rejects"
 
 
 def _axes_in_the_tree() -> set[str]:

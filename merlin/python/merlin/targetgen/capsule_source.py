@@ -200,6 +200,13 @@ class Model(nn.Module):
 def get_model_and_inputs():
     return Model(), (_r({shape_args}), _r({shape_args}))
 ''',
+    "mul": '''
+class Model(nn.Module):
+    def forward(self, a, b):
+        return a * b
+def get_model_and_inputs():
+    return Model(), (_r({shape_args}), _r({shape_args}))
+''',
     "reduce_sum": '''
 class Model(nn.Module):
     def forward(self, x):
@@ -650,7 +657,8 @@ _OP_INPUT_NAMES = {
 _FUSED_OP_INPUT_NAMES = {
     "attention_full": ["Q", "K", "V"], "softmax": ["X"],
     "layernorm": ["X", "W", "B"], "geglu": ["X", "WG", "WU"], "rope": ["X"],
-    "gelu": ["X"], "silu": ["X"], "add": ["A", "B"], "reduce_sum": ["X"],
+    "gelu": ["X"], "silu": ["X"], "add": ["A", "B"], "mul": ["A", "B"],
+    "reduce_sum": ["X"],
     # composite ops from real model graphs (linalg-as-interface, positional args)
     "bias_add": ["X", "B"], "fused_matmul_bias": ["X", "W", "B"], "k_chain": ["A0", "W", "W2"],
     "logit_softcap": ["X"], "embed_scale": ["X"], "gemma_4norm": ["X", "G1", "G2"],

@@ -109,7 +109,7 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
 
     assert record["n_capsules"] == len(te.evaluation_cohort("derived_gsim")["include_capsules"])
     assert record["after"] == "search_l2_pass"
-    assert record["search_pass_evidence"]["n_passed"] == 15
+    assert record["search_pass_evidence"]["n_passed"] == 16
     assert record["engine_preflight"]["ok"] is True
     for name in te.evaluation_cohort("derived_gsim")["include_capsules"]:
         doc = yaml.safe_load((out / name / "capsule.yaml").read_text())
@@ -119,7 +119,7 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
             "the frozen evaluation copy must unlock L3 after the search view constrained execution")
         assert doc["evaluation_stage"] == {
             "name": "derived_gsim",
-            "policy": "radiance_model_derived_l3_frozen_candidate_v1",
+            "policy": "radiance_model_derived_l3_frozen_candidate_v2",
             "after": "search_l2_pass",
             "required_oracle_tier": "L3",
             "oracle_engine": "gsim",
@@ -152,9 +152,10 @@ def test_search_pass_seal_freezes_candidate_and_score(tmp_path):
     seal = tmp_path / "search-pass.json"
     _passing_search_score(score, te)
     record = create_search_pass_seal(seal, te, candidate, score)
-    assert record["n_capsules"] == record["n_passed"] == 15
+    assert record["n_capsules"] == record["n_passed"] == 16
     assert {row["name"] for row in record["capsules"]} == set(te.graded_include)
     assert "SY_app_elementwise_add_f32_rank3_1x113x1_l2" in te.graded_include
+    assert "SY_app_elementwise_mul_f32_rank1_32_l2" in te.graded_include
     assert validate_search_pass_seal(seal, te, candidate)["seal_sha256"] == _sha(seal)
 
     cache = candidate / "mlir_oot/__pycache__"

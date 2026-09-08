@@ -1,0 +1,15 @@
+{
+  "schema": "radiance_application_elementwise_l2_pair_v2",
+  "capsule": "SY_app_elementwise_mul_f32_rank1_32_l2",
+  "positive": {
+    "receipt": "l2_positive/receipt.json",
+    "receipt_sha256": "b367b8a1800489c62fdeb4d5ff580d20bc6320f3aa7844e53e89e4401294713b"
+  },
+  "negative_control": {
+    "receipt": "l2_negative/receipt.json",
+    "receipt_sha256": "9bc6e2721877822d8b70a9d275d41b91cd39ee17cc9dc79fc13407a35165b31d"
+  },
+  "same_public_command_buffer_sha256": "8a4efe8471386e46614ded61e27b50f0a6457b620c65dd32e6167214b66e68a7",
+  "same_lowered_llvm_mlir_sha256": "0bed7314f13123abedfddd2548fdbf8148edb65565cecff2f499320ebfdaba00",
+  "claim": "Exact tensor<32xf32> multiply is numerically fail-capable at L2 Cyclotron only; this is not GSIM or physical-RTL evidence."
+}

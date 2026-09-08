@@ -114,11 +114,10 @@ grading:
   # THREE DIFFERENT QUESTIONS, THREE DIFFERENT STAGES.
   #
   # 1. SEARCH learns to compile the shapes actually derived from the declared applications.  It uses
-  #    fifteen full application-shape L2 members: the original fourteen contraction classes plus one
-  #    exact-rank elementwise add observed in the declared application captures. No PR-kernel-shaped
-  #    capsule is allowed to steer
-  #    convergence.
-  # 2. DERIVED GSIM EVALUATION freezes the candidate and reruns those exact fifteen capsules directly
+  #    sixteen full application-shape L2 members: the original fourteen contraction classes plus exact
+  #    elementwise add and multiply regions observed in the declared application captures. No
+  #    PR-kernel-shaped capsule is allowed to steer convergence.
+  # 2. DERIVED GSIM EVALUATION freezes the candidate and reruns those exact sixteen capsules directly
   #    on the elaborated-RTL GSIM engine.  The smaller `_l3` siblings remain useful smoke tests, but must
   #    not substitute for this same-workload evaluation.  Encoding/protocol/numerics become certification
   #    evidence here, once after search rather than once per paid round.
@@ -128,14 +127,14 @@ grading:
   #
   # Keeping these stages separate prevents the previous 29-member mixture from teaching to the external
   # kernel suite while simultaneously calling that suite an evaluation. The pre-audit convergence
-  # cohort was 14 contractions; this one is 15 application-derived members. The family census at
-  # out/artifacts/capsule-bench/radiance/application_family_coverage_v1_20260908 records why the
-  # elementwise member was added and which captured families still have no search member.
+  # cohort was 14 contractions; this one is 16 application-derived members. The family census at
+  # out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908 records why the
+  # elementwise members were added and which captured families still have no search member.
   expected_cohort:
-    source_capsules: 167
-    admitted_capsules: 15
+    source_capsules: 168
+    admitted_capsules: 16
   search_cohort:
-    policy: radiance_model_derived_l2_convergence_v1
+    policy: radiance_model_derived_l2_convergence_v2
     include_capsules:
       - SY_app_contraction_bf16_partial_unknown_rank3_squareish_gemm_l2
       - SY_app_contraction_f32_aligned_unknown_rank3_squareish_gemm_l2
@@ -152,11 +151,12 @@ grading:
       - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
       - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
       - SY_app_elementwise_add_f32_rank3_1x113x1_l2
+      - SY_app_elementwise_mul_f32_rank1_32_l2
   evaluation_cohorts:
     derived_gsim:
-      policy: radiance_model_derived_l3_frozen_candidate_v1
+      policy: radiance_model_derived_l3_frozen_candidate_v2
       # Executable dependency: evaluation_cohort refuses to materialize this stage until an exact
-      # 15/15 L2 score and the candidate/source-tree digests have been sealed together.
+      # 16/16 L2 score and the candidate/source-tree digests have been sealed together.
       after: search_l2_pass
       oracle_tier: L3
       oracle_engine: gsim
@@ -177,6 +177,7 @@ grading:
         - SY_app_contraction_i8_partial_unknown_rank2_squareish_gemm_l2
         - SY_app_contraction_i8_partial_unknown_rank2_wide_skinny_l2
         - SY_app_elementwise_add_f32_rank3_1x113x1_l2
+        - SY_app_elementwise_mul_f32_rank1_32_l2
     kernel_library_comparison:
       policy: radiance_pr1_frozen_candidate_comparison_v1
       after: derived_gsim_pass

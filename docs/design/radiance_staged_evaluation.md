@@ -18,36 +18,40 @@ explicit.
 
 ## Scope: an admitted search covering set, not whole-model coverage
 
-The paid loop contains fifteen `_l2` capsules derived from the declared SmolVLA and LSTMNetVIT
-captures: the original fourteen contraction-class members plus one exact-rank fp32 add slice at
-`tensor<1x113x1xf32>`.  The add closes the highest-frequency missing captured family with semantics the
-target-neutral PyTorch writer can reproduce; its source points to a byte-pinned capture region, not a
-PR-kernel shape.  These retain application shapes and run through the fast functional oracle.  No
+The paid loop contains sixteen `_l2` capsules derived from the declared SmolVLA and LSTMNetVIT
+captures: the original fourteen contraction-class members, one exact-rank fp32 add slice at
+`tensor<1x113x1xf32>`, and one exact-rank fp32 multiply slice at `tensor<32xf32>`. The add closes the
+highest-frequency missing captured family. The multiply then covers the largest still-unrepresented
+operation inside the only other standalone family Radiance admits: 1,533 captured `mul` regions, of
+which 168 have the exact admitted shape. Both operations have semantics the target-neutral PyTorch
+writer and Muon emitter reproduce; their sources point to byte-pinned capture regions, not PR-kernel
+shapes. These retain application shapes and run through the fast functional oracle. No
 capsule selected because it resembles Radiance PR #1 is in this cohort.
 
-This is the current **model-derived admitted search covering set**.  A 15/15 result is not an E2E
+This is the current **model-derived admitted search covering set**.  A 16/16 result is not an E2E
 SmolVLA/LSTMNetVIT result and must not be reported as whole-application readiness.  The census contains
-13,046 classified regions.  The fourteen contraction shapes plus one exact add do not represent the
-remaining attention, movement, normalization, reduction, or other elementwise families.  Those families
-remain fail-closed/unrepresented until the target admits and implements them; future model-derived
-cohorts should extend this set at that point, rather than silently broadening today's claim.
+13,046 classified regions. The fourteen contraction shapes plus the two exact maps do not represent
+attention, movement, normalization, reduction, or other elementwise operations. Those families and
+operations remain fail-closed/unrepresented until the target admits and implements them; future
+model-derived cohorts should extend this set at that point, rather than silently broadening today's claim.
 
 The family census is deliberately broader than the cohort claim.  Across the six declared captures it
 finds 13,186 regions: 5,780 elementwise maps, 3,469 movements, 1,457 contractions, 1,341 normalizations,
-915 reductions, 84 attention regions, and 140 unclassified regions.  Before the add, the fourteen search
-members represented only contraction (1,457/13,046 classified occurrences, 11.168%).  The single add
-does not qualify the other elementwise operations or shapes.  Movement, normalization, reduction, and
-attention also remain outside search because Radiance's effective capability map does not currently
-admit those families for a `must_accelerate` capsule; the 140 unclassified regions remain evidence for
+915 reductions, 84 attention regions, and 140 unclassified regions. Before the application maps, the
+fourteen search members represented only contraction (1,457/13,046 classified occurrences, 11.168%).
+The exact add and multiply capsules do not qualify any other elementwise operation or shape. Movement,
+normalization, reduction, and attention also remain outside search because Radiance's effective
+capability map does not currently admit those families for a `must_accelerate` capsule; the 140
+unclassified regions remain evidence for
 neither coverage nor a gap.  The machine-readable census and L2 receipt are under
-`out/artifacts/capsule-bench/radiance/application_family_coverage_v1_20260908/`.
+`out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/`.
 
 ## Stage 1: converge and seal the exact L2 pass
 
-Run the paid loop only on the descriptor's fifteen-member `search_cohort`.  A score can open Stage 2
-only when its per-capsule evidence names exactly those fifteen members (including the exact add), every
-row records an L2 numeric pass and an execution digest, and the suite reports 15/15.  Seal that score
-with the candidate and source-tree digests; the seal must live outside the candidate.
+Run the paid loop only on the descriptor's sixteen-member `search_cohort`.  A score can open Stage 2
+only when its per-capsule evidence names exactly those sixteen members (including the exact add and
+multiply), every row records an L2 numeric pass and an execution digest, and the suite reports 16/16.
+Seal that score with the candidate and source-tree digests; the seal must live outside the candidate.
 
 ```bash
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
@@ -57,7 +61,7 @@ PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort 
   --create-search-pass-seal out/artifacts/capsule-bench/radiance/<run>/search_l2_pass.json
 ```
 
-The command refuses 14/15, a missing or extra capsule, a non-L2 row, a missing execution digest, a
+The command refuses 15/16, a missing or extra capsule, a non-L2 row, a missing execution digest, a
 non-model-derived source, a stale score, or a candidate/source tree changed after the run.  Creating the
 seal does not certify unrepresented operation families or an E2E model.  The candidate digest excludes
 only Python interpreter byproducts (`__pycache__`, `.pyc`, `.pyo`), so importing the frozen package during
@@ -67,7 +71,7 @@ strictly content-addressed.
 ## Stage 2: frozen-candidate GSIM evaluation
 
 After the sealed search pass, materialize `derived_gsim`.  It contains the exact same
-fifteen full application-shape capsules—not their reduced `_l3` lookalikes.  Materialization removes
+sixteen full application-shape capsules—not their reduced `_l3` lookalikes.  Materialization removes
 the search-time L2 ceiling and makes L3 mandatory in the isolated copy; the committed source capsules
 remain unchanged.  The reduced siblings are suitable for GSIM smoke tests only and cannot contribute to
 the proper derived-workload score.
@@ -127,5 +131,5 @@ or expected outputs.  Search results and the two post-search scores must be repo
 `out/artifacts/capsule-bench/radiance/staged_derived_gsim_exact_sealed_20260908` predates this protocol.
 It contains 14 capsules, names `hand_v0`, and records the old unreceipted-engine failure.  It is preserved
 as historical failure evidence, but it cannot be resumed, extended, or cited as Stage 2.  The workflow
-must create a new destination only after a current exact 15/15 L2 seal exists.  No GSIM run should start
+must create a new destination only after a current exact 16/16 L2 seal exists.  No GSIM run should start
 before that gate, and no PR #1 capsule belongs in compiler search.
