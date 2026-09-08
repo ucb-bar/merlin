@@ -221,7 +221,11 @@ class RateTable:
         """
         from merlin.perf import compose_estimate as CE
 
-        return tuple(k for k in CE.COMPUTE_CLASSES if k not in self.rates)
+        # Compared against the COARSE opcode vocabulary on purpose: a rate key is
+        # ``<opcode>/e<decade>`` (see :func:`merlin.perf.compose_estimate.cost_class`), and a corpus
+        # gap is about an opcode nothing emits, not about a density bucket nothing happens to land in.
+        priced = {str(key).split("/", 1)[0] for key in self.rates}
+        return tuple(k for k in CE.COMPUTE_CLASSES if k not in priced)
 
     def to_dict(self, *, include_provenance: bool = False) -> dict[str, Any]:
         return {"target": self.target, "peak_macs_per_cycle": self.peak_macs_per_cycle,
@@ -344,10 +348,12 @@ def rates_for(target: str, *, peak_macs_per_cycle: float, authority: Any = None,
         cycles = program.cycles
         if not cycles or cycles <= 0:
             continue
-        klass = CE.compute_class(program.buffer)
+        klass = CE.cost_class(program.buffer)
         if klass is None:
             refusals.append({"what": "compute class", "where": program.workload,
-                             "reason": "the program declares no opcode from the priced vocabulary"})
+                             "reason": ("the program declares no opcode from the priced vocabulary, "
+                                        "or its work is only a lower bound so its arithmetic density "
+                                        "-- and therefore its cost class -- is UNKNOWN")})
             continue
         floor = CE._structural_floor(program.buffer, peak_macs_per_cycle)  # noqa: SLF001 -- one pricer
         if floor.get("status") != CE.DERIVED:
@@ -407,7 +413,7 @@ def holdout_containment(target: str, *, peak_macs_per_cycle: float, authority: A
     widths: list[float] = []
     undecided: list[dict[str, Any]] = []
     for program in test.values():
-        klass = CE.compute_class(program.buffer)
+        klass = CE.cost_class(program.buffer)
         band = CE.band(program.buffer, target=target, peak_macs_per_cycle=peak_macs_per_cycle,
                        slowest_macs_per_cycle=table.rate_for(klass))
         if band.get("status") != CE.DERIVED:

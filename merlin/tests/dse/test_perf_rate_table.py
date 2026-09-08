@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from merlin.perf import compose_estimate as CE
 from merlin.perf import rate_table as RT
 
 
@@ -40,6 +41,18 @@ def _table(programs, *, peak: float = 256.0) -> RT.RateTable:
                         programs={p.digest: p for p in programs})
 
 
+def _key(buffer: dict) -> str:
+    """The rate key for this buffer, DERIVED rather than spelled out here.
+
+    A rate is keyed on the cost class -- the compute opcode refined by arithmetic density -- and
+    hardcoding the spelling in a test turns "the slowest program sets the rate", which is what these
+    assert, into a test about how a bucket happens to be named.
+    """
+    key = CE.cost_class(buffer)
+    assert key is not None, "the fixture must price a cost class or the test proves nothing"
+    return key
+
+
 class TestTheRateIsTheSlowestNotTheTypical:
     def test_the_slowest_program_of_a_class_sets_its_rate(self):
         """A ceiling divides by the slowest rate; a mean of rates would be beaten by half the corpus."""
@@ -47,7 +60,7 @@ class TestTheRateIsTheSlowestNotTheTypical:
         slow = _program("slow", _resident_buffer(jobs=2), 900.0)
         table = _table([fast, slow])
 
-        rate = table.rates["MATMUL_RESIDENT"]
+        rate = table.rates[_key(slow.buffer)]
         assert rate.slowest_from == "slow"
         # 2 jobs x 16x16x16 = 8192 MACs over 900 cycles.
         assert rate.slowest_macs_per_cycle == pytest.approx(8192 / 900)
@@ -64,17 +77,18 @@ class TestTheRateIsTheSlowestNotTheTypical:
         multi = _program("multi", _resident_buffer(jobs=2), 311.0, 316.0, 317.0)
         table = _table([multi])
 
-        assert "MATMUL_RESIDENT" in table.rates, "a multi-measured buffer must still be priced"
-        assert table.rates["MATMUL_RESIDENT"].slowest_macs_per_cycle == pytest.approx(8192 / 317.0)
+        assert _key(multi.buffer) in table.rates, "a multi-measured buffer must still be priced"
+        assert table.rates[_key(multi.buffer)].slowest_macs_per_cycle == pytest.approx(8192 / 317.0)
         recorded = table.disagreements
         assert len(recorded) == 1 and recorded[0]["used"] == 317.0
         assert recorded[0]["measured"] == [311.0, 316.0, 317.0]
 
     def test_nothing_is_averaged(self):
         """The mean of 311/316/317 describes no run that happened, so it must not appear."""
-        table = _table([_program("multi", _resident_buffer(jobs=2), 311.0, 316.0, 317.0)])
+        multi = _program("multi", _resident_buffer(jobs=2), 311.0, 316.0, 317.0)
+        table = _table([multi])
         mean_rate = 8192 / ((311.0 + 316.0 + 317.0) / 3)
-        assert table.rates["MATMUL_RESIDENT"].slowest_macs_per_cycle != pytest.approx(mean_rate)
+        assert table.rates[_key(multi.buffer)].slowest_macs_per_cycle != pytest.approx(mean_rate)
 
 
 class TestAnUnmeasuredClassIsNeverGivenANumber:
@@ -129,9 +143,12 @@ class TestOnlyEvidenceThatCanBoundAnythingContributes:
 class TestTheTableCarriesWhatIsNeededToDistrustIt:
     def test_every_rate_states_the_cycle_domain_it_was_observed_over(self):
         """A rate is an empirical bound over a domain; priced outside it, it is an extrapolation."""
-        table = _table([_program("a", _resident_buffer(jobs=1), 300.0),
-                        _program("b", _resident_buffer(jobs=8), 1800.0)])
-        rate = table.rates["MATMUL_RESIDENT"]
+        # Both carry 4096 MACs per compute command, so they share one cost class and the domain
+        # this asserts is the domain of a single rate.
+        one, eight = _resident_buffer(jobs=1), _resident_buffer(jobs=8)
+        table = _table([_program("a", one, 300.0), _program("b", eight, 1800.0)])
+        assert _key(one) == _key(eight)
+        rate = table.rates[_key(one)]
         assert (rate.cycles_min, rate.cycles_max) == (300.0, 1800.0)
         assert "domain" in rate.to_dict()["licence"]
 

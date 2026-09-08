@@ -70,13 +70,36 @@ def _matmul_shapes(lhs: tuple[int, ...] | None, rhs: tuple[int, ...] | None) -> 
     return lhs[0] * lhs[1] * rhs[1]
 
 
+#: The four axes a 2-D convolution input is indexed by. A layout spelling names them in the order the
+#: extents appear, so this set is what an axis-order field is validated as a permutation of.
+_CONV_AXES = ("c", "h", "n", "w")
+
+
+def _axis_order(attrs: Mapping[str, Any]) -> str | None:
+    """The input axis order taken from the command's DECLARED layout -- never assumed.
+
+    A layout spelling may carry a scheduling suffix (``nchw_streamed_row_im2col``); the axis order is
+    its leading underscore-separated field, and that field must be a permutation of :data:`_CONV_AXES`
+    or the geometry is UNKNOWN. Refusing an unrecognized spelling is the whole point: reading NCHW
+    extents in NHWC positions does not fail, it silently prices a different convolution -- which is
+    how 53 of 54 ResNet-50 commands came to be refused while the one that happened to be square was
+    priced, and how the surviving total looked like a number rather than a gap.
+    """
+    layout = attrs.get("layout")
+    if not isinstance(layout, str):
+        return None
+    order = layout.split("_", 1)[0].lower()
+    return order if tuple(sorted(order)) == _CONV_AXES else None
+
+
 def _conv_work(ifm: tuple[int, ...] | None, weight: tuple[int, ...] | None,
                attrs: Mapping[str, Any]) -> int | None:
     kernel = attrs.get("kernel")
     stride = attrs.get("stride")
     padding = attrs.get("padding")
     dilation = attrs.get("dilation")
-    if (ifm is None or len(ifm) != 4
+    order = _axis_order(attrs)
+    if (ifm is None or len(ifm) != 4 or order is None
             or not all(isinstance(value, Sequence) and not isinstance(value, (str, bytes))
                        for value in (kernel, stride, padding, dilation))):
         return None
@@ -87,10 +110,14 @@ def _conv_work(ifm: tuple[int, ...] | None, weight: tuple[int, ...] | None,
         dh, dw = (int(value) for value in dilation)
     except (TypeError, ValueError):
         return None
-    batch, height, width, channels = ifm
+    extent = dict(zip(order, ifm))
+    batch, channels, height, width = extent["n"], extent["c"], extent["h"], extent["w"]
     values = (kh, kw, ci, co, sh, sw, dh, dw)
+    # Either weight orientation is accepted because both are unambiguous against the declared kernel:
+    # a prepacking backend emits (co, kh*kw*ci) and a row-major im2col one emits (kh*kw*ci, co). They
+    # coincide only when the two extents are equal, and then both readings price the same MACs.
     if (any(value <= 0 for value in values) or min(pt, pl, pb, pr) < 0 or channels != ci
-            or weight != (kh * kw * ci, co)):
+            or weight not in ((kh * kw * ci, co), (co, kh * kw * ci))):
         return None
     effective_h = dh * (kh - 1) + 1
     effective_w = dw * (kw - 1) + 1
@@ -139,11 +166,24 @@ def work_from_command_buffer(command_buffer: Mapping[str, Any]) -> ProgramWork:
         if opcode == "RES_PACK":
             src, dst = operands.get("src"), operands.get("dst")
             if isinstance(src, str) and isinstance(dst, str) and _shape(tensors, src) is not None:
+                # EVERY name this pack makes resident aliases back to the source tensor. A producer
+                # may spell the packed buffer and the residency handle as one name (``dst``) or as
+                # two (``dst`` plus an explicit ``handle``); both are ABI-valid and the reference
+                # engines register only ``dst``, which for them is harmless because EVICT has no
+                # numerical effect (merlin/verify/cb_semantics.py NO_NUMERIC_EFFECT). Here it is not
+                # harmless: an unresolvable eviction is a refusal, and one refusal makes the whole
+                # program uncounted -- which is what left the entire MATMUL compute class unpriced.
                 handles[dst] = src
+                alias = operands.get("handle")
+                if isinstance(alias, str):
+                    handles[alias] = src
                 continue
             reason = "resident-pack source/destination does not resolve to a declared tensor"
         elif opcode == "EVICT":
-            handle = operands.get("handle")
+            # ``handle`` is the canonical ABI spelling and ``src`` the legacy one accepted by older
+            # fixtures; merlin/runtime/reference.py reads both, so pricing must not refuse a buffer
+            # the reference engine executes.
+            handle = operands.get("handle", operands.get("src"))
             if isinstance(handle, str) and handle in handles:
                 del handles[handle]
                 continue

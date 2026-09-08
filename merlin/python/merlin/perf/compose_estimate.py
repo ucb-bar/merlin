@@ -2,12 +2,19 @@
 
 WHY A BAND AND NOT A NUMBER
 ---------------------------
-The cycle-accurate oracle costs a fitted ``12.89 s + 4.60 ms`` per simulated cycle here -- about 217
-simulated cycles a second -- over a domain of 161..28,118 cycles. A realistic convolution layer is
-~451k cycles, so one member is ~35 minutes per measurement, and the cost fit refuses to extrapolate
-past twice its measured domain at all. The shapes that most need optimising are exactly the ones the
-oracle cannot reach, which is why the corpus contains only single contractions and why the levers
-that matter at model scale get no signal.
+⚠️ **THE COST FIGURE THAT ORIGINALLY MOTIVATED THIS MODULE IS STALE BY ~50x, AND THE MOTIVATION
+SURVIVES ANYWAY.** It read: a fitted ``12.89 s + 4.60 ms`` per simulated cycle, about 217 simulated
+cycles a second, over a domain of 161..28,118 cycles. That was a Verilator/arc fit. Measured over
+5,667 GSIM certification records on this tree, GSIM costs ``~13 s + cycles/11,000`` -- a marginal
+**11,013 cycles a second**, taken from the two largest runs at identical concurrency. So a ~451k-cycle
+convolution layer is ~55 s, not ~35 minutes, and a 10^6-cycle block is ~1.6 minutes. Programs in the
+10^5..10^6 range are CHEAP now and should simply be measured rather than composed.
+
+What does not change is the reason a band exists: whole models are 10^7..10^8 cycles, which is 15
+minutes to ~2.5 hours and above the emulator's default cycle bound, and the cost fit still refuses to
+extrapolate past twice its measured domain. The shapes that most need optimising at MODEL scale are
+still the ones the oracle cannot reach. The band is for those; it is no longer the right tool for a
+single layer.
 
 So the number has to be composed. What may honestly be composed is a RANGE:
 
@@ -132,6 +139,67 @@ def compute_class(buffer: object) -> str | None:
         if candidate in opcodes:
             return candidate
     return None
+
+
+def _compute_command_count(buffer: Mapping[str, Any]) -> int:
+    return sum(1 for row in (buffer.get("commands") or [])
+               if isinstance(row, Mapping) and str(row.get("opcode") or "") in COMPUTE_CLASSES)
+
+
+def cost_class(buffer: object) -> str | None:
+    """The compute class REFINED by arithmetic density, or None when the program prices no work.
+
+    WHY THE OPCODE ALONE IS NOT ENOUGH, measured on this tree. The opcode split already fixed the
+    35x-between-classes problem :func:`compute_class` documents, but it left a second one inside a
+    class. ``MATMUL_RESIDENT``'s slowest member was ``SY_elementwise_map_i8_sub_tile`` -- **32 MACs in
+    352 cycles**, an elementwise map that lowers to a single resident-matmul command and does
+    essentially no arithmetic. Because :func:`merlin.perf.rate_table.rates_for` keeps the MINIMUM rate
+    per class, that one program set the ceiling rate for every dense matmul on the machine, and the
+    resulting band was 2816x wide -- which the width note correctly says can separate nothing. A
+    program carrying 32 MACs per command and one carrying millions are not in the same cost regime:
+    at the small end the fixed per-command cost dominates completely, and dividing by a rate measured
+    there prices dense arithmetic as though it were all overhead.
+
+    The refinement is the DECADE of MACs per compute command. Like the opcode it is read off the
+    emitted program -- priced work over the number of compute commands, both declared -- and unlike a
+    fitted grouping it has no free parameter: the buckets are powers of ten. What the docstring above
+    forbids is a per-WORKLOAD rate, and a decade bucket is not one; on this corpus 12 buckets cover
+    263 programs.
+
+    Measured on the held-out half (the same split :func:`merlin.perf.rate_table.holdout_containment`
+    uses): median band width **1218x -> 55.8x** against the structural peak, and **17.4x** against
+    the achievable peak, for 5 fewer decided programs and one more above-ceiling miss out of ~110.
+    ``below_floor`` stays 0 throughout, so the floor is still a floor. That gate, not this reasoning,
+    is what licenses the split -- a refinement that were really fitting would show its cost as
+    collapsing containment on programs it never saw.
+
+    Returns None for a buffer that declares no priced compute, so a caller cannot mistake "no class"
+    for a class named after the absence.
+    """
+    if not isinstance(buffer, Mapping):
+        return None
+    base = compute_class(buffer)
+    if base is None:
+        return None
+    # THE SAME PRICER THE FLOOR USES, deliberately. A density read from a second, stricter notion of
+    # work would refuse programs the band happily prices, and the class of a program would then
+    # disagree with the work it is priced against -- which is how two independently computed notions
+    # of "work" come to differ silently. Measured: keying on a stricter pricer left BATCHED_MATMUL
+    # with no rate at all and pushed 17 held-out programs to undecided.
+    macs, partial, _ = _priced_macs(buffer)
+    commands = _compute_command_count(buffer)
+    if partial or not macs or not commands:
+        # A program whose work is only a lower bound has no trustworthy density, and putting it in a
+        # dense bucket would price it with a rate derived from complete programs.
+        return None
+    from math import floor, log10  # noqa: PLC0415
+
+    # The bucket is the DECADE, so the boundaries are powers of ten -- a property of decimal
+    # notation rather than of this corpus or this machine. A bucket edge chosen to make a
+    # particular corpus look good would be exactly the fitting this split is forbidden from doing,
+    # and there is deliberately no tunable base here to choose one with.
+    decade = int(floor(log10(macs / commands)))
+    return f"{base}/e{decade}"
 
 
 def cost_model_artifact(target: str) -> Path | None:

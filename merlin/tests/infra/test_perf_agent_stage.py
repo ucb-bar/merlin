@@ -2762,7 +2762,12 @@ def test_a_convolutions_declared_price_equals_what_the_work_counter_counts():
                         "Y0": {"role": "output", "shape": [1, co], "dtype": "i32"}},
             "commands": [{"opcode": "CONV2D", "operands": {"ifm": "IFM", "weight": "W", "dst": "Y0"},
                           "attributes": {"kernel": [kh, kw, ci, co], "stride": stride,
-                                         "padding": padding, "dilation": dilation}}],
+                                         "padding": padding, "dilation": dilation,
+                                         # The axis order is part of "the same convolution": the
+                                         # specification side declares it above, so the emitted
+                                         # program must too or the work counter is comparing extents
+                                         # it has no order for.
+                                         "layout": "nhwc"}}],
             "outputs": ["Y0"]}
         counted = work_from_command_buffer(command_buffer).exact_macs
         declared = PAS.declared_capsule_macs(descriptor)[0]

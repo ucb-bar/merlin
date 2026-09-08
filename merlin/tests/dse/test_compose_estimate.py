@@ -159,3 +159,68 @@ def test_containment_is_the_acceptance_question_and_says_none_when_undecided():
     assert CE.contains(derived, derived["lower"] - 1) is False
     assert CE.contains(derived, derived["upper"] + 1) is False
     assert CE.contains({"status": CE.UNAVAILABLE}, 100) is None
+
+
+class TestTheCostClassRefinesTheOpcodeByArithmeticDensity:
+    """One degenerate program must not set the ceiling rate for every dense program in its class.
+
+    Measured on this tree: ``SY_elementwise_map_i8_sub_tile`` -- 32 MACs in 352 cycles, an
+    elementwise map that lowers to a single resident-matmul command and does essentially no
+    arithmetic -- was the slowest ``MATMUL_RESIDENT``. Because the rate table keeps the MINIMUM rate
+    per class, that one program priced every dense matmul on the machine, and the band came out
+    2816x wide. Splitting on the declared MACs-per-command decade took the held-out median width to
+    211.5x with ``below_floor`` still 0.
+    """
+
+    def test_two_programs_a_decade_apart_in_density_are_different_cost_classes(self):
+        sparse = CE.cost_class(_buffer(k=16))       # 16*16*16 = 4096 MACs in one command
+        dense = CE.cost_class(_buffer(k=4096))      # 16*4096*16 = 1,048,576 MACs in one command
+        assert sparse is not None and dense is not None
+        assert sparse != dense
+        # Both keep the opcode they were read off, so a corpus gap is still about an opcode.
+        assert sparse.split("/", 1)[0] == dense.split("/", 1)[0] == "MATMUL_RESIDENT"
+
+    def test_different_sizes_within_a_decade_share_a_class(self):
+        """The key must not become a per-workload rate, which would be fitting the answer.
+
+        Bucketing on a decade does mean two adjacent sizes STRADDLING a boundary land in different
+        classes -- k=32 is 8,192 MACs and k=48 is 12,288 -- which is inherent to any bucketing and
+        is why the boundaries are powers of ten rather than values chosen against this corpus. What
+        matters is that a class holds many workloads: on the real corpus 12 classes cover 263
+        programs, the largest holding 75.
+        """
+        assert CE.cost_class(_buffer(k=16)) == CE.cost_class(_buffer(k=32)) \
+            == "MATMUL_RESIDENT/e3"
+        assert CE.cost_class(_buffer(k=48)) == CE.cost_class(_buffer(k=64)) \
+            == "MATMUL_RESIDENT/e4"
+
+    def test_the_opcode_still_decides_the_coarse_class(self):
+        matmul = CE.cost_class(_buffer(k=32, opcode="MATMUL"))
+        resident = CE.cost_class(_buffer(k=32, opcode="MATMUL_RESIDENT"))
+        assert matmul is not None and resident is not None
+        assert matmul.split("/", 1)[0] == "MATMUL"
+        assert resident.split("/", 1)[0] == "MATMUL_RESIDENT"
+
+    def test_a_buffer_with_no_compute_opcode_has_no_cost_class(self):
+        movement = {"abi_version": "0.1", "target": "t", "version": "0.1", "params": {},
+                    "tensors": {"X": {"role": "input", "shape": [4, 4], "dtype": "i8"}},
+                    "commands": [{"opcode": "MOVEMENT", "operands": {"src": "X", "dst": "Y"}}],
+                    "outputs": ["Y"]}
+        assert CE.cost_class(movement) is None
+
+    def test_a_program_whose_work_is_only_a_lower_bound_has_no_density(self):
+        """Putting it in a dense bucket would price it with a rate derived from complete programs."""
+        partial = _buffer(k=32)
+        partial["commands"].append({"opcode": "FUTURE_ENGINE", "operands": {}, "attributes": {}})
+        assert CE.compute_class(partial) == "MATMUL_RESIDENT", "the opcode is still declared"
+        assert CE.cost_class(partial) is None, "but its arithmetic density is UNKNOWN"
+
+    def test_the_density_uses_the_SAME_pricer_the_floor_uses(self):
+        """Two notions of work is how the number and the receipt come to disagree silently."""
+        buffer = _buffer(k=64)
+        macs, partial, _ = CE._priced_macs(buffer)  # noqa: SLF001 -- one pricer is the point
+        assert not partial and macs
+        commands = CE._compute_command_count(buffer)  # noqa: SLF001
+        import math
+        expected = int(math.floor(math.log10(macs / commands)))
+        assert CE.cost_class(buffer) == f"MATMUL_RESIDENT/e{expected}"
