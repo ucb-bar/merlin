@@ -16,7 +16,7 @@ them in one repeated 29-capsule loop both teaches the compiler the comparison su
 feedback on shapes that are not the declared applications.  The target descriptor now makes the order
 explicit.
 
-## Stage 1: application-derived convergence
+## Scope: an admitted search covering set, not whole-model coverage
 
 The paid loop contains fifteen `_l2` capsules derived from the declared SmolVLA and LSTMNetVIT
 captures: the original fourteen contraction-class members plus one exact-rank fp32 add slice at
@@ -24,6 +24,13 @@ captures: the original fourteen contraction-class members plus one exact-rank fp
 target-neutral PyTorch writer can reproduce; its source points to a byte-pinned capture region, not a
 PR-kernel shape.  These retain application shapes and run through the fast functional oracle.  No
 capsule selected because it resembles Radiance PR #1 is in this cohort.
+
+This is the current **model-derived admitted search covering set**.  A 15/15 result is not an E2E
+SmolVLA/LSTMNetVIT result and must not be reported as whole-application readiness.  The census contains
+13,046 classified regions.  The fourteen contraction shapes plus one exact add do not represent the
+remaining attention, movement, normalization, reduction, or other elementwise families.  Those families
+remain fail-closed/unrepresented until the target admits and implements them; future model-derived
+cohorts should extend this set at that point, rather than silently broadening today's claim.
 
 The family census is deliberately broader than the cohort claim.  Across the six declared captures it
 finds 13,186 regions: 5,780 elementwise maps, 3,469 movements, 1,457 contractions, 1,341 normalizations,
@@ -35,9 +42,31 @@ admit those families for a `must_accelerate` capsule; the 140 unclassified regio
 neither coverage nor a gap.  The machine-readable census and L2 receipt are under
 `out/artifacts/capsule-bench/radiance/application_family_coverage_v1_20260908/`.
 
+## Stage 1: converge and seal the exact L2 pass
+
+Run the paid loop only on the descriptor's fifteen-member `search_cohort`.  A score can open Stage 2
+only when its per-capsule evidence names exactly those fifteen members (including the exact add), every
+row records an L2 numeric pass and an execution digest, and the suite reports 15/15.  Seal that score
+with the candidate and source-tree digests; the seal must live outside the candidate.
+
+```bash
+PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
+  --target radiance \
+  --candidate out/runs/radiance/capsule-bench/<run>/submission \
+  --search-score out/artifacts/capsule-bench/radiance/<run>/l2_score.json \
+  --create-search-pass-seal out/artifacts/capsule-bench/radiance/<run>/search_l2_pass.json
+```
+
+The command refuses 14/15, a missing or extra capsule, a non-L2 row, a missing execution digest, a
+non-model-derived source, a stale score, or a candidate/source tree changed after the run.  Creating the
+seal does not certify unrepresented operation families or an E2E model.  The candidate digest excludes
+only Python interpreter byproducts (`__pycache__`, `.pyc`, `.pyo`), so importing the frozen package during
+grading does not invalidate it; authored source, manifests, configuration, schedules, and binaries remain
+strictly content-addressed.
+
 ## Stage 2: frozen-candidate GSIM evaluation
 
-After search converges, freeze the package and materialize `derived_gsim`.  It contains the exact same
+After the sealed search pass, materialize `derived_gsim`.  It contains the exact same
 fifteen full application-shape capsules—not their reduced `_l3` lookalikes.  Materialization removes
 the search-time L2 ceiling and makes L3 mandatory in the isolated copy; the committed source capsules
 remain unchanged.  The reduced siblings are suitable for GSIM smoke tests only and cannot contribute to
@@ -46,15 +75,28 @@ the proper derived-workload score.
 ```bash
 PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort \
   --target radiance --stage derived_gsim \
-  --candidate out/artifacts/targets/radiance/<frozen-package> \
+  --candidate out/runs/radiance/capsule-bench/<run>/submission \
+  --search-pass-seal out/artifacts/capsule-bench/radiance/<run>/search_l2_pass.json \
   --dest out/artifacts/capsule-bench/radiance/<run>/derived_gsim
 ```
 
-The command exits 2 if the selected GSIM executable is unavailable, is not the descriptor-requested
-engine, or lacks a receipt binding its bytes to the elaborated FIRRTL.  A populated cohort is therefore
-not automatically runnable or certified.  The cohort manifest also seals the complete candidate tree;
-validation fails if any compiler byte changes between convergence and GSIM.  Once preflight is green,
-grade that frozen package against the single materialized root with `merlin.targetgen.capsule_grade`.
+Materialization happens only after all gates pass.  It refuses an unavailable or non-GSIM engine, an
+override that is not the canonical install, an unbound receipt, or any digest mismatch; it records the
+canonical emulator and receipt paths and SHA-256 identities.  The current canonical emulator digest is
+resolved at runtime rather than copied into this document.  The cohort manifest also seals the complete
+candidate tree and the Stage-1 seal.  Validation fails if any compiler, score, capsule source, emulator,
+or receipt byte changes between convergence and grading.
+
+Grade the frozen package against only that materialized root:
+
+```bash
+PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.capsule_grade \
+  --target radiance \
+  --package out/runs/radiance/capsule-bench/<run>/submission \
+  --capsules out/artifacts/capsule-bench/radiance/<run>/derived_gsim \
+  --runs-root out/artifacts/capsule-bench/radiance/<run>/derived_gsim_runs \
+  --score out/artifacts/capsule-bench/radiance/<run>/derived_gsim_score.json
+```
 
 ## Stage 3: independent kernel-library comparison
 
@@ -73,6 +115,17 @@ PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort 
 
 Stage 3 opens only after that predecessor evidence proves the exact declared names passed L3 on an
 RTL-backed engine, the score is clean and gradeable, and the frozen candidate path and digest match.
+Its manifest preserves hashes of the predecessor manifest, predecessor materialized tree, score,
+candidate, canonical GSIM binding, and original Stage-1 seal.  A changed engine/receipt or edited
+predecessor therefore closes the gate.
 The comparison remains independent: PR sources may inform a separately labelled information treatment,
 but submitted compiler code may not copy, link, call, or dispatch on the reference library, capsule names,
 or expected outputs.  Search results and the two post-search scores must be reported separately.
+
+## Superseded artifact
+
+`out/artifacts/capsule-bench/radiance/staged_derived_gsim_exact_sealed_20260908` predates this protocol.
+It contains 14 capsules, names `hand_v0`, and records the old unreceipted-engine failure.  It is preserved
+as historical failure evidence, but it cannot be resumed, extended, or cited as Stage 2.  The workflow
+must create a new destination only after a current exact 15/15 L2 seal exists.  No GSIM run should start
+before that gate, and no PR #1 capsule belongs in compiler search.

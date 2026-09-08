@@ -126,7 +126,7 @@ def test_radiance_search_and_evaluation_cohorts_are_staged_and_disjoint():
     assert all((docs[name] or {}).get("source_role") == "model_derived" for name in derived_names)
     assert all(name.endswith("_l2") for name in search)
     assert all(name.endswith("_l2") for name in derived_names)
-    assert derived_gsim["after"] == "search_converged"
+    assert derived_gsim["after"] == "search_l2_pass"
     assert kernel_comparison["after"] == "derived_gsim_pass"
     assert derived_gsim["oracle_tier"] == kernel_comparison["oracle_tier"] == "L3"
     assert derived_gsim["oracle_engine"] == kernel_comparison["oracle_engine"] == "gsim"
