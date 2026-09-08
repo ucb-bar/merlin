@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 from merlin.common.paths import env, repo_root
+from merlin.perf import attribution as A
 from merlin.perf.attribution import (
     BUCKETS,
     RESIDUAL,
@@ -308,3 +309,95 @@ def test_the_corpus_bucket_shares_reproduce_the_measured_split():
     assert sum(cycles.values()) == sum(a.total_cycles for a in corpus.workloads.values()) == 42367
     shares = corpus.bucket_shares()
     assert round(shares["dma"] * 100, 1) == 73.7, "movement dominates: it is the binding resource"
+
+
+class TestActivityFromCounterReadings:
+    """The hop that let a whole-model run's counters reach the attribution map."""
+
+    HEADER = "\n".join((
+        "#define MAIN_LD_CYCLES 1", "#define MAIN_ST_CYCLES 2", "#define MAIN_EX_CYCLES 3",
+        "#define MAIN_LD_ST_CYCLES 4", "#define MAIN_LD_EX_CYCLES 5",
+        "#define MAIN_ST_EX_CYCLES 6", "#define MAIN_LD_ST_EX_CYCLES 7",
+    ))
+    KINDS = {"EX": "compute", "LD": "movement", "ST": "movement"}
+    FULL = {"MAIN_LD_CYCLES": 30_000_000, "MAIN_ST_CYCLES": 8_000_000,
+            "MAIN_EX_CYCLES": 20_000_000, "MAIN_LD_ST_CYCLES": 400_000,
+            "MAIN_LD_EX_CYCLES": 200_000, "MAIN_ST_EX_CYCLES": 50_000,
+            "MAIN_LD_ST_EX_CYCLES": 9_625}
+    WINDOW = 1_383_906_735
+
+    def _source(self, readings=None):
+        return A.activity_from_counter_readings(
+            readings if readings is not None else self.FULL, workload="w",
+            total_cycles=self.WINDOW, header_text=self.HEADER, kind_of=self.KINDS)
+
+    def test_a_complete_partition_yields_engines_plus_the_host_residue(self):
+        src = self._source()
+        by_name = {r.name: r for r in src.resources}
+        # Each engine's total is its single counter PLUS every combination containing it.
+        assert by_name["EX"].busy_cycles == 20_000_000 + 200_000 + 50_000 + 9_625
+        assert by_name["LD"].busy_cycles == 30_000_000 + 400_000 + 200_000 + 9_625
+        assert by_name["ST"].busy_cycles == 8_000_000 + 400_000 + 50_000 + 9_625
+        # Cycles charged to no engine — the closed host residue, not a bound.
+        charged = sum(self.FULL.values())
+        assert by_name["idle_cycles.no_unit_busy"].busy_cycles == self.WINDOW - charged
+
+    def test_the_source_is_declared_NOT_partitioned_so_overlap_stays_readable(self):
+        """Per-engine totals include shared cycles, so they sum past the window by construction."""
+        assert self._source().partitioned is False
+
+    def test_the_residual_is_exactly_the_overlap_overcount(self):
+        """A non-zero residual here is interpretable, not noise: it is the double-charged overlap."""
+        src = self._source()
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
+                                       fixed_bucket="host")
+        att = A.attribute(src, buckets=buckets)
+        residual = next(c for c in att.components if c.bucket == A.RESIDUAL)
+        # A pair counter is charged to both its engines (once extra); the triple to all three (twice).
+        expected = -(400_000 + 200_000 + 50_000 + 2 * 9_625)
+        assert residual.measured_cycles == expected
+
+    def test_the_host_bucket_carries_the_cycles_no_engine_claimed(self):
+        src = self._source()
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
+                                       fixed_bucket="host")
+        att = A.attribute(src, buckets=buckets)
+        host = next(c for c in att.components if c.bucket == "host")
+        assert host.measured_cycles == self.WINDOW - sum(self.FULL.values())
+        # >93% on the real machine — the finding that says the levers are not mesh tiling.
+        assert host.measured_cycles / self.WINDOW > 0.9
+
+    def test_the_REAL_three_of_seven_reading_is_refused(self):
+        """The only whole-model hardware reading on this tree, and it must not produce a map.
+
+        With the four overlap terms absent, accelerator-busy is a lower bound and the host residue
+        an upper bound. A map built from them would give every bucket a number and none of the
+        numbers would be the quantity its name claims.
+        """
+        partial = {"MAIN_LD_CYCLES": 0, "MAIN_ST_CYCLES": 0, "MAIN_EX_CYCLES": 57_948_257}
+        with pytest.raises(ValueError, match="partition counter\\(s\\) are absent"):
+            self._source(partial)
+
+    def test_a_header_that_derives_no_complete_partition_is_refused(self):
+        with pytest.raises(ValueError, match="does not derive a complete occupancy partition"):
+            A.activity_from_counter_readings(
+                {"MAIN_LD_CYCLES": 1}, workload="w", total_cycles=10,
+                header_text="#define MAIN_LD_CYCLES 1", kind_of={"LD": "movement"})
+
+    def test_an_undeclared_engine_kind_is_refused_never_read_off_the_name(self):
+        with pytest.raises(ValueError, match="no kind for unit|stated no kind"):
+            A.activity_from_counter_readings(
+                self.FULL, workload="w", total_cycles=self.WINDOW, header_text=self.HEADER,
+                kind_of={"EX": "compute", "LD": "movement"})   # ST undeclared
+
+    def test_families_stay_UNKNOWN_without_an_envelope_rather_than_reporting_no_gap(self):
+        src = self._source()
+        buckets = A.buckets_from_kinds({r.name: r.kind for r in src.resources},
+                                       fixed_bucket="host")
+        att = A.attribute(src, buckets=buckets)
+        busy = {c.bucket: c for c in att.components if c.measured_cycles > 0}
+        assert busy, "the fixture must have non-empty buckets or this proves nothing"
+        for bucket, component in busy.items():
+            assert not isinstance(component.family, A.OptimizationFamily) \
+                or component.family is not A.OptimizationFamily.NONE, (
+                f"{bucket} reported NONE with no structural bound; unbounded must be UNKNOWN")

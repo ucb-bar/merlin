@@ -61,6 +61,7 @@ __all__ = [
     "GapComponent",
     "OptimizationFamily",
     "RESIDUAL",
+    "activity_from_counter_readings",
     "attribute",
     "attribute_corpus",
     "buckets_from_kinds",
@@ -126,6 +127,77 @@ def buckets_from_kinds(kinds: "Mapping[str, ResourceKind]", *, fixed_bucket: str
                 "other_bucket explicitly -- a resource whose role was not established must not be "
                 "silently folded into one that was.")
     return out
+
+
+def activity_from_counter_readings(readings: "Mapping[str, int]", *, workload: str,
+                                  total_cycles: int, header_text: str,
+                                  kind_of: "Mapping[str, str]",
+                                  provenance: str = "") -> "ActivitySource":
+    """One bracketed run's counter readings as an :class:`ActivitySource`, or a refusal saying why.
+
+    THE ONE HOP THE WHOLE-MODEL PATH WAS MISSING. Every other piece of this stack already existed --
+    the bracket emitter, the console parser,
+    :func:`merlin.perf.hw_counters.observations_from_counters` (which computes each engine's busy
+    total as its single counter plus every combination containing it, and the host residue as
+    ``total_cycles`` minus everything charged), and :func:`attribute` itself. What no caller could do
+    was get from a whole-model run's readings to the source. The capsule grade has its own private
+    version of this walk over an observation block; a FireSim whole-model run has no block, so its
+    counters reached nothing and the attribution map stayed empty on the only hardware measurements
+    that exist.
+
+    IT REFUSES A PARTIAL PARTITION, and that is the point rather than an inconvenience. The one real
+    whole-model reading on this tree carries ``MAIN_LD``, ``MAIN_ST`` and ``MAIN_EX`` -- 3 of a
+    7-member exhaustive partition, missing exactly the four overlap terms. From those three,
+    accelerator-busy is a LOWER bound (measured: 4.24% of 1,383,906,735 cycles) and the host residue
+    is an UPPER bound. Attributing them anyway would produce a map in which every bucket had a
+    number, none of the numbers were what they were labelled, and ``host`` would carry every cycle
+    the missing counters would have claimed.
+    """
+    from merlin.perf import hw_counters as HC  # noqa: PLC0415
+    from merlin.perf.decompose import ResourceKind, activity_from_busy  # noqa: PLC0415
+    from merlin.perf.observations import IDLE_QUANTITY, validate_block  # noqa: PLC0415
+
+    counters = HC.derive_occupancy_counters(header_text)
+    if not counters.complete():
+        raise ValueError(
+            "this target's counter header does not derive a complete occupancy partition, so no "
+            "reading of it can close accelerator-busy")
+    required = set(counters.by_combination.values())
+    absent = sorted(required - set(readings or {}))
+    if absent:
+        raise ValueError(
+            f"{len(absent)} of {len(required)} partition counter(s) are absent ({absent[:4]}): "
+            f"accelerator-busy would be a LOWER bound and the host residue an UPPER bound, and an "
+            f"attribution map built from them would label every bucket with a number that is not "
+            f"the quantity its name claims")
+    block = validate_block(HC.observations_from_counters(
+        readings, counters, total_cycles=int(total_cycles),
+        source=provenance or "hardware combination counters", kind_of=kind_of))
+    if block is None:
+        raise ValueError(f"{workload}: the counter readings did not form a believable timing block")
+    busy = dict(block.busy_by_unit())
+    if not busy:
+        raise ValueError(f"{workload}: the block carries no per-unit busy count")
+    declared = block.kinds()
+    undeclared = sorted(set(busy) - set(declared))
+    if undeclared:
+        raise ValueError(
+            f"{workload}: the producer stated no kind for unit(s) {undeclared}; a role read out of a "
+            f"unit's NAME is not a derivation")
+    kinds = {unit: ResourceKind(kind) for unit, kind in declared.items()}
+    idle = block.quantity(IDLE_QUANTITY)
+    if idle is not None:
+        # Cycles charged to NO engine. First-class, because on the only whole-model hardware reading
+        # here this is >93% of the window -- and an occupancy-only schema cannot see it at all.
+        busy[IDLE_QUANTITY] = int(idle)
+        kinds[IDLE_QUANTITY] = ResourceKind.FIXED
+    return activity_from_busy(
+        workload, int(total_cycles), busy, kinds,
+        # NOT a partition: a per-engine total includes the cycles that engine shared, so the totals
+        # deliberately sum past the window. That is what licenses reading overlap off them, and
+        # declaring True here would make `attribute` refuse the overlap it can actually see.
+        partitioned=False, completion_observable=None,
+        provenance=provenance or "hardware combination counters")
 
 
 def buckets_match_reference() -> "bool | Unavailable":
