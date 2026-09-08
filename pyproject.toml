@@ -103,6 +103,9 @@ merlin-bundle-pretranspose = "merlin.baselines.pretranspose_cli:main"
 merlin-compile = "merlin.compile_cli:main"
 merlin-compare = "merlin.compare.cli:main"
 merlin-liveness = "merlin.liveness.cli:main"
+# Post-run only: verify one queue-owned warm FireSim run from content-bound logs. This command
+# never submits work or invokes FireSim; target/workload adapters supply the correctness policy.
+merlin-firesim-receipt = "merlin.perf.firesim_receipt:main"
 merlin-compile-kernel = "merlin.triton.cli:main"
 
 [tool.setuptools]
@@ -158,4 +161,3 @@ default-groups = []
 [tool.uv.sources]
 # `aet` (the telemetry extra) is a local sibling checkout, installed editable — not published.
 aet = { path = "../aet", editable = true }
-

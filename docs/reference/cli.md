@@ -19,6 +19,7 @@ These console-scripts are installed with the package (`uv sync --all-extras`, or
 | `merlin-design-pressure` | `merlin.design_pressure.cli:main` |
 | `merlin-dse` | `merlin.dse.cli:main` |
 | `merlin-dse-guidance` | `merlin.dse_guidance.cli:main` |
+| `merlin-firesim-receipt` | `merlin.perf.firesim_receipt:main` |
 | `merlin-kernel-autotune` | `merlin.mining.autotune:main` |
 | `merlin-kernel-beam` | `merlin.mining.beam_cli:main` |
 | `merlin-kernel-mine` | `merlin.mining.mine:main` |

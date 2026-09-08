@@ -3,9 +3,9 @@ title: FireSim — whole-model cycle truth on the FPGA
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-08-29
+last_verified: 2026-09-07
 related: [zephyr, tinyllama_int8_rvv_zephyr, getting_started, reproducibility, reproducing_whole_model_on_rtl, whole_model_on_accelerator]
-code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py]
+code_refs: [merlin/python/merlin/runtime/backends/zephyr_model.py, merlin/python/merlin/perf/firesim_receipt.py, build_tools/chipyard/setup_multicore_saturn.py, build_tools/chipyard/MerlinSaturnConfigs.scala, build_tools/scripts/firesim_sweep.py, build_tools/scripts/fsq.py, build_tools/firesim/README.md, build_tools/firesim/preflight.py]
 ---
 
 # FireSim — whole-model cycle truth on the FPGA
@@ -231,6 +231,66 @@ record the queue job ID and content hashes for the client log, daemon job log, a
 invalid if it came from a direct `firesim` invocation, if the daemon evidence does not show the exact
 `kill -> infrasetup -> runworkload -> kill` lifecycle, or if the UART exposes any profile metric
 other than the single measured compute-cycle count.
+
+### Sealing a completed queue run
+
+`merlin-firesim-receipt` is the fail-closed, post-run boundary. It runs no queue or simulator
+command. Give it absolute paths to the captured queue-client output, the job's own daemon
+`stdout.log`, and the resulting UART log. Also give it the raw queue executable and the exact argv
+that was submitted as a JSON string array. For example, `submission.json` contains:
+
+```json
+[
+  "/absolute/queue/bin/firesim-queue",
+  "runworkload-full",
+  "--chipyard", "/absolute/chipyard",
+  "--workload", "model-evaluation",
+  "--stage-from", "/absolute/model.elf"
+]
+```
+
+Correctness is not hardcoded in the parser. The target/workload adapter emits a policy with exact
+successful-validation lines. A digest is a useful marker because it binds the observed output rather
+than merely saying that execution ended:
+
+```json
+{
+  "schema": "merlin_firesim_uart_validation_policy_v1",
+  "policy_id": "target-contract/exact-output-digest-v1",
+  "workload": "model-evaluation",
+  "success_markers": [
+    "VALIDATION output_digest=0123456789abcdef",
+    "VALIDATION status=PASS"
+  ]
+}
+```
+
+Then seal the run:
+
+```bash
+merlin-firesim-receipt \
+  --queue-client-log /absolute/evidence/queue-client.log \
+  --queue-daemon-log /absolute/queue/jobs/123/stdout.log \
+  --uart-log /absolute/evidence/uartlog \
+  --queue-executable /absolute/queue/bin/firesim-queue \
+  --submission-json /absolute/evidence/submission.json \
+  --job-id 123 \
+  --workload model-evaluation \
+  --validation-policy /absolute/evidence/validation-policy.json \
+  --output /absolute/evidence/firesim-receipt.json
+```
+
+The command refuses unless the client terminates that exact job as `DONE` with exit code zero; the
+daemon log proves exactly `kill -> infrasetup -> runworkload -> kill` in its ordered phases; and the
+UART contains one successful warm window before one successful measured window. There must be one
+positive `METRIC cycles N` line inside the measured protocol window and no other metrics. Every
+policy marker must appear exactly once after `measured begin` and before the metric is published.
+
+The JSON is deterministic and replaced atomically. It content-hashes the three logs, the raw queue
+executable, the submission file, its canonical argv, and the validation policy. Serialization
+rechecks every file, so evidence modified after parsing is refused. This proves agreement among the
+captured artifacts; it cannot reconstruct an argv that the installed queue client did not echo, so
+capture `submission.json` before invocation and preserve it beside the client log.
 
 The daemon rewrites that one key in the per-job `config_runtime.yaml` and leaves every other setting —
 and the shared template — untouched. Omit the flag to inherit the template, which is the older
