@@ -1,0 +1,270 @@
+{
+  "calibration": null,
+  "controlled_pairs": [],
+  "evidence_files": [
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/cache/rtl_introspect/gemmini/facts.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "a99a53cc6714b7cc7361f7a377ac5354154496da41cd0d1f0c4d069e0a58bcfe"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/SHA256SUMS",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "cc5f5e127e373ed6bee8d7ede71b2cbc40d9b3661cdb8240d389a38847beb444"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/build/rtl_engines/gemmini/gsim/build_receipt.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "2da43b51596fe2011b24a8f3ccdd99e0553d23f8f6de92daf2d3208d90de5099"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/build/rtl_engines/gemmini/gsim/emulator",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "309bf3c1b768d4b70c9a64cfa8073a61224baf33a8506c905ddb7057a4911326"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "e9a0d547236cc9bd60e1a5e6930d7ce0b19017bb1ace30f674074c8fe31924b9"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "f1365bb96f77ff5dd3256f077994932a9aa3aee7b5d8ff2bca72794e9e266f2e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "a8eb8e031d06424a8856c3744404ba691657eaa5290c1d7f285316acf9fd0ec5"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "49b5269f525c027a686b1ab00f6f478cebbceba9a45389433ef23d4a4cd7256a"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "666cd6063fa98fc12506ca7c8855b3027a88c897d8d55ef81f634b083fdd57b8"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "90de322173ccbb8fed1b0d33bcee6b5332d5d47717cc1cb2737ed48c8c0da6dc"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "6e204b6407365d3d321a027bdf463b3d0e6154f9810f79dd643a8ad8ea3b055b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "1b806a85f3ba3f308bb0f15676202528a549f3eccf3c49f231dd6a552eecb783"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "fbfb8dd8545d71bed810998d3b9049afa8819de221192b566dd2e66f6a77b340"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "5eaf9fbb731d61fefb52c1c1b2df99b648dcfd07861dede316388d48d87a6a98"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "108cc9457d684d88f072b787d08197105f3243b596a11fa6e7666c8f872473a7"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "d511594d406c084ac867dbd71c8887cf28f7a6b9294b769a1fe381cea709d389"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "16dccdfb6fc3c54dd62fadb67b71db9ddbc4ce9c513eeca6c370399b1d8268cf"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "86f2008dfdec9bcbde8a868e76a50463f61d9655a02f0e45bec39a6c17c5bafa"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "0bee0bb8eef97961d743922c893447d029358f80250eb815e862d3105638ce5a"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "16cca5ad4c379dee2ac1ad191069d7d54db074079be39abb0a6713e17eaa0d16"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "a6eebe9325784157ec292e579e74d0388648b2744b7a94b7023ce10cf2c60c20"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "11f16c1b75b0b71eb8f7e134641a2ab18494d473d99fbccd6eed5518b5178b1d"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "856e14be51728af0cf0dc15dcfdc8e9836a6e76aed023233c88042d507c045a8"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "1e139033b88ffa9512159579252838149010c1401cb722053f37db260a63a74d"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "badeb1c53e963340897f1f84e12bb19f41d1a7276dd4dbf29ccdf2a9f0408eb1"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "e5ada584cdc3f1ca1a6e4c6ed54e8b1e08a164def6f409c4faf0bbf74b09f17b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "db16401f357e8e8cd4f6c37d450d06c8a553e6213fe94e971ed1283418aef221"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "10a107347fae0de37bfe8a7ea5ede085de2fa88faa6c4f1c1db790110a1b8d70"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "b45b0869cf8fa1e953c6f4c458b726475f866b197d98447be60e927410e394b6"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "bf7e348595ac6236e082a5beaeaac4f4c5656a0fd547b5196c6d65bf5a169e3f"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "575032134f3168a1a44b46ffd1a01d19e26f2fd8d58d7782432f17ff7a5a5ce1"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "4efb72bef7df51a8ad5558e147674ae077a2f10731270346588582625eb600d4"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "d5ee05897ccbeeb81ec4c43f51724c56e135ea437fc254d5b6e228805a443d61"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "6c16fb599b211844e0ff75363aa1add351fea7feca27f2a4aa5bbe89c6a08bc0"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "99f7e0eb9c3e388d2c824503d88e365a22e14b3426d77fe1a653a07809edaf75"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "0bdea246e9037ef64c06153e3353ceefd3360dcee2ee36b25bc30b88bde58cf5"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "449cad019b3799497cc61c6244809592c72866fd11d498657db96989ac55324e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "f34ebfa89ff12680b843737a142bc57e3cfaf074953eb0f9e735de3bf9dc5d9c"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/rtl_gsim_console.log",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "c042305308b1e2eda15e8f729969687805c51be12caef6e956d21ca644a78043"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/capsule_result.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "2a0235f0d3112ca9b14cd0ae658774b5feb7a7188514568a80ad868ced672144"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/command_buffer.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "48e9815d38724a82e913c50d97c44ad173a626febb9d2ef30bc87c1e7e95031b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/input.interface.mlir",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "8c15e010861f931ff1edb690c4f65c7592b1957423d4f848ac9c90f9066d6663"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/instruction_trace.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "84f6091bc0f30b1fc6bcf8cc6ee0c18bdcf3320865f907c94d7a4302d82f3bd5"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/package_kernel.elf",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "5243253d07c2493304b4f6cb39a3c1224b8e2f6b6772e03bc51b62aefe51570e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/run_manifest.yaml",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "9c8b57d1857b7de00825f3a03b78f29795af8d0b8f301df0d858caf07cad4e08"
+    },
+    {
+      "path": "/scratch/agustin/tmp/merlin-movement-pair-audit-20260908/out/artifacts/perf-bench/gemmini/movement_pair_contract_audit_20260908/audit_receipt.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "10da3b26d53d3609a00c16be913a90ff6aa947e937e64b9538695775a946e194"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+      "purpose": "exact target descriptor",
+      "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+    }
+  ],
+  "execution": "host_evidence_join_only",
+  "feature": null,
+  "full_model_execution_performed": false,
+  "missing": [
+    {
+      "field": "controlled_pairs",
+      "reason": "0 valid paired points cannot fit 2 parameters; at least two distinct points per fitted parameter are required",
+      "severity": "missing"
+    }
+  ],
+  "receipt_sha256": "1d871a9230b7c03d861181e36720a9d147ada38b61f87bbd1c22fe358af4813d",
+  "refusals": [],
+  "request_sha256": "f1fb437a216d3abe13c37055e6421869d00c326513eb073f779b225a2335a24c",
+  "schema": "phase2_analytical_feature_calibration_preparation_v1",
+  "simulator_execution_performed": false,
+  "source_sha256": "f1fb437a216d3abe13c37055e6421869d00c326513eb073f779b225a2335a24c",
+  "status": "incomplete",
+  "target_execution_performed": false,
+  "target_sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+}

@@ -1,0 +1,466 @@
+{
+  "analyzer": {
+    "path": "/scratch/agustin/tmp/merlin-movement-pair-audit-20260908/merlin/python/merlin/perf/artifact_activity.py",
+    "sha256": "0036f2271979f1f68126043ebb41a361caf7145c7c65aa325ddadf38d467e5e4"
+  },
+  "calibration": null,
+  "conclusion": "existing_six_point_series_cannot_populate_controlled_pair_contract",
+  "engine_identity": {
+    "binary": {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/build/rtl_engines/gemmini/gsim/emulator",
+      "sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea"
+    },
+    "build_receipt": {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/build/rtl_engines/gemmini/gsim/build_receipt.json",
+      "sha256": "2da43b51596fe2011b24a8f3ccdd99e0553d23f8f6de92daf2d3208d90de5099"
+    }
+  },
+  "execution": "host_read_only_evidence_audit",
+  "full_model_execution_performed": false,
+  "missing": [
+    {
+      "field": "controlled_pairs.controls",
+      "reason": "No predeclared controlled-variable contract binds the exact target and invariants; the six programs vary shape, output representation, configuration stream, and ELF.",
+      "severity": "missing"
+    },
+    {
+      "field": "controlled_pairs.distinct_non_reused_points",
+      "reason": "Static emitted movement counts are [2,2,4,2,2,2]; only one run has the second feature value, so at most one disjoint varying-feature pair exists, below the four non-reused points required for two fitted movement parameters.",
+      "severity": "missing"
+    },
+    {
+      "field": "observations.bindings",
+      "reason": "No original measured observation binds exact source SHA-256, controls SHA-256, target descriptor SHA-256, command buffer, emitted trace, ELF, and execution console together.",
+      "severity": "refusal"
+    },
+    {
+      "field": "observations.quantities.executed_commands",
+      "reason": "The execution consoles report cycles and output only; static emitted instruction counts and declared command counts do not prove the number of commands executed.",
+      "severity": "missing"
+    },
+    {
+      "field": "observations.quantities.physical_bytes",
+      "reason": "No physical-target-interface byte counter or receipt exists. The six 40/512/1125/1200/1275/1280-byte values are calculated from declared tensor shapes and dtypes and are logical compiler-command-buffer volume, not measured physical traffic.",
+      "severity": "missing"
+    },
+    {
+      "field": "observations.measurement_window.warm_predecessor",
+      "reason": "No predecessor execution identity, state-continuity binding, or warm-up/repetition index is recorded for any measured run.",
+      "severity": "missing"
+    },
+    {
+      "field": "observations.package_identity",
+      "reason": "Every capsule_result states the same package path and toolchain SHAs, but none binds the package receipt digest; moreover the current SHA256SUMS verification fails for manifest.yaml.",
+      "severity": "refusal"
+    }
+  ],
+  "n_admissible_controlled_pairs": 0,
+  "n_admissible_controlled_points": 0,
+  "n_candidate_runs": 6,
+  "package_identity": {
+    "manifest": {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/manifest.yaml",
+      "sha256": "cc5f5e127e373ed6bee8d7ede71b2cbc40d9b3661cdb8240d389a38847beb444"
+    },
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0",
+    "receipt": {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/SHA256SUMS",
+      "sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2"
+    },
+    "receipt_verification": "failed_manifest_yaml_digest_mismatch"
+  },
+  "receipt_sha256": "c8e74b9f35750b3290a562ff763705dea7fafd8ab77ffd38c55005db12595a24",
+  "runs": [
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/capsule_result.json",
+          "sha256": "e9a0d547236cc9bd60e1a5e6930d7ce0b19017bb1ace30f674074c8fe31924b9"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/command_buffer.json",
+          "sha256": "f1365bb96f77ff5dd3256f077994932a9aa3aee7b5d8ff2bca72794e9e266f2e"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/instruction_trace.json",
+          "sha256": "49b5269f525c027a686b1ab00f6f478cebbceba9a45389433ef23d4a4cd7256a"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/input.interface.mlir",
+          "sha256": "a8eb8e031d06424a8856c3744404ba691657eaa5290c1d7f285316acf9fd0ec5"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/package_kernel.elf",
+          "sha256": "666cd6063fa98fc12506ca7c8855b3027a88c897d8d55ef81f634b083fdd57b8"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/rtl_gsim_console.log",
+          "sha256": "309bf3c1b768d4b70c9a64cfa8073a61224baf33a8506c905ddb7057a4911326"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/run_manifest.yaml",
+          "sha256": "90de322173ccbb8fed1b0d33bcee6b5332d5d47717cc1cb2737ed48c8c0da6dc"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "c773344717197960475825099251f43e81dae2352d5d3f99a8e3766ec20f8293",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "f1365bb96f77ff5dd3256f077994932a9aa3aee7b5d8ff2bca72794e9e266f2e",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 512,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 161,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "A1_mvin_mvout",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 2,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    },
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/capsule_result.json",
+          "sha256": "1b806a85f3ba3f308bb0f15676202528a549f3eccf3c49f231dd6a552eecb783"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/command_buffer.json",
+          "sha256": "fbfb8dd8545d71bed810998d3b9049afa8819de221192b566dd2e66f6a77b340"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/instruction_trace.json",
+          "sha256": "108cc9457d684d88f072b787d08197105f3243b596a11fa6e7666c8f872473a7"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/input.interface.mlir",
+          "sha256": "5eaf9fbb731d61fefb52c1c1b2df99b648dcfd07861dede316388d48d87a6a98"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/package_kernel.elf",
+          "sha256": "d511594d406c084ac867dbd71c8887cf28f7a6b9294b769a1fe381cea709d389"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/rtl_gsim_console.log",
+          "sha256": "6e204b6407365d3d321a027bdf463b3d0e6154f9810f79dd643a8ad8ea3b055b"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/run_manifest.yaml",
+          "sha256": "16dccdfb6fc3c54dd62fadb67b71db9ddbc4ce9c513eeca6c370399b1d8268cf"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "31289a789fff2860a1f716fa96c995e489fec21cfdc4ef898708fa87b6c99f87",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "fbfb8dd8545d71bed810998d3b9049afa8819de221192b566dd2e66f6a77b340",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 1125,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 201,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "FT00_movement_tail_15x15",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 2,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    },
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/capsule_result.json",
+          "sha256": "0bee0bb8eef97961d743922c893447d029358f80250eb815e862d3105638ce5a"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/command_buffer.json",
+          "sha256": "16cca5ad4c379dee2ac1ad191069d7d54db074079be39abb0a6713e17eaa0d16"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/instruction_trace.json",
+          "sha256": "11f16c1b75b0b71eb8f7e134641a2ab18494d473d99fbccd6eed5518b5178b1d"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/input.interface.mlir",
+          "sha256": "a6eebe9325784157ec292e579e74d0388648b2744b7a94b7023ce10cf2c60c20"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/package_kernel.elf",
+          "sha256": "856e14be51728af0cf0dc15dcfdc8e9836a6e76aed023233c88042d507c045a8"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/rtl_gsim_console.log",
+          "sha256": "86f2008dfdec9bcbde8a868e76a50463f61d9655a02f0e45bec39a6c17c5bafa"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/run_manifest.yaml",
+          "sha256": "1e139033b88ffa9512159579252838149010c1401cb722053f37db260a63a74d"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "95c08a133d75116bd7753012652ed4cef28e7c0a99c6818403259f106fb308ee",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "16cca5ad4c379dee2ac1ad191069d7d54db074079be39abb0a6713e17eaa0d16",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 1275,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 206,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "FT01_movement_tail_17x15",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 4,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    },
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/capsule_result.json",
+          "sha256": "e5ada584cdc3f1ca1a6e4c6ed54e8b1e08a164def6f409c4faf0bbf74b09f17b"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/command_buffer.json",
+          "sha256": "db16401f357e8e8cd4f6c37d450d06c8a553e6213fe94e971ed1283418aef221"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/instruction_trace.json",
+          "sha256": "b45b0869cf8fa1e953c6f4c458b726475f866b197d98447be60e927410e394b6"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/input.interface.mlir",
+          "sha256": "10a107347fae0de37bfe8a7ea5ede085de2fa88faa6c4f1c1db790110a1b8d70"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/package_kernel.elf",
+          "sha256": "bf7e348595ac6236e082a5beaeaac4f4c5656a0fd547b5196c6d65bf5a169e3f"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/rtl_gsim_console.log",
+          "sha256": "badeb1c53e963340897f1f84e12bb19f41d1a7276dd4dbf29ccdf2a9f0408eb1"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/run_manifest.yaml",
+          "sha256": "575032134f3168a1a44b46ffd1a01d19e26f2fd8d58d7782432f17ff7a5a5ce1"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "d85709291c0c817c78206bf76d26b3c746537c06fed48f77b782014abb380bab",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "db16401f357e8e8cd4f6c37d450d06c8a553e6213fe94e971ed1283418aef221",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 1280,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 204,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "SY_movement_i8_aligned",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 2,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    },
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/capsule_result.json",
+          "sha256": "d5ee05897ccbeeb81ec4c43f51724c56e135ea437fc254d5b6e228805a443d61"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/command_buffer.json",
+          "sha256": "6c16fb599b211844e0ff75363aa1add351fea7feca27f2a4aa5bbe89c6a08bc0"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/instruction_trace.json",
+          "sha256": "0bdea246e9037ef64c06153e3353ceefd3360dcee2ee36b25bc30b88bde58cf5"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/input.interface.mlir",
+          "sha256": "99f7e0eb9c3e388d2c824503d88e365a22e14b3426d77fe1a653a07809edaf75"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/package_kernel.elf",
+          "sha256": "449cad019b3799497cc61c6244809592c72866fd11d498657db96989ac55324e"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/rtl_gsim_console.log",
+          "sha256": "4efb72bef7df51a8ad5558e147674ae077a2f10731270346588582625eb600d4"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/run_manifest.yaml",
+          "sha256": "f34ebfa89ff12680b843737a142bc57e3cfaf074953eb0f9e735de3bf9dc5d9c"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "09590b265864a13fb05767616e90d3d8eb59ffaa709b3a532be68693c976be1f",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "6c16fb599b211844e0ff75363aa1add351fea7feca27f2a4aa5bbe89c6a08bc0",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 1200,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 206,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "SY_movement_i8_partial",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 2,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    },
+    {
+      "artifacts": {
+        "capsule_result": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/capsule_result.json",
+          "sha256": "2a0235f0d3112ca9b14cd0ae658774b5feb7a7188514568a80ad868ced672144"
+        },
+        "command_buffer": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/command_buffer.json",
+          "sha256": "48e9815d38724a82e913c50d97c44ad173a626febb9d2ef30bc87c1e7e95031b"
+        },
+        "emitted_instruction_trace": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/instruction_trace.json",
+          "sha256": "84f6091bc0f30b1fc6bcf8cc6ee0c18bdcf3320865f907c94d7a4302d82f3bd5"
+        },
+        "exact_source": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/input.interface.mlir",
+          "sha256": "8c15e010861f931ff1edb690c4f65c7592b1957423d4f848ac9c90f9066d6663"
+        },
+        "executed_elf": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/package_kernel.elf",
+          "sha256": "5243253d07c2493304b4f6cb39a3c1224b8e2f6b6772e03bc51b62aefe51570e"
+        },
+        "execution_console": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/rtl_gsim_console.log",
+          "sha256": "c042305308b1e2eda15e8f729969687805c51be12caef6e956d21ca644a78043"
+        },
+        "run_manifest": {
+          "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/run_manifest.yaml",
+          "sha256": "9c8b57d1857b7de00825f3a03b78f29795af8d0b8f301df0d858caf07cad4e08"
+        }
+      },
+      "bindings": {
+        "capsule_result_embedded_command_buffer_sha256": "884064aa5d0eb4f6e747740b381e0cbc6005b5b85bfe646ecb0d55cd556b4308",
+        "instruction_trace_bound_to_execution_receipt": false,
+        "package_receipt_bound_to_execution_receipt": false,
+        "raw_command_buffer_file_sha256": "48e9815d38724a82e913c50d97c44ad173a626febb9d2ef30bc87c1e7e95031b",
+        "source_bound_to_execution_receipt": false,
+        "target_descriptor_bound_to_execution_receipt": false
+      },
+      "declared_command_buffer": {
+        "command_count": 1,
+        "logical_input_plus_output_bytes": 40,
+        "physical_target_interface": "UNKNOWN",
+        "scope": "compiler_declaration"
+      },
+      "measured_execution": {
+        "cycles": 130,
+        "engine": "gsim",
+        "engine_sha256": "1a3de02a19ddcb4704443e2b565fd6eb0299a940afdcc7c037e2604bbcbb52ea",
+        "executed_commands": null,
+        "physical_bytes": null,
+        "warm_predecessor": null
+      },
+      "run_id": "SY_movement_i8_sub_tile",
+      "static_emitted_feature": {
+        "admissibility": "available_as_static_evidence_only_not_executed_count",
+        "encoding_resolution": "complete",
+        "movement_instructions": 2,
+        "scope": "emitted_feature",
+        "status": "decoded",
+        "unit": "emitted_instruction"
+      }
+    }
+  ],
+  "schema": "phase2_controlled_feature_evidence_audit_v1",
+  "simulator_execution_performed": false,
+  "source_root": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench",
+  "status": "refused",
+  "target_descriptor": {
+    "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+    "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+  },
+  "target_execution_performed": false,
+  "target_facts": {
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/cache/rtl_introspect/gemmini/facts.json",
+    "sha256": "a99a53cc6714b7cc7361f7a377ac5354154496da41cd0d1f0c4d069e0a58bcfe"
+  }
+}
