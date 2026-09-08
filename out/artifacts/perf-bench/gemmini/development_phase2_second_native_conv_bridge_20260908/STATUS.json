@@ -1,0 +1,44 @@
+{
+  "schema": "gemmini_transposed_compute_only_cost_guard_v1",
+  "status": "hardware_tested_rejected_perf_guarded",
+  "coverage": {
+    "production_native_loop_conv": 0,
+    "production_streamed_loop_ws": 53,
+    "diagnostic_native_loop_conv": 1,
+    "diagnostic_streamed_loop_ws": 52,
+    "task3_native_promoted": false
+  },
+  "hardware": {
+    "baseline_job": 535,
+    "diagnostic_job": 545,
+    "baseline_cycles": 1316619699,
+    "diagnostic_cycles": 1383906735,
+    "additional_cycles": 67287036,
+    "regression_percent": 5.110590100627076,
+    "correctness": "1000/1000 logits exact; top1=258"
+  },
+  "guard": {
+    "default_reason": "hardware_cost_guard_transposed_nchw_underfills_systolic_rows",
+    "diagnostic_switch": "--diagnostic-transposed-nchw-loop-conv",
+    "spike_prediction_rejected": "-1.98% simulated cycles did not rank hardware correctly"
+  },
+  "target_identity": {
+    "production_target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+    "q535_target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+    "diagnostic_target_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673",
+    "q545_target_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673"
+  },
+  "tests": {
+    "passed": 55,
+    "subtests_passed": 6,
+    "command": "PYTHONPATH=$PWD/compiler:../../../../../merlin/python python -m pytest -q tests"
+  },
+  "next_required_capabilities": [
+    "physical NHWC propagation across host and accelerator regions",
+    "full-width LOOP_CONV store",
+    "no-bias first-reduction overwrite",
+    "exact per-channel fused narrow epilogue",
+    "Gemmini residual add",
+    "fused maxpool"
+  ]
+}
