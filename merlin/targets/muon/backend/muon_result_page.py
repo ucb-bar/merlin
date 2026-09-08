@@ -30,6 +30,19 @@ PASS_SYMBOL = "merlin_numeric_pass"
 FAIL_SYMBOL = "merlin_numeric_fail"
 
 
+def _sequence_token(base: int, sequence: int) -> int:
+    """The changing 32-bit publication word for one mailbox transaction."""
+    return (int(base) ^ int(sequence)) & 0xFFFFFFFF
+
+
+def ready_token(sequence: int) -> int:
+    return _sequence_token(RESULT_READY, sequence)
+
+
+def ack_token(sequence: int) -> int:
+    return _sequence_token(RESULT_ACK, sequence)
+
+
 def result_specs(outputs: list[Any]) -> list[dict[str, Any]]:
     """Stable result declarations corresponding to harness output arguments."""
     return [{"name": out.name, "elements": int(out.rows) * int(out.cols), "dtype": out.dtype}
@@ -168,8 +181,8 @@ def render_carrier(manifest: dict[str, Any], expected: dict[str, Any], policy: d
 #include <stdint.h>
 #define STATUS ((volatile uint32_t *)0x{status:x}ULL)
 #define MAILBOX ((volatile uint32_t *)0x{mailbox_address:x}ULL)
-#define MERLIN_RESULT_READY 0x{RESULT_READY:08x}u
-#define MERLIN_RESULT_ACK 0x{RESULT_ACK:08x}u
+#define MERLIN_RESULT_READY(sequence) (0x{RESULT_READY:08x}u ^ (sequence))
+#define MERLIN_RESULT_ACK(sequence) (0x{RESULT_ACK:08x}u ^ (sequence))
 #define MERLIN_MAILBOX_WORDS {MAILBOX_WORDS}u
 {chr(10).join(arrays)}
 
@@ -197,15 +210,15 @@ int main(void) {{
   uint32_t received = 0u;
   uint32_t sequence = 1u;
   while (received < {total}u) {{
-    while (STATUS[0] != MERLIN_RESULT_READY || STATUS[1] != sequence)
+    while (STATUS[0] != MERLIN_RESULT_READY(sequence))
       __asm__ volatile("fence r,r" ::: "memory");
-    __asm__ volatile("fence r,r" ::: "memory");
-    uint32_t count = STATUS[2];
+    /* Acquire the count and mailbox payload published before READY(sequence). */
+    __asm__ volatile("fence r,rw" ::: "memory");
+    uint32_t count = STATUS[1];
     if (count == 0u || count > MERLIN_MAILBOX_WORDS || count > {total}u - received) {{
-      STATUS[4] = sequence;
+      /* Order the observed payload before returning ownership to Muon. */
       __asm__ volatile("fence rw,rw" ::: "memory");
-      STATUS[3] = MERLIN_RESULT_ACK;
-      __asm__ volatile("fence rw,rw" ::: "memory");
+      STATUS[2] = MERLIN_RESULT_ACK(sequence);
       fail_loop();
     }}
     for (uint32_t i = 0; i < count; ++i) {{
@@ -214,10 +227,9 @@ int main(void) {{
       bad += mismatch(received + i, got);
     }}
     received += count;
-    STATUS[4] = sequence;
+    /* All mailbox reads happen before the changing ACK publication word. */
     __asm__ volatile("fence rw,rw" ::: "memory");
-    STATUS[3] = MERLIN_RESULT_ACK;
-    __asm__ volatile("fence rw,rw" ::: "memory");
+    STATUS[2] = MERLIN_RESULT_ACK(sequence);
     sequence++;
   }}
   STATUS[5] = bad;

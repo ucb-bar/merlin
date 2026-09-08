@@ -281,12 +281,13 @@ int main(void){
     uint32_t _count=256u-_base;
     if(_count>32u)_count=32u;
     for(uint32_t _i=0;_i<_count;++_i) merlin_result_mailbox[_i]=_out_Y0[_base+_i];
-    merlin_result_status[2]=_count;
-    merlin_result_status[1]=_merlin_sequence;
+    merlin_result_status[1]=_count;
+    /* Release count/mailbox before the changing READY publication word. */
     __asm__ volatile("fence rw,rw" ::: "memory");
-    merlin_result_status[0]=0x4d525231u;
-    __asm__ volatile("fence rw,rw" ::: "memory");
-    while(merlin_result_status[3]!=0x4d524131u || merlin_result_status[4]!=_merlin_sequence){__asm__ volatile("fence r,r" ::: "memory");}
+    merlin_result_status[0]=(0x4d525231u^_merlin_sequence);
+    while(merlin_result_status[2]!=(0x4d524131u^_merlin_sequence)){__asm__ volatile("fence r,r" ::: "memory");}
+    /* Acquire ACK before reusing the mailbox for the next chunk. */
+    __asm__ volatile("fence r,rw" ::: "memory");
     ++_merlin_sequence;
   }
   for(;;)__asm__ volatile("nop" ::: "memory");

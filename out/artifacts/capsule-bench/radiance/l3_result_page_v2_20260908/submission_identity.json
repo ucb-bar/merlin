@@ -3,13 +3,13 @@
   "positive_case": "rp12_embed_scale",
   "negative_case": "rp12_negative_control",
   "submitted_muon_elf_sha256": {
-    "positive": "b14d78197fcfb05627457ea5d964fd816a963dedd9622dceda932043b53226cd",
-    "negative": "b14d78197fcfb05627457ea5d964fd816a963dedd9622dceda932043b53226cd",
+    "positive": "cfbc6cdcff0704e46c047eca85b9d46912d3c1cbafde7abaa455e1ccf5bdda64",
+    "negative": "cfbc6cdcff0704e46c047eca85b9d46912d3c1cbafde7abaa455e1ccf5bdda64",
     "byte_identical": true
   },
   "private_carrier_sha256": {
-    "positive": "08df1ff585a933c709821df9ab66d550751e17f15fa9a05db74c54fa5f27896f",
-    "negative": "a97f96c8a2eb9fd378dc86fb6fe24d7963b22c402459a58b6dd8c96c8533e08b",
+    "positive": "0ea86b7313b76cb83141542ab64971c0392901c2e1d01bdb83a45632a4f3c671",
+    "negative": "1a56e0727220724a9447f2ae45dca6e4a82fde9142751477b22025891427c9d5",
     "byte_identical": false
   }
 }

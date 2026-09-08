@@ -9,16 +9,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 CASES = {
-    "rp10_pass": ("pass", "0x80000086", 120_000, 32, "merlin.muon-result-page.v1"),
+    "rp10_pass": ("pass", "0x80000086", 120_000, 32,
+                  "merlin.muon-result-page.v1", "legacy"),
     "rp10_negative_control": ("fail", "0x800000c6", 120_000, 32,
-                              "merlin.muon-result-page.v1"),
+                              "merlin.muon-result-page.v1", "legacy"),
     "r4_rmsnorm_observed_fail": ("pass", "0x80000186", 360_000, 256,
-                                 "merlin.muon-result-mailbox.v2"),
+                                 "merlin.muon-result-mailbox.v2", "initial_mailbox"),
     "rp12_embed_scale": ("pass", "0x80000186", 360_000, 256,
-                         "merlin.muon-result-mailbox.v2"),
+                         "merlin.muon-result-mailbox.v2", "sequence_token"),
     "rp12_negative_control": ("fail", "0x800001c6", 360_000, 256,
-                              "merlin.muon-result-mailbox.v2"),
+                              "merlin.muon-result-mailbox.v2", "sequence_token"),
 }
+FORBIDDEN_NAMES = {"golden.yaml", "result_carrier.c", "kernel.soc.elf", ".merlin_build_key"}
+UNINDEXED_ALLOWLIST = {"SHA256SUMS"}  # a checksum file cannot include its own digest
 
 
 def digest(path: Path) -> str:
@@ -33,19 +36,56 @@ def final_pc(console: str) -> str | None:
     return None
 
 
-def main() -> int:
+def publication_failures(root: Path) -> list[str]:
+    """Verify that the checksum index exactly covers the recursive publication."""
     failures: list[str] = []
-    checksum_lines = (ROOT / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
-    forbidden = ("golden.yaml", "result_carrier.c", "kernel.soc.elf", ".merlin_build_key")
-    for line in checksum_lines:
-        expected, rel = line.split("  ", 1)
-        if any(rel.endswith(name) for name in forbidden):
-            failures.append(f"private golden-derived artifact listed for publication: {rel}")
-        path = ROOT / rel
-        if not path.is_file() or digest(path) != expected:
-            failures.append(f"hash mismatch: {rel}")
+    checksum = root / "SHA256SUMS"
+    try:
+        lines = checksum.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        return [f"cannot read SHA256SUMS: {exc}"]
 
-    for name, (status, pc, cap, elements, schema) in CASES.items():
+    listed: dict[str, str] = {}
+    for number, line in enumerate(lines, 1):
+        fields = line.split("  ", 1)
+        if len(fields) != 2 or not fields[0] or not fields[1]:
+            failures.append(f"malformed SHA256SUMS line {number}")
+            continue
+        expected, rel = fields
+        relpath = Path(rel)
+        if relpath.is_absolute() or ".." in relpath.parts:
+            failures.append(f"unsafe SHA256SUMS path: {rel}")
+            continue
+        if rel in listed:
+            failures.append(f"duplicate SHA256SUMS path: {rel}")
+            continue
+        listed[rel] = expected
+
+    actual: set[str] = set()
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root).as_posix()
+        if rel in UNINDEXED_ALLOWLIST:
+            continue
+        actual.add(rel)
+        if path.name in FORBIDDEN_NAMES:
+            failures.append(f"forbidden published file: {rel}")
+
+    for rel in sorted(actual - set(listed)):
+        failures.append(f"unlisted published file: {rel}")
+    for rel in sorted(set(listed) - actual):
+        failures.append(f"listed file is absent: {rel}")
+    for rel in sorted(actual & set(listed)):
+        if digest(root / rel) != listed[rel]:
+            failures.append(f"hash mismatch: {rel}")
+    return failures
+
+
+def main() -> int:
+    failures = publication_failures(ROOT)
+
+    for name, (status, pc, cap, elements, schema, protocol) in CASES.items():
         case = ROOT / "cases" / name
         console = (case / "gsim_console.log").read_text(encoding="utf-8")
         manifest = json.loads((case / "result_page.json").read_text(encoding="utf-8"))
@@ -64,10 +104,16 @@ def main() -> int:
             mailbox = manifest.get("mailbox") or {}
             if mailbox.get("words") != 32 or "soc_address" in outputs[0]:
                 failures.append(f"{name}: manifest exposes more than the fixed 32-word mailbox")
-            required = ("merlin_result_mailbox[32]", "_base+=32u",
-                        "merlin_result_status[1]=_merlin_sequence",
-                        "merlin_result_status[2]=_count",
-                        "merlin_result_status[4]!=_merlin_sequence")
+            common = ("merlin_result_mailbox[32]", "_base+=32u")
+            if protocol == "sequence_token":
+                required = common + ("merlin_result_status[1]=_count",
+                                     "merlin_result_status[0]=(0x4d525231u^_merlin_sequence)",
+                                     "merlin_result_status[2]!=(0x4d524131u^_merlin_sequence)",
+                                     'fence rw,rw', 'fence r,rw')
+            else:
+                required = common + ("merlin_result_status[1]=_merlin_sequence",
+                                     "merlin_result_status[2]=_count",
+                                     "merlin_result_status[4]!=_merlin_sequence")
             if any(token not in harness for token in required):
                 failures.append(f"{name}: harness lacks streaming READY(sequence,count)/ACK protocol")
         else:

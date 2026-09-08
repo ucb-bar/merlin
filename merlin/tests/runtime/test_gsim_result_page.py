@@ -1,7 +1,8 @@
 """The Muon GSIM tier grades a declared result page, not console silence."""
 from __future__ import annotations
 
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from pathlib import Path
 
 import pytest
 
@@ -35,13 +36,32 @@ def test_result_page_harness_streams_through_fixed_acknowledged_mailbox() -> Non
     assert 'section(".data.merlin_result")' in harness.source
     assert "merlin_result_status" in harness.source
     assert "_base<65u;_base+=32u" in harness.source
-    assert "merlin_result_status[1]=_merlin_sequence" in harness.source
-    assert "merlin_result_status[2]=_count" in harness.source
-    assert "merlin_result_status[3]!=0x4d524131u" in harness.source
-    assert "merlin_result_status[4]!=_merlin_sequence" in harness.source
+    assert "merlin_result_status[1]=_count" in harness.source
+    assert "merlin_result_status[0]=(0x4d525231u^_merlin_sequence)" in harness.source
+    assert "merlin_result_status[2]!=(0x4d524131u^_merlin_sequence)" in harness.source
+    release = harness.source.index('__asm__ volatile("fence rw,rw" ::: "memory");')
+    publish = harness.source.index("merlin_result_status[0]=(0x4d525231u^_merlin_sequence)")
+    observe = harness.source.index("merlin_result_status[2]!=(0x4d524131u^_merlin_sequence)")
+    acquire = harness.source.index('__asm__ volatile("fence r,rw" ::: "memory");', observe)
+    assert release < publish < observe < acquire
     assert 'for(;;)__asm__ volatile("nop" ::: "memory");' in harness.source
     assert "volatile uint32_t _out_Y[65]" in harness.source
     assert harness.results == [{"name": "Y", "elements": 65, "dtype": "f32"}]
+
+
+def test_sequence_tokens_exclude_stale_ready_and_ack_interleavings() -> None:
+    """A token from either adjacent transaction cannot authorize this one.
+
+    Release/acquire ordering then makes the changing publication word the
+    happens-before edge for the count/mailbox payload and for mailbox reuse.
+    """
+    for sequence in range(1, 257):
+        ready = RP.ready_token(sequence)
+        ack = RP.ack_token(sequence)
+        assert ready != RP.ready_token(sequence - 1)
+        assert ready != RP.ready_token(sequence + 1)
+        assert ack != RP.ack_token(sequence - 1)
+        assert ack != RP.ack_token(sequence + 1)
 
 
 def test_legacy_harness_is_unchanged_when_numeric_mailbox_is_disabled() -> None:
@@ -101,10 +121,15 @@ def test_carrier_is_generated_from_declared_layout_and_policy() -> None:
     assert "0x110004080ULL" not in source
     assert "merlin_numeric_pass" in source and "merlin_numeric_fail" in source
     assert "ordered_f32" in source
-    assert "STATUS[1] != sequence" in source
-    assert "STATUS[2]" in source
-    assert "STATUS[3] = MERLIN_RESULT_ACK" in source
-    assert "STATUS[4] = sequence" in source
+    assert "STATUS[0] != MERLIN_RESULT_READY(sequence)" in source
+    assert "uint32_t count = STATUS[1]" in source
+    assert "STATUS[2] = MERLIN_RESULT_ACK(sequence)" in source
+    observe = source.index("STATUS[0] != MERLIN_RESULT_READY(sequence)")
+    acquire = source.index('fence r,rw', observe)
+    mailbox_read = source.index("uint32_t got = MAILBOX[i]")
+    release_ack = source.index('fence rw,rw', mailbox_read)
+    ack = source.index("STATUS[2] = MERLIN_RESULT_ACK(sequence)", mailbox_read)
+    assert observe < acquire < mailbox_read < release_ack < ack
 
 
 def test_private_expected_change_changes_only_the_trusted_carrier() -> None:
@@ -121,6 +146,47 @@ def test_private_expected_change_changes_only_the_trusted_carrier() -> None:
     assert positive != negative
     assert "MERLIN_MAILBOX_WORDS 32u" in positive
     assert "MERLIN_MAILBOX_WORDS 32u" in negative
+
+
+def test_inline_source_large_numeric_output_uses_private_static_storage() -> None:
+    source = H.build_program(
+        "void kernel(const void *x, void *y) {}", [_arg("X", 1)], [_arg("Y", 2048)],
+        kernel_symbol="kernel", model=MODEL, result_page=True,
+    )
+
+    declaration = "static volatile uint32_t _out_Y[2048];"
+    assert declaration in source
+    assert source.index(declaration) < source.index("int main(void)")
+    assert "volatile uint32_t _out_Y[2048];" not in source[source.index("int main(void)"):]
+
+
+def _artifact_verifier():
+    root = Path(__file__).resolve().parents[3]
+    path = root / "out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py"
+    module = ModuleType("radiance_result_artifact_verify")
+    module.__file__ = str(path)
+    exec(compile(path.read_text(encoding="utf-8"), str(path), "exec"), module.__dict__)
+    return module
+
+
+def test_publication_verifier_rejects_unlisted_and_hidden_forbidden_files(tmp_path) -> None:
+    verifier = _artifact_verifier()
+    safe = tmp_path / "receipt.json"
+    safe.write_text("{}\n", encoding="utf-8")
+    (tmp_path / "SHA256SUMS").write_text(
+        f"{verifier.digest(safe)}  receipt.json\n", encoding="utf-8")
+    assert verifier.publication_failures(tmp_path) == []
+
+    extra = tmp_path / "unlisted.txt"
+    extra.write_text("not indexed\n", encoding="utf-8")
+    assert any("unlisted" in failure for failure in verifier.publication_failures(tmp_path))
+
+    extra.unlink()
+    private = tmp_path / "nested/result_carrier.c"
+    private.parent.mkdir()
+    private.write_text("private answer\n", encoding="utf-8")
+    failures = verifier.publication_failures(tmp_path)
+    assert any("forbidden" in failure and "result_carrier.c" in failure for failure in failures)
 
 
 def test_outcome_requires_the_final_pc_to_reach_a_retained_symbol() -> None:

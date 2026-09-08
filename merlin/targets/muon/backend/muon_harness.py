@@ -100,14 +100,14 @@ def _result_publish_lines(result_arrays: list[tuple[str, dict]]) -> list[str]:
                   f"    if(_count>{_rp.MAILBOX_WORDS}u)_count={_rp.MAILBOX_WORDS}u;",
                   "    for(uint32_t _i=0;_i<_count;++_i)"
                   f" {_rp.MAILBOX_SYMBOL}[_i]={arr}[_base+_i];",
-                  f"    {_rp.STATUS_SYMBOL}[2]=_count;",
-                  f"    {_rp.STATUS_SYMBOL}[1]=_merlin_sequence;",
+                  f"    {_rp.STATUS_SYMBOL}[1]=_count;",
+                  "    /* Release count/mailbox before the changing READY publication word. */",
                   '    __asm__ volatile("fence rw,rw" ::: "memory");',
-                  f"    {_rp.STATUS_SYMBOL}[0]=0x{_rp.RESULT_READY:08x}u;",
-                  '    __asm__ volatile("fence rw,rw" ::: "memory");',
-                  f"    while({_rp.STATUS_SYMBOL}[3]!=0x{_rp.RESULT_ACK:08x}u || "
-                  f"{_rp.STATUS_SYMBOL}[4]!=_merlin_sequence){{"
+                  f"    {_rp.STATUS_SYMBOL}[0]=(0x{_rp.RESULT_READY:08x}u^_merlin_sequence);",
+                  f"    while({_rp.STATUS_SYMBOL}[2]!=(0x{_rp.RESULT_ACK:08x}u^_merlin_sequence)){{"
                   '__asm__ volatile("fence r,r" ::: "memory");}',
+                  "    /* Acquire ACK before reusing the mailbox for the next chunk. */",
+                  '    __asm__ volatile("fence r,rw" ::: "memory");',
                   "    ++_merlin_sequence;",
                   "  }"]
     # GSIM's emitted model exits as soon as the Muon becomes idle.  Keep one
@@ -189,20 +189,28 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     # type), yielding e.g. `static inline __attribute__((always_inline)) void radiance_kernel(...)`.
     kernel_inlined = "static inline __attribute__((always_inline)) " + kernel_fn_src.strip()
     declarations, result_specs = _result_declarations(outputs) if result_page else ([], [])
+    result_statics: list[str] = []
     body: list[str] = [_render_helpers(model).strip(), "", kernel_inlined, ""]
-    body += declarations + ([""] if declarations else [])
+    result_allocations: list[str] = []
+    result_arrays: list[tuple[str, dict]] = []
+    if result_page:
+        for index, o in enumerate(outputs):
+            arr = f"_out_{o.name}"
+            result_allocations += _emit_output(arr, o, result_statics)
+            result_arrays.append((arr, result_specs[index]))
+    body += declarations + result_statics + ([""] if (declarations or result_statics) else [])
     body += ["int main(void){", "  if(_hid()!=0)return 0;"]
     call_ptrs: list[str] = []
     for a in args:
         arr = f"_in_{a.name}"
         body += _emit_fill(arr, a)
         call_ptrs.append(f"(float*){arr}" if a.dtype == "f32" else f"(int32_t*){arr}")
-    result_arrays: list[tuple[str, dict]] = []
-    for index, o in enumerate(outputs):
+    for o in outputs:
         arr = f"_out_{o.name}"
         if result_page:
-            body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")
-            result_arrays.append((arr, result_specs[index]))
+            if result_allocations:
+                body += result_allocations
+                result_allocations = []
         else:
             body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
         call_ptrs.append(f"(float*){arr}" if o.dtype == "f32" else f"(int32_t*){arr}")
