@@ -5,7 +5,8 @@ from .measurement import assemble_measurement_fragments
 
 def render_whole_program(cb: dict, *, inputs: dict | None = None,
                          prepack_authorizations=None, legacy_helpers=None,
-                         measurement_fragments=None, legacy_dim=None) -> str:
+                         measurement_fragments=None, legacy_dim=None,
+                         strict_profile_renderer=None) -> str:
     """Call a submitted whole-program kernel through its explicitly declared pointer ABI.
 
     The harness allocates buffers, performs one unmeasured warm call, measures one call, and prints the
@@ -100,6 +101,18 @@ def render_whole_program(cb: dict, *, inputs: dict | None = None,
             f" {container.printf_element(f'T_{name}[i * {pcols} + j]')}",
             '  printf("\\n");',
         ])
+
+    if strict_profile_renderer is not None:
+        if not callable(strict_profile_renderer):
+            raise CodegenError("strict warm profile renderer must be target-owned callable code")
+        rendered = strict_profile_renderer(arguments=call, readback="\n".join(prints))
+        if (not isinstance(rendered, dict) or set(rendered) != {"declarations", "main"}
+                or not all(isinstance(rendered[name], str) and rendered[name].strip()
+                           for name in rendered)):
+            raise CodegenError("strict warm profile renderer returned an invalid source assembly")
+        return ("#include <stdint.h>\n#include <stdio.h>\n"
+                + rendered["declarations"] + "\n" + "\n".join(decls) + "\n"
+                + rendered["main"])
 
     measured_call = f"  gemmini_kernel({call});\n  gemmini_fence();"
     fragments = (measurement_fragments or assemble_measurement_fragments)(measured_call)

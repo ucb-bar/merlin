@@ -91,11 +91,14 @@ class BuildOnlyService:
                     or file_digest(item) != expected):
                 raise ValueError("build-only source/tool pin changed: " + str(path))
 
-    def render(self, cb, *, target, inputs):
+    def render(self, cb, *, target, inputs, warm_profile=None):
         self.verify(target)
         if inputs is None or not isinstance(inputs, dict) or not inputs:
             raise ValueError("build-only service requires explicit logical inputs")
-        result = self.renderer(cb, inputs=inputs)
+        kwargs = {"inputs": inputs}
+        if warm_profile is not None:
+            kwargs["warm_profile"] = warm_profile
+        result = self.renderer(cb, **kwargs)
         self.verify(target)
         if not isinstance(result, str):
             raise ValueError("build-only renderer did not return source text")

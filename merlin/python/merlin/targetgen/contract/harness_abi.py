@@ -44,11 +44,16 @@ class HarnessAbi:
     #: Extra declarations the harness emits before ``main`` (e.g. an ``extern`` for the entry symbol).
     extern_decls: tuple[str, ...] = field(default_factory=tuple)
 
-    def declarations(self) -> str:
-        """The include + extern preamble, as C source."""
+    def declarations(self, *, entry_symbol: str | None = None,
+                     extern_decls: tuple[str, ...] | None = None) -> str:
+        """The include + extern preamble, optionally for a verified alternate entry."""
         lines = [f'#include "{h}"' if not h.startswith("<") else f"#include {h}"
                  for h in self.includes]
-        lines.extend(self.extern_decls or (f"extern void {self.entry_symbol}();",))
+        symbol = entry_symbol or self.entry_symbol
+        declarations = extern_decls
+        if declarations is None:
+            declarations = self.extern_decls if entry_symbol is None else ()
+        lines.extend(declarations or (f"extern void {symbol}();",))
         return "\n".join(lines)
 
     def call(self, args: str) -> str:
@@ -56,7 +61,7 @@ class HarnessAbi:
         call = f"  {self.entry_symbol}({args});"
         return f"{call}\n  {self.fence_symbol}();" if self.fence_symbol else call
 
-    def warm_profile_invocation(self, args: str):
+    def warm_profile_invocation(self, args: str, *, entry_symbol: str | None = None):
         """Return the target hooks required by a warm cycle profile.
 
         Unlike :meth:`call`, a performance window cannot silently accept a
@@ -70,8 +75,11 @@ class HarnessAbi:
                 "a warm cycle profile requires the target harness ABI to declare "
                 "an explicit completion/fence symbol")
         from merlin.perf.warm_profile_harness import TargetInvocationHooks
+        symbol = entry_symbol or self.entry_symbol
+        if not isinstance(symbol, str) or not symbol:
+            raise HarnessAbiError("a warm cycle profile requires a nonempty entry symbol")
         return TargetInvocationHooks(
-            invoke=f"{self.entry_symbol}({args});",
+            invoke=f"{symbol}({args});",
             complete=f"{self.fence_symbol}();",
         )
 

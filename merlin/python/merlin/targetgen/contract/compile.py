@@ -124,9 +124,30 @@ def _explicit_prepack_inputs(inputs, authorizations) -> None:
         raise ValueError("authorized prepack input is missing from explicit logical inputs")
 
 
+def _strict_warm_profile(profile, cb=None):
+    """Validate the explicit final-profile capability without naming a target."""
+    if profile is None:
+        return None
+    from merlin.perf.warm_profile_harness import require_strict_final_warm_profile
+    validated = require_strict_final_warm_profile(profile)
+    if cb is not None and (cb.get("kernel_abi") or {}).get("kind") != "whole_program":
+        raise ValueError(
+            "strict final warm profiling requires an explicit whole-program kernel ABI")
+    return validated
+
+
+def _accepts_keyword(callable_object, name: str) -> bool:
+    """Whether a renderer explicitly accepts ``name`` or a generic keyword set."""
+    import inspect
+    parameters = inspect.signature(callable_object).parameters
+    return (name in parameters or any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()))
+
+
 def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
              inputs: dict | None = None, prepack_authorizations=None, _compact_caller=None,
-             _build_service=None) -> Path:
+             _build_service=None, warm_profile=None) -> Path:
     """Build the runner-owned harness from ``cb`` and link it with the package object -> ELF.
 
     Orchestration only: the harness TEXT comes from ``target``'s declared harness ABI and the BUILD
@@ -137,6 +158,7 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     ``prepack_authorizations`` is a trusted-host-only capability. It is not read
     from the command buffer, and requires explicitly supplied immutable operands.
     """
+    warm_profile = _strict_warm_profile(warm_profile, cb)
     if _build_service is not None:
         from .build_service import BuildOnlyService
         if (type(_build_service) is not BuildOnlyService or _compact_caller is not None
@@ -161,7 +183,13 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
             raise ValueError("prepared compact caller cannot be combined with other input sources")
         import hashlib
         compact_object_sha = hashlib.sha256(Path(obj).read_bytes()).hexdigest()
-        harness = _render(cb, target=target, compact_caller=_compact_caller)
+        kwargs = {"target": target, "compact_caller": _compact_caller}
+        if warm_profile is not None:
+            if not _accepts_keyword(_render, "warm_profile"):
+                raise NotImplementedError(
+                    "backend compact harness cannot consume a strict warm profile")
+            kwargs["warm_profile"] = warm_profile
+        harness = _render(cb, **kwargs)
     else:
         _explicit_prepack_inputs(inputs, prepack_authorizations)
     if _compact_caller is None and prepack_authorizations is None and _build_service is None:
@@ -169,21 +197,30 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     if _compact_caller is not None:
         pass
     elif inputs or prepack_authorizations is not None:
-        import inspect
-        if "inputs" not in inspect.signature(_render).parameters:
+        if not _accepts_keyword(_render, "inputs"):
             raise NotImplementedError(
                 f"backend for target {target!r} declares a render_harness that cannot take `inputs`, so "
                 f"the device would compute on name-materialized operands while the reference and the "
                 f"simulator use the injected ones. Add an `inputs` parameter to its render_harness.")
         if prepack_authorizations is not None:
-            if "prepack_authorizations" not in inspect.signature(_render).parameters:
+            if not _accepts_keyword(_render, "prepack_authorizations"):
                 raise NotImplementedError("backend harness cannot consume host prepack authorization")
-            harness = _render(cb, target=target, inputs=inputs,
-                              prepack_authorizations=prepack_authorizations)
+            kwargs = {"target": target, "inputs": inputs,
+                      "prepack_authorizations": prepack_authorizations}
         else:
-            harness = _render(cb, target=target, inputs=inputs)
+            kwargs = {"target": target, "inputs": inputs}
+        if warm_profile is not None:
+            if not _accepts_keyword(_render, "warm_profile"):
+                raise NotImplementedError("backend harness cannot consume a strict warm profile")
+            kwargs["warm_profile"] = warm_profile
+        harness = _render(cb, **kwargs)
     else:
-        harness = _render(cb, target=target)
+        kwargs = {"target": target}
+        if warm_profile is not None:
+            if not _accepts_keyword(_render, "warm_profile"):
+                raise NotImplementedError("backend harness cannot consume a strict warm profile")
+            kwargs["warm_profile"] = warm_profile
+        harness = _render(cb, **kwargs)
     (workdir / "harness.c").write_text(harness, encoding="utf-8")
     # Linker load address DERIVED from the RTL memory map (platform DRAM base), reusing the curated
     # script's proven section layout but replacing its BAKED origin — so the base is a HW fact, not a
@@ -236,7 +273,7 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
                            inputs: dict | None = None, prepack_authorizations=None,
                            compact_contract=None, logical_payloads=None,
                            compact_storage_limit_bytes: int = 64 * 1024,
-                           _build_service=None) -> Path:
+                           _build_service=None, warm_profile=None) -> Path:
     """Full package-lowered-MLIR -> rv64 ELF (object + runner harness + link).
 
     The result is a pure function of its inputs, so an unchanged capsule is not recompiled: see
@@ -255,7 +292,13 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
     validates storage/prepack authority; the linker checks actual arena symbols.
     ``compact_storage_limit_bytes`` bounds host format setup, not hardware
     capacity. A successful build is not a numerical or execution verdict.
+
+    ``warm_profile`` is an explicit, cache-free final measurement build.  It
+    must be the strict shared contract (one warm invocation, one measured
+    invocation, cycles only); the target renderer supplies launch/completion
+    hooks and keeps result readback outside the cycle window.
     """
+    warm_profile = _strict_warm_profile(warm_profile, cb)
     if _build_service is not None:
         from .build_service import BuildOnlyService
         if (type(_build_service) is not BuildOnlyService or inputs is None
@@ -265,7 +308,10 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
         _build_service.verify(target)
         work = Path(workdir) if workdir else Path(tempfile.mkdtemp(prefix="oot_build_only_"))
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target, _build_service=_build_service)
-        return link_elf(cb, obj, work, target=target, inputs=inputs, _build_service=_build_service)
+        kwargs = {"target": target, "inputs": inputs, "_build_service": _build_service}
+        if warm_profile is not None:
+            kwargs["warm_profile"] = warm_profile
+        return link_elf(cb, obj, work, **kwargs)
     from merlin.runtime.backends import base as _backends
     from .. import build_cache as _bc
     from ..elf_lanes import PACKAGE_ELF_NAME
@@ -282,15 +328,28 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
         # Never reuse/publish a cached build: the ABI authority and exact logical
         # byte/prepack grants are not part of the legacy ELF cache key.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
-        return link_elf(cb, obj, work, target=target, _compact_caller=prepared)
+        kwargs = {"target": target, "_compact_caller": prepared}
+        if warm_profile is not None:
+            kwargs["warm_profile"] = warm_profile
+        return link_elf(cb, obj, work, **kwargs)
     _explicit_prepack_inputs(inputs, prepack_authorizations)
     if prepack_authorizations is not None:
         # Cached builds skip the renderer's exact payload/binding checks. Until the
         # authorization policy is itself part of cache admission, never reuse or
         # publish such a build. The absent-authorization path remains unchanged.
         obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
+        kwargs = {"target": target, "inputs": inputs,
+                  "prepack_authorizations": prepack_authorizations}
+        if warm_profile is not None:
+            kwargs["warm_profile"] = warm_profile
+        return link_elf(cb, obj, work, **kwargs)
+    if warm_profile is not None:
+        # The profile changes the runner-owned harness but is deliberately not
+        # serialized into the command buffer.  Never let the legacy build key
+        # reuse/publish a cold or differently instrumented ELF under this opt-in.
+        obj = llvm_mlir_to_object(lowered_mlir_text, work, target=target)
         return link_elf(cb, obj, work, target=target, inputs=inputs,
-                        prepack_authorizations=prepack_authorizations)
+                        warm_profile=warm_profile)
     # Coalesced ONCE. The harness embeds these operands, so a key computed from the caller's argument
     # while the build used the recorded ones would key two different executables the same way.
     inputs = inputs or _recorded_operands(cb) or None

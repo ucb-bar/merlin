@@ -78,6 +78,24 @@ def test_exact_supplied_initializer_is_checked_then_packed(authorized, monkeypat
             cb, target="gemmini", inputs=changed, prepack_authorizations=grants)
 
 
+def test_strict_warm_profile_preserves_authorized_prepack_and_emits_only_cycles(
+        authorized, monkeypatch):
+    from merlin.perf.execution_policy import WarmProfileContract
+
+    monkeypatch.setenv("MERLIN_HW_COUNTERS", "1")
+    cb, inputs, grants = authorized
+    source = bk.get_backend("gemmini").render_harness(
+        cb, target="gemmini", inputs=inputs, prepack_authorizations=grants,
+        warm_profile=WarmProfileContract())
+    call = "gemmini_kernel((void*)T_W, (void*)T_Y);"
+    assert "{1,2,0,-1,-128,0}" in source
+    assert source.count(call) == source.count("gemmini_fence();") == 2
+    assert source.count("METRIC ") == 1
+    assert "METRIC cycles " in source
+    assert "cycle_window_gemmini_region" not in source
+    assert "counter_configure" not in source
+
+
 @pytest.mark.parametrize("change", ["missing", "substitute", "serialized", "access", "encoding", "cb"])
 def test_grant_cannot_authorize_other_inputs_or_bindings(authorized, change):
     cb, inputs, grants = copy.deepcopy(authorized)
@@ -110,6 +128,36 @@ def test_authorized_build_never_reuses_or_publishes_cached_elf(authorized, tmp_p
     assert compiler.compile_lowered_to_elf(cb, "unused", tmp_path, target="gemmini",
         inputs=inputs, prepack_authorizations=grants) == tmp_path / "kernel.elf"
     assert seen == [{"target": "gemmini", "inputs": inputs, "prepack_authorizations": grants}]
+
+
+def test_profiled_authorized_build_forwards_prepack_and_profile(
+        authorized, tmp_path, monkeypatch):
+    from merlin.perf.execution_policy import WarmProfileContract
+    from merlin.targetgen import build_cache
+
+    cb, inputs, grants = authorized
+    for name in ("build_identity", "reuse", "store"):
+        monkeypatch.setattr(
+            build_cache, name,
+            lambda *args, **kwargs: pytest.fail("profiled prepack build reached cache"))
+    monkeypatch.setattr(
+        compiler, "llvm_mlir_to_object",
+        lambda *args, **kwargs: tmp_path / "kernel.o")
+    seen = []
+
+    def link(cb, obj, workdir, **kwargs):
+        seen.append(kwargs)
+        return tmp_path / "kernel.elf"
+
+    monkeypatch.setattr(compiler, "link_elf", link)
+    profile = WarmProfileContract()
+    assert compiler.compile_lowered_to_elf(
+        cb, "unused", tmp_path, target="gemmini", inputs=inputs,
+        prepack_authorizations=grants, warm_profile=profile) == tmp_path / "kernel.elf"
+    assert seen == [{
+        "target": "gemmini", "inputs": inputs,
+        "prepack_authorizations": grants, "warm_profile": profile,
+    }]
 
 
 def test_missing_explicit_input_refuses_before_compile_or_recorded_fallback(authorized, tmp_path, monkeypatch):

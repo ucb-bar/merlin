@@ -232,6 +232,25 @@ invalid if it came from a direct `firesim` invocation, if the daemon evidence do
 `kill -> infrasetup -> runworkload -> kill` lifecycle, or if the UART exposes any profile metric
 other than the single measured compute-cycle count.
 
+Build that ELF through the explicit production profile option; an environment-only cache-state knob
+is not the final-measurement contract:
+
+```python
+from merlin.perf.execution_policy import WarmProfileContract
+from merlin.targetgen.contract.compile import compile_lowered_to_elf
+
+elf = compile_lowered_to_elf(
+    command_buffer, lowered_mlir, output_dir, target=target,
+    warm_profile=WarmProfileContract(),
+)
+```
+
+The opt-in accepts only one warm run, one measured run and `total_compute_cycles`. It bypasses the
+legacy ELF cache because the harness protocol is not part of that cache's historical key. The target's
+`HarnessAbi` supplies launch and completion; result `OUT` lines and `DONE` follow the one
+`METRIC cycles N`, outside the measured window. The same option composes with explicit host prepacking
+and the verified compact-pointer caller.
+
 ### Sealing a completed queue run
 
 `merlin-firesim-receipt` is the fail-closed, post-run boundary. It runs no queue or simulator

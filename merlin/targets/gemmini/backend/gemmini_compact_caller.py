@@ -104,7 +104,7 @@ def prepare_compact_caller(cb, compact_contract, logical_payloads, *, lowered_ml
     return result
 
 
-def render_compact_caller(cb, prepared):
+def render_compact_caller(cb, prepared, *, target=None, warm_profile=None):
     """One warm call, restore mutable initial bytes, one compute+completion window."""
     from .gemmini_codegen_mlir import container_for, _measurement_c_fragments
 
@@ -148,7 +148,33 @@ def render_compact_caller(cb, prepared):
             f"  for (long i = 0; i < {rows}; i++) for (long j = 0; j < {cols}; j++) {{",
             f"    {container.ctype} value;", f"    __builtin_memcpy(&value, {byte_address}, sizeof(value));",
             "    " + container.printf_element("value"), "  }", '  printf("\\n");']
-    call = f"  {symbol}({', '.join(f'(void*)merlin_compact_base_{i}' for i in range(len(arenas)))});\n  gemmini_fence();\n"
+    arguments = ', '.join(f'(void*)merlin_compact_base_{i}' for i in range(len(arenas)))
+    call = f"  {symbol}({arguments});\n  gemmini_fence();\n"
+    if warm_profile is not None:
+        _require(isinstance(target, str) and target, "strict compact warm profile requires its target")
+        from merlin.perf.warm_profile_harness import (
+            render_warm_then_measure_main,
+            require_strict_final_warm_profile,
+        )
+        from merlin.targetgen.contract.harness_abi import for_target
+
+        profile = require_strict_final_warm_profile(warm_profile)
+        abi = for_target(target)
+        signature = f"extern void {symbol}({', '.join('void*' for _ in arenas)});"
+        success = "\n".join(prints) + ('\n' if prints else '') + 'printf("DONE\\n");'
+        main = render_warm_then_measure_main(
+            prepare_input="/* Compact arenas are initialized before main. */",
+            invocation=abi.warm_profile_invocation(arguments, entry_symbol=symbol),
+            reset_after_warm=("\n".join(restore) if restore else None),
+            validate_outputs="0",  # OUT parsing + golden validation are runner-owned.
+            contract=profile,
+            cycle_reader="read_cycles",
+            success_body=success,
+        )
+        return ('#include <stdint.h>\n#include <stdio.h>\n'
+            + abi.declarations(entry_symbol=symbol, extern_decls=(signature,)) + '\n'
+            + "\n".join(declarations) + "\n" + main)
+
     fragments = _measurement_c_fragments("")
     # Explicit compact protocol, independent of the legacy cold/warm environment default.
     return ('#include <stdint.h>\n#include <stdio.h>\n#include "include/gemmini_testutils.h"\n'

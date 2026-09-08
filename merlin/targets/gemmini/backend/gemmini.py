@@ -889,15 +889,46 @@ def _is_host_lane_cb(cb: dict) -> bool:
     return any((spec or {}).get("role") == "output" for spec in tensors.values())
 
 
-def _whole_program_harness_c(cb: dict, *, inputs: dict | None = None,
-                             prepack_authorizations=None) -> str:
+def _strict_warm_profile_renderer(*, target: str, warm_profile):
+    """Bind the generic final-profile ordering to this target's declared ABI hooks."""
+    from merlin.perf.warm_profile_harness import (
+        render_warm_then_measure_main,
+        require_strict_final_warm_profile,
+    )
+    from merlin.targetgen.contract.harness_abi import for_target
+
+    contract = require_strict_final_warm_profile(warm_profile)
+    abi = for_target(target)
+
+    def render(*, arguments: str, readback: str) -> dict[str, str]:
+        success = readback + ('\n' if readback else '') + 'printf("DONE\\n");'
+        return {
+            "declarations": abi.declarations(),
+            "main": render_warm_then_measure_main(
+                prepare_input="/* ABI inputs are statically initialized before main. */",
+                invocation=abi.warm_profile_invocation(arguments),
+                validate_outputs="0",  # OUT parsing + golden validation are runner-owned.
+                contract=contract,
+                cycle_reader="read_cycles",
+                success_body=success,
+            ),
+        }
+
+    return render
+
+
+def _whole_program_harness_c(cb: dict, *, target: str, inputs: dict | None = None,
+                             prepack_authorizations=None, warm_profile=None) -> str:
     """Legacy entrypoint: delegate to the one pure renderer with unchanged policy."""
     from .gemmini_codegen import _build_support, _ceil_dim, _pad_rowmajor
     from merlin.runtime.commandbuffer import materialize_inputs
     return _build_support.render_whole_program(
         cb, inputs=inputs, prepack_authorizations=prepack_authorizations,
         legacy_helpers=(_ceil_dim, _pad_rowmajor, _buffer_extent, materialize_inputs),
-        measurement_fragments=_measurement_c_fragments)
+        measurement_fragments=_measurement_c_fragments,
+        strict_profile_renderer=(
+            _strict_warm_profile_renderer(target=target, warm_profile=warm_profile)
+            if warm_profile is not None else None))
 
 
 def build_source_paths():
@@ -998,7 +1029,8 @@ def verify_compact_caller_link(cb, prepared, **kwargs):
 
 
 def render_harness(cb: dict, *, target: str, inputs: dict | None = None,
-                   prepack_authorizations=None, compact_caller=None) -> str:
+                   prepack_authorizations=None, compact_caller=None,
+                   warm_profile=None) -> str:
     """Render the runner-owned harness for ``cb`` — the `harness_renderer` capability.
 
     Chooses between the pure-movement and tiled forms itself, because which one applies is a property
@@ -1010,13 +1042,21 @@ def render_harness(cb: dict, *, target: str, inputs: dict | None = None,
     simulator saw the injected operands and the device saw different ones -- guaranteed to mismatch, and
     reported as a functional failure of the target.
     """
+    whole_program = ((cb.get("kernel_abi") or {}).get("kind") == "whole_program")
+    if warm_profile is not None and not whole_program:
+        raise CodegenError(
+            "strict warm profiling is available only for an explicit whole-program kernel ABI")
     if compact_caller is not None:
         if inputs is not None or prepack_authorizations is not None:
             raise CodegenError("compact caller accepts only its already validated explicit byte inputs")
         from .gemmini_compact_caller import render_compact_caller
-        return render_compact_caller(cb, compact_caller)
-    if (cb.get("kernel_abi") or {}).get("kind") == "whole_program":
-        return _whole_program_harness_c(cb, inputs=inputs, prepack_authorizations=prepack_authorizations)
+        return render_compact_caller(
+            cb, compact_caller, target=target, warm_profile=warm_profile)
+    if whole_program:
+        return _whole_program_harness_c(
+            cb, target=target, inputs=inputs,
+            prepack_authorizations=prepack_authorizations,
+            warm_profile=warm_profile)
     if prepack_authorizations is not None:
         raise CodegenError("host prepack authorization requires the explicit whole-program caller")
     if _is_host_lane_cb(cb):

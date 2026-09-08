@@ -63,6 +63,24 @@ def test_configured_warm_invocations_are_all_unmeasured_and_completed() -> None:
     assert source[cycle_start:].count("synthetic_launch(model_context);") == 1
 
 
+def test_mutable_reset_and_result_readback_stay_outside_the_cycle_window() -> None:
+    abi = HarnessAbi(entry_symbol="launch", fence_symbol="complete")
+    source = render_warm_then_measure_main(
+        prepare_input="prepare();",
+        invocation=abi.warm_profile_invocation("context"),
+        reset_after_warm="restore_mutable_state();",
+        validate_outputs="validate()",
+        success_body='readback();\nprintf("DONE\\n");',
+    )
+    warm_complete = source.index("complete();")
+    reset = source.index("restore_mutable_state();", warm_complete)
+    start = source.index("merlin_profile_cycle_start", reset)
+    end = source.index("merlin_profile_cycle_end", start)
+    metric = source.index("METRIC cycles", end)
+    readback = source.index("readback();", metric)
+    assert warm_complete < reset < start < end < metric < readback
+
+
 def test_failed_validation_has_no_metric_before_the_failure_branch() -> None:
     source = _source()
     validation = source.index("const int merlin_profile_validation_rc")

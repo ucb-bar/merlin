@@ -61,6 +61,23 @@ def test_warm_profile_hooks_keep_target_launch_and_completion_separate():
     assert hooks.complete == "npu_fence();"
 
 
+def test_warm_profile_can_call_a_verified_alternate_entry_with_target_completion():
+    abi = HA.HarnessAbi(
+        entry_symbol="ordinary_entry", fence_symbol="target_wait",
+        includes=("target_runtime.h",),
+    )
+    hooks = abi.warm_profile_invocation("arena", entry_symbol="compact_entry")
+    declarations = abi.declarations(
+        entry_symbol="compact_entry",
+        extern_decls=("extern void compact_entry(void*);",),
+    )
+    assert hooks.invoke == "compact_entry(arena);"
+    assert hooks.complete == "target_wait();"
+    assert '#include "target_runtime.h"' in declarations
+    assert "extern void compact_entry(void*);" in declarations
+    assert "ordinary_entry" not in declarations
+
+
 def test_a_target_with_no_cycle_window_metric_emits_no_metric_line():
     """Not the same as emitting it as 0. The runner's parser treats an absent key and a falsy value
     identically, so a 0-valued line is noise carrying another target's vocabulary."""

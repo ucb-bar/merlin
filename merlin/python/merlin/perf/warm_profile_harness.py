@@ -79,14 +79,21 @@ class TargetInvocationHooks:
 def render_warm_then_measure_main(
         *, prepare_input: str, invocation: TargetInvocationHooks,
         validate_outputs: str, contract: WarmProfileContract = WarmProfileContract(),
-        cycle_reader: str = "read_cycles", function_name: str = "main") -> str:
+        cycle_reader: str = "read_cycles", function_name: str = "main",
+        reset_after_warm: str | None = None,
+        success_body: str | None = None) -> str:
     """Render a C entrypoint with a completed warm run and one measured run.
 
-    Input preparation occurs exactly once before every model invocation.  Each
+    Input preparation occurs once before any model invocation.  Each
     warm invocation is followed by the target completion hook.  The measured
     cycle window opens immediately before one target invocation and closes only
     after its completion hook.  Output validation follows the closing cycle
     read, and only a successful validation publishes the single cycles metric.
+    A mutating caller may provide ``reset_after_warm``; it is emitted after
+    every completed warm invocation and before the measured window.
+    ``success_body`` is emitted after the metric, allowing target-owned result
+    readback to remain outside the compute window without putting a large UART
+    dump in front of the primary measurement.
     """
     if (not isinstance(contract.warmup_runs, int)
             or isinstance(contract.warmup_runs, bool)
@@ -105,6 +112,10 @@ def render_warm_then_measure_main(
 
     prepare = _block(prepare_input, role="input preparation")
     validate = _expression(validate_outputs, role="output validation")
+    reset = (_block(reset_after_warm, role="post-warm reset")
+             if reset_after_warm is not None else None)
+    success = (_block(success_body, role="post-profile success body")
+               if success_body is not None else None)
     invoke = textwrap.indent(invocation.invoke, "  ")
     complete = textwrap.indent(invocation.complete, "  ")
 
@@ -121,6 +132,8 @@ def render_warm_then_measure_main(
             invoke,
             complete,
         ])
+        if reset is not None:
+            lines.append(textwrap.indent(reset, "  "))
     lines.extend([
         '  printf("MERLIN_PROFILE warmup end rc=0\\n");',
         '  printf("MERLIN_PROFILE measured begin\\n");',
@@ -137,10 +150,26 @@ def render_warm_then_measure_main(
         ('  printf("METRIC cycles %llu\\n", (unsigned long long)'
          "(merlin_profile_cycle_end - merlin_profile_cycle_start));"),
         '  printf("MERLIN_PROFILE measured end rc=0\\n");',
-        "  return 0;",
-        "}",
     ])
+    if success is not None:
+        lines.append(textwrap.indent(success, "  "))
+    lines.extend(["  return 0;", "}"])
     return "\n".join(lines) + "\n"
+
+
+def require_strict_final_warm_profile(contract: object) -> WarmProfileContract:
+    """Validate the cycle-only profile used by final comparison artifacts."""
+    if type(contract) is not WarmProfileContract:
+        raise WarmProfileHarnessError(
+            "strict final warm profile requires an exact WarmProfileContract")
+    if (type(contract.warmup_runs) is not int or type(contract.measured_runs) is not int
+            or contract.warmup_runs != 1 or contract.measured_runs != 1):
+        raise WarmProfileHarnessError(
+            "strict final warm profile requires exactly one warm and one measured invocation")
+    if contract.captured_metrics != frozenset({"total_compute_cycles"}):
+        raise WarmProfileHarnessError(
+            "strict final warm profile permits exactly one METRIC cycles value")
+    return contract
 
 
 def render_target_warm_then_measure_main(

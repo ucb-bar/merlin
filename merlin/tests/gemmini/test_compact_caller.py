@@ -94,6 +94,32 @@ def test_restore_readwrite_initial_bytes_outside_timer(edge, actual_tools, tmp_p
     assert generated.index("__builtin_memcpy(merlin_compact_base_1") < generated.index("uint64_t c0")
 
 
+def test_strict_compact_profile_uses_target_completion_and_one_metric(
+        edge, actual_tools, tmp_path):
+    from merlin.perf.execution_policy import WarmProfileContract
+
+    cb, contract, payloads, source = source_and_inputs()
+    cb["kernel_abi"]["args"][-1]["access"] = "readwrite"
+    payloads["out"] = (7).to_bytes(4, "little")
+    prepared = edge.prepare_compact_caller(
+        cb, contract, payloads, lowered_mlir_text=source, workdir=tmp_path)
+    generated = edge.render_compact_caller(
+        cb, prepared, target="gemmini", warm_profile=WarmProfileContract())
+    call = "compact_sum((void*)merlin_compact_base_0, (void*)merlin_compact_base_1);"
+    assert generated.count(call) == generated.count("gemmini_fence();") == 2
+    first_fence = generated.index("gemmini_fence();")
+    restore = generated.index("__builtin_memcpy(merlin_compact_base_1", first_fence)
+    start = generated.index("merlin_profile_cycle_start", restore)
+    measured_call = generated.index(call, start)
+    measured_fence = generated.index("gemmini_fence();", measured_call)
+    end = generated.index("merlin_profile_cycle_end", measured_fence)
+    metric = generated.index("METRIC cycles ", end)
+    readback = generated.index('printf("OUT out', metric)
+    assert first_fence < restore < start < measured_call < measured_fence < end < metric < readback
+    assert generated.count("METRIC ") == 1
+    assert "cycle_window_gemmini_region" not in generated
+
+
 def test_prepared_binding_is_not_transferable_to_other_command_buffer(edge, prepared):
     cb, _, _, _, p = prepared
     changed = copy.deepcopy(cb)
@@ -133,6 +159,23 @@ def test_actual_complete_compact_elf_bypasses_cache(actual_tools, tmp_path, monk
     assert receipt["binding"]["original_argument_tensors"] == ["a", "b", "out"]
     assert receipt["numerical_equivalence"] == "UNPROVEN"
     assert receipt["address_check"]["alignment_and_nonoverlap_checked"]
+
+
+def test_actual_compact_build_selects_strict_warm_profile_harness(actual_tools, tmp_path):
+    from merlin.perf.execution_policy import WarmProfileContract
+
+    cb, contract, payloads, source = source_and_inputs()
+    elf = compiler.compile_lowered_to_elf(
+        cb, source, tmp_path, target="gemmini",
+        compact_contract=contract, logical_payloads=payloads,
+        warm_profile=WarmProfileContract())
+    harness = (tmp_path / "harness.c").read_text()
+    call = "compact_sum((void*)merlin_compact_base_0, (void*)merlin_compact_base_1);"
+    assert elf.is_file()
+    assert harness.count(call) == harness.count("gemmini_fence();") == 2
+    assert harness.count("METRIC ") == 1
+    assert "METRIC cycles " in harness
+    assert "cycle_window_gemmini_region" not in harness
 
 
 @pytest.mark.parametrize("kwargs", [{"compact_contract": {}}, {"logical_payloads": {}},
