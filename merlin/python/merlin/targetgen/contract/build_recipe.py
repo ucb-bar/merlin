@@ -7,6 +7,32 @@ from pathlib import Path
 
 
 @dataclass(frozen=True)
+class KernelStackFramePolicy:
+    """A target-owned static stack limit for one package kernel entrypoint.
+
+    Neither the entry symbol nor the usable stack reservation can be inferred from LLVM IR or from
+    accelerator RTL.  They are software-ABI facts, so the target that supplies the bare-metal build
+    recipe supplies both.  Keeping them together also lets a pure build service carry the policy
+    without importing an execution backend or rediscovering a target contract.
+    """
+
+    entry_symbol: str
+    max_static_bytes: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.entry_symbol, str) or not self.entry_symbol:
+            raise ValueError("kernel stack-frame policy requires a nonempty entry symbol")
+        # ``bool`` is an ``int`` in Python, but accepting it here would turn True into a one-byte
+        # safety policy and produce a very misleading compile refusal.
+        if type(self.max_static_bytes) is not int or self.max_static_bytes <= 0:
+            raise ValueError("kernel stack-frame policy requires a positive integer byte budget")
+
+    def record(self) -> dict[str, object]:
+        """Stable serialization used by pure-build capabilities and build-cache identities."""
+        return {"entry_symbol": self.entry_symbol, "max_static_bytes": self.max_static_bytes}
+
+
+@dataclass(frozen=True)
 class HarnessBuildRecipe:
     """How to compile + link a runner-owned harness against one target's bare-metal environment.
 
@@ -30,6 +56,18 @@ class HarnessBuildRecipe:
     # Ordered trailing linker arguments, including library/archive groups. Keeping these
     # separate avoids losing static-library symbols by scanning archives before their users.
     ldflags: tuple[str, ...] = ()
+    # Optional at construction so host-only/legacy recipe users retain their API.  A target-bound
+    # LLVM object build requires it and fails closed when it is absent; ``target=None`` is the legacy
+    # unbound object-only path and deliberately has no authority to invent a target's stack limit.
+    kernel_stack_frame: KernelStackFramePolicy | None = None
+
+    def require_kernel_stack_frame(self) -> KernelStackFramePolicy:
+        """Return the target-declared policy or refuse to compile a target-bound kernel."""
+        if type(self.kernel_stack_frame) is not KernelStackFramePolicy:
+            raise self.error_cls(
+                "this target's build recipe declares no kernel stack-frame policy; the runner "
+                "cannot prove that the package entrypoint fits the target runtime stack")
+        return self.kernel_stack_frame
 
     def command(self, *, sources: "Sequence[Path]", output: Path,
                 link_script: Path | None = None) -> list[str]:

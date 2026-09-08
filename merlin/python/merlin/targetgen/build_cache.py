@@ -280,6 +280,9 @@ def recipe_token(recipe: Any) -> "dict | None":
                                                          output=Path("<elf>"),
                                                          link_script=Path("<script>.ld"))],
         }
+        policy = getattr(recipe, "kernel_stack_frame", None)
+        record["kernel_stack_frame"] = policy.record() if callable(
+            getattr(policy, "record", None)) else None
         sources = {}
         for src in (Path(recipe.link_script), *(Path(s) for s in recipe.support_sources)):
             sha = _file_sha(src)

@@ -584,10 +584,23 @@ def harness_build_recipe():
     # Absolute, like the other two imports of this module: the package registers OUT-OF-TREE as
     # `merlin._oot_backends.gemmini`, so a relative `.base` resolves to a sibling that does not
     # exist there and the spike/verilator invocation dies with ModuleNotFoundError at grade time.
-    from merlin.runtime.backends.base import HarnessBuildRecipe
+    from merlin.runtime.backends import base as backend_base
+    from merlin.targetgen.contract.build_recipe import KernelStackFramePolicy
+    from merlin.targetgen.contract.harness_abi import for_target
 
     rt, common = rocc_tests_dir(), _common_dir()
-    return HarnessBuildRecipe(
+    # OOT discovery registers the backend package while this implementation lives in its submodule;
+    # a direct in-tree import registers this module.  Resolve either packaging form structurally.
+    try:
+        target = backend_base.name_of_module(__package__)
+    except KeyError:
+        target = backend_base.name_of_module(__name__)
+    # The curated CRT reserves 128 KiB for the runtime stack.  Cap the package entry frame at half of
+    # that reservation, leaving the other half for the active harness/call chain.  This is a target
+    # software-ABI policy, not a mesh-size or model-shape heuristic.
+    kernel_stack_frame = KernelStackFramePolicy(
+        entry_symbol=for_target(target).entry_symbol, max_static_bytes=64 * 1024)
+    return backend_base.HarnessBuildRecipe(
         compiler=gcc_path(),
         include_roots=(rt / "riscv-tests", rt / "riscv-tests/env", rt, common),
         support_sources=tuple(sorted(common.glob("*.c"))) + tuple(sorted(common.glob("*.S"))),
@@ -600,6 +613,7 @@ def harness_build_recipe():
                 "-nostdlib", "-nostartfiles", "-static", "-DBAREMETAL=1"),
         ldflags=("-lm", "-lgcc"),
         error_cls=GemminiError,
+        kernel_stack_frame=kernel_stack_frame,
     )
 
 

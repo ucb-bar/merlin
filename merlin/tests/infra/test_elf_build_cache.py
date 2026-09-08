@@ -14,6 +14,7 @@ import pytest
 
 from merlin.common.paths import repo_root
 from merlin.targetgen import build_cache as BC
+from merlin.targetgen.contract.build_recipe import KernelStackFramePolicy
 
 ELF = "package_kernel.elf"
 
@@ -44,6 +45,16 @@ def recipe(tmp_path):
     support = tmp_path / "crt.S"
     support.write_text(".globl _start\n_start: j _start\n")
     return _Recipe(script, support)
+
+
+def test_stack_policy_is_part_of_recipe_identity(recipe):
+    recipe.kernel_stack_frame = KernelStackFramePolicy("entry", 4096)
+    first = BC.recipe_token(recipe)
+    recipe.kernel_stack_frame = KernelStackFramePolicy("entry", 8192)
+    second = BC.recipe_token(recipe)
+    assert first["kernel_stack_frame"] == {"entry_symbol": "entry", "max_static_bytes": 4096}
+    assert second["kernel_stack_frame"] == {"entry_symbol": "entry", "max_static_bytes": 8192}
+    assert first != second
 
 
 @pytest.fixture

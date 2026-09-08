@@ -38,12 +38,14 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | 
     from merlin.llvmlower import codegen
     workdir.mkdir(parents=True, exist_ok=True)
     extra: tuple[str, ...] = ()
+    recipe = None
     if _build_service is not None:
         from .build_service import BuildOnlyService
         if type(_build_service) is not BuildOnlyService:
             raise ValueError("build-only override requires an exact host service")
         _build_service.verify(target)
-        extra = (_build_service.recipe.march(),)
+        recipe = _build_service.recipe
+        extra = (recipe.march(),)
         # This opt-in service consumes finished target LLVM, not tensors or
         # partially lowered programs. Do not invoke an unrelated model importer
         # and its Python environment merely to translate an LLVM module.
@@ -71,9 +73,43 @@ def llvm_mlir_to_object(lowered_mlir_text: str, workdir: Path, *, target: str | 
         (workdir / "kernel.ll").write_text(ll, encoding="utf-8")
         if target is not None:
             from merlin.runtime.backends import base as _backends
-            extra = (_backends.harness_build_recipe(target).march(),)
-    return Path(codegen.compile_ll(workdir / "kernel.ll", workdir / "kernel.o", "riscv",
-                                   extra_flags=extra))
+            recipe = _backends.harness_build_recipe(target)
+            extra = (recipe.march(),)
+    llvm_path, object_path = workdir / "kernel.ll", workdir / "kernel.o"
+    if recipe is None:
+        return Path(codegen.compile_ll(llvm_path, object_path, "riscv", extra_flags=extra))
+
+    # ``clang -fstack-usage`` emits a deterministic sibling of the named object.  Remove a previous
+    # report first so a compiler invocation that unexpectedly stops producing the sidecar cannot be
+    # admitted using stale evidence from an earlier object in a reused work directory.
+    policy = recipe.require_kernel_stack_frame()
+    report_path = object_path.with_suffix(".su")
+    receipt_path = workdir / "kernel.stack_frame.json"
+    for stale_output in (object_path, report_path, receipt_path):
+        stale_output.unlink(missing_ok=True)
+    compiled = Path(codegen.compile_ll(
+        llvm_path, object_path, "riscv", extra_flags=(*extra, "-fstack-usage")))
+    from .stack_usage import (StackFramePreflightError, measure_entrypoint,
+                              write_receipt)
+    try:
+        if compiled != object_path or compiled.is_symlink() or not compiled.is_file():
+            raise StackFramePreflightError(
+                f"compiler produced no regular object at the requested path {object_path}")
+        measurement = measure_entrypoint(
+            report_path, llvm_path=llvm_path, entry_symbol=policy.entry_symbol,
+            max_static_bytes=policy.max_static_bytes)
+    except StackFramePreflightError as exc:
+        write_receipt(
+            receipt_path, status="rejected", llvm_path=llvm_path, object_path=compiled,
+            report_path=report_path, entry_symbol=policy.entry_symbol,
+            max_static_bytes=policy.max_static_bytes, measurement=exc.measurement,
+            diagnostic=str(exc))
+        raise recipe.error_cls("kernel stack-frame preflight failed: " + str(exc)) from exc
+    write_receipt(
+        receipt_path, status="passed", llvm_path=llvm_path, object_path=compiled,
+        report_path=report_path, entry_symbol=policy.entry_symbol,
+        max_static_bytes=policy.max_static_bytes, measurement=measurement)
+    return compiled
 
 
 def _recorded_operands(cb: dict[str, Any]) -> dict[str, list] | None:

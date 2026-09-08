@@ -87,6 +87,8 @@ def test_the_reference_target_declares_a_complete_recipe():
     assert r.load_address > 0 and r.cflags
     assert issubclass(r.error_cls, Exception) and r.error_cls is not RuntimeError
     assert "-lm" not in r.cflags and "-lm" in r.ldflags
+    stack = r.require_kernel_stack_frame()
+    assert stack.entry_symbol and 0 < stack.max_static_bytes < 128 * 1024
 
 
 # ------------------------------------------------------------------ the renderer capability

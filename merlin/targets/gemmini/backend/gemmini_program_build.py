@@ -349,7 +349,8 @@ def _prepare_build_service(namespace_root, path_bindings=()):
     pure = Path(__file__).resolve().parent.parent/'build_support'/'__init__.py'
     roots = (
         'merlin.targetgen.contract.compile', 'merlin.targetgen.contract.build_service',
-        'merlin.targetgen.contract.build_recipe', 'merlin.targetgen.runtime_build',
+        'merlin.targetgen.contract.build_recipe', 'merlin.targetgen.contract.stack_usage',
+        'merlin.targetgen.runtime_build',
         'merlin.targetgen.elf_lanes',
         'merlin.runtime.storage_binding', 'merlin.runtime.tensor',
         'merlin.runtime.commandbuffer', 'merlin.runtime.fp8_formats',
@@ -439,7 +440,8 @@ print(json.dumps(sorted(paths)))
             'include_roots': [directory(path) if mapped else str(path) for path in recipe.include_roots],
             'support_sources': [transform(path,'support') for path in recipe.support_sources],
             'link_script': transform(recipe.link_script,'support'),
-            'load_address': recipe.load_address, 'cflags': list(recipe.cflags), 'ldflags': list(recipe.ldflags)}
+            'load_address': recipe.load_address, 'cflags': list(recipe.cflags), 'ldflags': list(recipe.ldflags),
+            'kernel_stack_frame': recipe.require_kernel_stack_frame().record()}
     original_recipe, mapped_recipe = recipe_record(False), recipe_record(True)
     # A different spelling of an existing curated include view must retain the
     # actual header bytes, not just matching support C/assembly files.
@@ -549,13 +551,14 @@ def _worker(request_path):
             raise ValueError("stale short build input: " + name)
     cb = json.loads(contents["command_buffer.json"])
     from merlin.targetgen.contract.compile import compile_lowered_to_elf
-    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe
+    from merlin.targetgen.contract.build_recipe import HarnessBuildRecipe, KernelStackFramePolicy
     from merlin.targetgen.contract.build_service import BuildOnlyService, load_build_package
     row = specification['recipe']
     recipe = HarnessBuildRecipe(compiler=Path(row['compiler']),
         include_roots=tuple(map(Path,row['include_roots'])), support_sources=tuple(map(Path,row['support_sources'])),
         link_script=Path(row['link_script']), load_address=row['load_address'],
-        cflags=tuple(row['cflags']), ldflags=tuple(row['ldflags']))
+        cflags=tuple(row['cflags']), ldflags=tuple(row['ldflags']),
+        kernel_stack_frame=KernelStackFramePolicy(**row['kernel_stack_frame']))
     pure = load_build_package(Path(specification['pure_package_init']))
     legacy_abi = request.get("legacy_abi")
     if (cb.get("params", {}).get("storage_encodings") is None) != (legacy_abi is not None):
@@ -595,7 +598,8 @@ def _worker(request_path):
             source = Path(filename).absolute()
             if source.is_relative_to(active_shared) and source.suffix == '.py' and str(source) not in producers:
                 raise ValueError('unbound active build Python dependency: '+str(source))
-    output_names = (elf.name, "kernel.o", "kernel.ll", "harness.c")
+    output_names = (elf.name, "kernel.o", "kernel.ll", "kernel.su",
+                    "kernel.stack_frame.json", "harness.c")
     receipt = {"schema": "short_complete_program_build_receipt_v1", "status": "built_not_executed",
         "request_sha256": _digest(request_bytes), "source_evidence": request["source_evidence"],
         "source_bounds": request["source_bounds"], "storage": storage,
