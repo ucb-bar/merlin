@@ -1,0 +1,56 @@
+{
+  "schema": "merlin_radiance_gsim_numeric_readback_v1",
+  "status": "pass_instrumented_single_capsule",
+  "repository_commit": "0b2b65056a6fc46d4c7d09a350ee3a7c655795b0",
+  "capsule": {
+    "name": "RP10_gemv_batched_fp16_pt",
+    "elements_checked": 32,
+    "comparison": "tolerance_float",
+    "atol": 0.03125,
+    "rtol": 0.015625,
+    "contract_sha256": "2d218361922e9115a684ad11f0df35ab9ddc3c2936748b20d54597a058466c61",
+    "golden_sha256": "3d764c601dc69d0fd5fdb81a768de713524620ee3727039a4ad63b6cfaeaf4a3",
+    "command_buffer_sha256": "6ddec088373d75360bf9752ef7f3d72c24e5ea598a50ab4b5c089963777ad6b4",
+    "source_main_sha256": "4d75e5fc2e3fdd61e5a7ceccf724e6c1f6f3e34c9dda89fa543007a8d2b5e14b",
+    "kernel_muon_object_sha256": "55974733a01b60c6a8b2b90fe861c08b750038bde81bc0054ac966bfb410f77d"
+  },
+  "instrument": {
+    "result_muon_address": "0x10010000",
+    "result_soc_address": "0x110010000",
+    "status_muon_address": "0x10011000",
+    "status_soc_address": "0x110011000",
+    "pass_symbol": "0x80000086",
+    "fail_symbol": "0x800000c6",
+    "readback_carrier_sha256": "538df09c6d424656430099ad5728642e7ac992290380c98735b349c58097f6a0",
+    "build_script_sha256": "ee1356565ab9566114da2e0d82d04f703f5d5d3513553bda23b604f70553f3de",
+    "generated_readback_main_sha256": "74c4c6af0d53e731f00eecb252aca0497fc17a223e22872a0ef91b71c26d9523"
+  },
+  "emulator": {
+    "path": "/scratch/agustin/tmp/gsim-radiance-l3-v6-20260907/emulator",
+    "sha256": "458d11844538463e5f4ab1f2d6314934dc0d4fe71df07131eebc5aa29d2633be"
+  },
+  "binaries": {
+    "muon_elf_sha256": "421cb472f42afa80d3d3669c0a0e32167b4e260d27590db4dbddd6d7ae73a9af",
+    "soc_elf_sha256": "738a4dc422928d181b4f62ea1d040a4dad27e347827c1701e20c8d95a4160258"
+  },
+  "run": {
+    "max_cycles": 120000,
+    "wall_timeout_seconds": 180,
+    "simulator_wall_seconds": 42.91,
+    "process_wall_seconds": 43.03,
+    "max_rss_kib": 81408,
+    "exit_code": 0,
+    "final_rocket_pc": "0x80000086",
+    "outcome_symbol": "rp10_numeric_pass",
+    "dram_aw": 1,
+    "dram_w": 4,
+    "last_aw": "0x110010060",
+    "cvfpu_accepts": 2048,
+    "console_sha256": "d5bdd078455e982d33844336f0642a8aa80e14c96992e3c0eb905440cfa7faf7"
+  },
+  "limitations": [
+    "single instrumented capsule, not the complete Radiance suite",
+    "cycle cap is an observation bound, not a performance measurement",
+    "production L3 adapter does not yet export or grade this result page"
+  ]
+}
