@@ -529,3 +529,91 @@ class TestTheRealSmolVLAContractPlansAgainstTheRealCommandBuffer:
                        session_states=BP.session_states_from_contract(contract))
         assert [t.tensor for t in plan.arguments] == list(plan.abi_order)
         assert [t.tensor for t in (*plan.const, *plan.mutable)] != list(plan.abi_order)
+
+
+class TestAnImageTooLargeForTheCodeModelIsCaughtBEFOREItIsLinked:
+    """Under a PC-relative code model an oversized image links and MIS-ADDRESSES.
+
+    It does not fail. So the span is projected from the plan and checked before a build spends the
+    minutes to produce a binary nobody should run. Measured: SmolVLA's linked image is 0.689 GiB and
+    clears the medany window; tiny_llama's plan projects 2.237 GiB and does not.
+    """
+
+    def test_the_projection_is_const_plus_mutable_plus_what_the_plan_cannot_know(self):
+        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
+                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+                       row_pitch_elements=16)
+        assert plan.projected_image_bytes() == plan.const_bytes + plan.mutable_bytes
+        assert plan.projected_image_bytes(additional_bytes=1024) == \
+            plan.const_bytes + plan.mutable_bytes + 1024
+
+    def test_a_negative_allowance_is_refused(self):
+        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
+                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+                       row_pitch_elements=16)
+        with pytest.raises(BundlePackError):
+            plan.projected_image_bytes(additional_bytes=-1)
+
+    def _plan_for(self, read_args):
+        """A synthetic plan of a declared const size, so the boundary is exercised without a model."""
+        tensors, args = {}, []
+        for index, count in enumerate(read_args):
+            tensors[f"arg{index}"] = _t((count, 16), "i8")
+            args.append(_arg(f"arg{index}"))
+        tensors["Y0"] = _t((1, 16), "i32")
+        args.append(_arg("Y0", "write"))
+        return BP.plan(_buffer(args, tensors), row_pitch_elements=16)
+
+    def test_an_image_inside_the_window_yields_NO_finding(self):
+        from merlin.liveness.preconditions import medany_span
+        plan = self._plan_for([1024])
+        assert medany_span(uses_medany=True,
+                           image_span_bytes=plan.projected_image_bytes()) == []
+
+    def test_an_image_PAST_the_window_is_a_FAULT_naming_the_fix(self):
+        from merlin.liveness.preconditions import medany_span
+        # One 2.5 GiB read argument: past the ±2 GiB PC-relative reach.
+        plan = self._plan_for([(5 * (1 << 30)) // (2 * 16)])
+        findings = medany_span(uses_medany=True,
+                               image_span_bytes=plan.projected_image_bytes())
+        assert len(findings) == 1
+        assert findings[0].severity.name == "FAULT"
+        assert "mis-address" in findings[0].message
+        assert "linker script" in (findings[0].fix_hint or "")
+
+    def test_a_target_that_is_not_medany_is_not_judged_by_this_rule(self):
+        from merlin.liveness.preconditions import medany_span
+        plan = self._plan_for([(5 * (1 << 30)) // (2 * 16)])
+        assert medany_span(uses_medany=False,
+                           image_span_bytes=plan.projected_image_bytes()) == []
+
+
+class TestTheRealTinyLlamaPlanIsPastTheMedanyWindow:
+    """The finding, held so it cannot be forgotten and then rediscovered as a wrong answer."""
+
+    def _plan(self):
+        import glob
+        import json
+
+        from merlin.common.paths import artifacts_dir
+        found = glob.glob(str(artifacts_dir() / "perf-bench" / "gemmini"
+                              / "_global_phase2_baseline_emission_cache_v1" / "*"
+                              / "command_buffer.json"))
+        for path in sorted(found):
+            with open(path, encoding="utf-8") as handle:
+                buffer = json.load(handle)
+            abi = (buffer.get("kernel_abi") or {}).get("args") or []
+            if len(abi) == 825:                      # tiny_llama's argument count
+                return BP.plan(buffer, row_pitch_elements=16)
+        pytest.skip("no emitted tiny_llama command buffer in this tree")
+
+    def test_its_projected_image_exceeds_the_two_gigabyte_reach(self):
+        from merlin.liveness.preconditions import medany_span
+        plan = self._plan()
+        span = plan.projected_image_bytes(additional_bytes=48_976_384 + 2 * 1024 * 1024)
+        assert span > (1 << 31), f"{span} bytes; the finding this pins is no longer present"
+        findings = medany_span(uses_medany=True, image_span_bytes=span)
+        assert [f.severity.name for f in findings] == ["FAULT"]
+
+    def test_the_const_blob_alone_is_over_a_gibibyte(self):
+        assert self._plan().const_bytes > (1 << 30)

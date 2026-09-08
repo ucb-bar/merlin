@@ -171,6 +171,25 @@ class PackPlan:
                 f"for; a short pointer list shifts every later argument")
         return tuple(by_name[name] for name in self.abi_order)
 
+    def projected_image_bytes(self, *, additional_bytes: int = 0) -> int:
+        """Virtual bytes a linked image of this plan would span, before it is linked.
+
+        WHY BEFORE. Under a PC-relative code model an image larger than the model's reach does not
+        fail to link -- it links and mis-addresses, which is correct arithmetic on the wrong bytes.
+        The repo has a memory for exactly this shape. So the span is projected from the plan and
+        handed to :func:`merlin.liveness.preconditions.medany_span` BEFORE a build spends the
+        minutes to produce a binary nobody should run.
+
+        ``additional_bytes`` is what the plan cannot know: code, read-only data the plan does not
+        lay out, and any static arena the compiler added. Passed in rather than estimated, because a
+        guessed allowance would decide the verdict near the boundary -- and tiny_llama sits 0.24 GiB
+        past a 2 GiB window, which no allowance changes, while a model just inside it would be
+        decided by the guess.
+        """
+        if additional_bytes < 0:
+            raise BundlePackError("additional_bytes cannot be negative")
+        return int(self.const_bytes) + int(self.mutable_bytes) + int(additional_bytes)
+
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True,
                                          separators=(",", ":")).encode("utf-8")).hexdigest()

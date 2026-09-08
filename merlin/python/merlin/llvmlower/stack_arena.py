@@ -57,7 +57,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .arena_bind import (ArenaBindError, _blocks_of, _cyclic_blocks, _label_targets, _reachable,
+from .arena_bind import (ArenaBindError, _blocks_of, _cyclic_blocks, _reachable,
                          _split_function)
 from ..xdsl_dialects.lowering.arena_plan import ARENA_ALIGN, _align_up
 
