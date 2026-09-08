@@ -24,6 +24,7 @@ code_refs:
   - merlin/python/merlin/perf/model_placement.py
   - merlin/python/merlin/perf/movement_balance.py
   - merlin/python/merlin/perf/phase2_portfolio.py
+  - merlin/python/merlin/perf/phase2_analytical_provider.py
   - merlin/python/merlin/perf/whole_model_report.py
   - merlin/python/merlin/perf/phase2_portfolio.py
   - merlin/python/merlin/xdsl_dialects/lowering/global_plan.py
@@ -354,11 +355,32 @@ at most 0.02. All four corpus members need exact content identities. If even one
 the report switches to `exact_only_fallback`: approximation is disabled, while exact compiler
 transformations and static analysis can continue.
 
-For both baseline and candidate the provider reports a conservative cycle interval, physical bytes
-moved, an explicit occupancy/overlap timeline, encoding-conversion count/bytes/cycles, a composed
-physical roofline with declared resource floors, and calibration risk. Coverage is a first-class
+`phase2_analytical_provider.build_fast_evaluator_installation` is the production binding. A target
+supplies a content-addressed resource calibration: exact JSON pointers into the host-owned analysis,
+per-feature cycle intervals and physical-byte coefficients, target-derived compute roles, an
+independently observed composition operator, and (when used) the controlled multi-size
+`movement_balance` fit. The resulting `experiment_kwargs()` dictionary plugs directly into
+`GlobalPerfExperiment`. The provider rechecks the emitted command-buffer, lowered artifact, verified
+plan and task-instruction digests for both arms on every call. It does not run either arm.
+
+For both baseline and candidate the provider reports a conservative cycle interval, calibrated
+physical bytes moved, aggregate resource occupancy/overlap, encoding-conversion count/bytes/cycles,
+a composed physical roofline with declared resource floors, and calibration risk. Coverage is a first-class
 topological record: supported source work placed, the exact connected-region partition and largest
 region, typed host islands, and boundary crossings/bytes. `UNKNOWN` never becomes zero.
+
+The aggregate occupancy result does not claim an instruction-level timeline. Per-resource busy time
+follows from the bound composition evidence. Compute/movement overlap is reported only when that
+evidence has exactly one compute and one movement resource; otherwise its partition stays `UNKNOWN`.
+Idle cycles and a multi-movement-engine elapsed union likewise stay `UNKNOWN` until an event timeline
+or counter observation supplies them. An incomplete target instruction decode or a feature missing
+from either emitted arm makes cycles, movement, occupancy, roofline and conversions unavailable for
+that arm, which blocks retention rather than rewarding incomplete instrumentation.
+
+Quality remains independent. The factory accepts a content-addressed host reference observer whose
+two observations must bind the exact model, held-out corpus and emitted artifact identities. If any
+corpus, calibration, or observer identity is absent, the factory returns no provider kwargs and an
+`exact_only_fallback` receipt; the ordinary exact-semantics compiler loop remains usable.
 
 The shared gate checks every known objective for per-model Pareto regression. A loss in any member
 rejects the candidate rather than being averaged away. Increased accelerator coverage alone is not
