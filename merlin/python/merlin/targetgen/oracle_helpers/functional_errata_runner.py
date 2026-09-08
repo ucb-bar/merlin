@@ -131,6 +131,30 @@ def _wrap_e8m0_scale(cls, bias: int, minimum: int, maximum: int) -> None:
     cls.exec = exec_with_scale
 
 
+def _wrap_weight_buffer_lane_major(cls) -> None:
+    """Present an RTL lane-major weight buffer to matmul as reduction x output."""
+    original_exec = cls.exec
+
+    def exec_with_weight_view(self, state):
+        original_read = state.read_wb_fp8
+
+        def read_weight_for_matmul(unit, slot):
+            lane_major = original_read(unit, slot)
+            if getattr(lane_major, "ndim", None) != 2:
+                raise ValueError("weight-buffer matmul view must be rank two")
+            reduction_major = lane_major.swapaxes(0, 1)
+            contiguous = getattr(reduction_major, "contiguous", None)
+            return contiguous() if callable(contiguous) else reduction_major.copy()
+
+        state.read_wb_fp8 = read_weight_for_matmul
+        try:
+            return original_exec(self, state)
+        finally:
+            state.read_wb_fp8 = original_read
+
+    cls.exec = exec_with_weight_view
+
+
 def apply_reviewed_model_errata(
     isa_module: ModuleType,
     corrections: dict[str, dict],
@@ -153,7 +177,7 @@ def apply_reviewed_model_errata(
                 )
             classes.append(cls)
 
-        parameters: dict[str, int]
+        parameters: dict[str, int | str]
         if kind == "vmem_base_unit_bytes":
             declared = int(correction.get("declared_unit_bytes", 0))
             hardware = int(correction.get("hardware_unit_bytes", 0))
@@ -173,6 +197,15 @@ def apply_reviewed_model_errata(
                 _wrap_e8m0_scale(cls, bias, minimum, maximum)
             parameters = {"exponent_bias": bias, "exponent_min": minimum,
                           "exponent_max": maximum}
+        elif kind == "weight_buffer_output_lane_major":
+            declared = str(correction.get("declared_matmul_view") or "")
+            hardware = str(correction.get("hardware_matmul_view") or "")
+            if declared != "output_lane_by_reduction" or hardware != "reduction_by_output_lane":
+                raise ValueError(f"{name}: invalid weight-buffer layout review")
+            for cls in classes:
+                _wrap_weight_buffer_lane_major(cls)
+            parameters = {"declared_matmul_view": declared,
+                          "hardware_matmul_view": hardware}
         else:
             raise ValueError(f"{name}: unsupported functional-model correction {kind!r}")
         applied.append({

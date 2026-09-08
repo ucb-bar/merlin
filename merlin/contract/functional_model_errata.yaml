@@ -40,3 +40,20 @@ errata:
           treats that byte as an arithmetic multiplier/divisor. RTL interprets it
           as a biased exponent: scale exponent = clamp(code - 127).
         upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model
+      weight_buffer_lane_order:
+        authoritative: rtl
+        correction: weight_buffer_output_lane_major
+        model_classes: [VMATMUL_MXU0, VMATMUL_MXU1, VMATMUL_ACC_MXU0, VMATMUL_ACC_MXU1]
+        declared_matmul_view: output_lane_by_reduction
+        hardware_matmul_view: reduction_by_output_lane
+        sources_against_model:
+          - atlas/mxu/WeightBuffers.scala: PushWeight stores weightSlot(laneIdx) as the output-lane reduction vector
+          - atlas/mxu/sa/SystolicArrayTop.scala: wbuf.slot(j)(i) is transposed to weights(i)(j)
+          - atlas/mxu/ipt/InnerProductTrees.scala: compute lane j consumes weightBuf(j)
+        rationale: >-
+          VMATPUSH correctly copies the transposed MRF rows into the weight
+          buffer, whose first index is the output lane. The shipped functional
+          matmul instead consumes that lane-major [N,K] storage directly as
+          [K,N]. Presenting its transpose to the existing matmul matches both
+          RTL engines without changing VTRPOSE or VMATPUSH.
+        upstream: /scratch2/agustin/mvp-lhwir/modeling/third_party/atlas-npu/npu-model/npu_model

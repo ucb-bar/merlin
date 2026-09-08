@@ -1,0 +1,162 @@
+{
+  "admission_rule": "independent must become bit-exact and chained must remain bit-exact; both arms must halt",
+  "cases": {
+    "chained": {
+      "retained_rtl": {
+        "Y0": {
+          "expected_shape": [
+            4,
+            8
+          ],
+          "max_abs_error": 0.0,
+          "mismatches": 0,
+          "shape": [
+            4,
+            8
+          ]
+        },
+        "Y1": {
+          "expected_shape": [
+            4,
+            5
+          ],
+          "max_abs_error": 0.0,
+          "mismatches": 0,
+          "shape": [
+            4,
+            5
+          ]
+        }
+      },
+      "with_weight_layout_erratum": {
+        "all_outputs_bit_exact": true,
+        "comparisons": {
+          "Y0": {
+            "elements": 32,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          },
+          "Y1": {
+            "elements": 20,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          }
+        },
+        "cycles": 8176,
+        "halted": true,
+        "weight_layout_erratum_applied": true
+      },
+      "without_weight_layout_erratum": {
+        "all_outputs_bit_exact": true,
+        "comparisons": {
+          "Y0": {
+            "elements": 32,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          },
+          "Y1": {
+            "elements": 20,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          }
+        },
+        "cycles": 8176,
+        "halted": true,
+        "weight_layout_erratum_applied": false
+      }
+    },
+    "independent": {
+      "retained_rtl": {
+        "Y0": {
+          "expected_shape": [
+            4,
+            8
+          ],
+          "max_abs_error": 0.0,
+          "mismatches": 0,
+          "shape": [
+            4,
+            8
+          ]
+        },
+        "Y1": {
+          "expected_shape": [
+            3,
+            7
+          ],
+          "max_abs_error": 0.0,
+          "mismatches": 0,
+          "shape": [
+            3,
+            7
+          ]
+        }
+      },
+      "with_weight_layout_erratum": {
+        "all_outputs_bit_exact": true,
+        "comparisons": {
+          "Y0": {
+            "elements": 32,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          },
+          "Y1": {
+            "elements": 21,
+            "max_abs_error": 0.0,
+            "mismatches": 0
+          }
+        },
+        "cycles": 7426,
+        "halted": true,
+        "weight_layout_erratum_applied": true
+      },
+      "without_weight_layout_erratum": {
+        "all_outputs_bit_exact": false,
+        "comparisons": {
+          "Y0": {
+            "elements": 32,
+            "max_abs_error": 4.0,
+            "mismatches": 25
+          },
+          "Y1": {
+            "elements": 21,
+            "max_abs_error": 4.0,
+            "mismatches": 16
+          }
+        },
+        "cycles": 7426,
+        "halted": true,
+        "weight_layout_erratum_applied": false
+      }
+    }
+  },
+  "claim": "process-local functional-model correction; not RTL execution or performance evidence",
+  "diagnosis": "functional read_wb_fp8 exposes [output_lane,reduction], but _vmatmul consumed it as [reduction,output_lane]",
+  "ruled_out": [
+    "VTRPOSE_XLU: model and RTL both transpose the 32x32 MRF",
+    "VMATPUSH_WEIGHT: model and RTL both copy each MRF row to one output-lane slot",
+    "output DMA layout: the correction is internal to matmul and preserves the chained store"
+  ],
+  "schema": "atlas_functional_weight_layout_diagnosis_v1",
+  "source_evidence": {
+    "functional_model": {
+      "path": "npu_model/configs/isa_definition.py",
+      "sha256": "d29fff81689e6652772a51ff597b807e48d1af788c88aa08a9c98d3d8c396fc0"
+    },
+    "rtl": [
+      {
+        "path": "src/main/scala/atlas/mxu/WeightBuffers.scala",
+        "sha256": "d60a53c6b5ed7cd59500c4c695d9f52a00c409c2c34dcddd298863b8192db395"
+      },
+      {
+        "path": "src/main/scala/atlas/mxu/sa/SystolicArrayTop.scala",
+        "sha256": "5a77d1d2c0197748d2251a25f842d767431ae29ee2fb7591b5c03e689727a61d"
+      },
+      {
+        "path": "src/main/scala/atlas/mxu/ipt/InnerProductTrees.scala",
+        "sha256": "ad1a75f697caf1d30d1d840ebf1d6ddf428f773b9f1e4fa2801905ebcf51c67b"
+      }
+    ]
+  },
+  "status": "rtl_authoritative_erratum_qualified"
+}

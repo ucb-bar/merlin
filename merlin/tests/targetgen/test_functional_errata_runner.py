@@ -125,3 +125,54 @@ def test_e8m0_overlay_supplies_reciprocal_power_of_two_scale() -> None:
     ScaleOp.register = 1
     ScaleOp().exec(State())
     assert observed == [1.0, 0.125]
+
+
+def test_weight_buffer_overlay_transposes_only_the_matmul_view() -> None:
+    import numpy as np
+
+    observed = []
+
+    class State:
+        def read_wb_fp8(self, unit, slot):
+            assert (unit, slot) == ("mxu0", 1)
+            return np.asarray([[0, 1, 2], [3, 4, 5]])
+
+    original_read = State.read_wb_fp8
+
+    class MatmulOp:
+        def exec(self, state):
+            observed.append(state.read_wb_fp8("mxu0", 1))
+
+    module = SimpleNamespace(MatmulOp=MatmulOp)
+    applied = apply_reviewed_model_errata(module, {
+        "weight-layout": {
+            "authoritative": "rtl",
+            "correction": "weight_buffer_output_lane_major",
+            "model_classes": ["MatmulOp"],
+            "declared_matmul_view": "output_lane_by_reduction",
+            "hardware_matmul_view": "reduction_by_output_lane",
+        }
+    })
+    state = State()
+    MatmulOp().exec(state)
+    assert np.array_equal(observed[0], np.asarray([[0, 3], [1, 4], [2, 5]]))
+    assert State.read_wb_fp8 is original_read
+    assert state.read_wb_fp8("mxu0", 1).shape == (2, 3)
+    assert applied[0]["parameters"] == {
+        "declared_matmul_view": "output_lane_by_reduction",
+        "hardware_matmul_view": "reduction_by_output_lane",
+    }
+
+
+def test_weight_buffer_overlay_fails_closed_on_stale_layout_contract() -> None:
+    module = SimpleNamespace(MatmulOp=type("MatmulOp", (), {"exec": lambda self, state: None}))
+    with pytest.raises(ValueError, match="invalid weight-buffer layout review"):
+        apply_reviewed_model_errata(module, {
+            "weight-layout": {
+                "authoritative": "rtl",
+                "correction": "weight_buffer_output_lane_major",
+                "model_classes": ["MatmulOp"],
+                "declared_matmul_view": "reduction_by_output_lane",
+                "hardware_matmul_view": "reduction_by_output_lane",
+            }
+        })
