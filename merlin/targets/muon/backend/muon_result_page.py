@@ -1,11 +1,12 @@
-"""Declared result-memory ABI for Muon kernels carried by an rv64 SoC ELF.
+"""Declared streaming-result ABI for Muon kernels carried by an rv64 SoC ELF.
 
 The Muon console aperture is not connected in the elaborated SoC.  Numeric L3
-grading therefore uses coherent memory: the runner-owned Muon harness publishes
-results plus a READY word in linker-visible symbols, and a generated Rocket
-carrier compares those words with the post-submission expected result.  The
-carrier exposes its verdict as one of two retained PC loops, which the GSIM
-wrapper reports independently of the broken Muon console path.
+grading therefore uses a small coherent mailbox: the runner-owned Muon harness
+streams at most 32 result words at a time and does not reuse the mailbox until a
+generated Rocket carrier acknowledges that sequence.  The carrier compares the
+stream with the post-submission expected result and exposes its verdict as one
+of two retained PC loops, which the GSIM wrapper reports independently of the
+broken Muon console path.
 
 Addresses are never assumed here.  Muon addresses come from the linked ELF;
 the SoC address is that symbol plus the offset parsed from the fuse helper that
@@ -23,15 +24,16 @@ from typing import Any
 RESULT_READY = 0x4D525231   # software ABI token, "MRR1"
 RESULT_ACK = 0x4D524131     # software ABI token, "MRA1"
 STATUS_SYMBOL = "merlin_result_status"
+MAILBOX_SYMBOL = "merlin_result_mailbox"
+MAILBOX_WORDS = 32
 PASS_SYMBOL = "merlin_numeric_pass"
 FAIL_SYMBOL = "merlin_numeric_fail"
 
 
 def result_specs(outputs: list[Any]) -> list[dict[str, Any]]:
     """Stable result declarations corresponding to harness output arguments."""
-    return [{"name": out.name, "symbol": f"merlin_result_{i}",
-             "elements": int(out.rows) * int(out.cols), "dtype": out.dtype}
-            for i, out in enumerate(outputs)]
+    return [{"name": out.name, "elements": int(out.rows) * int(out.cols), "dtype": out.dtype}
+            for out in outputs]
 
 
 def symbol_addresses(elf: str | Path, names: tuple[str, ...]) -> dict[str, int]:
@@ -54,21 +56,22 @@ def symbol_addresses(elf: str | Path, names: tuple[str, ...]) -> dict[str, int]:
 
 
 def manifest_from_elf(elf: str | Path, outputs: list[Any], *, soc_offset: int) -> dict[str, Any]:
-    """Bind declared outputs to their linked Muon and fused-SoC addresses."""
+    """Bind the fixed mailbox, not the full outputs, to fused-SoC addresses."""
     specs = result_specs(outputs)
-    names = (STATUS_SYMBOL, *[spec["symbol"] for spec in specs])
+    names = (STATUS_SYMBOL, MAILBOX_SYMBOL)
     addresses = symbol_addresses(elf, names)
-
-    def located(spec: dict[str, Any]) -> dict[str, Any]:
-        local = addresses[spec["symbol"]]
-        return {**spec, "muon_address": local, "soc_address": local + int(soc_offset)}
-
     status_local = addresses[STATUS_SYMBOL]
+    mailbox_local = addresses[MAILBOX_SYMBOL]
     return {
-        "schema": "merlin.muon-result-page.v1",
+        "schema": "merlin.muon-result-mailbox.v2",
         "status": {"symbol": STATUS_SYMBOL, "muon_address": status_local,
                    "soc_address": status_local + int(soc_offset)},
-        "outputs": [located(spec) for spec in specs],
+        "mailbox": {"symbol": MAILBOX_SYMBOL, "muon_address": mailbox_local,
+                    "soc_address": mailbox_local + int(soc_offset),
+                    "words": MAILBOX_WORDS},
+        # Output declarations carry shape/type only.  Their backing buffers are
+        # private to the Muon harness and are never read by another bus master.
+        "outputs": [{k: spec[k] for k in ("name", "elements", "dtype")} for spec in specs],
         "soc_fuse_offset": int(soc_offset),
     }
 
@@ -126,17 +129,14 @@ def render_carrier(manifest: dict[str, Any], expected: dict[str, Any], policy: d
             raise ValueError(
                 f"expected output {name!r} has {len(values)} elements, manifest declares {count}")
         total += count
-        address = int(spec["soc_address"])
-        ptr = f"OUT_{index}"
-        arrays.append(f"#define {ptr} ((volatile uint32_t *)0x{address:x}ULL)")
+        offset = total - count
         if compare in ("exact_int", "exact") and str(spec.get("dtype")) == "i32":
             words = [int(v) & 0xFFFFFFFF for v in values]
             arrays.append(f"static const uint32_t expected_{index}[{count}] = {{\n"
                           f"{_hex_words(words)}\n}};")
             checks.append(
-                f"  for (uint32_t i = 0; i < {count}u; ++i) {{\n"
-                f"    uint32_t got = {ptr}[i]; checksum = (checksum ^ got) * 16777619u;\n"
-                f"    bad += (got != expected_{index}[i]);\n  }}")
+                f"  if (index >= {offset}u && index < {offset + count}u)\n"
+                f"    return got != expected_{index}[index - {offset}u];")
             continue
 
         # Float outputs (including exact float) are graded as an interval.  Exact
@@ -153,23 +153,33 @@ def render_carrier(manifest: dict[str, Any], expected: dict[str, Any], policy: d
         arrays.append(f"static const uint32_t upper_{index}[{count}] = {{\n"
                       f"{_hex_words(upper)}\n}};")
         checks.append(
-            f"  for (uint32_t i = 0; i < {count}u; ++i) {{\n"
-            f"    uint32_t got = {ptr}[i]; checksum = (checksum ^ got) * 16777619u;\n"
+            f"  if (index >= {offset}u && index < {offset + count}u) {{\n"
             f"    uint32_t key = ordered_f32(got);\n"
             f"    uint32_t nan = ((got & 0x7f800000u) == 0x7f800000u) && (got & 0x007fffffu);\n"
-            f"    bad += nan || key < ordered_f32(lower_{index}[i]) "
-            f"|| key > ordered_f32(upper_{index}[i]);\n  }}")
+            f"    return nan || key < ordered_f32(lower_{index}[index - {offset}u]) "
+            f"|| key > ordered_f32(upper_{index}[index - {offset}u]);\n  }}")
 
     status = int((manifest.get("status") or {})["soc_address"])
-    return f"""/* Generated from merlin.muon-result-page.v1; do not hand-edit. */
+    mailbox = manifest.get("mailbox") or {}
+    if int(mailbox.get("words", 0)) != MAILBOX_WORDS:
+        raise ValueError(f"result manifest must declare a {MAILBOX_WORDS}-word mailbox")
+    mailbox_address = int(mailbox["soc_address"])
+    return f"""/* Generated from merlin.muon-result-mailbox.v2; do not hand-edit. */
 #include <stdint.h>
 #define STATUS ((volatile uint32_t *)0x{status:x}ULL)
+#define MAILBOX ((volatile uint32_t *)0x{mailbox_address:x}ULL)
 #define MERLIN_RESULT_READY 0x{RESULT_READY:08x}u
 #define MERLIN_RESULT_ACK 0x{RESULT_ACK:08x}u
+#define MERLIN_MAILBOX_WORDS {MAILBOX_WORDS}u
 {chr(10).join(arrays)}
 
 static uint32_t ordered_f32(uint32_t bits) {{
   return (bits & 0x80000000u) ? ~bits : (bits ^ 0x80000000u);
+}}
+
+static uint32_t mismatch(uint32_t index, uint32_t got) {{
+{chr(10).join(checks)}
+  return 1u;
 }}
 
 __attribute__((noreturn, noinline, aligned(64))) static void pass_loop(void) {{
@@ -182,14 +192,36 @@ __attribute__((noreturn, noinline, aligned(64))) static void fail_loop(void) {{
 }}
 
 int main(void) {{
-  while (STATUS[0] != MERLIN_RESULT_READY) __asm__ volatile("fence r,r" ::: "memory");
-  uint32_t bad = (STATUS[1] != {total}u);
+  uint32_t bad = 0u;
   uint32_t checksum = 2166136261u;
-{chr(10).join(checks)}
-  STATUS[3] = bad;
-  STATUS[4] = checksum;
-  __asm__ volatile("fence rw,rw" ::: "memory");
-  STATUS[2] = MERLIN_RESULT_ACK;
+  uint32_t received = 0u;
+  uint32_t sequence = 1u;
+  while (received < {total}u) {{
+    while (STATUS[0] != MERLIN_RESULT_READY || STATUS[1] != sequence)
+      __asm__ volatile("fence r,r" ::: "memory");
+    __asm__ volatile("fence r,r" ::: "memory");
+    uint32_t count = STATUS[2];
+    if (count == 0u || count > MERLIN_MAILBOX_WORDS || count > {total}u - received) {{
+      STATUS[4] = sequence;
+      __asm__ volatile("fence rw,rw" ::: "memory");
+      STATUS[3] = MERLIN_RESULT_ACK;
+      __asm__ volatile("fence rw,rw" ::: "memory");
+      fail_loop();
+    }}
+    for (uint32_t i = 0; i < count; ++i) {{
+      uint32_t got = MAILBOX[i];
+      checksum = (checksum ^ got) * 16777619u;
+      bad += mismatch(received + i, got);
+    }}
+    received += count;
+    STATUS[4] = sequence;
+    __asm__ volatile("fence rw,rw" ::: "memory");
+    STATUS[3] = MERLIN_RESULT_ACK;
+    __asm__ volatile("fence rw,rw" ::: "memory");
+    sequence++;
+  }}
+  STATUS[5] = bad;
+  STATUS[6] = checksum;
   __asm__ volatile("fence rw,rw" ::: "memory");
   if (bad == 0) pass_loop();
   fail_loop();

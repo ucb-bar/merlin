@@ -25,27 +25,69 @@ def _arg(name: str, count: int, dtype: str = "f32") -> object:
     return H.TensorArg(name, 1, count, [0.0] * count, dtype)
 
 
-def test_result_page_harness_uses_linker_visible_buffers_and_ready_handshake() -> None:
+def test_result_page_harness_streams_through_fixed_acknowledged_mailbox() -> None:
     harness = H.build_external_kernel_main(
-        [_arg("X", 2)], [_arg("Y", 2)], kernel_symbol="kernel", model=MODEL,
+        [_arg("X", 65)], [_arg("Y", 65)], kernel_symbol="kernel", model=MODEL,
         result_page=True,
     )
 
-    assert "merlin_result_0[2]" in harness.source
+    assert "merlin_result_mailbox[32]" in harness.source
     assert 'section(".data.merlin_result")' in harness.source
     assert "merlin_result_status" in harness.source
-    assert "while(merlin_result_status[2]" in harness.source
-    assert "volatile uint32_t _out_Y[2]" not in harness.source
-    assert harness.results == [{"name": "Y", "symbol": "merlin_result_0",
-                                "elements": 2, "dtype": "f32"}]
+    assert "_base<65u;_base+=32u" in harness.source
+    assert "merlin_result_status[1]=_merlin_sequence" in harness.source
+    assert "merlin_result_status[2]=_count" in harness.source
+    assert "merlin_result_status[3]!=0x4d524131u" in harness.source
+    assert "merlin_result_status[4]!=_merlin_sequence" in harness.source
+    assert 'for(;;)__asm__ volatile("nop" ::: "memory");' in harness.source
+    assert "volatile uint32_t _out_Y[65]" in harness.source
+    assert harness.results == [{"name": "Y", "elements": 65, "dtype": "f32"}]
+
+
+def test_legacy_harness_is_unchanged_when_numeric_mailbox_is_disabled() -> None:
+    harness = H.build_external_kernel_main(
+        [_arg("X", 2)], [_arg("Y", 2)], kernel_symbol="kernel", model=MODEL,
+        result_page=False,
+    )
+
+    assert "merlin_result_status" not in harness.source
+    assert "merlin_result_mailbox" not in harness.source
+    assert "_merlin_sequence" not in harness.source
+    assert 'for(;;)__asm__ volatile("nop"' not in harness.source
+    assert '_ps("OUT Y 1 2")' in harness.source
+    assert '_ps("DONE\\n")' in harness.source
+    assert harness.results is None
+
+
+def test_manifest_exposes_only_mailbox_address_not_output_buffers(monkeypatch) -> None:
+    seen = []
+
+    def addresses(_elf, names):
+        seen.extend(names)
+        return {RP.STATUS_SYMBOL: 0x4000, RP.MAILBOX_SYMBOL: 0x4040}
+
+    monkeypatch.setattr(RP, "symbol_addresses", addresses)
+    manifest = RP.manifest_from_elf("unused.elf", [_arg("Y", 256)], soc_offset=0x110000000)
+
+    assert seen == [RP.STATUS_SYMBOL, RP.MAILBOX_SYMBOL]
+    assert manifest["schema"] == "merlin.muon-result-mailbox.v2"
+    assert manifest["mailbox"] == {
+        "symbol": RP.MAILBOX_SYMBOL,
+        "muon_address": 0x4040,
+        "soc_address": 0x110004040,
+        "words": 32,
+    }
+    assert manifest["outputs"] == [{"name": "Y", "elements": 256, "dtype": "f32"}]
+    assert "soc_address" not in manifest["outputs"][0]
 
 
 def test_carrier_is_generated_from_declared_layout_and_policy() -> None:
     manifest = {
         "status": {"soc_address": 0x110004000},
+        "mailbox": {"soc_address": 0x110004040, "words": 32},
         "outputs": [
-            {"name": "Y", "soc_address": 0x110004040, "elements": 2, "dtype": "f32"},
-            {"name": "Z", "soc_address": 0x110004080, "elements": 1, "dtype": "f32"},
+            {"name": "Y", "elements": 2, "dtype": "f32"},
+            {"name": "Z", "elements": 1, "dtype": "f32"},
         ],
     }
     source = RP.render_carrier(
@@ -55,10 +97,30 @@ def test_carrier_is_generated_from_declared_layout_and_policy() -> None:
     )
 
     assert "0x110004000ULL" in source
-    assert "0x110004040ULL" in source and "0x110004080ULL" in source
+    assert "0x110004040ULL" in source
+    assert "0x110004080ULL" not in source
     assert "merlin_numeric_pass" in source and "merlin_numeric_fail" in source
     assert "ordered_f32" in source
-    assert "STATUS[2] = MERLIN_RESULT_ACK" in source
+    assert "STATUS[1] != sequence" in source
+    assert "STATUS[2]" in source
+    assert "STATUS[3] = MERLIN_RESULT_ACK" in source
+    assert "STATUS[4] = sequence" in source
+
+
+def test_private_expected_change_changes_only_the_trusted_carrier() -> None:
+    manifest = {
+        "status": {"soc_address": 0x110004000},
+        "mailbox": {"soc_address": 0x110004040, "words": 32},
+        "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
+    }
+    policy = {"compare": "tolerance_float", "atol": 0.03125, "rtol": 0.015625}
+
+    positive = RP.render_carrier(manifest, {"Y": [1.0]}, policy)
+    negative = RP.render_carrier(manifest, {"Y": [101.0]}, policy)
+
+    assert positive != negative
+    assert "MERLIN_MAILBOX_WORDS 32u" in positive
+    assert "MERLIN_MAILBOX_WORDS 32u" in negative
 
 
 def test_outcome_requires_the_final_pc_to_reach_a_retained_symbol() -> None:
@@ -94,8 +156,8 @@ def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
     monkeypatch.setattr(H, "args_from_cb", lambda cb: ([], [_arg("Y", 1)]))
     monkeypatch.setattr(RP, "manifest_from_elf", lambda *a, **k: {
         "status": {"soc_address": 0x110004000},
-        "outputs": [{"name": "Y", "soc_address": 0x110004040,
-                     "elements": 1, "dtype": "f32"}],
+        "mailbox": {"soc_address": 0x110004040, "words": 32},
+        "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
     })
     monkeypatch.setattr(RP, "render_carrier", lambda *a, **k: "int main(void){return 0;}\n")
     monkeypatch.setattr(MU, "fuse_soc_elf", lambda *a, **k: tmp_path / "kernel.soc.elf")

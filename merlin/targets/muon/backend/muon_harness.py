@@ -75,29 +75,47 @@ class Harness:
 
 
 def _result_declarations(outputs: list[TensorArg]) -> tuple[list[str], list[dict]]:
-    """Linker-visible result buffers and READY/ACK status for RTL readback."""
+    """Fixed linker-visible mailbox and READY(sequence,count)/ACK status."""
     from . import muon_result_page as _rp
 
     specs = _rp.result_specs(outputs)
     declarations = [
         f'volatile uint32_t {_rp.STATUS_SYMBOL}[8] '
-        '__attribute__((used,section(".data.merlin_result"),aligned(64)));'
+        '__attribute__((used,section(".data.merlin_result"),aligned(64)));',
+        f'volatile uint32_t {_rp.MAILBOX_SYMBOL}[{_rp.MAILBOX_WORDS}] '
+        '__attribute__((used,section(".data.merlin_result"),aligned(64)));',
     ]
-    for spec in specs:
-        declarations.append(
-            f'volatile uint32_t {spec["symbol"]}[{spec["elements"]}] '
-            '__attribute__((used,section(".data.merlin_result"),aligned(64)));')
     return declarations, specs
 
 
-def _result_publish_lines(total: int) -> list[str]:
+def _result_publish_lines(result_arrays: list[tuple[str, dict]]) -> list[str]:
+    """Stream result buffers through the fixed mailbox, one ACK-gated chunk at a time."""
     from . import muon_result_page as _rp
 
-    return [f"  {_rp.STATUS_SYMBOL}[1]={int(total)}u;",
-            '  __asm__ volatile("fence rw,rw" ::: "memory");',
-            f"  {_rp.STATUS_SYMBOL}[0]=0x{_rp.RESULT_READY:08x}u;",
-            '  __asm__ volatile("fence rw,rw" ::: "memory");',
-            f"  while({_rp.STATUS_SYMBOL}[2]!=0x{_rp.RESULT_ACK:08x}u){{}}"]
+    lines = ["  uint32_t _merlin_sequence=1u;"]
+    for arr, spec in result_arrays:
+        total = int(spec["elements"])
+        lines += [f"  for(uint32_t _base=0;_base<{total}u;_base+={_rp.MAILBOX_WORDS}u){{",
+                  f"    uint32_t _count={total}u-_base;",
+                  f"    if(_count>{_rp.MAILBOX_WORDS}u)_count={_rp.MAILBOX_WORDS}u;",
+                  "    for(uint32_t _i=0;_i<_count;++_i)"
+                  f" {_rp.MAILBOX_SYMBOL}[_i]={arr}[_base+_i];",
+                  f"    {_rp.STATUS_SYMBOL}[2]=_count;",
+                  f"    {_rp.STATUS_SYMBOL}[1]=_merlin_sequence;",
+                  '    __asm__ volatile("fence rw,rw" ::: "memory");',
+                  f"    {_rp.STATUS_SYMBOL}[0]=0x{_rp.RESULT_READY:08x}u;",
+                  '    __asm__ volatile("fence rw,rw" ::: "memory");',
+                  f"    while({_rp.STATUS_SYMBOL}[3]!=0x{_rp.RESULT_ACK:08x}u || "
+                  f"{_rp.STATUS_SYMBOL}[4]!=_merlin_sequence){{"
+                  '__asm__ volatile("fence r,r" ::: "memory");}',
+                  "    ++_merlin_sequence;",
+                  "  }"]
+    # GSIM's emitted model exits as soon as the Muon becomes idle.  Keep one
+    # Muon thread live after the final ACK so the bounded run can sample the
+    # Rocket carrier's retained pass/fail PC; otherwise the model can stop in
+    # the few instructions between Rocket's ACK store and its verdict loop.
+    lines.append('  for(;;)__asm__ volatile("nop" ::: "memory");')
+    return lines
 
 
 def _blob_bytes(arg: TensorArg) -> bytes:
@@ -179,10 +197,12 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
         arr = f"_in_{a.name}"
         body += _emit_fill(arr, a)
         call_ptrs.append(f"(float*){arr}" if a.dtype == "f32" else f"(int32_t*){arr}")
+    result_arrays: list[tuple[str, dict]] = []
     for index, o in enumerate(outputs):
         arr = f"_out_{o.name}"
         if result_page:
-            arr = result_specs[index]["symbol"]
+            body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")
+            result_arrays.append((arr, result_specs[index]))
         else:
             body.append(f"  volatile uint32_t {arr}[{o.rows * o.cols}];")   # stack (SP-relative -> no reloc)
         call_ptrs.append(f"(float*){arr}" if o.dtype == "f32" else f"(int32_t*){arr}")
@@ -200,7 +220,7 @@ def build_program(kernel_fn_src: str, args: list[TensorArg], outputs: list[Tenso
     body.append('  _ps("DONE\\n");')
     if result_page:
         body.pop()  # remove the console-only DONE marker
-        body += _result_publish_lines(sum(spec["elements"] for spec in result_specs))
+        body += _result_publish_lines(result_arrays)
     body.append("  return 0;")
     body.append("}")
     return "\n".join(body) + "\n"
@@ -970,10 +990,12 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
         inner += _emit_input(arr, a, blobs)
         call_ptrs.append(f"(const void*){arr}")
     result_decls, result_specs = _result_declarations(out_args) if result_page else ([], [])
+    result_arrays: list[tuple[str, dict]] = []
     for index, o in enumerate(out_args):
         arr = f"_out_{o.name}"
         if result_page:
-            arr = result_specs[index]["symbol"]
+            inner += _emit_output(arr, o, statics)
+            result_arrays.append((arr, result_specs[index]))
         else:
             inner += _emit_output(arr, o, statics)
         call_ptrs.append(f"(void*){arr}")
@@ -997,7 +1019,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
             body.append(f"  for(int i=0;i<{o.rows * o.cols};i++){{_pc(' ');_pu({arr}[i]);}}")
         body.append("  _pc('\\n');")
     if result_page:
-        body += _result_publish_lines(sum(spec["elements"] for spec in result_specs))
+        body += _result_publish_lines(result_arrays)
     else:
         body.append('  _ps("DONE\\n");')
     body += ["  return 0;", "}"]

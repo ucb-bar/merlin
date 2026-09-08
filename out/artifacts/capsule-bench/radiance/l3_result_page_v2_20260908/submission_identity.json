@@ -1,0 +1,15 @@
+{
+  "schema": "merlin.radiance-trusted-carrier-negative-control.v1",
+  "positive_case": "rp12_embed_scale",
+  "negative_case": "rp12_negative_control",
+  "submitted_muon_elf_sha256": {
+    "positive": "b14d78197fcfb05627457ea5d964fd816a963dedd9622dceda932043b53226cd",
+    "negative": "b14d78197fcfb05627457ea5d964fd816a963dedd9622dceda932043b53226cd",
+    "byte_identical": true
+  },
+  "private_carrier_sha256": {
+    "positive": "08df1ff585a933c709821df9ab66d550751e17f15fa9a05db74c54fa5f27896f",
+    "negative": "a97f96c8a2eb9fd378dc86fb6fe24d7963b22c402459a58b6dd8c96c8533e08b",
+    "byte_identical": false
+  }
+}

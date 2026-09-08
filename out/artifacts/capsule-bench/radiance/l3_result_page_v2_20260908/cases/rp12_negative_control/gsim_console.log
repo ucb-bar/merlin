@@ -1,0 +1,389 @@
+[gsim-emu] zero-init 587928 register words
+[gsim-probe post-reset] rocket_pc=0x0 muon_c0t0_currPC=0x10000000 muon_minstret[c0t0=0 c0t1=0 c1t0=0 c1t1=0] muon_be_reset=1
+[gsim-emu] reset done, running (max_cycles=360000)
+[gsim-fetch cyc=1] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=1
+[gsim-fetch cyc=2] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=1
+[gsim-fetch cyc=3] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+warning: tohost and fromhost symbols not in ELF; can't communicate with target
+[gsim-fetch cyc=4] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=5] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=6] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=7] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=8] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=9] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=10] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=11] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=12] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=13] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=14] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=15] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=16] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=17] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=18] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=19] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=20] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=21] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=22] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=23] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=24] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=25] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=26] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=27] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=28] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=29] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=30] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=31] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=32] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=33] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=34] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=35] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=36] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=37] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=38] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=39] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=40] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=41] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=42] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=43] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=44] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=45] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=46] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=47] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=48] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=49] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=50] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=51] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=52] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=53] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=54] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=55] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=56] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=57] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=58] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=59] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=60] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=61] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=62] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=63] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=64] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=65] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=66] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=67] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=68] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=69] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=70] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=71] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=72] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=73] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=74] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=75] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=76] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=77] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=78] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=79] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=80] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=81] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=82] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=83] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=84] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=85] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=86] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=87] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=88] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=89] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=90] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=91] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=92] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=93] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=94] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=95] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=96] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=97] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=98] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=99] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=100] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=101] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=102] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=103] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=104] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=105] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=106] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=107] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=108] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=109] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=110] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=111] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=112] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=113] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=114] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=115] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=116] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=117] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=118] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=119] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=120] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=121] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=122] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=123] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=124] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=125] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=126] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=127] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=128] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=129] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=130] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=131] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=132] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=133] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=134] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=135] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=136] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=137] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=138] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=139] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=140] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=141] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=142] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=143] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=144] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=145] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=146] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=147] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=148] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=149] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=150] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=151] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=152] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=153] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=154] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=155] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=156] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=157] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=158] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=159] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-fetch cyc=160] currPC=0x10000000 icacheWordNode.a.valid=1 icacheInFlights=0x13f2379d4a7c be_reset=0
+[gsim-probe tick] rocket_pc=0x100b8 muon_c0t0_currPC=0x10000018 muon_minstret[c0t0=0 c0t1=0 c1t0=0 c1t1=0] muon_be_reset=0
+[gsim-ar] #0 addr=0x80000000
+[gsim-ar] #1 addr=0x110000000
+[gsim-ar] #2 addr=0x800001c0
+[gsim-ar] #3 addr=0x110000020
+[gsim-ar] #4 addr=0x8007ffe0
+[gsim-ar] #5 addr=0x110004000
+[gsim-ar] #6 addr=0x110004020
+[gsim-ar] #7 addr=0x800001e0
+[gsim-ar] #8 addr=0x80000360
+[gsim-ar] #9 addr=0x110000040
+[gsim-ar] #10 addr=0x1100040c0
+[gsim-ar] #11 addr=0x80000200
+[gsim-ar] #12 addr=0x110000060
+[gsim-ar] #13 addr=0x110002000
+[gsim-ar] #14 addr=0x110002020
+[gsim-ar] #15 addr=0x110002040
+[gsim-ar] #16 addr=0x110002060
+[gsim-ar] #17 addr=0x110002080
+[gsim-ar] #18 addr=0x110000080
+[gsim-ar] #19 addr=0x1100020c0
+[gsim-ar] #20 addr=0x1100020e0
+[gsim-ar] #21 addr=0x110002100
+[gsim-ar] #22 addr=0x17ecfe7c0
+[gsim-ar] #23 addr=0x17eeff7c0
+[gsim-ar] #24 addr=0x17edfefc0
+[gsim-ar] #25 addr=0x17ecfe7e0
+[gsim-ar] #26 addr=0x17edfefe0
+[gsim-ar] #27 addr=0x17effffc0
+[gsim-ar] #28 addr=0x110002120
+[gsim-ar] #29 addr=0x17eeff7e0
+[gsim-ar] #30 addr=0x17effffe0
+[gsim-ar] #31 addr=0x110002140
+[gsim-ar] #32 addr=0x110002160
+[gsim-ar] #33 addr=0x110002180
+[gsim-ar] #34 addr=0x17efffbc0
+[gsim-ar] #35 addr=0x17efffbe0
+[gsim-ar] #36 addr=0x1100021a0
+[gsim-ar] #37 addr=0x1100021c0
+[gsim-ar] #38 addr=0x17efffc00
+[gsim-ar] #39 addr=0x17efffc20
+[gsim-probe tick] rocket_pc=0x800001f4 muon_c0t0_currPC=0x100025b8 muon_minstret[c0t0=177 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000020c muon_c0t0_currPC=0x10002c58 muon_minstret[c0t0=389 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000020c muon_c0t0_currPC=0x100032f8 muon_minstret[c0t0=599 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000208 muon_c0t0_currPC=0x10003aa0 muon_minstret[c0t0=806 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000202 muon_c0t0_currPC=0x10003ab8 muon_minstret[c0t0=1102 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001fe muon_c0t0_currPC=0x10003ab8 muon_minstret[c0t0=1401 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001fa muon_c0t0_currPC=0x10003ab8 muon_minstret[c0t0=1701 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001f4 muon_c0t0_currPC=0x10003ab8 muon_minstret[c0t0=2002 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000020c muon_c0t0_currPC=0x10003ab8 muon_minstret[c0t0=2308 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002b2 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=2532 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000ba muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=2584 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000010e muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=2638 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000006e muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=2690 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002f4 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=2743 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000342 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=2797 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000044 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=3001 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000316 muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=3074 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000102 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=3146 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002f2 muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=3219 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000074 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=3291 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001f4 muon_c0t0_currPC=0x100039f0 muon_minstret[c0t0=3491 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002d6 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=3570 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002fa muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=3641 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000013e muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=3715 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000112 muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=3785 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000208 muon_c0t0_currPC=0x100039f0 muon_minstret[c0t0=3895 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000148 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4064 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000126 muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=4136 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000f8 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4209 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000004c muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=4280 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002f4 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4354 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000be muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4558 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000092 muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=4631 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002de muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4703 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800002b6 muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=4776 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000130 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=4848 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001fe muon_c0t0_currPC=0x100039f0 muon_minstret[c0t0=5047 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000031e muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5127 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000006a muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=5197 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000044 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5272 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000048 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5342 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001f0 muon_c0t0_currPC=0x100039f0 muon_minstret[c0t0=5450 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000136 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5621 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000010e muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=5692 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000ee muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5766 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000004c muon_c0t0_currPC=0x10003a38 muon_minstret[c0t0=5837 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000007e muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=5911 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000e6 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=6115 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x8000004c muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=6188 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000316 muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=6260 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x80000080 muon_c0t0_currPC=0x10003a48 muon_minstret[c0t0=6333 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800000dc muon_c0t0_currPC=0x10003a28 muon_minstret[c0t0=6405 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=6548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=6992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=7437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=7882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=8326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=8770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=9214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=9660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=10104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=10548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=10992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=11437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=11882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=12326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=12770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=13214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=13660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=14104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=14548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=14992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=15437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=15882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=16326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=16770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=17214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=17660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=18104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=18548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=18992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=19437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=19882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=20326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=20770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=21214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=21660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=22104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=22548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=22992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=23437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=23882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=24326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=24770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=25214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=25660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=26104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=26548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=26992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=27437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=27882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=28326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=28770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=29214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=29660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=30104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=30548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=30992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=31437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=31882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=32326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=32770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=33214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=33660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=34104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=34548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=34992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=35437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=35882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=36326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=36770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=37214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=37660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=38104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=38548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=38992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=39437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=39882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=40326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=40770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=41214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=41660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=42104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=42548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=42992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=43437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=43882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=44326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=44770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=45214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=45660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=46104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=46548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=46992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=47437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=47882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=48326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=48770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=49214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=49660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=50104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=50548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=50992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=51437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=51882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=52326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=52770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=53214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=53660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=54104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=54548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=54992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=55437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=55882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=56326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=56770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=57214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=57660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=58104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=58548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=58992 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=59437 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a70 muon_minstret[c0t0=59882 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a80 muon_minstret[c0t0=60326 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=60770 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=61214 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a68 muon_minstret[c0t0=61660 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=62104 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe tick] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=62548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+[gsim-probe final] rocket_pc=0x800001c6 muon_c0t0_currPC=0x10003a78 muon_minstret[c0t0=62548 c0t1=45 c1t0=45 c1t1=45] muon_be_reset=0
+
+[gsim-emu] FINISHED: cycles=360000 wall=122.60s (2936 cyc/s) done=0 exit_code=0
+[gsim-stats] dram_aw=0 dram_w=0 dram_ar=394 writes>=0x110000000=0 writes_resultpage=0
+[gsim-stats] last_aw=0x0 last_ar=0x800003a0 max_ar=0x17effffe0 r_fires=1576 b_fires=0 cvfpu_accepts=512 uart_chars=0

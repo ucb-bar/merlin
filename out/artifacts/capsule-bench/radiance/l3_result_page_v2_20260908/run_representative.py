@@ -20,13 +20,16 @@ CASES = {
     "rp10_negative_control": 120_000,
     "r4_rmsnorm_observed_fail": 360_000,
     "rp12_embed_scale": 360_000,
+    "rp12_negative_control": 360_000,
 }
 CAPSULES = {
     "rp10_pass": "RP10_gemv_batched_fp16_pt",
     "rp10_negative_control": "RP10_gemv_batched_fp16_pt",
     "r4_rmsnorm_observed_fail": "R4_rmsnorm_fp32",
     "rp12_embed_scale": "RP12_embed_scale_fp32_pt",
+    "rp12_negative_control": "RP12_embed_scale_fp32_pt",
 }
+SOURCE_CASE = {"rp12_negative_control": "rp12_embed_scale"}
 
 
 def _perturb_first(value):
@@ -51,7 +54,7 @@ def main() -> int:
 
     root = repo_root()
     here = Path(__file__).resolve().parent
-    case_dir = here / "cases" / args.case
+    case_dir = here / "cases" / SOURCE_CASE.get(args.case, args.case)
     # The trusted answer key stays in the local corpus and is deliberately not
     # published with this evidence artifact.
     capsule_dir = (root / "merlin/contract/capsules/radiance/model_slices"
@@ -59,7 +62,7 @@ def main() -> int:
     cap = load_capsule(capsule_dir, contract=root / "merlin/contract")
     cb = json.loads((case_dir / "command_buffer.json").read_text(encoding="utf-8"))
     golden = CG.golden(cap)
-    if args.case == "rp10_negative_control":
+    if args.case in ("rp10_negative_control", "rp12_negative_control"):
         name = next(iter(golden))
         golden = copy.deepcopy(golden)
         golden[name] = _perturb_first(golden[name])

@@ -1,48 +1,44 @@
-# Radiance L3 declared result-page evidence (v2, 2026-09-08)
+# Radiance L3 streaming-result evidence (v2, updated 2026-09-08)
 
 ## Outcome
 
-The production GSIM adapter now has an opt-in, declared result-memory ABI. The
-Muon harness allocates linker-visible output buffers and a READY/ACK status
-line; a runner-generated Rocket carrier reads those buffers and grades them
-against the private post-submission golden. The adapter accepts only an exact
-final PC at `merlin_numeric_pass` or `merlin_numeric_fail` as the numeric
+The production GSIM adapter now streams numeric results through a runner-owned,
+32-word mailbox. The Muon harness publishes `READY(sequence,count)` only after
+copying a chunk and cannot reuse the mailbox until the trusted Rocket carrier
+publishes the matching `ACK(sequence)`. Rocket therefore never coherently reads
+a full 1 KiB, 256-element output page. Output backing buffers remain private to
+the Muon-side harness and their addresses are absent from the public manifest.
+
+The carrier alone contains comparison intervals derived from the private,
+post-submission golden. Expected values are absent from the submitted MLIR,
+Muon harness/ELF, and Muon build-cache identity. The adapter accepts only an
+exact final PC at `merlin_numeric_pass` or `merlin_numeric_fail` as the numeric
 witness. A cycle-cap line is observation metadata, not a verdict.
 
 This artifact establishes:
 
 | Case | Shape | Expected use | GSIM numeric result | Bound | Active simulation |
 |---|---:|---|---|---:|---:|
-| `rp10_pass` | 32 f32 words | PR batched GEMV | **PASS** | 120,000 cycles | 41.283 s |
-| `rp10_negative_control` | 32 f32 words | same ELF; first golden value perturbed by +100 | **FAIL (expected)** | 120,000 cycles | 41.190 s |
-| `r4_rmsnorm_observed_fail` | 256 f32 words | PR RMSNorm | **FAIL (real)** | 360,000 cycles | 121.974 s |
-| `rp12_embed_scale` | 256 f32 words | independent elementwise control | **FAIL (real)** | 360,000 cycles | 123.319 s |
+| `rp10_pass` | 32 f32 words | legacy v1 positive control | **PASS** | 120,000 cycles | 41.283 s |
+| `rp10_negative_control` | 32 f32 words | legacy v1 perturbed-golden control | **FAIL (expected)** | 120,000 cycles | 41.190 s |
+| `r4_rmsnorm_observed_fail` | 256 f32 words | v2 mailbox, PR RMSNorm | **PASS** | 360,000 cycles | 122.951 s |
+| `rp12_embed_scale` | 256 f32 words | v2 mailbox, independent elementwise control | **PASS** | 360,000 cycles | 122.504 s |
+| `rp12_negative_control` | 256 f32 words | same submitted RP12 ELF; first golden value perturbed by +100 | **FAIL (expected)** | 360,000 cycles | 122.728 s |
 
-The RP10 kernel ELF is byte-identical between the positive and negative arms;
-only the trusted carrier/SoC ELF differs. This proves that the new verdict is
-not a hard-wired completion marker.
+The RP12 positive and negative submitted Muon ELFs are byte-identical, SHA-256
+`b14d78197fcfb05627457ea5d964fd816a963dedd9622dceda932043b53226cd`.
+Their trusted carriers and fused SoC ELFs differ. This proves that the streaming
+protocol is fail-capable and that its verdict is neither hard-wired nor embedded
+in the submitted kernel.
 
-## Honest limitation and narrowed diagnosis
+## Closed diagnosis
 
-R4 is not relabelled as a pass. Its exact submitted LLVM MLIR and command
-buffer produce 256 correct values in the independent Cyclotron run. Replaying
-those values through the carrier's IEEE ordered-integer interval algorithm
-accepts 256/256. Its argument order is also correct (`G`, `X`, `Y0`). Thus the
-R4 GSIM failure is neither golden/dtype binding nor interval construction.
-
-The distinct RP12 elementwise case was rerun with the exact canonical input
-bytes and also fails at 256 words, while RP10 passes at 32 words. Both
-256-word cases use the same 1 KiB result-page geometry and linked addresses.
-Their GSIM logs report no writes on the instrumented Rocket DRAM port, and
-Radiance's LSU contract documents relaxed coherence requiring explicit
-flushes. The harness emits a RISC-V `fence` before READY, but this evidence now
-points to incomplete long-page visibility/flush in this GSIM/SoC path rather
-than an RMSNorm-only sqrt/div defect. The current one-bit final-PC ABI cannot
-expose the first stale word, so it does not prove which cache level loses
-visibility. Until that transport issue is repaired, L3 numeric grading is
-demonstrated for 32 words but must fail closed for these 256-word cases. The
-next implementation is a runner-owned 32-word streaming mailbox with a
-READY(sequence,count)/ACK handshake.
+The old direct-read ABI passed 32 words but failed both independent 256-word
+cases, pointing to long-page visibility rather than an RMSNorm arithmetic bug.
+With the fixed mailbox, RP12 and R4 each pass 256/256 through eight acknowledged
+chunks. The negative RP12 arm reaches the exact fail PC with an unchanged Muon
+ELF. This closes the observed 1 KiB cross-master transport failure without
+weakening numeric grading.
 
 This is correctness evidence only. `bounded_observation.performance_measurement`
 is false; the cycle caps are not kernel performance measurements.
@@ -57,7 +53,7 @@ the local benchmark corpus after submission. Run one case into a fresh work
 directory:
 
 ```bash
-PYTHONPATH=merlin/python python \
+PYTHONPATH=merlin/python .venv/bin/python \
   out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/run_representative.py \
   --case rp10_pass \
   --emulator /scratch/agustin/tmp/gsim-radiance-l3-v6-20260907/emulator \
@@ -65,9 +61,9 @@ PYTHONPATH=merlin/python python \
 ```
 
 The script enforces a wall timeout no greater than 300 seconds. Select
-`rp10_negative_control`, `r4_rmsnorm_observed_fail`, or `rp12_embed_scale` for
-the other frozen arms. It writes a complete `adapter_result.json` into the
-requested work directory.
+`rp10_negative_control`, `r4_rmsnorm_observed_fail`, `rp12_embed_scale`, or
+`rp12_negative_control` for the other frozen arms. It writes a complete
+`adapter_result.json` into the requested work directory.
 
 Verify the sealed evidence without simulation:
 
@@ -78,5 +74,6 @@ python out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py
 The emulator used for the recorded runs is
 `/scratch/agustin/tmp/gsim-radiance-l3-v6-20260907/emulator`, SHA-256
 `458d11844538463e5f4ab1f2d6314934dc0d4fe71df07131eebc5aa29d2633be`.
-The repository base was `3edd9334fd39ce97b5cba50d715be5b6d8c0d6c1`; the
-uncommitted source hashes are sealed in `SHA256SUMS`.
+The implementation extends the declared-result work in `a0222bff` and the
+original evidence snapshot in `88ec5bb7`; all published files are sealed in
+`SHA256SUMS`.

@@ -235,11 +235,10 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
     an order of magnitude faster), which is built once into a self-contained ``emu`` binary. This adapter
     mirrors :func:`verilator_muon_adapter` exactly -- it builds the SAME fork-free rv32 ELF, fuses it into
     the rv64 SoC carrier (:func:`..muon.fuse_soc_elf`), and drives it via the ``+loadmem`` backdoor -- but
-    runs the prebuilt GSIM emulator instead of the Verilator sim. The radiance kernels self-verify against
-    an embedded golden and then go idle on PASS (the emitted model turns the GPUResetAggregator ``stopSim``
-    into an early ``exit(0)`` before the cycle cap) or spin on FAIL (the RTL rdtime watchdog trips the
-    ``Timeout exceeded`` assertion). Completion is graded on those observables, so a pass means the same
-    thing it does on Verilator.
+    runs the prebuilt GSIM emulator instead of the Verilator sim. When the grading runner supplies its
+    private post-submission oracle, a runner-owned Muon harness streams output through a fixed 32-word
+    mailbox and a trusted Rocket carrier compares it behind a READY(sequence,count)/ACK handshake. The
+    private answer is present only in that carrier, never in the submitted rv32 ELF or its cache key.
 
     Gated on the GSIM emu binary (``MERLIN_MUON_GSIM_EMU``, a compiled snapshot of the emitted model) AND
     the rv64 SoC-fuse toolchain being present; fails closed (``MuonUnavailable``) when either is absent, so
@@ -343,7 +342,7 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             outcome = _rp.outcome_from_console(console, outcome_symbols)
             if outcome is None:
                 raise muon.MuonUnavailable(
-                    "GSIM numeric result page was instrumented but Rocket's final PC reached neither "
+                    "GSIM numeric result mailbox was instrumented but Rocket's final PC reached neither "
                     f"{_rp.PASS_SYMBOL} nor {_rp.FAIL_SYMBOL}; the cycle cap is not a numeric verdict. "
                     f"tail:\n{console[-600:]}")
             elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])

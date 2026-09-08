@@ -11,7 +11,7 @@ static void _pf(float x){if(x<0.0f){_pc('-');x=-x;}uint32_t ip=(uint32_t)x;float
   _pu(ip);_pc('.');if(fp<1000u)_pc('0');if(fp<100u)_pc('0');if(fp<10u)_pc('0');_pu(fp);}
 
 volatile uint32_t merlin_result_status[8] __attribute__((used,section(".data.merlin_result"),aligned(64)));
-volatile uint32_t merlin_result_0[256] __attribute__((used,section(".data.merlin_result"),aligned(64)));
+volatile uint32_t merlin_result_mailbox[32] __attribute__((used,section(".data.merlin_result"),aligned(64)));
 
 extern void radiance_kernel(const void*, const void*, void*);
 
@@ -291,11 +291,21 @@ int main(void){
   _in_X[253]=0x39f00000u;
   _in_X[254]=0x3bd00000u;
   _in_X[255]=0x3dc00000u;
-  radiance_kernel((const void*)_in_G, (const void*)_in_X, (void*)merlin_result_0);
-  merlin_result_status[1]=256u;
-  __asm__ volatile("fence rw,rw" ::: "memory");
-  merlin_result_status[0]=0x4d525231u;
-  __asm__ volatile("fence rw,rw" ::: "memory");
-  while(merlin_result_status[2]!=0x4d524131u){}
+  volatile uint32_t _out_Y0[256];
+  radiance_kernel((const void*)_in_G, (const void*)_in_X, (void*)_out_Y0);
+  uint32_t _merlin_sequence=1u;
+  for(uint32_t _base=0;_base<256u;_base+=32u){
+    uint32_t _count=256u-_base;
+    if(_count>32u)_count=32u;
+    for(uint32_t _i=0;_i<_count;++_i) merlin_result_mailbox[_i]=_out_Y0[_base+_i];
+    merlin_result_status[2]=_count;
+    merlin_result_status[1]=_merlin_sequence;
+    __asm__ volatile("fence rw,rw" ::: "memory");
+    merlin_result_status[0]=0x4d525231u;
+    __asm__ volatile("fence rw,rw" ::: "memory");
+    while(merlin_result_status[3]!=0x4d524131u || merlin_result_status[4]!=_merlin_sequence){__asm__ volatile("fence r,r" ::: "memory");}
+    ++_merlin_sequence;
+  }
+  for(;;)__asm__ volatile("nop" ::: "memory");
   return 0;
 }
