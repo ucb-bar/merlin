@@ -1,0 +1,51 @@
+{
+  "schema": "merlin_cyclotron_trace_fix_replay_v1",
+  "recorded_utc": "2026-09-08T23:40:37Z",
+  "source_checkout": "/scratch/agustin/projects/chipyard/generators/radiance/cyclotron",
+  "capsule": "SY_app_contraction_f32_partial_unknown_rank3_odd_tail_heavy_l2",
+  "replay": {
+    "command": "/usr/bin/time -v <cyclotron-binary> <generated>/cyclotron.run.toml --binary-path <generated>/kernel.radiance.elf --timing --log 0",
+    "elf_sha256": "cb3ba94d175381876bd6c02909df26b30c8e643c512293bc9f38fd256ba6d3d0",
+    "config_sha256": "680ef78b59bd728620465ca5e0d357f30dfb53b267fab9ca202b71691c6a3212",
+    "numeric_line": "MERLIN_NUMERIC PASS 8150 0",
+    "done": true,
+    "cycles": 1112993,
+    "execution_digest": "d3864c6a59ab4c402533e6d4734339384f514ebd67879ccfc4016b184130468f"
+  },
+  "controlled_before": {
+    "source_commit": "3fd83f2bb608495ca6ffbed38043cdbadb215722",
+    "binary_sha256": "4d432ed089a25d770891d39a4fd2ae370e2fab79a480bc38410d6bafb44dbeed",
+    "user_seconds": 5.62,
+    "system_seconds": 0.36,
+    "wall_seconds": 5.98,
+    "maximum_rss_kib": 624000,
+    "exit_status": 0,
+    "console_sha256": "fc0fa06e8cbc9a2804a0aa44bd6e8233007a601494690937a4aa9b7d0b3e062b",
+    "time_receipt_sha256": "53fff3daea1b785d2d67055139c92561dfbafdb16df74bcd8c290dfb1f4eda72"
+  },
+  "fixed": {
+    "source_commit": "2d6adad4ad94d1621fdff9c9a1e5eac871048f24",
+    "binary_sha256": "180a55b1117d6bdca305aa60a1a3eef220d0791eb93c288cc5cde01411b37a5d",
+    "user_seconds": 6.04,
+    "system_seconds": 0.0,
+    "wall_seconds": 6.05,
+    "maximum_rss_kib": 6912,
+    "exit_status": 0,
+    "console_sha256": "fc0fa06e8cbc9a2804a0aa44bd6e8233007a601494690937a4aa9b7d0b3e062b",
+    "time_receipt_sha256": "3bfde2977e041d64361c240656c1ce0b911b405f6e0592dcc1a60a46b73ea8b1"
+  },
+  "initial_n1024_failure": {
+    "selected_binary_sha256": "bca96b105be847577693bf6e16a0d7ef82dda2d41703aa9edffe19aee6a77326",
+    "configured_cycle_cap": 20000000,
+    "summary_cycles": 20000000,
+    "active_warps": 8,
+    "maximum_rss_kib": 20009440,
+    "exit_status": 1,
+    "stderr_tail": "Error: 0",
+    "classification": "bounded_cycle_cap_exhaustion; correctness_unknown"
+  },
+  "tests": {
+    "targeted": "pass: sim::trace::tests::clear_discards_trace_disabled_instruction_and_memory_records",
+    "full": "214 passed, 2 pre-existing failures in muon::gmem execute timing tests"
+  }
+}
