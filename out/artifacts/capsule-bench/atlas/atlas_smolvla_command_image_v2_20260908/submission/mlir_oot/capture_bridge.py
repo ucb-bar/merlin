@@ -17,10 +17,92 @@ from merlin.targetgen.fp8_codec import fp8_e4m3_decode, fp8_e4m3_encode
 
 
 FP8_MAX_FINITE = 448.0
+ATLAS_GSIM_DRAM_BYTES = 1 << 20
+_DEVICE_DTYPE_BYTES = {
+    "fp8_e4m3": 1,
+    "fp8_e5m2": 1,
+    "i8": 1,
+    "bf16": 2,
+    "f16": 2,
+    "i16": 2,
+    "f32": 4,
+    "i32": 4,
+    "i64": 8,
+}
 
 
 def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def validate_gsim_dram_window(
+    command_buffer: dict, capacity_bytes: int = ATLAS_GSIM_DRAM_BYTES
+) -> dict:
+    """Reject command buffers that alias in the current 1 MiB GSIM DRAM.
+
+    The adopted RTL harness indexes its byte array with address & (2**20-1).
+    A normal, non-overlapping command buffer can therefore become silently
+    overlapping when its allocated span crosses that window.  This preflight
+    mirrors that hardware integration constraint before any numerical result
+    is interpreted.
+    """
+    if not isinstance(capacity_bytes, int) or capacity_bytes <= 0:
+        raise ValueError("GSIM DRAM capacity must be a positive integer")
+    tensors = command_buffer.get("tensors")
+    if not isinstance(tensors, dict) or not tensors:
+        raise ValueError("command buffer has no tensor allocation map")
+    allocations = []
+    for name, tensor in sorted(tensors.items()):
+        try:
+            base = int(tensor["base"])
+            shape = [int(extent) for extent in tensor["shape"]]
+            element_bytes = _DEVICE_DTYPE_BYTES[tensor["dtype"]]
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"malformed tensor allocation {name!r}") from error
+        if base < 0 or not shape or any(extent <= 0 for extent in shape):
+            raise ValueError(f"malformed tensor allocation {name!r}")
+        size = math.prod(shape) * element_bytes
+        allocations.append({"name": name, "base": base, "end": base + size, "bytes": size})
+
+    low = min(item["base"] for item in allocations)
+    high = max(item["end"] for item in allocations)
+    span = high - low
+    record = {
+        "schema": "atlas_gsim_dram_window_preflight_v1",
+        "capacity_bytes": capacity_bytes,
+        "allocated_span_bytes": span,
+        "headroom_bytes": capacity_bytes - span,
+        "allocation_count": len(allocations),
+        "allocations": allocations,
+        "address_mapping": "physical_byte_index = device_address & (capacity_bytes - 1)",
+    }
+    if span > capacity_bytes:
+        raise ValueError(
+            "Atlas GSIM DRAM allocation span exceeds its alias-free window: "
+            f"{span} > {capacity_bytes} bytes (over by {span - capacity_bytes})"
+        )
+
+    # The current capacity is a power of two, matching the harness bit mask.
+    if capacity_bytes & (capacity_bytes - 1):
+        raise ValueError("GSIM DRAM capacity must be a power of two")
+    mapped = []
+    for item in allocations:
+        start = item["base"] & (capacity_bytes - 1)
+        stop = start + item["bytes"]
+        if stop > capacity_bytes:
+            raise ValueError(
+                f"Atlas GSIM tensor {item['name']} wraps within the DRAM window: "
+                f"mapped [{start}, {stop}) exceeds {capacity_bytes}"
+            )
+        mapped.append((start, stop, item["name"]))
+    for left, right in zip(sorted(mapped), sorted(mapped)[1:]):
+        if left[1] > right[0]:
+            raise ValueError(
+                "Atlas GSIM tensor allocations alias after address masking: "
+                f"{left[2]} overlaps {right[2]}"
+            )
+    record["alias_free"] = True
+    return record
 
 
 def read_f32_safetensor(path: Path, name: str) -> tuple[np.ndarray, dict]:
@@ -70,10 +152,14 @@ def _require_finite_f32(name: str, value: np.ndarray) -> np.ndarray:
     return array
 
 
-def calibrate_e4m3(name: str, value: np.ndarray) -> dict:
+def calibrate_e4m3(
+    name: str, value: np.ndarray, code_cap: float = FP8_MAX_FINITE
+) -> dict:
     array = _require_finite_f32(name, value)
+    if not math.isfinite(code_cap) or code_cap <= 0.0 or code_cap > FP8_MAX_FINITE:
+        raise ValueError(f"invalid E4M3 calibration code cap {code_cap!r}")
     max_abs = float(np.max(np.abs(array.astype(np.float64))))
-    scale = max_abs / FP8_MAX_FINITE if max_abs else 1.0
+    scale = max_abs / code_cap if max_abs else 1.0
     codes = np.fromiter(
         (fp8_e4m3_encode(float(element) / scale) for element in array.flat),
         dtype=np.uint8,
@@ -98,6 +184,7 @@ def calibrate_e4m3(name: str, value: np.ndarray) -> dict:
             "scale": scale,
             "scale_hex": float(scale).hex(),
             "max_abs": max_abs,
+            "code_cap": code_cap,
             "saturated_elements": int(np.count_nonzero((codes & 0x7F) == 0x7E)),
             "zero_elements": int(np.count_nonzero(codes == 0)),
             "max_abs_reconstruction_error": float(np.max(error)),
@@ -168,8 +255,10 @@ def build_dispatch_manifest(partition: dict) -> dict:
     }
 
 
-def bridge_inputs(activation: np.ndarray, captured_weight: np.ndarray,
-                  bias: np.ndarray, geometry: dict) -> dict:
+def bridge_inputs(
+    activation: np.ndarray, captured_weight: np.ndarray,
+    bias: np.ndarray, geometry: dict, code_cap: float = FP8_MAX_FINITE,
+) -> dict:
     """Quantize capture values and return exact device bytes plus provenance."""
     m, k, n = (int(geometry[key]) for key in ("M", "K", "N"))
     activation = _require_finite_f32("A0", activation)
@@ -180,7 +269,8 @@ def bridge_inputs(activation: np.ndarray, captured_weight: np.ndarray,
             f"capture values do not match geometry {(m, k, n)}: "
             f"{activation.shape}, {captured_weight.shape}, {bias.shape}"
         )
-    qa, qw = calibrate_e4m3("A0", activation), calibrate_e4m3("W", captured_weight)
+    qa = calibrate_e4m3("A0", activation, code_cap)
+    qw = calibrate_e4m3("W", captured_weight, code_cap)
     output_scale = qa["scale"] * qw["scale"]
     if not math.isfinite(output_scale) or output_scale <= 0.0:
         raise ValueError(f"invalid output scale {output_scale!r}")

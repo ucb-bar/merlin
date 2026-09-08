@@ -2,7 +2,7 @@
   "baseline": "atlas_smolvla_compact_loops_v1_20260908 (committed 28/28 IMEM-fit package)",
   "capture_semantics_bridges": {
     "calibration_contract": "calibration_contract.json",
-    "claim_scope": "two real capture partitions, not whole-model execution",
+    "claim_scope": "three real capture partitions, not whole-model execution",
     "partitions": {
       "atlas_p0098": {
         "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
@@ -17,10 +17,22 @@
         "fqn": "model.action_in_proj",
         "raw_gsim_receipt": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
         "result": "capture_semantics_action_in_proj/result.json"
+      },
+      "atlas_p0244": {
+        "device_output": "capture_semantics_action_time_mlp_in/device_output.bf16.bin",
+        "dispatch_manifest": "capture_semantics_action_time_mlp_in/dispatch_manifest.json",
+        "execution": "three alias-free N-slice dispatches [256,256,208]",
+        "fqn": "model.action_time_mlp_in",
+        "raw_gsim_receipts": [
+          "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/raw_gsim_receipt.json",
+          "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/raw_gsim_receipt.json",
+          "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/raw_gsim_receipt.json"
+        ],
+        "result": "capture_semantics_action_time_mlp_in/result.json"
       }
     },
     "preferred_50x720x32_blocker": "host-produced activation from dtype_cast_471 is not captured",
-    "qualified_partitions": 2,
+    "qualified_partitions": 3,
     "structural_partitions_total": 391
   },
   "compact_bias_fix": {
@@ -70,7 +82,7 @@
   "schema": "atlas_smolvla_command_image_receipt_v3",
   "status": "representative_rtl_numeric",
   "validation": {
-    "backend_source_tree_sha256": "35edc39b40f3c105bff34b82d7f1340808277f198469b3f18925961e6eedf568",
+    "backend_source_tree_sha256": "eeb2e3c183a125fac2ac64d1a1e4eff2ef885f86508aa1b4557e4c84e0fcbe70",
     "first_concrete_partition": {
       "capture_regions": [
         "matmul_0",
@@ -84,7 +96,7 @@
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 24
+      "passed": 27
     },
     "full_capture_partition_plan": {
       "accelerator_dependency_edges": 88,
@@ -236,6 +248,74 @@
             "mean_abs_error": 0.017213188111782074,
             "rmse": 0.02191220037639141
           }
+        },
+        "atlas_p0244": {
+          "acceptance": {
+            "passed": true,
+            "thresholds": {
+              "cosine_min": 0.995,
+              "max_abs_error": 0.125,
+              "max_relative_denominator_floor": 0.001,
+              "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+            }
+          },
+          "capture_regions": [
+            "matmul_243",
+            "add_199"
+          ],
+          "cycles": 15211545,
+          "device_output": {
+            "dtype": "bf16",
+            "path": "capture_semantics_action_time_mlp_in/device_output.bf16.bin",
+            "raw_sha256": "3d890e73e992bbf47420fcd34634b9fa99de6c8ce393bb450a9c31f8167e172b",
+            "shape": [
+              50,
+              720
+            ]
+          },
+          "fqn": "model.action_time_mlp_in",
+          "n_slice_dispatches": [
+            {
+              "assertion_clean": true,
+              "cycles": 5349687,
+              "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+              "path": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/raw_gsim_receipt.json",
+              "raw_output_sha256": "67144b3ad610061e516d2522abead09509bd5c5f490ffb7dd95dd1ef398ea896",
+              "stderr_observation": "empty"
+            },
+            {
+              "assertion_clean": true,
+              "cycles": 5349687,
+              "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+              "path": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/raw_gsim_receipt.json",
+              "raw_output_sha256": "e9d823b76b6e139a80d6ad4b768bdcfca6248c65fe3e946f8f9b25b393b13de3",
+              "stderr_observation": "empty"
+            },
+            {
+              "assertion_clean": true,
+              "cycles": 4512171,
+              "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+              "path": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/raw_gsim_receipt.json",
+              "raw_output_sha256": "bf4368c572e132ddef28bd6c62c362a7f744430f96742e5c7cd64001be5a1abf",
+              "stderr_observation": "empty"
+            }
+          ],
+          "quantized_domain_reference_comparison": {
+            "cosine_similarity": 0.9999693036079407,
+            "max_abs_error": 0.0323328971862793,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 5.995570182800293,
+            "mean_abs_error": 0.0021604211069643497,
+            "rmse": 0.003067413344979286
+          },
+          "source_f32_comparison": {
+            "cosine_similarity": 0.9990334510803223,
+            "max_abs_error": 0.06637021899223328,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 62.13141632080078,
+            "mean_abs_error": 0.013091406784951687,
+            "rmse": 0.016443632543087006
+          }
         }
       },
       "preferred_50x720x32_blocker": {
@@ -249,7 +329,7 @@
         "partition_id": "atlas_p0390",
         "reason": "requires the unresolved preceding host prefix; no captured source activation is bound"
       },
-      "qualified_partitions": 2,
+      "qualified_partitions": 3,
       "structural_partitions_total": 391
     },
     "recovery_status": "representative_rtl_numeric",
@@ -325,7 +405,7 @@
       }
     },
     "rtl_numeric_smolvla_coverage": {
-      "capture_semantics_physical_occurrences": 2,
+      "capture_semantics_physical_occurrences": 3,
       "cases": {
         "real_action_in_proj_50_32_720": {
           "cycles": 573715,
@@ -337,6 +417,21 @@
           ],
           "source_cosine_similarity": 0.9993289113044739,
           "source_max_abs_error": 0.10736548900604248
+        },
+        "real_action_time_mlp_in_50_1440_720": {
+          "cycles": 15211545,
+          "dispatch_n_tiles": [
+            256,
+            256,
+            208
+          ],
+          "shape": [
+            50,
+            1440,
+            720
+          ],
+          "source_cosine_similarity": 0.9990334510803223,
+          "source_max_abs_error": 0.06637021899223328
         },
         "smolvla_state_proj_1_32_960": {
           "cycles": 154458,
@@ -360,7 +455,7 @@
           ]
         }
       },
-      "outputs_checked": 38560,
+      "outputs_checked": 74560,
       "physical_contraction_occurrences_total": 391,
       "unique_contraction_shapes": 3,
       "unique_contraction_shapes_total": 28

@@ -29,6 +29,7 @@
   },
   "measurements": {
     "activation": {
+      "code_cap": 448.0,
       "codes_sha256": "b6212ef2987aa8be8c52d96d2ecea998ae832aa27391a6604a0864e9c9051161",
       "max_abs": 3.6359939575195312,
       "max_abs_reconstruction_error": 0.12958550453186035,
@@ -53,6 +54,7 @@
     "output_scale": 3.202334700052022e-06,
     "output_scale_hex": "0x1.adcf61e8ef58cp-19",
     "weight": {
+      "code_cap": 448.0,
       "codes_sha256": "10b07e205faa40d7bfab6f48f70c6745aa690c04725d001c15f2e13d3fa2ebed",
       "max_abs": 0.17676635086536407,
       "max_abs_reconstruction_error": 0.006312966346740723,
@@ -98,6 +100,7 @@
         50,
         32
       ],
+      "kind": "capture_input",
       "raw_sha256": "fc07c22c3367070990e8cfd06168e1a2e061ece47b2d65369e1d92e544dc3a85",
       "source_shape": [
         1,

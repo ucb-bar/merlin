@@ -1,0 +1,88 @@
+{
+  "acceptance": {
+    "passed": true,
+    "thresholds": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "candidate_outcome": "qualified",
+  "capture_regions": [
+    "matmul_243",
+    "add_199"
+  ],
+  "capture_semantics_executable_partitions": 3,
+  "claim": "one real SmolVLA action_time_mlp_in partition qualified on elaborated RTL",
+  "cycles": 15211545,
+  "device_output": {
+    "dtype": "bf16",
+    "path": "capture_semantics_action_time_mlp_in/device_output.bf16.bin",
+    "raw_sha256": "3d890e73e992bbf47420fcd34634b9fa99de6c8ce393bb450a9c31f8167e172b",
+    "shape": [
+      50,
+      720
+    ]
+  },
+  "engine": {
+    "dispatch_count": 3,
+    "kind": "assertion-enabled elaborated RTL GSIM"
+  },
+  "fqn": "model.action_time_mlp_in",
+  "image": {
+    "dispatch_count": 3,
+    "instruction_words_total": 50717,
+    "kind": "three compiler-generated N-slice images",
+    "n_ranges": [
+      [
+        0,
+        256
+      ],
+      [
+        256,
+        512
+      ],
+      [
+        512,
+        720
+      ]
+    ]
+  },
+  "not_claimed": [
+    "whole-model dispatch",
+    "whole-model numeric correctness",
+    "source bit-exactness",
+    "whole-model performance"
+  ],
+  "partition_id": "atlas_p0244",
+  "quantized_domain_reference_comparison": {
+    "cosine_similarity": 0.9999693036079407,
+    "max_abs_error": 0.0323328971862793,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 5.995570182800293,
+    "mean_abs_error": 0.0021604211069643497,
+    "rmse": 0.003067413344979286
+  },
+  "raw_gsim_receipts": [
+    "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/raw_gsim_receipt.json",
+    "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/raw_gsim_receipt.json",
+    "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/raw_gsim_receipt.json"
+  ],
+  "scale_equation": {
+    "activation": "qA = E4M3FN_RNE(A / sA)",
+    "bias": "qB_i = BF16_RNE(B[n0:n1] / (sA * sW_i))",
+    "output": "Y_f32[:,n0:n1] = f32(Y_bf16_device_i) * (sA * sW_i)",
+    "weight": "qW_i = E4M3FN_RNE(W[:,n0:n1] / sW_i)"
+  },
+  "schema": "atlas_real_capture_partition_qualification_v1",
+  "source_f32_comparison": {
+    "cosine_similarity": 0.9990334510803223,
+    "max_abs_error": 0.06637021899223328,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 62.13141632080078,
+    "mean_abs_error": 0.013091406784951687,
+    "rmse": 0.016443632543087006
+  },
+  "structural_partitions_total": 391
+}

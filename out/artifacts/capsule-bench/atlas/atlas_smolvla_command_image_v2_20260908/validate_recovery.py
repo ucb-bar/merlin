@@ -53,10 +53,13 @@ plan_tests.test_no_host_region_is_silently_promoted_to_a_command_image()
 plan_tests.test_plan_and_manifests_are_byte_stable_across_rebuilds()
 bridge_tests.test_calibration_scale_equations_and_rounding_are_explicit_and_deterministic()
 bridge_tests.test_bias_is_folded_in_quant_domain_and_output_scale_is_restored()
+bridge_tests.test_gsim_dram_window_rejects_full_p0244_and_accepts_declared_n_tiles()
+bridge_tests.test_gsim_dram_window_rejects_masked_overlap_even_below_total_bytes()
 bridge_tests.test_dispatch_manifest_comes_from_planned_dependency_and_lifetime_abi()
 bridge_tests.test_capture_bridge_fails_closed_on_semantic_or_value_drift()
 bridge_tests.test_saved_real_capture_qualification_is_scoped_and_passes_fixed_tolerance()
 bridge_tests.test_action_in_projection_binds_real_noise_and_independently_passes()
+bridge_tests.test_action_time_mlp_in_three_dispatches_independently_reconstruct_full_result()
 
 full = load(ROOT / "full_capture_probe.json")
 raw = load(ROOT / "cases/smolvla_tail_50_720_32/raw_readback.json")
@@ -67,11 +70,57 @@ plan = load(ROOT / "whole_capture_plan/partition_plan.json")
 capture_qualifications = {
     "atlas_p0098": load(ROOT / "capture_semantics_state_proj/result.json"),
     "atlas_p0243": load(ROOT / "capture_semantics_action_in_proj/result.json"),
+    "atlas_p0244": load(ROOT / "capture_semantics_action_time_mlp_in/result.json"),
 }
 raw_capture_receipts = {
     partition_id: load(ROOT / result["raw_gsim_receipt"])
     for partition_id, result in capture_qualifications.items()
+    if "raw_gsim_receipt" in result
 }
+action_time_receipts = [
+    load(ROOT / path)
+    for path in capture_qualifications["atlas_p0244"]["raw_gsim_receipts"]
+]
+qualification_records = {}
+for partition_id, result in capture_qualifications.items():
+    record = {
+        "fqn": result["fqn"],
+        "capture_regions": result["capture_regions"],
+        "cycles": result["cycles"],
+        "source_f32_comparison": result["source_f32_comparison"],
+        "quantized_domain_reference_comparison": result[
+            "quantized_domain_reference_comparison"
+        ],
+        "acceptance": result["acceptance"],
+        "device_output": result["device_output"],
+    }
+    if partition_id in raw_capture_receipts:
+        receipt = raw_capture_receipts[partition_id]
+        record["raw_gsim_receipt"] = {
+            "path": result["raw_gsim_receipt"],
+            "spec_sha256": receipt["spec_sha256"],
+            "stdout_sha256": receipt["stdout_sha256"],
+            "engine_sha256": receipt["engine_sha256"],
+            "halted": receipt["halted"],
+            "halt_reason": receipt["halt_reason"],
+            "cycles": receipt["cycles"],
+            "final_pc_available": receipt["final_pc_available"],
+            "assertion_clean": receipt["assertion_clean"],
+            "stderr_observation": receipt["stderr_observation"],
+        }
+    else:
+        record["n_slice_dispatches"] = [
+            {
+                "path": path,
+                "cycles": receipt["cycles"],
+                "engine_sha256": receipt["engine_sha256"],
+                "assertion_clean": receipt["assertion_clean"],
+                "stderr_observation": receipt["stderr_observation"],
+                "raw_output_sha256": receipt["raw_output_sha256"],
+            }
+            for path, receipt in zip(result["raw_gsim_receipts"], action_time_receipts)
+        ]
+    qualification_records[partition_id] = record
 cases = {}
 for case_dir in sorted((ROOT / "cases").iterdir()):
     result_path = case_dir / "gsim_result.json"
@@ -92,14 +141,14 @@ verdict = {
     "ok": True,
     "recovery_status": "representative_rtl_numeric",
     "backend_source_tree_sha256": tree_digest(ROOT / "submission"),
-    "focused_tests": {"passed": 24, "failed": 0},
+    "focused_tests": {"passed": 27, "failed": 0},
     "full_capture_structural_compile_coverage": plan["compile_coverage"],
     "rtl_numeric_smolvla_coverage": {
         "unique_contraction_shapes": 3,
         "unique_contraction_shapes_total": 28,
-        "capture_semantics_physical_occurrences": 2,
+        "capture_semantics_physical_occurrences": 3,
         "physical_contraction_occurrences_total": 391,
-        "outputs_checked": 38560,
+        "outputs_checked": 74560,
         "cases": {
             "smolvla_tail_50_720_32": {
                 "shape": [50, 720, 32],
@@ -127,6 +176,17 @@ verdict = {
                     "source_f32_comparison"
                 ]["cosine_similarity"],
             },
+            "real_action_time_mlp_in_50_1440_720": {
+                "shape": [50, 1440, 720],
+                "dispatch_n_tiles": [256, 256, 208],
+                "cycles": capture_qualifications["atlas_p0244"]["cycles"],
+                "source_max_abs_error": capture_qualifications["atlas_p0244"][
+                    "source_f32_comparison"
+                ]["max_abs_error"],
+                "source_cosine_similarity": capture_qualifications["atlas_p0244"][
+                    "source_f32_comparison"
+                ]["cosine_similarity"],
+            },
         },
     },
     "representative_cases": cases,
@@ -151,38 +211,9 @@ verdict = {
         "capture_semantics_executable_partitions": plan["capture_semantics_executable_partition_count"],
     },
     "real_capture_semantics_qualification": {
-        "qualified_partitions": 2,
+        "qualified_partitions": 3,
         "structural_partitions_total": 391,
-        "partitions": {
-            partition_id: {
-                "fqn": result["fqn"],
-                "capture_regions": result["capture_regions"],
-                "cycles": result["cycles"],
-                "source_f32_comparison": result["source_f32_comparison"],
-                "quantized_domain_reference_comparison": result[
-                    "quantized_domain_reference_comparison"
-                ],
-                "acceptance": result["acceptance"],
-                "device_output": result["device_output"],
-                "raw_gsim_receipt": {
-                    "path": result["raw_gsim_receipt"],
-                    "spec_sha256": raw_capture_receipts[partition_id]["spec_sha256"],
-                    "stdout_sha256": raw_capture_receipts[partition_id]["stdout_sha256"],
-                    "engine_sha256": raw_capture_receipts[partition_id]["engine_sha256"],
-                    "halted": raw_capture_receipts[partition_id]["halted"],
-                    "halt_reason": raw_capture_receipts[partition_id]["halt_reason"],
-                    "cycles": raw_capture_receipts[partition_id]["cycles"],
-                    "final_pc_available": raw_capture_receipts[partition_id][
-                        "final_pc_available"
-                    ],
-                    "assertion_clean": raw_capture_receipts[partition_id]["assertion_clean"],
-                    "stderr_observation": raw_capture_receipts[partition_id][
-                        "stderr_observation"
-                    ],
-                },
-            }
-            for partition_id, result in capture_qualifications.items()
-        },
+        "partitions": qualification_records,
         "preferred_50x720x32_blocker": {
             "partition_id": "atlas_p0390",
             "fqn": "model.action_out_proj",
@@ -244,7 +275,7 @@ receipt = {
         ],
     },
     "capture_semantics_bridges": {
-        "qualified_partitions": 2,
+        "qualified_partitions": 3,
         "structural_partitions_total": plan["partition_count"],
         "calibration_contract": "calibration_contract.json",
         "partitions": {
@@ -262,9 +293,19 @@ receipt = {
                 "raw_gsim_receipt": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
                 "result": "capture_semantics_action_in_proj/result.json",
             },
+            "atlas_p0244": {
+                "fqn": "model.action_time_mlp_in",
+                "dispatch_manifest": "capture_semantics_action_time_mlp_in/dispatch_manifest.json",
+                "device_output": "capture_semantics_action_time_mlp_in/device_output.bf16.bin",
+                "raw_gsim_receipts": capture_qualifications["atlas_p0244"][
+                    "raw_gsim_receipts"
+                ],
+                "result": "capture_semantics_action_time_mlp_in/result.json",
+                "execution": "three alias-free N-slice dispatches [256,256,208]",
+            },
         },
         "preferred_50x720x32_blocker": "host-produced activation from dtype_cast_471 is not captured",
-        "claim_scope": "two real capture partitions, not whole-model execution",
+        "claim_scope": "three real capture partitions, not whole-model execution",
     },
     "compact_bias_fix": {
         "path": "submission/mlir_oot/codegen.py",

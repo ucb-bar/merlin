@@ -1,0 +1,106 @@
+{
+  "all_inputs_rooted_at_capture_arguments": [
+    "atlas_p0000",
+    "atlas_p0098",
+    "atlas_p0243"
+  ],
+  "capture_rooted_but_blocked": [
+    {
+      "fqn": "model.vlm_with_expert.vlm.model.vision_model.embeddings.patch_embedding",
+      "partition_id": "atlas_p0000",
+      "reason": "capture-rooted but requires non-view host preprocessing",
+      "unsupported_bridges": [
+        {
+          "execution": "host_preprocess",
+          "op": "tensor.expand_shape",
+          "region_id": "conv_0"
+        },
+        {
+          "execution": "host_preprocess",
+          "op": "tensor.collapse_shape",
+          "region_id": "conv_0"
+        },
+        {
+          "execution": "host_preprocess",
+          "op": "tensor.expand_shape",
+          "region_id": "conv_0"
+        },
+        {
+          "execution": "host_preprocess",
+          "op": "tensor.collapse_shape",
+          "region_id": "conv_0"
+        },
+        {
+          "execution": "host_preprocess",
+          "op": "linalg.generic",
+          "region_id": "conv_0"
+        }
+      ]
+    }
+  ],
+  "claim": "binding inventory only; no whole-model or additional numeric qualification claim",
+  "direct_accelerator_successors_of_qualified_partitions": [],
+  "directly_bindable_without_host_computation": [
+    "atlas_p0098",
+    "atlas_p0243"
+  ],
+  "explicit_host_bridge_candidate": {
+    "calibration_headroom": "each slice uses explicit E4M3 code_cap=16 to keep quant-domain partial sums inside the demonstrated accumulator range",
+    "candidate": "atlas_p0244",
+    "device_dispatches": [
+      [
+        0,
+        256
+      ],
+      [
+        256,
+        512
+      ],
+      [
+        512,
+        720
+      ]
+    ],
+    "full_image_blocker": "the adopted GSIM harness masks DRAM addresses to 1 MiB; the unsliced command buffer spans 1,182,240 bytes and would silently alias",
+    "host_regions": [
+      "iota_38",
+      "compare_2",
+      "dtype_cast_242",
+      "mul_293",
+      "add_198",
+      "sub_33",
+      "dtype_cast_243",
+      "mul_294",
+      "sub_34",
+      "select_30",
+      "pow_65",
+      "mul_295",
+      "elementwise_2",
+      "mul_296",
+      "mul_297",
+      "mul_298",
+      "unsqueeze_198",
+      "unsqueeze_199",
+      "mul_299",
+      "sin_32",
+      "cos_32",
+      "cat_50",
+      "dtype_cast_244",
+      "unsqueeze_200",
+      "expand_147",
+      "cat_51",
+      "view_789"
+    ],
+    "predecessor": "atlas_p0243",
+    "result": "capture_semantics_action_time_mlp_in/result.json",
+    "status": "qualified_as_three_alias_free_n_slice_dispatches"
+  },
+  "qualified_capture_semantics": [
+    "atlas_p0098",
+    "atlas_p0243",
+    "atlas_p0244"
+  ],
+  "qualified_capture_semantics_count": 3,
+  "schema": "atlas_smolvla_capture_binding_inventory_v1",
+  "structural_partitions_total": 391
+}

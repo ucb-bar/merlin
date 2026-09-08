@@ -1,0 +1,268 @@
+{
+  "contract": {
+    "bias": {
+      "device_equation": "qB = BF16_RNE(B / (sA * sW))",
+      "placement": "device_epilogue_before_output_dequantization"
+    },
+    "inputs": {
+      "activation_equation": "qA = E4M3FN_RNE(A / sA)",
+      "scale_equation": "sX = max(abs(X)) / 448; sX = 1 only for an all-zero tensor",
+      "scope": "symmetric_per_tensor",
+      "weight_equation": "qW = E4M3FN_RNE(W / sW)"
+    },
+    "output": {
+      "host_equation": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
+      "source_reference": "Y_ref = matmul_f32(A, W) + B"
+    },
+    "quant_format": {
+      "max_finite": 448.0,
+      "name": "OCP_E4M3FN",
+      "rounding": "round_to_nearest_ties_to_even"
+    },
+    "schema": "atlas_capture_calibration_contract_v1",
+    "tolerance": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "measurements": {
+    "dispatches": [
+      {
+        "dispatch_index": 0,
+        "measurements": {
+          "activation": {
+            "code_cap": 16.0,
+            "codes_sha256": "065cfabec2238c97fef124baafa0afc886a726dace2a541687d800b7ba7ad8f5",
+            "max_abs": 2.5577688217163086,
+            "max_abs_reconstruction_error": 0.0795203447341919,
+            "mean_abs_reconstruction_error": 0.012946036644279957,
+            "name": "A0",
+            "saturated_elements": 0,
+            "scale": 0.1598605513572693,
+            "scale_hex": "0x1.4764f80000000p-3",
+            "shape": [
+              50,
+              1440
+            ],
+            "zero_elements": 114
+          },
+          "bias": {
+            "equation": "BF16_RNE(B / output_scale)",
+            "max_abs_error_after_output_rescale": 6.558187305927277e-05,
+            "mean_abs_error_after_output_rescale": 1.942035487445537e-05,
+            "quant_domain_max_abs": 99.5,
+            "quant_domain_words_sha256": "3fe4252e24aa61e15b95cf0c539e4c8396a859f14d84682bc743749a8baf3754"
+          },
+          "output_scale": 0.00026329333785962694,
+          "output_scale_hex": "0x1.14154467e1c00p-12",
+          "weight": {
+            "code_cap": 16.0,
+            "codes_sha256": "b8826f5b75d656bd9325fa8f6348cbf70ec08d491090befd7d31563dc82a56b7",
+            "max_abs": 0.026352301239967346,
+            "max_abs_reconstruction_error": 0.0008235014975070953,
+            "mean_abs_reconstruction_error": 0.00027404684806242585,
+            "name": "W",
+            "saturated_elements": 0,
+            "scale": 0.0016470188274979591,
+            "scale_hex": "0x1.afc1900000000p-10",
+            "shape": [
+              1440,
+              256
+            ],
+            "zero_elements": 27
+          }
+        },
+        "n_range": [
+          0,
+          256
+        ]
+      },
+      {
+        "dispatch_index": 1,
+        "measurements": {
+          "activation": {
+            "code_cap": 16.0,
+            "codes_sha256": "065cfabec2238c97fef124baafa0afc886a726dace2a541687d800b7ba7ad8f5",
+            "max_abs": 2.5577688217163086,
+            "max_abs_reconstruction_error": 0.0795203447341919,
+            "mean_abs_reconstruction_error": 0.012946036644279957,
+            "name": "A0",
+            "saturated_elements": 0,
+            "scale": 0.1598605513572693,
+            "scale_hex": "0x1.4764f80000000p-3",
+            "shape": [
+              50,
+              1440
+            ],
+            "zero_elements": 114
+          },
+          "bias": {
+            "equation": "BF16_RNE(B / output_scale)",
+            "max_abs_error_after_output_rescale": 6.55781477689743e-05,
+            "mean_abs_error_after_output_rescale": 1.9748928025364876e-05,
+            "quant_domain_max_abs": 99.5,
+            "quant_domain_words_sha256": "6c1e25339861100bcf47c5bc1a5bd38fd8c504e7c109cf3c862423651d07772a"
+          },
+          "output_scale": 0.0002632929284348412,
+          "output_scale_hex": "0x1.1415284534700p-12",
+          "weight": {
+            "code_cap": 16.0,
+            "codes_sha256": "7ace04c2fc1dbae3138743227431f9309c72924df46d5a7fdea83973a3531580",
+            "max_abs": 0.026352260261774063,
+            "max_abs_reconstruction_error": 0.000823507085442543,
+            "mean_abs_reconstruction_error": 0.0002743579098023474,
+            "name": "W",
+            "saturated_elements": 0,
+            "scale": 0.001647016266360879,
+            "scale_hex": "0x1.afc1640000000p-10",
+            "shape": [
+              1440,
+              256
+            ],
+            "zero_elements": 25
+          }
+        },
+        "n_range": [
+          256,
+          512
+        ]
+      },
+      {
+        "dispatch_index": 2,
+        "measurements": {
+          "activation": {
+            "code_cap": 16.0,
+            "codes_sha256": "065cfabec2238c97fef124baafa0afc886a726dace2a541687d800b7ba7ad8f5",
+            "max_abs": 2.5577688217163086,
+            "max_abs_reconstruction_error": 0.0795203447341919,
+            "mean_abs_reconstruction_error": 0.012946036644279957,
+            "name": "A0",
+            "saturated_elements": 0,
+            "scale": 0.1598605513572693,
+            "scale_hex": "0x1.4764f80000000p-3",
+            "shape": [
+              50,
+              1440
+            ],
+            "zero_elements": 114
+          },
+          "bias": {
+            "equation": "BF16_RNE(B / output_scale)",
+            "max_abs_error_after_output_rescale": 6.512738764286041e-05,
+            "mean_abs_error_after_output_rescale": 1.8373235434410162e-05,
+            "quant_domain_max_abs": 99.5,
+            "quant_domain_words_sha256": "3be3a4a7e0e7d0b5faafc1ae9b64562c60543acc84d370f8878c9fe0711ae62d"
+          },
+          "output_scale": 0.00026329201653418205,
+          "output_scale_hex": "0x1.1414e99ae0f80p-12",
+          "weight": {
+            "code_cap": 16.0,
+            "codes_sha256": "43792224d068b70eaa59b4f371da0b2f1e80030f5b80c38051dac4077504985d",
+            "max_abs": 0.02635216899216175,
+            "max_abs_reconstruction_error": 0.000823494978249073,
+            "mean_abs_reconstruction_error": 0.0002750188286881894,
+            "name": "W",
+            "saturated_elements": 0,
+            "scale": 0.0016470105620101094,
+            "scale_hex": "0x1.afc1020000000p-10",
+            "shape": [
+              1440,
+              208
+            ],
+            "zero_elements": 17
+          }
+        },
+        "n_range": [
+          512,
+          720
+        ]
+      }
+    ],
+    "kind": "per_n_slice_independent_calibration"
+  },
+  "partition_id": "atlas_p0244",
+  "schema": "atlas_capture_partition_calibration_v1",
+  "source_tensors": {
+    "bias": {
+      "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
+      "name": "model.action_time_mlp_in.bias",
+      "raw_sha256": "585782951ba1fd5c0492ab95562ad0dd14c61ac961c0be2fd0b333aa33694fa9",
+      "shape": [
+        720
+      ]
+    },
+    "capture": "out/artifacts/recaptures/smolvla_fp32_consistent",
+    "input": {
+      "device_chain_sha256": "23457ea06c994031379dcfc4491e866b1f9e5558a2ad4c5ad5a310366145bcce",
+      "device_chain_shape": [
+        50,
+        1440
+      ],
+      "host_bridge": {
+        "capture_regions": [
+          "iota_38",
+          "compare_2",
+          "dtype_cast_242",
+          "mul_293",
+          "add_198",
+          "sub_33",
+          "dtype_cast_243",
+          "mul_294",
+          "sub_34",
+          "select_30",
+          "pow_65",
+          "mul_295",
+          "elementwise_2",
+          "mul_296",
+          "mul_297",
+          "mul_298",
+          "unsqueeze_198",
+          "unsqueeze_199",
+          "mul_299",
+          "sin_32",
+          "cos_32",
+          "cat_50",
+          "dtype_cast_244",
+          "unsqueeze_200",
+          "expand_147"
+        ],
+        "equation": "f32(concat(sin(theta), cos(theta))); theta=2*pi/(0.004*1000**exponent), timestep=1",
+        "raw_sha256": "464589f62018aeff339d40a7c82c62d631228dfdcd986a2b6dc85f73d9c1376f",
+        "schema": "smolvla_action_time_embedding_host_bridge_v1",
+        "shape": [
+          50,
+          720
+        ],
+        "source_dtype": "f64 transcendental intermediates, then f32 cast"
+      },
+      "kind": "qualified_partition_plus_explicit_host_preprocess",
+      "predecessor": {
+        "device_output": "capture_semantics_action_in_proj/device_output.bf16.bin",
+        "device_output_sha256": "3d59ee095dc78da88ba172f78414424c1072029d563ab8c00f52cf355a8884c1",
+        "output_scale": 3.202334710294963e-06,
+        "partition_id": "atlas_p0243",
+        "raw_gsim_receipt": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
+        "raw_gsim_receipt_sha256": "f31083fe924f5e18bd2703cfe81053b266bde2a1cf0b477b4e74b6345832bef7",
+        "result": "capture_semantics_action_in_proj/result.json",
+        "result_sha256": "7fbcfca53b38b1d1d08528c7bc82a10f154367d43226fbc57f874226aa00fb27"
+      },
+      "source_reference_sha256": "474016724109492edba4be03307a5e78598d796808849fd090b4c33e627d3e2a",
+      "source_reference_shape": [
+        50,
+        1440
+      ]
+    },
+    "weight": {
+      "header_sha256": "ad1c584111829296f9369eeeff3d14a66153904e830504d8f0befdaabc4f7f9d",
+      "name": "model.action_time_mlp_in.weight",
+      "raw_sha256": "e247a5576a5fb009278ab4a2b847c4bb68198b2b6ecec6515e301a8c561ee904",
+      "shape": [
+        720,
+        1440
+      ]
+    },
+    "weight_capture_bridge": "linalg.transpose permutation=[1,0]"
+  }
+}

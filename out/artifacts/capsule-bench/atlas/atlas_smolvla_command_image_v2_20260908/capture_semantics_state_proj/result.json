@@ -8,12 +8,13 @@
       "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
     }
   },
+  "candidate_outcome": "qualified",
   "capture_regions": [
     "matmul_97",
     "add_99"
   ],
   "capture_semantics_executable_partitions": 1,
-  "claim": "one real SmolVLA state_proj partition executed on elaborated RTL",
+  "claim": "one real SmolVLA state_proj partition qualified on elaborated RTL",
   "cycles": 154458,
   "device_output": {
     "dtype": "bf16",
@@ -71,9 +72,9 @@
   "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
   "scale_equation": {
     "activation": "qA = E4M3FN_RNE(A / sA)",
-    "bias": "qB = BF16_RNE(B / (sA * sW))",
-    "output": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
-    "weight": "qW = E4M3FN_RNE(W / sW)"
+    "bias": "qB_i = BF16_RNE(B[n0:n1] / (sA * sW_i))",
+    "output": "Y_f32[:,n0:n1] = f32(Y_bf16_device_i) * (sA * sW_i)",
+    "weight": "qW_i = E4M3FN_RNE(W[:,n0:n1] / sW_i)"
   },
   "schema": "atlas_real_capture_partition_qualification_v1",
   "source_f32_comparison": {

@@ -1,0 +1,106 @@
+{
+  "abi_version": "0.1",
+  "target": "atlas",
+  "backend": "atlas-xdsl",
+  "tensors": {
+    "W": {
+      "shape": [
+        1440,
+        208
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "weight",
+      "base": 2415919104
+    },
+    "A0": {
+      "shape": [
+        50,
+        1440
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "input",
+      "base": 2416218624
+    },
+    "B": {
+      "shape": [
+        208
+      ],
+      "dtype": "bf16",
+      "role": "bias",
+      "base": 2416290624
+    },
+    "Y0": {
+      "shape": [
+        50,
+        208
+      ],
+      "dtype": "bf16",
+      "role": "output",
+      "base": 2416291040
+    }
+  },
+  "commands": [
+    {
+      "opcode": "RES_PACK",
+      "operands": {
+        "src": "W",
+        "dst": "W_resident"
+      },
+      "attributes": {
+        "layout": "packed_rhs"
+      }
+    },
+    {
+      "opcode": "MATMUL_RESIDENT",
+      "operands": {
+        "lhs": "A0",
+        "rhs": "W_resident",
+        "dst": "acc0"
+      }
+    },
+    {
+      "opcode": "COMMIT",
+      "operands": {
+        "src": "acc0",
+        "dst": "Y0"
+      },
+      "attributes": {
+        "epilogue": [
+          "bias_add"
+        ],
+        "output_dtype": "bf16",
+        "bias": "B"
+      }
+    },
+    {
+      "opcode": "EVICT",
+      "operands": {
+        "handle": "W_resident"
+      }
+    }
+  ],
+  "kernel_abi": {
+    "kind": "whole_program",
+    "args": [
+      {
+        "tensor": "W",
+        "access": "read"
+      },
+      {
+        "tensor": "A0",
+        "access": "read"
+      },
+      {
+        "tensor": "B",
+        "access": "read"
+      },
+      {
+        "tensor": "Y0",
+        "access": "write"
+      }
+    ],
+    "outputs": [
+      "Y0"
+    ]
+  }
+}

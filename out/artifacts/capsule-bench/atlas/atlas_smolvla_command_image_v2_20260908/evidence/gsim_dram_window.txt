@@ -1,0 +1,27 @@
+Atlas GSIM DRAM-window integration evidence
+===========================================
+
+Source inspected: adopted GSIM artifact generator `write_artifact.py`
+Source SHA-256: 0710a86641033818162d8ed64d2b5b94d01c9564a6486fca3e684b14fbbcf454
+Adoption record SHA-256: 63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3
+
+The generator's `Q5_correctness_caps.dram_window_wrap` records that the
+harness DRAM slave maps bytes with `address & ((1 << 20) - 1)`. It explicitly
+warns that layer-scale tensors exceeding the 1 MiB window alias and can be
+silently dropped unless the caller detects collisions.
+
+Observed full p0244 command-buffer allocation:
+
+  W  : 1,036,800 bytes (1440x720 fp8)
+  A0 :    72,000 bytes (50x1440 fp8)
+  B  :     1,440 bytes (720 bf16)
+  Y0 :    72,000 bytes (50x720 bf16)
+  contiguous aligned span: 1,182,240 bytes
+  harness capacity:        1,048,576 bytes
+  overage:                   133,664 bytes
+
+`capture_bridge.validate_gsim_dram_window` now mirrors that integration limit
+and rejects the unsliced image before execution. The qualified implementation
+uses three independently checked N slices [0,256), [256,512), and [512,720).
+This evidence records an integration constraint; it does not claim that Atlas
+RTL itself has a 1 MiB architectural DRAM limit.

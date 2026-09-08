@@ -1,0 +1,397 @@
+{
+  "abi": {
+    "inputs": [
+      {
+        "capture_bytes": 288000,
+        "capture_type": "tensor<50x1440xf32>",
+        "device_bytes": 72000,
+        "device_dtype": "fp8_e4m3",
+        "name": "A0",
+        "origin": {
+          "bridges": [
+            {
+              "op": "tensor.expand_shape",
+              "region_id": "view_789"
+            },
+            {
+              "op": "tensor.collapse_shape",
+              "region_id": "view_789"
+            }
+          ],
+          "kind": "host_region",
+          "region_id": "cat_51",
+          "semantic": "cat"
+        }
+      },
+      {
+        "capture_bytes": 4147200,
+        "capture_type": "tensor<1440x720xf32>",
+        "device_bytes": 1036800,
+        "device_dtype": "fp8_e4m3",
+        "name": "W",
+        "origin": {
+          "argument_index": 496,
+          "bridges": [
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            }
+          ],
+          "kind": "function_argument"
+        }
+      },
+      {
+        "capture_bytes": 2880,
+        "capture_type": "tensor<720xf32>",
+        "device_bytes": 1440,
+        "device_dtype": "bf16",
+        "name": "B",
+        "origin": {
+          "argument_index": 497,
+          "bridges": [],
+          "kind": "function_argument"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "capture_bytes": 144000,
+        "capture_type": "tensor<50x720xf32>",
+        "consumers": [
+          {
+            "op": "tensor.collapse_shape",
+            "op_index": 8368,
+            "region_id": "view_790",
+            "semantic": "view"
+          }
+        ],
+        "device_bytes": 72000,
+        "device_dtype": "bf16",
+        "frontier_consumers": [
+          {
+            "kind": "host_region",
+            "op": "linalg.generic",
+            "op_index": 8373,
+            "region_id": "mul_300",
+            "semantic": "mul"
+          },
+          {
+            "kind": "host_region",
+            "op": "linalg.generic",
+            "op_index": 8371,
+            "region_id": "sigmoid_16",
+            "semantic": "sigmoid"
+          }
+        ],
+        "name": "Y0"
+      }
+    ]
+  },
+  "calibration_contract": "calibration_contract.json",
+  "capture_regions": [
+    "matmul_243",
+    "add_199"
+  ],
+  "claim": "host/device skeleton for one partition; no whole-model dispatch claim",
+  "device_dispatch_policy": "contiguous N slices; each dispatch repeats A, binds W[:,n0:n1]/B[n0:n1], and publishes Y[:,n0:n1] before concatenation",
+  "device_dispatches": [
+    {
+      "cycles": 5349687,
+      "device_output": {
+        "dtype": "bf16",
+        "path": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/device_output.bf16.bin",
+        "raw_sha256": "67144b3ad610061e516d2522abead09509bd5c5f490ffb7dd95dd1ef398ea896",
+        "shape": [
+          50,
+          256
+        ]
+      },
+      "dispatch_index": 0,
+      "dram_preflight": {
+        "address_mapping": "physical_byte_index = device_address & (capacity_bytes - 1)",
+        "alias_free": true,
+        "allocated_span_bytes": 466752,
+        "allocation_count": 4,
+        "allocations": [
+          {
+            "base": 2416287744,
+            "bytes": 72000,
+            "end": 2416359744,
+            "name": "A0"
+          },
+          {
+            "base": 2416359744,
+            "bytes": 512,
+            "end": 2416360256,
+            "name": "B"
+          },
+          {
+            "base": 2415919104,
+            "bytes": 368640,
+            "end": 2416287744,
+            "name": "W"
+          },
+          {
+            "base": 2416360256,
+            "bytes": 25600,
+            "end": 2416385856,
+            "name": "Y0"
+          }
+        ],
+        "capacity_bytes": 1048576,
+        "headroom_bytes": 581824,
+        "schema": "atlas_gsim_dram_window_preflight_v1"
+      },
+      "engine": {
+        "derived_from_rtl": true,
+        "engine": "gsim",
+        "fidelity": "elaborated_rtl",
+        "kind": "atlas-gsim-rtl",
+        "provenance": {
+          "adoption_record": {
+            "name": "provenance.json",
+            "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+          },
+          "binaries": {
+            "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+            "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+            "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+          },
+          "engine": "gsim",
+          "wrapper": "gsim_run.py"
+        }
+      },
+      "image": {
+        "command_buffer": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/gsim_run/command_buffer.json",
+        "command_buffer_sha256_without_preloads": "9a4a1925ae9627a4d51947b8b190072fe2ecd6ee28093b6379f8646deb129ee1",
+        "command_count": 4,
+        "geometry": {
+          "K": 1440,
+          "M": 50,
+          "N": 256
+        },
+        "instruction_words": 13771,
+        "interface": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/gsim_run/interface.mlir",
+        "interface_sha256": "250f6aa0d1cfcdadf97a3a3952ec300064693632349d0d37ce2bd84d36e236fa",
+        "kernel": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/gsim_run/kernel.S",
+        "kernel_uncompressed_sha256": "c71b755f2b64c7290db38a914610c07e2b8b0ed5961a982052d8ed21a54224bb",
+        "kind": "compiler_generated_n_slice"
+      },
+      "n_range": [
+        0,
+        256
+      ],
+      "raw_gsim_receipt": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/raw_gsim_receipt.json"
+    },
+    {
+      "cycles": 5349687,
+      "device_output": {
+        "dtype": "bf16",
+        "path": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/device_output.bf16.bin",
+        "raw_sha256": "e9d823b76b6e139a80d6ad4b768bdcfca6248c65fe3e946f8f9b25b393b13de3",
+        "shape": [
+          50,
+          256
+        ]
+      },
+      "dispatch_index": 1,
+      "dram_preflight": {
+        "address_mapping": "physical_byte_index = device_address & (capacity_bytes - 1)",
+        "alias_free": true,
+        "allocated_span_bytes": 466752,
+        "allocation_count": 4,
+        "allocations": [
+          {
+            "base": 2416287744,
+            "bytes": 72000,
+            "end": 2416359744,
+            "name": "A0"
+          },
+          {
+            "base": 2416359744,
+            "bytes": 512,
+            "end": 2416360256,
+            "name": "B"
+          },
+          {
+            "base": 2415919104,
+            "bytes": 368640,
+            "end": 2416287744,
+            "name": "W"
+          },
+          {
+            "base": 2416360256,
+            "bytes": 25600,
+            "end": 2416385856,
+            "name": "Y0"
+          }
+        ],
+        "capacity_bytes": 1048576,
+        "headroom_bytes": 581824,
+        "schema": "atlas_gsim_dram_window_preflight_v1"
+      },
+      "engine": {
+        "derived_from_rtl": true,
+        "engine": "gsim",
+        "fidelity": "elaborated_rtl",
+        "kind": "atlas-gsim-rtl",
+        "provenance": {
+          "adoption_record": {
+            "name": "provenance.json",
+            "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+          },
+          "binaries": {
+            "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+            "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+            "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+          },
+          "engine": "gsim",
+          "wrapper": "gsim_run.py"
+        }
+      },
+      "image": {
+        "command_buffer": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/gsim_run/command_buffer.json",
+        "command_buffer_sha256_without_preloads": "9a4a1925ae9627a4d51947b8b190072fe2ecd6ee28093b6379f8646deb129ee1",
+        "command_count": 4,
+        "geometry": {
+          "K": 1440,
+          "M": 50,
+          "N": 256
+        },
+        "instruction_words": 13771,
+        "interface": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/gsim_run/interface.mlir",
+        "interface_sha256": "250f6aa0d1cfcdadf97a3a3952ec300064693632349d0d37ce2bd84d36e236fa",
+        "kernel": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/gsim_run/kernel.S",
+        "kernel_uncompressed_sha256": "c71b755f2b64c7290db38a914610c07e2b8b0ed5961a982052d8ed21a54224bb",
+        "kind": "compiler_generated_n_slice"
+      },
+      "n_range": [
+        256,
+        512
+      ],
+      "raw_gsim_receipt": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/raw_gsim_receipt.json"
+    },
+    {
+      "cycles": 4512171,
+      "device_output": {
+        "dtype": "bf16",
+        "path": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/device_output.bf16.bin",
+        "raw_sha256": "bf4368c572e132ddef28bd6c62c362a7f744430f96742e5c7cd64001be5a1abf",
+        "shape": [
+          50,
+          208
+        ]
+      },
+      "dispatch_index": 2,
+      "dram_preflight": {
+        "address_mapping": "physical_byte_index = device_address & (capacity_bytes - 1)",
+        "alias_free": true,
+        "allocated_span_bytes": 392736,
+        "allocation_count": 4,
+        "allocations": [
+          {
+            "base": 2416218624,
+            "bytes": 72000,
+            "end": 2416290624,
+            "name": "A0"
+          },
+          {
+            "base": 2416290624,
+            "bytes": 416,
+            "end": 2416291040,
+            "name": "B"
+          },
+          {
+            "base": 2415919104,
+            "bytes": 299520,
+            "end": 2416218624,
+            "name": "W"
+          },
+          {
+            "base": 2416291040,
+            "bytes": 20800,
+            "end": 2416311840,
+            "name": "Y0"
+          }
+        ],
+        "capacity_bytes": 1048576,
+        "headroom_bytes": 655840,
+        "schema": "atlas_gsim_dram_window_preflight_v1"
+      },
+      "engine": {
+        "derived_from_rtl": true,
+        "engine": "gsim",
+        "fidelity": "elaborated_rtl",
+        "kind": "atlas-gsim-rtl",
+        "provenance": {
+          "adoption_record": {
+            "name": "provenance.json",
+            "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+          },
+          "binaries": {
+            "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+            "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+            "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+          },
+          "engine": "gsim",
+          "wrapper": "gsim_run.py"
+        }
+      },
+      "image": {
+        "command_buffer": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/gsim_run/command_buffer.json",
+        "command_buffer_sha256_without_preloads": "2c949e2c0fcb3376d490f451037051c3abc968bf4b919a7e27802a403162732d",
+        "command_count": 4,
+        "geometry": {
+          "K": 1440,
+          "M": 50,
+          "N": 208
+        },
+        "instruction_words": 23175,
+        "interface": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/gsim_run/interface.mlir",
+        "interface_sha256": "32a2caeca727456fe5daac4fc864936a557c8449b147a1935d901444d8b3e4f5",
+        "kernel": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/gsim_run/kernel.S",
+        "kernel_uncompressed_sha256": "ffd8a7e0e1316f9ac0a28d6d55d132236e716f34109bc68ce7aa8f07375057ae",
+        "kind": "compiler_generated_n_slice"
+      },
+      "n_range": [
+        512,
+        720
+      ],
+      "raw_gsim_receipt": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/raw_gsim_receipt.json"
+    }
+  ],
+  "events": [
+    {
+      "capture_op_index": 8365,
+      "phase": "bind_capture_inputs"
+    },
+    {
+      "capture_op_index": 8365,
+      "phase": "quantize_A0_W_and_fold_B"
+    },
+    {
+      "capture_op_index": 8365,
+      "phase": "launch_device_image"
+    },
+    {
+      "capture_op_index": 8367,
+      "phase": "dequantize_and_publish_Y0"
+    },
+    {
+      "capture_op_index": 8373,
+      "phase": "release_Y0_after_frontier"
+    }
+  ],
+  "fqn": "model.action_time_mlp_in",
+  "kernel_id": "matmul_50_1440_720_bias",
+  "lifetime": {
+    "definition_op_index": 8367,
+    "last_frontier_use_op_index": 8373
+  },
+  "partition_id": "atlas_p0244",
+  "qualified_capture_semantics": true,
+  "schema": "atlas_single_partition_dispatch_v1"
+}

@@ -17,6 +17,7 @@ sys.path.insert(0, str(REPO / "merlin/python"))
 sys.path.insert(0, str(ROOT / "submission"))
 
 from mlir_oot.capture_bridge import (  # noqa: E402
+    ATLAS_GSIM_DRAM_BYTES,
     FP8_MAX_FINITE,
     bridge_inputs,
     build_dispatch_manifest,
@@ -26,9 +27,14 @@ from mlir_oot.capture_bridge import (  # noqa: E402
     passes_tolerance,
     read_f32_safetensor,
     sha256_bytes,
+    validate_gsim_dram_window,
     validate_partition_abi,
 )
-from run_capture_partition import PARTITIONS, _load_capture_values  # noqa: E402
+from run_capture_partition import (  # noqa: E402
+    PARTITIONS,
+    _load_capture_values,
+    _tiled_interface,
+)
 
 
 def load(path: Path) -> dict:
@@ -59,6 +65,16 @@ def test_calibration_scale_equations_and_rounding_are_explicit_and_deterministic
     assert first["record"] == second["record"]
     assert first["codes"].tobytes() == second["codes"].tobytes()
     assert np.array_equal(first["decoded"], second["decoded"])
+    headroom = calibrate_e4m3("A0", values, code_cap=16.0)
+    assert headroom["scale"] == 2.0 / 16.0
+    assert headroom["record"]["code_cap"] == 16.0
+    for invalid_cap in (0.0, FP8_MAX_FINITE + 1.0, math.nan):
+        try:
+            calibrate_e4m3("A0", values, code_cap=invalid_cap)
+        except ValueError as error:
+            assert "code cap" in str(error)
+        else:
+            raise AssertionError(f"invalid calibration cap {invalid_cap} was accepted")
 
     bias = np.asarray([0.125, -0.25, 1.0], dtype=np.float32)
     words, decoded = f32_to_bf16_rne(bias)
@@ -84,6 +100,48 @@ def test_bias_is_folded_in_quant_domain_and_output_scale_is_restored() -> None:
     assert len(bridged["preloads"]["A0"]) == 2
     assert len(bridged["preloads"]["W"]) == 4
     assert len(bridged["preloads"]["B"]) == 4
+
+
+def test_gsim_dram_window_rejects_full_p0244_and_accepts_declared_n_tiles() -> None:
+    command_root = ROOT / "whole_capture_plan/command_buffers"
+    full = load(command_root / "matmul_50_1440_720_bias.json")
+    try:
+        validate_gsim_dram_window(full)
+    except ValueError as error:
+        assert str(error) == (
+            "Atlas GSIM DRAM allocation span exceeds its alias-free window: "
+            "1182240 > 1048576 bytes (over by 133664)"
+        )
+    else:
+        raise AssertionError("oversized p0244 command image was accepted")
+
+    assert PARTITIONS["action_time_mlp_in"]["n_tiles"] == [256, 256, 208]
+    for width in PARTITIONS["action_time_mlp_in"]["n_tiles"]:
+        # These are the exact contiguous allocation sizes emitted by cmdbuf.py;
+        # alignment can add at most 31 bytes between four tensors.
+        allocated = 1440 * width + 50 * 1440 + 2 * width + 2 * 50 * width
+        assert allocated + 3 * 31 < ATLAS_GSIM_DRAM_BYTES
+        source = _tiled_interface(50, 1440, width)
+        assert f"tensor<1440x{width}xf8E4M3FN>" in source
+        assert f"tensor<50x{width}xbf16>" in source
+
+
+def test_gsim_dram_window_rejects_masked_overlap_even_below_total_bytes() -> None:
+    cb = {
+        "tensors": {
+            "A0": {"base": 0x90000000, "shape": [16], "dtype": "i8"},
+            "Y0": {
+                "base": 0x90000000 + ATLAS_GSIM_DRAM_BYTES,
+                "shape": [16], "dtype": "i8",
+            },
+        }
+    }
+    try:
+        validate_gsim_dram_window(cb)
+    except ValueError as error:
+        assert "allocation span exceeds" in str(error)
+    else:
+        raise AssertionError("masked address alias was accepted")
 
 
 def test_dispatch_manifest_comes_from_planned_dependency_and_lifetime_abi() -> None:
@@ -237,9 +295,10 @@ def test_action_in_projection_binds_real_noise_and_independently_passes() -> Non
     partition = partition_by_id("atlas_p0243")
     capture = REPO / "out/artifacts/recaptures/smolvla_fp32_consistent"
 
-    activation, weight, bias, source = _load_capture_values(
+    activation, weight, bias, source, reference_activation = _load_capture_values(
         partition, capture, PARTITIONS["action_in_proj"]
     )
+    assert np.array_equal(reference_activation, activation)
     assert activation.shape == (50, 32)
     assert source["input"]["source_shape"] == [1, 50, 32]
     assert source["input"]["bridges"] == [
@@ -325,3 +384,96 @@ def test_action_in_projection_binds_real_noise_and_independently_passes() -> Non
         assert "activation view bridge changed" in str(error)
     else:
         raise AssertionError("missing activation view bridge was accepted")
+
+
+def test_action_time_mlp_in_three_dispatches_independently_reconstruct_full_result() -> None:
+    out = ROOT / "capture_semantics_action_time_mlp_in"
+    result = load(out / "result.json")
+    unsliced = load(ROOT / "capture_semantics_action_time_mlp_in_diagnostic/result.json")
+    calibration = load(out / "calibration.json")
+    dispatch = load(out / "dispatch_manifest.json")
+    contract = load(ROOT / "calibration_contract.json")
+    partition = partition_by_id("atlas_p0244")
+    capture = REPO / "out/artifacts/recaptures/smolvla_fp32_consistent"
+    activation, weight, bias, source, reference_activation = _load_capture_values(
+        partition, capture, PARTITIONS["action_time_mlp_in"]
+    )
+    assert source["input"]["kind"] == "qualified_partition_plus_explicit_host_preprocess"
+    assert unsliced["candidate_outcome"] == "invalid_harness_dram_alias"
+    assert unsliced["invalidity"]["overage_bytes"] == 133664
+    assert unsliced["capture_semantics_executable_partitions"] == 2
+    assert source["input"]["predecessor"]["partition_id"] == "atlas_p0243"
+    assert source["input"]["host_bridge"]["shape"] == [50, 720]
+    assert activation.shape == reference_activation.shape == (50, 1440)
+
+    actual_tiles = []
+    quantized_tiles = []
+    word_tiles = []
+    expected_ranges = [[0, 256], [256, 512], [512, 720]]
+    assert [item["n_range"] for item in dispatch["device_dispatches"]] == expected_ranges
+    assert len(result["raw_gsim_receipts"]) == 3
+    assert calibration["measurements"]["kind"] == "per_n_slice_independent_calibration"
+    for device_record, calibration_record, receipt_name in zip(
+        dispatch["device_dispatches"],
+        calibration["measurements"]["dispatches"],
+        result["raw_gsim_receipts"],
+    ):
+        n0, n1 = device_record["n_range"]
+        assert calibration_record["n_range"] == [n0, n1]
+        bridged = bridge_inputs(
+            activation,
+            np.ascontiguousarray(weight[:, n0:n1]),
+            np.ascontiguousarray(bias[n0:n1]),
+            {"M": 50, "K": 1440, "N": n1 - n0},
+            code_cap=16.0,
+        )
+        assert calibration_record["measurements"] == bridged["record"]
+        receipt = load(ROOT / receipt_name)
+        assert receipt_name == device_record["raw_gsim_receipt"]
+        assert receipt["assertion_clean"] is True
+        assert receipt["stderr_observation"] == "empty"
+        assert (ROOT / receipt["stderr"]).read_bytes() == b""
+        raw_spec = load(ROOT / receipt["spec"])
+        assert "golden" not in raw_spec and "expected" not in raw_spec
+        raw_page = json.loads((ROOT / receipt["stdout"]).read_text().strip().splitlines()[-1])
+        raw = bytes.fromhex(raw_page["outputs"][0])
+        assert sha256_bytes(raw) == receipt["raw_output_sha256"]
+        assert raw == (ROOT / device_record["device_output"]["path"]).read_bytes()
+        dram = validate_gsim_dram_window(load(ROOT / device_record["image"]["command_buffer"]))
+        assert dram == device_record["dram_preflight"]
+        assert dram["alias_free"] is True
+        words = np.frombuffer(raw, dtype="<u2").reshape(50, n1 - n0)
+        device = (words.astype(np.uint32) << 16).view(np.float32)
+        scale = np.float32(bridged["record"]["output_scale"])
+        actual_tiles.append(device * scale)
+        quantized_tiles.append((
+            np.matmul(bridged["decoded"]["A0"], bridged["decoded"]["W"], dtype=np.float32)
+            + bridged["decoded"]["B_quant_domain"]
+        ) * scale)
+        word_tiles.append(words)
+
+    actual = np.concatenate(actual_tiles, axis=1)
+    quantized_reference = np.concatenate(quantized_tiles, axis=1)
+    source_reference = np.matmul(reference_activation, weight, dtype=np.float32) + bias
+    combined_words = np.concatenate(word_tiles, axis=1).astype("<u2", copy=False)
+    combined_raw = (ROOT / result["device_output"]["path"]).read_bytes()
+    assert combined_raw == combined_words.tobytes()
+    assert sha256_bytes(combined_raw) == result["device_output"]["raw_sha256"]
+    floor = float(contract["tolerance"]["max_relative_denominator_floor"])
+    source_metrics = comparison(actual, source_reference, floor)
+    quantized_metrics = comparison(actual, quantized_reference, floor)
+    assert result["source_f32_comparison"] == source_metrics
+    assert result["quantized_domain_reference_comparison"] == quantized_metrics
+    assert result["partition_id"] == "atlas_p0244"
+    assert result["capture_semantics_executable_partitions"] == 3
+    assert result["image"]["dispatch_count"] == 3
+    assert result["cycles"] == sum(item["cycles"] for item in dispatch["device_dispatches"])
+    assert passes_tolerance(source_metrics, contract["tolerance"])
+    assert source_metrics["max_abs_error"] < 0.067
+    assert source_metrics["cosine_similarity"] > 0.999
+
+    perturbed = actual.copy()
+    perturbed[0, 0] += np.float32(1.0)
+    assert not passes_tolerance(
+        comparison(perturbed, source_reference, floor), contract["tolerance"]
+    )
