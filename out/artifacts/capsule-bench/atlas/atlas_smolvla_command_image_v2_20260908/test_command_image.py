@@ -44,6 +44,7 @@ def test_saved_elaborated_rtl_results_are_exact() -> None:
         "independent": (2359, 6010),
         "chained": (1882, 7314),
         "smolvla_tail_50_720_32": (12605, 300068),
+        "smolvla_state_proj_1_32_960": (1509, 154458),
     }
     for case, (words, cycles) in expected.items():
         result = _load(f"cases/{case}/gsim_result.json")

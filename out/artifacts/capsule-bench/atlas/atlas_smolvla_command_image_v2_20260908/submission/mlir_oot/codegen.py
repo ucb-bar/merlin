@@ -375,18 +375,33 @@ def _emit_fp8_matmul(p, workload, cb, matmul, commit):
     if lhs["dtype"] != "fp8_e4m3" or rhs["dtype"] != "fp8_e4m3":
         return False
     out = cb["tensors"][commit["dst"]]
+    epilogue = commit.get("attrs", {}).get("epilogue", [])
+    if any(kind not in {"acc_scale", "bias_add", "relu"}
+           for kind in epilogue):
+        return False
+    bias = None
+    if "bias_add" in epilogue:
+        bias = cb["tensors"][commit["attrs"]["bias"]]
+        if bias["dtype"] != "bf16" or bias["shape"][-1] != rhs["shape"][-1]:
+            return False
     m, k, n = lhs["shape"][-2], lhs["shape"][-1], rhs["shape"][-1]
     if (((m + 31) // 32) * ((k + 31) // 32) * ((n + 31) // 32) >= 16
             and n >= 32):
+        # The compact loop currently has a dynamic BF16 bias epilogue.  Scale
+        # and activation need their own dynamic operands/order; silently
+        # dropping either would produce a valid-looking but wrong image.
+        if any(kind != "bias_add" for kind in epilogue):
+            return False
         full_rows = m // 32
         full_cols = n // 32
         if full_rows:
             _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
-                                          0, full_rows, 32, 0, full_cols, 32)
+                                          0, full_rows, 32, 0, full_cols, 32,
+                                          bias=bias)
         if m % 32:
             _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
                                           full_rows * 32, 1, m % 32,
-                                          0, full_cols, 32)
+                                          0, full_cols, 32, bias=bias)
         if n % 32 == 0:
             return True
         # A distinct runtime region handles the final partial column tile.  Its
@@ -397,11 +412,11 @@ def _emit_fp8_matmul(p, workload, cb, matmul, commit):
         if full_rows:
             _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
                                           0, full_rows, 32,
-                                          full_n, 1, tail_cols)
+                                          full_n, 1, tail_cols, bias=bias)
         if m % 32:
             _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
                                           full_rows * 32, 1, m % 32,
-                                          full_n, 1, tail_cols)
+                                          full_n, 1, tail_cols, bias=bias)
         return True
     else:
         tiles = TileScheduler.choose(m, k, n)
@@ -415,12 +430,16 @@ def _emit_fp8_matmul(p, workload, cb, matmul, commit):
         p.emit(e.vload(0, 6), e.delay(33), e.matmul(0, 0, 0, tile.k0 != 0), e.delay(96))
         if tile.k1 == k:
             p.emit(e.pop_bf16(2, 0), e.delay(31))
-            if "acc_scale" in commit.get("attrs", {}).get("epilogue", []):
+            if "acc_scale" in epilogue:
                 p.li(6, 1536)
                 p.emit(e.vload(6, 6), e.delay(33))
                 p.li(6, 1536)
                 p.emit(e.vload(7, 6), e.delay(33), e.vmul(2, 2, 6), e.delay(66))
-            if "relu" in commit.get("attrs", {}).get("epilogue", []):
+            if bias is not None:
+                _stage_bf16_vector_broadcast(
+                    p, bias, tile.n0, rows, cols, 1536, 6)
+                p.emit(e.vadd(2, 2, 6), e.delay(66))
+            if "relu" in epilogue:
                 p.emit(e.vrelu(2, 2), e.delay(66))
             if (commit.get("attrs", {}).get("compact_store")
                     and tile.n0 == 0 and cols == n):
@@ -494,7 +513,8 @@ def _init_dynamic_address(p, dst_reg, spec, offset):
 
 
 def _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
-                                  m_start, m_tiles, rows, n_start, n_tiles, cols):
+                                  m_start, m_tiles, rows, n_start, n_tiles, cols,
+                                  bias=None):
     """Emit compact runtime M/N/K loops around the certified 32-wide tile body."""
     tag = "loop_" + str(len(p.words))
     p.li(20, m_tiles)
@@ -504,6 +524,8 @@ def _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
     p.li(21, n_tiles)
     _init_dynamic_address(p, 27, rhs, n_start)
     p.emit(e.addi(28, 26, 0), e.delay(4))
+    if bias is not None:
+        _init_dynamic_address(p, 29, bias, n_start * 2)
     p.label(tag + "_n")
     # Every body execution decrements the counter, including the separately
     # emitted first tile.  Seed it with the total tile count so the final
@@ -537,8 +559,32 @@ def _emit_fp8_matmul_loop_region(p, lhs, rhs, out, m, k, n,
     if tail_k:
         k_body(tail_k, full_k_tiles != 0, False)
     p.emit(e.pop_bf16(2, 0, mxu=1), e.delay(31))
+    if bias is not None:
+        # Stage the current dynamic N slice in the same explicit row layout as
+        # the MXU result.  VREDSUM is a column reduction, but it does not retain
+        # the logical lane ordering of a raw row load on the shipped RTL; using
+        # it as a broadcast permutes the bias.  Materializing rows is larger
+        # but exact, and occurs once in the compact runtime loop body.
+        for local in (1536, 1792):
+            p.li(6, local)
+            p.emit(e.vstore(63, 6), e.delay(40))
+        _dma_load_striped_reg(p, 4096, 29, ((cols * 2 + 31) // 32) * 32)
+        for row in range(rows):
+            _copy_vmem_halfwords(
+                p, 4096 * 4, 1536 * 4 + row * 32, min(cols, 16))
+            if cols > 16:
+                _copy_vmem_halfwords(
+                    p, 4096 * 4 + 32, 1792 * 4 + row * 32, cols - 16)
+        p.li(6, 1536)
+        p.emit(e.vload(6, 6), e.delay(33))
+        p.li(6, 1792)
+        p.emit(e.vload(7, 6), e.delay(33),
+               e.vadd(2, 2, 6), e.delay(66))
     _dynamic_store_bf16(p, 28, n, rows, cols)
-    p.emit(e.addi(27, 27, 32), e.addi(28, 28, 64), e.addi(21, 21, -1), e.delay(4))
+    p.emit(e.addi(27, 27, 32), e.addi(28, 28, 64))
+    if bias is not None:
+        p.emit(e.addi(29, 29, 64))
+    p.emit(e.addi(21, 21, -1), e.delay(4))
     _loop_back(p, 21, tag + "_n", tag + "_n_exit")
     p.li(24, 32 * k)
     p.emit(e.add(25, 25, 24))
@@ -624,21 +670,27 @@ def _stage_bf16_pair(p, spec, m0, n0, rows, cols, local_low, reg_low,
 
 
 def _stage_bf16_vector_broadcast(p, spec, n0, rows, cols, local_low, reg_low):
-    """Stage one BF16 vector and broadcast row zero with column reduction."""
+    """Stage one BF16 vector in every logical row without lane permutation."""
     low_cols, high_cols = min(cols, 16), max(0, cols - 16)
     for local in (local_low, local_low + 256):
         p.li(6, local)
         p.emit(e.vstore(63, 6), e.delay(40))
-    if low_cols:
-        _gather_bf16(p, spec["base"] + n0 * 2, low_cols, local_low * 4)
-    if high_cols:
-        _gather_bf16(p, spec["base"] + (n0 + 16) * 2, high_cols,
-                     (local_low + 256) * 4)
+    # A column reduction over a raw row load is tempting as a broadcast, but
+    # the shipped RTL's reduction result has a different lane order.  Fetch
+    # the vector once and materialize the exact two-register row layout.
+    _gather_bf16(p, spec["base"] + n0 * 2, cols, 4096 * 4)
+    for row in range(rows):
+        if low_cols:
+            _copy_vmem_halfwords(
+                p, 4096 * 4, local_low * 4 + row * 32, low_cols)
+        if high_cols:
+            _copy_vmem_halfwords(
+                p, 4096 * 4 + 32,
+                (local_low + 256) * 4 + row * 32, high_cols)
     p.li(6, local_low)
     p.emit(e.vload(reg_low, 6), e.delay(33))
     p.li(6, local_low + 256)
-    p.emit(e.vload(reg_low + 1, 6), e.delay(33),
-           e.vredsum(reg_low, reg_low), e.delay(130))
+    p.emit(e.vload(reg_low + 1, 6), e.delay(33))
 
 
 def _store_bf16_pair(p, spec, m0, n0, rows, cols, reg_low, local_low=1024):
@@ -1628,36 +1680,52 @@ def emit_program(workload):
         p.emit(e.vstore(63, 6), e.delay(40), e.vli_all(63, 0), e.delay(65))
     produced = False
     for index, item in enumerate(workload.ops):
+        item_produced = None
         if item["op"] == "matmul":
             commit = next((x for x in workload.ops[index+1:] if x["op"] == "commit" and x["src"] == item["dst"]), None)
             if commit:
-                produced |= _emit_fp8_matmul(p, workload, cb, item, commit)
-                produced |= _emit_bf16_matmul(p, workload, cb, item, commit)
+                item_produced = (_emit_fp8_matmul(p, workload, cb, item, commit)
+                                 or _emit_bf16_matmul(p, workload, cb, item, commit))
         elif item["op"] == "movement":
-            produced |= _emit_fp8_movement(p, workload, cb, item)
-            produced |= _emit_bf16_movement_f32(p, cb, item)
+            item_produced = (_emit_fp8_movement(p, workload, cb, item)
+                             or _emit_bf16_movement_f32(p, cb, item))
         elif item["op"] == "attention_qk":
-            produced |= _emit_attention_qk(p, workload, cb, item)
+            item_produced = _emit_attention_qk(p, workload, cb, item)
         elif item["op"] in ("add", "bias_add", "gelu", "silu", "softmax", "reduce_sum"):
             if item["op"] == "bias_add":
-                produced |= _emit_fp8_bias_add(p, cb, item)
-            produced |= _emit_bf16_vector(p, workload, cb, item)
+                item_produced = _emit_fp8_bias_add(p, cb, item)
+            else:
+                item_produced = False
+            item_produced = item_produced or _emit_bf16_vector(p, workload, cb, item)
         elif item["op"] == "rmsnorm":
-            produced |= _emit_rmsnorm(p, cb, item)
+            item_produced = _emit_rmsnorm(p, cb, item)
         elif item["op"] == "layernorm":
-            produced |= _emit_layernorm(p, cb, item)
+            item_produced = _emit_layernorm(p, cb, item)
         elif item["op"] == "rope":
-            produced |= _emit_rope(p, cb, item)
+            item_produced = _emit_rope(p, cb, item)
         elif item["op"] in ("fused_matmul_bias", "k_chain"):
-            produced |= _emit_composed_matmuls(p, workload, cb, item)
+            item_produced = _emit_composed_matmuls(p, workload, cb, item)
         elif item["op"] == "geglu":
-            produced |= _emit_geglu(p, workload, cb, item)
+            item_produced = _emit_geglu(p, workload, cb, item)
         elif item["op"] == "attention_full":
-            produced |= _emit_attention_full(p, workload, cb, item)
+            item_produced = _emit_attention_full(p, workload, cb, item)
         elif item["op"] == "depthwise_conv2d":
-            produced |= _emit_depthwise_conv2d(p, cb, item)
+            item_produced = _emit_depthwise_conv2d(p, cb, item)
         elif item["op"] in ("gemv_batched", "matmul_batched"):
-            produced |= _emit_batched_matmul(p, workload, cb, item)
+            item_produced = _emit_batched_matmul(p, workload, cb, item)
+        # Tensor-residency and commit records are metadata consumed by the
+        # semantic emitter.  Every other operation must emit its own body;
+        # otherwise an ECALL-only or partially omitted image looks successful.
+        elif item["op"] not in ("res_pack", "commit", "evict"):
+            item_produced = False
+        if item_produced is False:
+            raise ValueError(
+                f"unsupported Atlas emission for {item['op']} at workload op {index}"
+            )
+        if item_produced:
+            produced = True
+    if not produced:
+        raise ValueError("workload contains no Atlas-emittable semantic operation")
     p.emit(e.ecall())
     p.resolve()
     lines = [".text", ".globl atlas_kernel", ".type atlas_kernel,@function", "atlas_kernel:"]

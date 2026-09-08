@@ -91,6 +91,27 @@ def fixture(case: str, cb: dict) -> tuple[list[dict], dict[str, np.ndarray]]:
             "values": [1.0],
         } for row in range(50)]
         return inputs, {"Y0": np.asarray(w[:50], dtype=np.float32)}
+    if case == "smolvla_state_proj_1_32_960":
+        # Exact model.state_proj shape (capture regions matmul_97/add_99).  A
+        # one-hot activation selects one full 960-column weight row, while a
+        # small exactly representable BF16 bias exercises the fused epilogue.
+        w = weight(32, 960, 1)
+        a0 = [[1.0] + [0.0] * 31]
+        bias = [[float((column % 3) - 1) for column in range(960)]]
+        inputs = [
+            {"name": "W", "base": tensors["W"]["base"],
+             # Only row zero is nonzero/observable for the one-hot A0.  The
+             # RTL DRAM starts at zero, so this keeps the legacy helper argv
+             # bounded while the emitted kernel still executes K=32.
+             "dtype": "fp8_e4m3", "values": w[:1]},
+            {"name": "A0", "base": tensors["A0"]["base"],
+             "dtype": "fp8_e4m3", "values": a0},
+            {"name": "B", "base": tensors["B"]["base"],
+             "dtype": "bf16", "values": bias},
+        ]
+        return inputs, {
+            "Y0": np.asarray(w[:1], dtype=np.float32) + np.asarray(bias, dtype=np.float32)
+        }
 
     a0 = identity_rows(4, 32)
     w0 = [[0.0] * 8 for _ in range(32)]
@@ -118,6 +139,7 @@ def main() -> int:
             "independent",
             "chained",
             "smolvla_tail_50_720_32",
+            "smolvla_state_proj_1_32_960",
         ),
     )
     parser.add_argument("--engine", choices=("functional", "gsim"), default="gsim")

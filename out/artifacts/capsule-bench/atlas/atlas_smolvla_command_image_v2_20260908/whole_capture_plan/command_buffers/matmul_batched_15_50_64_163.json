@@ -1,0 +1,82 @@
+{
+  "abi_version": "0.1",
+  "target": "atlas",
+  "backend": "atlas-xdsl",
+  "tensors": {
+    "A0": {
+      "shape": [
+        15,
+        50,
+        64
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "input",
+      "base": 2415919104
+    },
+    "W": {
+      "shape": [
+        15,
+        64,
+        163
+      ],
+      "dtype": "fp8_e4m3",
+      "role": "weight",
+      "base": 2415967104
+    },
+    "Y0": {
+      "shape": [
+        15,
+        50,
+        163
+      ],
+      "dtype": "bf16",
+      "role": "output",
+      "base": 2416123584
+    }
+  },
+  "commands": [
+    {
+      "opcode": "RES_PACK",
+      "operands": {
+        "src": "W",
+        "dst": "W_resident"
+      },
+      "attributes": {
+        "layout": "packed_rhs"
+      }
+    },
+    {
+      "opcode": "BATCHED_MATMUL",
+      "operands": {
+        "src": "A0",
+        "dst": "Y0",
+        "rhs": "W"
+      },
+      "attributes": {
+        "name": "Y0",
+        "batch": 15,
+        "output_dtype": "bf16"
+      }
+    }
+  ],
+  "kernel_abi": {
+    "kind": "whole_program",
+    "args": [
+      {
+        "tensor": "A0",
+        "access": "read"
+      },
+      {
+        "tensor": "W",
+        "access": "read"
+      },
+      {
+        "tensor": "Y0",
+        "access": "write"
+      }
+    ],
+    "outputs": [
+      "Y0"
+    ]
+  }
+}

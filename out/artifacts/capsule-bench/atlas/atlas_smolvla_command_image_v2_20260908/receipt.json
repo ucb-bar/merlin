@@ -1,11 +1,29 @@
 {
   "baseline": "atlas_smolvla_compact_loops_v1_20260908 (committed 28/28 IMEM-fit package)",
+  "compact_bias_fix": {
+    "after": "explicit BF16 two-register row layout; 960/960 state-projection outputs exact on GSIM",
+    "before": "bias_add omitted from compact FP8 matmul; first VREDSUM broadcast fix permuted lanes",
+    "epilogue_safety": "bias precedes ReLU; unsupported compact scale/ReLU combinations fail closed",
+    "path": "submission/mlir_oot/codegen.py"
+  },
   "full_capture_parser_fix": {
     "mechanism": "remove only redundant tuple wrappers around multi-result region type lists before xDSL parsing",
-    "next_blocker": "whole-model graph partition/dispatch lowering",
+    "next_blocker": "calibrated quantization bridges plus host/device graph dispatch",
     "path": "submission/mlir_oot/frontend.py",
     "rewrites": 8,
     "source_capture_mutated": false
+  },
+  "full_capture_partition_planner": {
+    "capture_semantics_executable_partitions": 0,
+    "kernel_variants": 28,
+    "manifests": [
+      "whole_capture_plan/dependency_manifest.json",
+      "whole_capture_plan/lifetime_manifest.json",
+      "whole_capture_plan/abi_manifest.json"
+    ],
+    "maximal_accelerator_islands": 303,
+    "partitions": 391,
+    "path": "submission/mlir_oot/planner.py"
   },
   "hypotheses_ranked_before_fix": [
     "missing commit-result SSA registration",
@@ -22,7 +40,7 @@
   "schema": "atlas_smolvla_command_image_receipt_v2",
   "status": "representative_rtl_numeric",
   "validation": {
-    "backend_source_tree_sha256": "f923597b711fdcaec474fd445381da39eadb43fa5bad876a25dd2cedc04ad44f",
+    "backend_source_tree_sha256": "bb77a68d43c58546ec5a7d1fe40b173df1e6532d7185a44ef070b9b37e3fb30f",
     "first_concrete_partition": {
       "capture_regions": [
         "matmul_0",
@@ -31,12 +49,19 @@
       "command_count": 4,
       "fits_imem": true,
       "imem_words": 32768,
-      "instruction_words": 5692,
+      "instruction_words": 8037,
       "numeric_qualified": false
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 11
+      "passed": 17
+    },
+    "full_capture_partition_plan": {
+      "accelerator_dependency_edges": 88,
+      "capture_semantics_executable_partitions": 0,
+      "kernel_variants": 28,
+      "maximal_accelerator_islands": 303,
+      "structural_partitions": 391
     },
     "full_capture_probe": {
       "command_buffer_produced": true,
@@ -44,6 +69,13 @@
       "first_blocker": "whole-model f32 graph exceeds the current Atlas device lowering",
       "parser_compat_rewrites": 8,
       "returncode": 1
+    },
+    "full_capture_structural_compile_coverage": {
+      "capture_semantics_executable_partitions": 0,
+      "imem_fit_structural_partitions": 391,
+      "structural_partitions_total": 391,
+      "unique_kernel_variants_fitting_imem": 28,
+      "unique_kernel_variants_total": 28
     },
     "full_graph_inventory": {
       "effective_candidate_windows": 698,
@@ -63,12 +95,6 @@
       "definitive_decoder_mismatch": "DMA_CONFIG funct7=0 in RTL/compiler, funct7=1 in functional ISA",
       "only_known_defect": false,
       "usable_as_numeric_oracle_for_emitted_atlas_isa": false
-    },
-    "inherited_compile_coverage": {
-      "physical_contraction_layers_fitting_imem": 391,
-      "physical_contraction_layers_total": 391,
-      "unique_contraction_shapes_fitting_imem": 28,
-      "unique_contraction_shapes_total": 28
     },
     "ok": true,
     "recovery_status": "representative_rtl_numeric",
@@ -120,6 +146,17 @@
           "Y1"
         ]
       },
+      "smolvla_state_proj_1_32_960": {
+        "all_outputs_bit_exact": true,
+        "command_buffer_sha256": "d31edd47d49f85eaaf6233bae7e81de74bb664a85cec59941935c19354de81c0",
+        "commands": 4,
+        "cycles": 154458,
+        "instruction_words": 1509,
+        "kernel_sha256": "853f8396604796ef7bb420811d701cbad4f8cfffd5d38116ff2dd47272a611c6",
+        "outputs": [
+          "Y0"
+        ]
+      },
       "smolvla_tail_50_720_32": {
         "all_outputs_bit_exact": true,
         "command_buffer_sha256": "4343b361727b700e8aa93692ed9ad1f7f9d3309780addbfbb72644cf3d378d3a",
@@ -133,19 +170,33 @@
       }
     },
     "rtl_numeric_smolvla_coverage": {
-      "cycles": 300068,
-      "instruction_words": 12605,
-      "mismatches": 0,
-      "outputs_checked": 1600,
-      "physical_contraction_occurrences": 1,
+      "cases": {
+        "smolvla_state_proj_1_32_960": {
+          "cycles": 154458,
+          "instruction_words": 1509,
+          "mismatches": 0,
+          "shape": [
+            1,
+            32,
+            960
+          ]
+        },
+        "smolvla_tail_50_720_32": {
+          "cycles": 300068,
+          "instruction_words": 12605,
+          "mismatches": 0,
+          "raw_output_sha256": "5978dd34bdfb5292cd4dfad79396e02ec386442a629f277dd1084ca8a45480e9",
+          "shape": [
+            50,
+            720,
+            32
+          ]
+        }
+      },
+      "outputs_checked": 2560,
+      "physical_contraction_occurrences": 2,
       "physical_contraction_occurrences_total": 391,
-      "raw_output_sha256": "5978dd34bdfb5292cd4dfad79396e02ec386442a629f277dd1084ca8a45480e9",
-      "shape": [
-        50,
-        720,
-        32
-      ],
-      "unique_contraction_shapes": 1,
+      "unique_contraction_shapes": 2,
       "unique_contraction_shapes_total": 28
     },
     "schema": "atlas_smolvla_command_image_validation_v2",

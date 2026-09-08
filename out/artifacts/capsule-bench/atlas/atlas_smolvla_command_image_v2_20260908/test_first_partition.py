@@ -21,7 +21,7 @@ def test_first_addmm_partition_contains_bias_and_fits_imem() -> None:
     )
     receipt = json.loads((PARTITION / "compile_receipt.json").read_text())
     assert receipt["capture_regions"] == ["matmul_0", "add_3"]
-    assert receipt["instruction_words"] == 5692
+    assert receipt["instruction_words"] == 8037
     assert receipt["fits_imem"] is True
     assert receipt["command_opcodes"] == [
         "RES_PACK",
@@ -42,4 +42,4 @@ def test_first_addmm_partition_contains_bias_and_fits_imem() -> None:
         "%8",
     ]
     assert manifest["capture_boundary"]["outputs"][0]["capture_value"] == "%937"
-    assert manifest["image"]["instruction_words"] == 5692
+    assert manifest["image"]["instruction_words"] == 8037

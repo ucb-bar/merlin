@@ -1,0 +1,2352 @@
+{
+  "basis": "capture top-level operation ordinals; view chains followed to first real consumer",
+  "outputs": [
+    {
+      "definition_op_index": 12,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 13,
+      "partition_id": "atlas_p0000"
+    },
+    {
+      "definition_op_index": 204,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 255,
+      "partition_id": "atlas_p0001"
+    },
+    {
+      "definition_op_index": 216,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 255,
+      "partition_id": "atlas_p0002"
+    },
+    {
+      "definition_op_index": 228,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 294,
+      "partition_id": "atlas_p0003"
+    },
+    {
+      "definition_op_index": 255,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 261,
+      "partition_id": "atlas_p0004"
+    },
+    {
+      "definition_op_index": 294,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 308,
+      "partition_id": "atlas_p0005"
+    },
+    {
+      "definition_op_index": 310,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 314,
+      "partition_id": "atlas_p0006"
+    },
+    {
+      "definition_op_index": 358,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 362,
+      "partition_id": "atlas_p0007"
+    },
+    {
+      "definition_op_index": 372,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 376,
+      "partition_id": "atlas_p0008"
+    },
+    {
+      "definition_op_index": 420,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 471,
+      "partition_id": "atlas_p0009"
+    },
+    {
+      "definition_op_index": 432,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 471,
+      "partition_id": "atlas_p0010"
+    },
+    {
+      "definition_op_index": 444,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 510,
+      "partition_id": "atlas_p0011"
+    },
+    {
+      "definition_op_index": 471,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 477,
+      "partition_id": "atlas_p0012"
+    },
+    {
+      "definition_op_index": 510,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 524,
+      "partition_id": "atlas_p0013"
+    },
+    {
+      "definition_op_index": 526,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 530,
+      "partition_id": "atlas_p0014"
+    },
+    {
+      "definition_op_index": 574,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 578,
+      "partition_id": "atlas_p0015"
+    },
+    {
+      "definition_op_index": 588,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 592,
+      "partition_id": "atlas_p0016"
+    },
+    {
+      "definition_op_index": 636,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 687,
+      "partition_id": "atlas_p0017"
+    },
+    {
+      "definition_op_index": 648,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 687,
+      "partition_id": "atlas_p0018"
+    },
+    {
+      "definition_op_index": 660,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 726,
+      "partition_id": "atlas_p0019"
+    },
+    {
+      "definition_op_index": 687,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 693,
+      "partition_id": "atlas_p0020"
+    },
+    {
+      "definition_op_index": 726,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 740,
+      "partition_id": "atlas_p0021"
+    },
+    {
+      "definition_op_index": 742,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 746,
+      "partition_id": "atlas_p0022"
+    },
+    {
+      "definition_op_index": 790,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 794,
+      "partition_id": "atlas_p0023"
+    },
+    {
+      "definition_op_index": 804,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 808,
+      "partition_id": "atlas_p0024"
+    },
+    {
+      "definition_op_index": 852,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 903,
+      "partition_id": "atlas_p0025"
+    },
+    {
+      "definition_op_index": 864,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 903,
+      "partition_id": "atlas_p0026"
+    },
+    {
+      "definition_op_index": 876,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 942,
+      "partition_id": "atlas_p0027"
+    },
+    {
+      "definition_op_index": 903,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 909,
+      "partition_id": "atlas_p0028"
+    },
+    {
+      "definition_op_index": 942,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 956,
+      "partition_id": "atlas_p0029"
+    },
+    {
+      "definition_op_index": 958,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 962,
+      "partition_id": "atlas_p0030"
+    },
+    {
+      "definition_op_index": 1006,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 1010,
+      "partition_id": "atlas_p0031"
+    },
+    {
+      "definition_op_index": 1020,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1024,
+      "partition_id": "atlas_p0032"
+    },
+    {
+      "definition_op_index": 1068,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1119,
+      "partition_id": "atlas_p0033"
+    },
+    {
+      "definition_op_index": 1080,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1119,
+      "partition_id": "atlas_p0034"
+    },
+    {
+      "definition_op_index": 1092,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1158,
+      "partition_id": "atlas_p0035"
+    },
+    {
+      "definition_op_index": 1119,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 1125,
+      "partition_id": "atlas_p0036"
+    },
+    {
+      "definition_op_index": 1158,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1172,
+      "partition_id": "atlas_p0037"
+    },
+    {
+      "definition_op_index": 1174,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1178,
+      "partition_id": "atlas_p0038"
+    },
+    {
+      "definition_op_index": 1222,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 1226,
+      "partition_id": "atlas_p0039"
+    },
+    {
+      "definition_op_index": 1236,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1240,
+      "partition_id": "atlas_p0040"
+    },
+    {
+      "definition_op_index": 1284,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1335,
+      "partition_id": "atlas_p0041"
+    },
+    {
+      "definition_op_index": 1296,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1335,
+      "partition_id": "atlas_p0042"
+    },
+    {
+      "definition_op_index": 1308,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1374,
+      "partition_id": "atlas_p0043"
+    },
+    {
+      "definition_op_index": 1335,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 1341,
+      "partition_id": "atlas_p0044"
+    },
+    {
+      "definition_op_index": 1374,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1388,
+      "partition_id": "atlas_p0045"
+    },
+    {
+      "definition_op_index": 1390,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1394,
+      "partition_id": "atlas_p0046"
+    },
+    {
+      "definition_op_index": 1438,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 1442,
+      "partition_id": "atlas_p0047"
+    },
+    {
+      "definition_op_index": 1452,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1456,
+      "partition_id": "atlas_p0048"
+    },
+    {
+      "definition_op_index": 1500,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1551,
+      "partition_id": "atlas_p0049"
+    },
+    {
+      "definition_op_index": 1512,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1551,
+      "partition_id": "atlas_p0050"
+    },
+    {
+      "definition_op_index": 1524,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1590,
+      "partition_id": "atlas_p0051"
+    },
+    {
+      "definition_op_index": 1551,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 1557,
+      "partition_id": "atlas_p0052"
+    },
+    {
+      "definition_op_index": 1590,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1604,
+      "partition_id": "atlas_p0053"
+    },
+    {
+      "definition_op_index": 1606,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1610,
+      "partition_id": "atlas_p0054"
+    },
+    {
+      "definition_op_index": 1654,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 1658,
+      "partition_id": "atlas_p0055"
+    },
+    {
+      "definition_op_index": 1668,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1672,
+      "partition_id": "atlas_p0056"
+    },
+    {
+      "definition_op_index": 1716,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1767,
+      "partition_id": "atlas_p0057"
+    },
+    {
+      "definition_op_index": 1728,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1767,
+      "partition_id": "atlas_p0058"
+    },
+    {
+      "definition_op_index": 1740,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1806,
+      "partition_id": "atlas_p0059"
+    },
+    {
+      "definition_op_index": 1767,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 1773,
+      "partition_id": "atlas_p0060"
+    },
+    {
+      "definition_op_index": 1806,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1820,
+      "partition_id": "atlas_p0061"
+    },
+    {
+      "definition_op_index": 1822,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1826,
+      "partition_id": "atlas_p0062"
+    },
+    {
+      "definition_op_index": 1870,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 1874,
+      "partition_id": "atlas_p0063"
+    },
+    {
+      "definition_op_index": 1884,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1888,
+      "partition_id": "atlas_p0064"
+    },
+    {
+      "definition_op_index": 1932,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1983,
+      "partition_id": "atlas_p0065"
+    },
+    {
+      "definition_op_index": 1944,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 1983,
+      "partition_id": "atlas_p0066"
+    },
+    {
+      "definition_op_index": 1956,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2022,
+      "partition_id": "atlas_p0067"
+    },
+    {
+      "definition_op_index": 1983,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 1989,
+      "partition_id": "atlas_p0068"
+    },
+    {
+      "definition_op_index": 2022,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2036,
+      "partition_id": "atlas_p0069"
+    },
+    {
+      "definition_op_index": 2038,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2042,
+      "partition_id": "atlas_p0070"
+    },
+    {
+      "definition_op_index": 2086,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 2090,
+      "partition_id": "atlas_p0071"
+    },
+    {
+      "definition_op_index": 2100,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2104,
+      "partition_id": "atlas_p0072"
+    },
+    {
+      "definition_op_index": 2148,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2199,
+      "partition_id": "atlas_p0073"
+    },
+    {
+      "definition_op_index": 2160,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2199,
+      "partition_id": "atlas_p0074"
+    },
+    {
+      "definition_op_index": 2172,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2238,
+      "partition_id": "atlas_p0075"
+    },
+    {
+      "definition_op_index": 2199,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 2205,
+      "partition_id": "atlas_p0076"
+    },
+    {
+      "definition_op_index": 2238,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2252,
+      "partition_id": "atlas_p0077"
+    },
+    {
+      "definition_op_index": 2254,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2258,
+      "partition_id": "atlas_p0078"
+    },
+    {
+      "definition_op_index": 2302,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 2306,
+      "partition_id": "atlas_p0079"
+    },
+    {
+      "definition_op_index": 2316,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2320,
+      "partition_id": "atlas_p0080"
+    },
+    {
+      "definition_op_index": 2364,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2415,
+      "partition_id": "atlas_p0081"
+    },
+    {
+      "definition_op_index": 2376,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2415,
+      "partition_id": "atlas_p0082"
+    },
+    {
+      "definition_op_index": 2388,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2454,
+      "partition_id": "atlas_p0083"
+    },
+    {
+      "definition_op_index": 2415,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 2421,
+      "partition_id": "atlas_p0084"
+    },
+    {
+      "definition_op_index": 2454,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2468,
+      "partition_id": "atlas_p0085"
+    },
+    {
+      "definition_op_index": 2470,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2474,
+      "partition_id": "atlas_p0086"
+    },
+    {
+      "definition_op_index": 2518,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 2522,
+      "partition_id": "atlas_p0087"
+    },
+    {
+      "definition_op_index": 2532,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2536,
+      "partition_id": "atlas_p0088"
+    },
+    {
+      "definition_op_index": 2580,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2631,
+      "partition_id": "atlas_p0089"
+    },
+    {
+      "definition_op_index": 2592,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2631,
+      "partition_id": "atlas_p0090"
+    },
+    {
+      "definition_op_index": 2604,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2670,
+      "partition_id": "atlas_p0091"
+    },
+    {
+      "definition_op_index": 2631,
+      "device_bytes": 25165824,
+      "last_frontier_use_op_index": 2637,
+      "partition_id": "atlas_p0092"
+    },
+    {
+      "definition_op_index": 2670,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2684,
+      "partition_id": "atlas_p0093"
+    },
+    {
+      "definition_op_index": 2686,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2690,
+      "partition_id": "atlas_p0094"
+    },
+    {
+      "definition_op_index": 2734,
+      "device_bytes": 6291456,
+      "last_frontier_use_op_index": 2738,
+      "partition_id": "atlas_p0095"
+    },
+    {
+      "definition_op_index": 2748,
+      "device_bytes": 1572864,
+      "last_frontier_use_op_index": 2752,
+      "partition_id": "atlas_p0096"
+    },
+    {
+      "definition_op_index": 2806,
+      "device_bytes": 122880,
+      "last_frontier_use_op_index": 2810,
+      "partition_id": "atlas_p0097"
+    },
+    {
+      "definition_op_index": 2827,
+      "device_bytes": 1920,
+      "last_frontier_use_op_index": 2834,
+      "partition_id": "atlas_p0098"
+    },
+    {
+      "definition_op_index": 2893,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 2922,
+      "partition_id": "atlas_p0099"
+    },
+    {
+      "definition_op_index": 2905,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 2923,
+      "partition_id": "atlas_p0100"
+    },
+    {
+      "definition_op_index": 2917,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 2924,
+      "partition_id": "atlas_p0101"
+    },
+    {
+      "definition_op_index": 3057,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 3063,
+      "partition_id": "atlas_p0102"
+    },
+    {
+      "definition_op_index": 3104,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3118,
+      "partition_id": "atlas_p0103"
+    },
+    {
+      "definition_op_index": 3118,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3122,
+      "partition_id": "atlas_p0104"
+    },
+    {
+      "definition_op_index": 3161,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3165,
+      "partition_id": "atlas_p0105"
+    },
+    {
+      "definition_op_index": 3179,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3183,
+      "partition_id": "atlas_p0106"
+    },
+    {
+      "definition_op_index": 3191,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3195,
+      "partition_id": "atlas_p0107"
+    },
+    {
+      "definition_op_index": 3232,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3261,
+      "partition_id": "atlas_p0108"
+    },
+    {
+      "definition_op_index": 3244,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3262,
+      "partition_id": "atlas_p0109"
+    },
+    {
+      "definition_op_index": 3256,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3263,
+      "partition_id": "atlas_p0110"
+    },
+    {
+      "definition_op_index": 3396,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 3402,
+      "partition_id": "atlas_p0111"
+    },
+    {
+      "definition_op_index": 3443,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3457,
+      "partition_id": "atlas_p0112"
+    },
+    {
+      "definition_op_index": 3457,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3461,
+      "partition_id": "atlas_p0113"
+    },
+    {
+      "definition_op_index": 3498,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3502,
+      "partition_id": "atlas_p0114"
+    },
+    {
+      "definition_op_index": 3516,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3520,
+      "partition_id": "atlas_p0115"
+    },
+    {
+      "definition_op_index": 3528,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3532,
+      "partition_id": "atlas_p0116"
+    },
+    {
+      "definition_op_index": 3569,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3598,
+      "partition_id": "atlas_p0117"
+    },
+    {
+      "definition_op_index": 3581,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3599,
+      "partition_id": "atlas_p0118"
+    },
+    {
+      "definition_op_index": 3593,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3600,
+      "partition_id": "atlas_p0119"
+    },
+    {
+      "definition_op_index": 3733,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 3739,
+      "partition_id": "atlas_p0120"
+    },
+    {
+      "definition_op_index": 3780,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3794,
+      "partition_id": "atlas_p0121"
+    },
+    {
+      "definition_op_index": 3794,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3798,
+      "partition_id": "atlas_p0122"
+    },
+    {
+      "definition_op_index": 3835,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3839,
+      "partition_id": "atlas_p0123"
+    },
+    {
+      "definition_op_index": 3853,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 3857,
+      "partition_id": "atlas_p0124"
+    },
+    {
+      "definition_op_index": 3865,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3869,
+      "partition_id": "atlas_p0125"
+    },
+    {
+      "definition_op_index": 3906,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 3935,
+      "partition_id": "atlas_p0126"
+    },
+    {
+      "definition_op_index": 3918,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3936,
+      "partition_id": "atlas_p0127"
+    },
+    {
+      "definition_op_index": 3930,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 3937,
+      "partition_id": "atlas_p0128"
+    },
+    {
+      "definition_op_index": 4070,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 4076,
+      "partition_id": "atlas_p0129"
+    },
+    {
+      "definition_op_index": 4117,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4131,
+      "partition_id": "atlas_p0130"
+    },
+    {
+      "definition_op_index": 4131,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4135,
+      "partition_id": "atlas_p0131"
+    },
+    {
+      "definition_op_index": 4172,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4176,
+      "partition_id": "atlas_p0132"
+    },
+    {
+      "definition_op_index": 4190,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4194,
+      "partition_id": "atlas_p0133"
+    },
+    {
+      "definition_op_index": 4202,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4206,
+      "partition_id": "atlas_p0134"
+    },
+    {
+      "definition_op_index": 4243,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4272,
+      "partition_id": "atlas_p0135"
+    },
+    {
+      "definition_op_index": 4255,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4273,
+      "partition_id": "atlas_p0136"
+    },
+    {
+      "definition_op_index": 4267,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4274,
+      "partition_id": "atlas_p0137"
+    },
+    {
+      "definition_op_index": 4407,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 4413,
+      "partition_id": "atlas_p0138"
+    },
+    {
+      "definition_op_index": 4454,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4468,
+      "partition_id": "atlas_p0139"
+    },
+    {
+      "definition_op_index": 4468,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4472,
+      "partition_id": "atlas_p0140"
+    },
+    {
+      "definition_op_index": 4509,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4513,
+      "partition_id": "atlas_p0141"
+    },
+    {
+      "definition_op_index": 4527,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4531,
+      "partition_id": "atlas_p0142"
+    },
+    {
+      "definition_op_index": 4539,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4543,
+      "partition_id": "atlas_p0143"
+    },
+    {
+      "definition_op_index": 4580,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4609,
+      "partition_id": "atlas_p0144"
+    },
+    {
+      "definition_op_index": 4592,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4610,
+      "partition_id": "atlas_p0145"
+    },
+    {
+      "definition_op_index": 4604,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4611,
+      "partition_id": "atlas_p0146"
+    },
+    {
+      "definition_op_index": 4744,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 4750,
+      "partition_id": "atlas_p0147"
+    },
+    {
+      "definition_op_index": 4791,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4805,
+      "partition_id": "atlas_p0148"
+    },
+    {
+      "definition_op_index": 4805,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4809,
+      "partition_id": "atlas_p0149"
+    },
+    {
+      "definition_op_index": 4846,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4850,
+      "partition_id": "atlas_p0150"
+    },
+    {
+      "definition_op_index": 4864,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 4868,
+      "partition_id": "atlas_p0151"
+    },
+    {
+      "definition_op_index": 4876,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4880,
+      "partition_id": "atlas_p0152"
+    },
+    {
+      "definition_op_index": 4917,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 4946,
+      "partition_id": "atlas_p0153"
+    },
+    {
+      "definition_op_index": 4929,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4947,
+      "partition_id": "atlas_p0154"
+    },
+    {
+      "definition_op_index": 4941,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 4948,
+      "partition_id": "atlas_p0155"
+    },
+    {
+      "definition_op_index": 5081,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 5087,
+      "partition_id": "atlas_p0156"
+    },
+    {
+      "definition_op_index": 5128,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5142,
+      "partition_id": "atlas_p0157"
+    },
+    {
+      "definition_op_index": 5142,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5146,
+      "partition_id": "atlas_p0158"
+    },
+    {
+      "definition_op_index": 5183,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5187,
+      "partition_id": "atlas_p0159"
+    },
+    {
+      "definition_op_index": 5201,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5205,
+      "partition_id": "atlas_p0160"
+    },
+    {
+      "definition_op_index": 5213,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5217,
+      "partition_id": "atlas_p0161"
+    },
+    {
+      "definition_op_index": 5254,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5283,
+      "partition_id": "atlas_p0162"
+    },
+    {
+      "definition_op_index": 5266,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5284,
+      "partition_id": "atlas_p0163"
+    },
+    {
+      "definition_op_index": 5278,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5285,
+      "partition_id": "atlas_p0164"
+    },
+    {
+      "definition_op_index": 5418,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 5424,
+      "partition_id": "atlas_p0165"
+    },
+    {
+      "definition_op_index": 5465,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5479,
+      "partition_id": "atlas_p0166"
+    },
+    {
+      "definition_op_index": 5479,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5483,
+      "partition_id": "atlas_p0167"
+    },
+    {
+      "definition_op_index": 5520,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5524,
+      "partition_id": "atlas_p0168"
+    },
+    {
+      "definition_op_index": 5538,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5542,
+      "partition_id": "atlas_p0169"
+    },
+    {
+      "definition_op_index": 5550,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5554,
+      "partition_id": "atlas_p0170"
+    },
+    {
+      "definition_op_index": 5591,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5620,
+      "partition_id": "atlas_p0171"
+    },
+    {
+      "definition_op_index": 5603,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5621,
+      "partition_id": "atlas_p0172"
+    },
+    {
+      "definition_op_index": 5615,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5622,
+      "partition_id": "atlas_p0173"
+    },
+    {
+      "definition_op_index": 5755,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 5761,
+      "partition_id": "atlas_p0174"
+    },
+    {
+      "definition_op_index": 5802,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5816,
+      "partition_id": "atlas_p0175"
+    },
+    {
+      "definition_op_index": 5816,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5820,
+      "partition_id": "atlas_p0176"
+    },
+    {
+      "definition_op_index": 5857,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5861,
+      "partition_id": "atlas_p0177"
+    },
+    {
+      "definition_op_index": 5875,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 5879,
+      "partition_id": "atlas_p0178"
+    },
+    {
+      "definition_op_index": 5887,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5891,
+      "partition_id": "atlas_p0179"
+    },
+    {
+      "definition_op_index": 5928,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 5957,
+      "partition_id": "atlas_p0180"
+    },
+    {
+      "definition_op_index": 5940,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5958,
+      "partition_id": "atlas_p0181"
+    },
+    {
+      "definition_op_index": 5952,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 5959,
+      "partition_id": "atlas_p0182"
+    },
+    {
+      "definition_op_index": 6092,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 6098,
+      "partition_id": "atlas_p0183"
+    },
+    {
+      "definition_op_index": 6139,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6153,
+      "partition_id": "atlas_p0184"
+    },
+    {
+      "definition_op_index": 6153,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6157,
+      "partition_id": "atlas_p0185"
+    },
+    {
+      "definition_op_index": 6194,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6198,
+      "partition_id": "atlas_p0186"
+    },
+    {
+      "definition_op_index": 6212,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6216,
+      "partition_id": "atlas_p0187"
+    },
+    {
+      "definition_op_index": 6224,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6228,
+      "partition_id": "atlas_p0188"
+    },
+    {
+      "definition_op_index": 6265,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6294,
+      "partition_id": "atlas_p0189"
+    },
+    {
+      "definition_op_index": 6277,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6295,
+      "partition_id": "atlas_p0190"
+    },
+    {
+      "definition_op_index": 6289,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6296,
+      "partition_id": "atlas_p0191"
+    },
+    {
+      "definition_op_index": 6429,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 6435,
+      "partition_id": "atlas_p0192"
+    },
+    {
+      "definition_op_index": 6476,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6490,
+      "partition_id": "atlas_p0193"
+    },
+    {
+      "definition_op_index": 6490,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6494,
+      "partition_id": "atlas_p0194"
+    },
+    {
+      "definition_op_index": 6531,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6535,
+      "partition_id": "atlas_p0195"
+    },
+    {
+      "definition_op_index": 6549,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6553,
+      "partition_id": "atlas_p0196"
+    },
+    {
+      "definition_op_index": 6561,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6565,
+      "partition_id": "atlas_p0197"
+    },
+    {
+      "definition_op_index": 6602,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6631,
+      "partition_id": "atlas_p0198"
+    },
+    {
+      "definition_op_index": 6614,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6632,
+      "partition_id": "atlas_p0199"
+    },
+    {
+      "definition_op_index": 6626,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6633,
+      "partition_id": "atlas_p0200"
+    },
+    {
+      "definition_op_index": 6766,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 6772,
+      "partition_id": "atlas_p0201"
+    },
+    {
+      "definition_op_index": 6813,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6827,
+      "partition_id": "atlas_p0202"
+    },
+    {
+      "definition_op_index": 6827,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6831,
+      "partition_id": "atlas_p0203"
+    },
+    {
+      "definition_op_index": 6868,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6872,
+      "partition_id": "atlas_p0204"
+    },
+    {
+      "definition_op_index": 6886,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 6890,
+      "partition_id": "atlas_p0205"
+    },
+    {
+      "definition_op_index": 6898,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6902,
+      "partition_id": "atlas_p0206"
+    },
+    {
+      "definition_op_index": 6939,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 6968,
+      "partition_id": "atlas_p0207"
+    },
+    {
+      "definition_op_index": 6951,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6969,
+      "partition_id": "atlas_p0208"
+    },
+    {
+      "definition_op_index": 6963,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 6970,
+      "partition_id": "atlas_p0209"
+    },
+    {
+      "definition_op_index": 7103,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 7109,
+      "partition_id": "atlas_p0210"
+    },
+    {
+      "definition_op_index": 7150,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7164,
+      "partition_id": "atlas_p0211"
+    },
+    {
+      "definition_op_index": 7164,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7168,
+      "partition_id": "atlas_p0212"
+    },
+    {
+      "definition_op_index": 7205,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7209,
+      "partition_id": "atlas_p0213"
+    },
+    {
+      "definition_op_index": 7223,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7227,
+      "partition_id": "atlas_p0214"
+    },
+    {
+      "definition_op_index": 7235,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7239,
+      "partition_id": "atlas_p0215"
+    },
+    {
+      "definition_op_index": 7276,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7305,
+      "partition_id": "atlas_p0216"
+    },
+    {
+      "definition_op_index": 7288,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7306,
+      "partition_id": "atlas_p0217"
+    },
+    {
+      "definition_op_index": 7300,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7307,
+      "partition_id": "atlas_p0218"
+    },
+    {
+      "definition_op_index": 7440,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 7446,
+      "partition_id": "atlas_p0219"
+    },
+    {
+      "definition_op_index": 7487,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7501,
+      "partition_id": "atlas_p0220"
+    },
+    {
+      "definition_op_index": 7501,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7505,
+      "partition_id": "atlas_p0221"
+    },
+    {
+      "definition_op_index": 7542,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7546,
+      "partition_id": "atlas_p0222"
+    },
+    {
+      "definition_op_index": 7560,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7564,
+      "partition_id": "atlas_p0223"
+    },
+    {
+      "definition_op_index": 7572,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7576,
+      "partition_id": "atlas_p0224"
+    },
+    {
+      "definition_op_index": 7613,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7642,
+      "partition_id": "atlas_p0225"
+    },
+    {
+      "definition_op_index": 7625,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7643,
+      "partition_id": "atlas_p0226"
+    },
+    {
+      "definition_op_index": 7637,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7644,
+      "partition_id": "atlas_p0227"
+    },
+    {
+      "definition_op_index": 7777,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 7783,
+      "partition_id": "atlas_p0228"
+    },
+    {
+      "definition_op_index": 7824,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7838,
+      "partition_id": "atlas_p0229"
+    },
+    {
+      "definition_op_index": 7838,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7842,
+      "partition_id": "atlas_p0230"
+    },
+    {
+      "definition_op_index": 7879,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7883,
+      "partition_id": "atlas_p0231"
+    },
+    {
+      "definition_op_index": 7897,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 7901,
+      "partition_id": "atlas_p0232"
+    },
+    {
+      "definition_op_index": 7909,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7913,
+      "partition_id": "atlas_p0233"
+    },
+    {
+      "definition_op_index": 7950,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 7979,
+      "partition_id": "atlas_p0234"
+    },
+    {
+      "definition_op_index": 7962,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7980,
+      "partition_id": "atlas_p0235"
+    },
+    {
+      "definition_op_index": 7974,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 7981,
+      "partition_id": "atlas_p0236"
+    },
+    {
+      "definition_op_index": 8114,
+      "device_bytes": 383070,
+      "last_frontier_use_op_index": 8120,
+      "partition_id": "atlas_p0237"
+    },
+    {
+      "definition_op_index": 8161,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 8175,
+      "partition_id": "atlas_p0238"
+    },
+    {
+      "definition_op_index": 8175,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 8179,
+      "partition_id": "atlas_p0239"
+    },
+    {
+      "definition_op_index": 8216,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 8220,
+      "partition_id": "atlas_p0240"
+    },
+    {
+      "definition_op_index": 8234,
+      "device_bytes": 578560,
+      "last_frontier_use_op_index": 8238,
+      "partition_id": "atlas_p0241"
+    },
+    {
+      "definition_op_index": 8246,
+      "device_bytes": 216960,
+      "last_frontier_use_op_index": 8250,
+      "partition_id": "atlas_p0242"
+    },
+    {
+      "definition_op_index": 8287,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8357,
+      "partition_id": "atlas_p0243"
+    },
+    {
+      "definition_op_index": 8367,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8373,
+      "partition_id": "atlas_p0244"
+    },
+    {
+      "definition_op_index": 8383,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8388,
+      "partition_id": "atlas_p0245"
+    },
+    {
+      "definition_op_index": 8460,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 8489,
+      "partition_id": "atlas_p0246"
+    },
+    {
+      "definition_op_index": 8472,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 8490,
+      "partition_id": "atlas_p0247"
+    },
+    {
+      "definition_op_index": 8484,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 8491,
+      "partition_id": "atlas_p0248"
+    },
+    {
+      "definition_op_index": 8626,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 8632,
+      "partition_id": "atlas_p0249"
+    },
+    {
+      "definition_op_index": 8673,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 8687,
+      "partition_id": "atlas_p0250"
+    },
+    {
+      "definition_op_index": 8687,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8691,
+      "partition_id": "atlas_p0251"
+    },
+    {
+      "definition_op_index": 8730,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 8734,
+      "partition_id": "atlas_p0252"
+    },
+    {
+      "definition_op_index": 8748,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 8752,
+      "partition_id": "atlas_p0253"
+    },
+    {
+      "definition_op_index": 8760,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8764,
+      "partition_id": "atlas_p0254"
+    },
+    {
+      "definition_op_index": 8801,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 8850,
+      "partition_id": "atlas_p0255"
+    },
+    {
+      "definition_op_index": 8817,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 8929,
+      "partition_id": "atlas_p0256"
+    },
+    {
+      "definition_op_index": 8833,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 8974,
+      "partition_id": "atlas_p0257"
+    },
+    {
+      "definition_op_index": 8929,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 8935,
+      "partition_id": "atlas_p0258"
+    },
+    {
+      "definition_op_index": 8974,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 8982,
+      "partition_id": "atlas_p0259"
+    },
+    {
+      "definition_op_index": 8990,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 8994,
+      "partition_id": "atlas_p0260"
+    },
+    {
+      "definition_op_index": 9031,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9035,
+      "partition_id": "atlas_p0261"
+    },
+    {
+      "definition_op_index": 9049,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9053,
+      "partition_id": "atlas_p0262"
+    },
+    {
+      "definition_op_index": 9061,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9065,
+      "partition_id": "atlas_p0263"
+    },
+    {
+      "definition_op_index": 9102,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9131,
+      "partition_id": "atlas_p0264"
+    },
+    {
+      "definition_op_index": 9114,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 9132,
+      "partition_id": "atlas_p0265"
+    },
+    {
+      "definition_op_index": 9126,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 9133,
+      "partition_id": "atlas_p0266"
+    },
+    {
+      "definition_op_index": 9268,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 9274,
+      "partition_id": "atlas_p0267"
+    },
+    {
+      "definition_op_index": 9315,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9329,
+      "partition_id": "atlas_p0268"
+    },
+    {
+      "definition_op_index": 9329,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9333,
+      "partition_id": "atlas_p0269"
+    },
+    {
+      "definition_op_index": 9370,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9374,
+      "partition_id": "atlas_p0270"
+    },
+    {
+      "definition_op_index": 9388,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9392,
+      "partition_id": "atlas_p0271"
+    },
+    {
+      "definition_op_index": 9400,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9404,
+      "partition_id": "atlas_p0272"
+    },
+    {
+      "definition_op_index": 9441,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9490,
+      "partition_id": "atlas_p0273"
+    },
+    {
+      "definition_op_index": 9457,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 9569,
+      "partition_id": "atlas_p0274"
+    },
+    {
+      "definition_op_index": 9473,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 9614,
+      "partition_id": "atlas_p0275"
+    },
+    {
+      "definition_op_index": 9569,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 9575,
+      "partition_id": "atlas_p0276"
+    },
+    {
+      "definition_op_index": 9614,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9622,
+      "partition_id": "atlas_p0277"
+    },
+    {
+      "definition_op_index": 9630,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9634,
+      "partition_id": "atlas_p0278"
+    },
+    {
+      "definition_op_index": 9671,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9675,
+      "partition_id": "atlas_p0279"
+    },
+    {
+      "definition_op_index": 9689,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 9693,
+      "partition_id": "atlas_p0280"
+    },
+    {
+      "definition_op_index": 9701,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9705,
+      "partition_id": "atlas_p0281"
+    },
+    {
+      "definition_op_index": 9742,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9771,
+      "partition_id": "atlas_p0282"
+    },
+    {
+      "definition_op_index": 9754,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 9772,
+      "partition_id": "atlas_p0283"
+    },
+    {
+      "definition_op_index": 9766,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 9773,
+      "partition_id": "atlas_p0284"
+    },
+    {
+      "definition_op_index": 9908,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 9914,
+      "partition_id": "atlas_p0285"
+    },
+    {
+      "definition_op_index": 9955,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 9969,
+      "partition_id": "atlas_p0286"
+    },
+    {
+      "definition_op_index": 9969,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 9973,
+      "partition_id": "atlas_p0287"
+    },
+    {
+      "definition_op_index": 10010,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10014,
+      "partition_id": "atlas_p0288"
+    },
+    {
+      "definition_op_index": 10028,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10032,
+      "partition_id": "atlas_p0289"
+    },
+    {
+      "definition_op_index": 10040,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10044,
+      "partition_id": "atlas_p0290"
+    },
+    {
+      "definition_op_index": 10081,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10130,
+      "partition_id": "atlas_p0291"
+    },
+    {
+      "definition_op_index": 10097,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 10209,
+      "partition_id": "atlas_p0292"
+    },
+    {
+      "definition_op_index": 10113,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 10254,
+      "partition_id": "atlas_p0293"
+    },
+    {
+      "definition_op_index": 10209,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 10215,
+      "partition_id": "atlas_p0294"
+    },
+    {
+      "definition_op_index": 10254,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10262,
+      "partition_id": "atlas_p0295"
+    },
+    {
+      "definition_op_index": 10270,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10274,
+      "partition_id": "atlas_p0296"
+    },
+    {
+      "definition_op_index": 10311,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10315,
+      "partition_id": "atlas_p0297"
+    },
+    {
+      "definition_op_index": 10329,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10333,
+      "partition_id": "atlas_p0298"
+    },
+    {
+      "definition_op_index": 10341,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10345,
+      "partition_id": "atlas_p0299"
+    },
+    {
+      "definition_op_index": 10382,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10411,
+      "partition_id": "atlas_p0300"
+    },
+    {
+      "definition_op_index": 10394,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 10412,
+      "partition_id": "atlas_p0301"
+    },
+    {
+      "definition_op_index": 10406,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 10413,
+      "partition_id": "atlas_p0302"
+    },
+    {
+      "definition_op_index": 10548,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 10554,
+      "partition_id": "atlas_p0303"
+    },
+    {
+      "definition_op_index": 10595,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10609,
+      "partition_id": "atlas_p0304"
+    },
+    {
+      "definition_op_index": 10609,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10613,
+      "partition_id": "atlas_p0305"
+    },
+    {
+      "definition_op_index": 10650,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10654,
+      "partition_id": "atlas_p0306"
+    },
+    {
+      "definition_op_index": 10668,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10672,
+      "partition_id": "atlas_p0307"
+    },
+    {
+      "definition_op_index": 10680,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10684,
+      "partition_id": "atlas_p0308"
+    },
+    {
+      "definition_op_index": 10721,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10770,
+      "partition_id": "atlas_p0309"
+    },
+    {
+      "definition_op_index": 10737,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 10849,
+      "partition_id": "atlas_p0310"
+    },
+    {
+      "definition_op_index": 10753,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 10894,
+      "partition_id": "atlas_p0311"
+    },
+    {
+      "definition_op_index": 10849,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 10855,
+      "partition_id": "atlas_p0312"
+    },
+    {
+      "definition_op_index": 10894,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 10902,
+      "partition_id": "atlas_p0313"
+    },
+    {
+      "definition_op_index": 10910,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10914,
+      "partition_id": "atlas_p0314"
+    },
+    {
+      "definition_op_index": 10951,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10955,
+      "partition_id": "atlas_p0315"
+    },
+    {
+      "definition_op_index": 10969,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 10973,
+      "partition_id": "atlas_p0316"
+    },
+    {
+      "definition_op_index": 10981,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 10985,
+      "partition_id": "atlas_p0317"
+    },
+    {
+      "definition_op_index": 11022,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11051,
+      "partition_id": "atlas_p0318"
+    },
+    {
+      "definition_op_index": 11034,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 11052,
+      "partition_id": "atlas_p0319"
+    },
+    {
+      "definition_op_index": 11046,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 11053,
+      "partition_id": "atlas_p0320"
+    },
+    {
+      "definition_op_index": 11188,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 11194,
+      "partition_id": "atlas_p0321"
+    },
+    {
+      "definition_op_index": 11235,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11249,
+      "partition_id": "atlas_p0322"
+    },
+    {
+      "definition_op_index": 11249,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11253,
+      "partition_id": "atlas_p0323"
+    },
+    {
+      "definition_op_index": 11290,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11294,
+      "partition_id": "atlas_p0324"
+    },
+    {
+      "definition_op_index": 11308,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11312,
+      "partition_id": "atlas_p0325"
+    },
+    {
+      "definition_op_index": 11320,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11324,
+      "partition_id": "atlas_p0326"
+    },
+    {
+      "definition_op_index": 11361,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11410,
+      "partition_id": "atlas_p0327"
+    },
+    {
+      "definition_op_index": 11377,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 11489,
+      "partition_id": "atlas_p0328"
+    },
+    {
+      "definition_op_index": 11393,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 11534,
+      "partition_id": "atlas_p0329"
+    },
+    {
+      "definition_op_index": 11489,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 11495,
+      "partition_id": "atlas_p0330"
+    },
+    {
+      "definition_op_index": 11534,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11542,
+      "partition_id": "atlas_p0331"
+    },
+    {
+      "definition_op_index": 11550,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11554,
+      "partition_id": "atlas_p0332"
+    },
+    {
+      "definition_op_index": 11591,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11595,
+      "partition_id": "atlas_p0333"
+    },
+    {
+      "definition_op_index": 11609,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11613,
+      "partition_id": "atlas_p0334"
+    },
+    {
+      "definition_op_index": 11621,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11625,
+      "partition_id": "atlas_p0335"
+    },
+    {
+      "definition_op_index": 11662,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11691,
+      "partition_id": "atlas_p0336"
+    },
+    {
+      "definition_op_index": 11674,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 11692,
+      "partition_id": "atlas_p0337"
+    },
+    {
+      "definition_op_index": 11686,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 11693,
+      "partition_id": "atlas_p0338"
+    },
+    {
+      "definition_op_index": 11828,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 11834,
+      "partition_id": "atlas_p0339"
+    },
+    {
+      "definition_op_index": 11875,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 11889,
+      "partition_id": "atlas_p0340"
+    },
+    {
+      "definition_op_index": 11889,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11893,
+      "partition_id": "atlas_p0341"
+    },
+    {
+      "definition_op_index": 11930,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11934,
+      "partition_id": "atlas_p0342"
+    },
+    {
+      "definition_op_index": 11948,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 11952,
+      "partition_id": "atlas_p0343"
+    },
+    {
+      "definition_op_index": 11960,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 11964,
+      "partition_id": "atlas_p0344"
+    },
+    {
+      "definition_op_index": 12001,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12050,
+      "partition_id": "atlas_p0345"
+    },
+    {
+      "definition_op_index": 12017,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 12129,
+      "partition_id": "atlas_p0346"
+    },
+    {
+      "definition_op_index": 12033,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 12174,
+      "partition_id": "atlas_p0347"
+    },
+    {
+      "definition_op_index": 12129,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 12135,
+      "partition_id": "atlas_p0348"
+    },
+    {
+      "definition_op_index": 12174,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12182,
+      "partition_id": "atlas_p0349"
+    },
+    {
+      "definition_op_index": 12190,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12194,
+      "partition_id": "atlas_p0350"
+    },
+    {
+      "definition_op_index": 12231,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12235,
+      "partition_id": "atlas_p0351"
+    },
+    {
+      "definition_op_index": 12249,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12253,
+      "partition_id": "atlas_p0352"
+    },
+    {
+      "definition_op_index": 12261,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12265,
+      "partition_id": "atlas_p0353"
+    },
+    {
+      "definition_op_index": 12302,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12331,
+      "partition_id": "atlas_p0354"
+    },
+    {
+      "definition_op_index": 12314,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 12332,
+      "partition_id": "atlas_p0355"
+    },
+    {
+      "definition_op_index": 12326,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 12333,
+      "partition_id": "atlas_p0356"
+    },
+    {
+      "definition_op_index": 12468,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 12474,
+      "partition_id": "atlas_p0357"
+    },
+    {
+      "definition_op_index": 12515,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12529,
+      "partition_id": "atlas_p0358"
+    },
+    {
+      "definition_op_index": 12529,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12533,
+      "partition_id": "atlas_p0359"
+    },
+    {
+      "definition_op_index": 12570,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12574,
+      "partition_id": "atlas_p0360"
+    },
+    {
+      "definition_op_index": 12588,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12592,
+      "partition_id": "atlas_p0361"
+    },
+    {
+      "definition_op_index": 12600,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12604,
+      "partition_id": "atlas_p0362"
+    },
+    {
+      "definition_op_index": 12641,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12690,
+      "partition_id": "atlas_p0363"
+    },
+    {
+      "definition_op_index": 12657,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 12769,
+      "partition_id": "atlas_p0364"
+    },
+    {
+      "definition_op_index": 12673,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 12814,
+      "partition_id": "atlas_p0365"
+    },
+    {
+      "definition_op_index": 12769,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 12775,
+      "partition_id": "atlas_p0366"
+    },
+    {
+      "definition_op_index": 12814,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12822,
+      "partition_id": "atlas_p0367"
+    },
+    {
+      "definition_op_index": 12830,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12834,
+      "partition_id": "atlas_p0368"
+    },
+    {
+      "definition_op_index": 12871,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12875,
+      "partition_id": "atlas_p0369"
+    },
+    {
+      "definition_op_index": 12889,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 12893,
+      "partition_id": "atlas_p0370"
+    },
+    {
+      "definition_op_index": 12901,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 12905,
+      "partition_id": "atlas_p0371"
+    },
+    {
+      "definition_op_index": 12942,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 12971,
+      "partition_id": "atlas_p0372"
+    },
+    {
+      "definition_op_index": 12954,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 12972,
+      "partition_id": "atlas_p0373"
+    },
+    {
+      "definition_op_index": 12966,
+      "device_bytes": 32000,
+      "last_frontier_use_op_index": 12973,
+      "partition_id": "atlas_p0374"
+    },
+    {
+      "definition_op_index": 13108,
+      "device_bytes": 244500,
+      "last_frontier_use_op_index": 13114,
+      "partition_id": "atlas_p0375"
+    },
+    {
+      "definition_op_index": 13155,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 13169,
+      "partition_id": "atlas_p0376"
+    },
+    {
+      "definition_op_index": 13169,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 13173,
+      "partition_id": "atlas_p0377"
+    },
+    {
+      "definition_op_index": 13210,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 13214,
+      "partition_id": "atlas_p0378"
+    },
+    {
+      "definition_op_index": 13228,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 13232,
+      "partition_id": "atlas_p0379"
+    },
+    {
+      "definition_op_index": 13240,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 13244,
+      "partition_id": "atlas_p0380"
+    },
+    {
+      "definition_op_index": 13281,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 13330,
+      "partition_id": "atlas_p0381"
+    },
+    {
+      "definition_op_index": 13297,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 13409,
+      "partition_id": "atlas_p0382"
+    },
+    {
+      "definition_op_index": 13313,
+      "device_bytes": 72320,
+      "last_frontier_use_op_index": 13454,
+      "partition_id": "atlas_p0383"
+    },
+    {
+      "definition_op_index": 13409,
+      "device_bytes": 169500,
+      "last_frontier_use_op_index": 13415,
+      "partition_id": "atlas_p0384"
+    },
+    {
+      "definition_op_index": 13454,
+      "device_bytes": 96000,
+      "last_frontier_use_op_index": 13462,
+      "partition_id": "atlas_p0385"
+    },
+    {
+      "definition_op_index": 13470,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 13474,
+      "partition_id": "atlas_p0386"
+    },
+    {
+      "definition_op_index": 13511,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 13515,
+      "partition_id": "atlas_p0387"
+    },
+    {
+      "definition_op_index": 13529,
+      "device_bytes": 204800,
+      "last_frontier_use_op_index": 13533,
+      "partition_id": "atlas_p0388"
+    },
+    {
+      "definition_op_index": 13541,
+      "device_bytes": 72000,
+      "last_frontier_use_op_index": 13545,
+      "partition_id": "atlas_p0389"
+    },
+    {
+      "definition_op_index": 13587,
+      "device_bytes": 3200,
+      "last_frontier_use_op_index": 13590,
+      "partition_id": "atlas_p0390"
+    }
+  ],
+  "schema": "atlas_partition_lifetimes_v1"
+}

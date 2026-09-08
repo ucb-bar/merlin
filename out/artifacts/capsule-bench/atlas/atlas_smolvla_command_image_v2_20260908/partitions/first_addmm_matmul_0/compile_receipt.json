@@ -1,5 +1,5 @@
 {
-  "assembly_sha256": "f6561a6dd5d2f927c2e38ec520222c7f084fc313de8347709ad31fd58cca0400",
+  "assembly_sha256": "6dd4958b107035f1318ba1ec9e10612b5ba63f461b5ae9d107bba96c14c5d8b9",
   "capture_regions": [
     "matmul_0",
     "add_3"
@@ -40,7 +40,7 @@
   },
   "fits_imem": true,
   "imem_words": 32768,
-  "instruction_words": 5692,
+  "instruction_words": 8037,
   "interface_sha256": "a0a04f5a1d52161752b0f4eedf9f2917304635bdf47e1c85535e08dd49802e1a",
   "returncode": 0,
   "schema": "atlas_smolvla_partition_compile_v1"

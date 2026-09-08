@@ -11,9 +11,9 @@ import test_compact_loops as compact_tests
 import test_first_partition as partition_tests
 import test_full_graph_inventory as graph_tests
 import test_parser_compat as parser_tests
+import test_partition_plan as plan_tests
 
 ROOT = Path(__file__).resolve().parent
-PARENT = ROOT.parent / "atlas_smolvla_compact_loops_v1_20260908"
 
 
 def load(path: Path) -> dict:
@@ -39,16 +39,23 @@ tests.test_oracle_controls_detect_instrument_mismatch_and_no_echo()
 tests.test_declined_whole_model_cannot_emit_a_trivial_image()
 compact_tests.test_rank2_k_and_n_tails_fit_and_have_valid_runtime_loops()
 compact_tests.test_partial_n_tail_and_batch_count_reuse_one_body()
+compact_tests.test_compact_epilogues_fail_closed_instead_of_emitting_ecall_only()
+compact_tests.test_static_bias_precedes_relu_in_the_encoded_epilogue()
 parser_tests.test_multi_result_normalization_preserves_ordered_result_types()
 parser_tests.test_full_smolvla_capture_parses_without_mutating_the_capture()
 graph_tests.test_full_capture_partition_inventory_is_fail_closed()
 partition_tests.test_first_addmm_partition_contains_bias_and_fits_imem()
+plan_tests.test_whole_capture_plan_compiles_only_real_structural_contractions()
+plan_tests.test_dependencies_lifetimes_and_abis_are_stable_and_explicit()
+plan_tests.test_no_host_region_is_silently_promoted_to_a_command_image()
+plan_tests.test_plan_and_manifests_are_byte_stable_across_rebuilds()
 
-parent = load(PARENT / "validation.json")
 full = load(ROOT / "full_capture_probe.json")
 raw = load(ROOT / "cases/smolvla_tail_50_720_32/raw_readback.json")
+state_proj = load(ROOT / "cases/smolvla_state_proj_1_32_960/gsim_result.json")
 inventory = load(ROOT / "full_capture_partition_inventory.json")
 partition = load(ROOT / "partitions/first_addmm_matmul_0/compile_receipt.json")
+plan = load(ROOT / "whole_capture_plan/partition_plan.json")
 cases = {}
 for case_dir in sorted((ROOT / "cases").iterdir()):
     result_path = case_dir / "gsim_result.json"
@@ -69,24 +76,29 @@ verdict = {
     "ok": True,
     "recovery_status": "representative_rtl_numeric",
     "backend_source_tree_sha256": tree_digest(ROOT / "submission"),
-    "focused_tests": {"passed": 11, "failed": 0},
-    "inherited_compile_coverage": {
-        "unique_contraction_shapes_fitting_imem": parent["after"]["fitting_unique_shapes"],
-        "unique_contraction_shapes_total": 28,
-        "physical_contraction_layers_fitting_imem": parent["after"]["fitting_physical_layers"],
-        "physical_contraction_layers_total": 391,
-    },
+    "focused_tests": {"passed": 17, "failed": 0},
+    "full_capture_structural_compile_coverage": plan["compile_coverage"],
     "rtl_numeric_smolvla_coverage": {
-        "unique_contraction_shapes": 1,
+        "unique_contraction_shapes": 2,
         "unique_contraction_shapes_total": 28,
-        "physical_contraction_occurrences": 1,
+        "physical_contraction_occurrences": 2,
         "physical_contraction_occurrences_total": 391,
-        "shape": [50, 720, 32],
-        "outputs_checked": 1600,
-        "mismatches": raw["comparisons"]["Y0"]["mismatches"],
-        "cycles": raw["cycles"],
-        "instruction_words": cases["smolvla_tail_50_720_32"]["instruction_words"],
-        "raw_output_sha256": raw["comparisons"]["Y0"]["raw_sha256"],
+        "outputs_checked": 2560,
+        "cases": {
+            "smolvla_tail_50_720_32": {
+                "shape": [50, 720, 32],
+                "mismatches": raw["comparisons"]["Y0"]["mismatches"],
+                "cycles": raw["cycles"],
+                "instruction_words": cases["smolvla_tail_50_720_32"]["instruction_words"],
+                "raw_output_sha256": raw["comparisons"]["Y0"]["raw_sha256"],
+            },
+            "smolvla_state_proj_1_32_960": {
+                "shape": [1, 32, 960],
+                "mismatches": state_proj["comparisons"]["Y0"]["mismatches"],
+                "cycles": cases["smolvla_state_proj_1_32_960"]["cycles"],
+                "instruction_words": cases["smolvla_state_proj_1_32_960"]["instruction_words"],
+            },
+        },
     },
     "representative_cases": cases,
     "full_capture_probe": {
@@ -101,6 +113,13 @@ verdict = {
         "physical_contractions": inventory["physical_contractions"],
         "host_required_breakdown": inventory["host_required_breakdown"],
         "effective_candidate_windows": inventory["candidate_island_count"],
+    },
+    "full_capture_partition_plan": {
+        "structural_partitions": plan["partition_count"],
+        "kernel_variants": plan["kernel_variant_count"],
+        "accelerator_dependency_edges": len(plan["accelerator_dependency_edges"]),
+        "maximal_accelerator_islands": plan["maximal_accelerator_island_count"],
+        "capture_semantics_executable_partitions": plan["capture_semantics_executable_partition_count"],
     },
     "first_concrete_partition": {
         "capture_regions": partition["capture_regions"],
@@ -140,7 +159,25 @@ receipt = {
         "mechanism": "remove only redundant tuple wrappers around multi-result region type lists before xDSL parsing",
         "rewrites": 8,
         "source_capture_mutated": False,
-        "next_blocker": "whole-model graph partition/dispatch lowering",
+        "next_blocker": "calibrated quantization bridges plus host/device graph dispatch",
+    },
+    "full_capture_partition_planner": {
+        "path": "submission/mlir_oot/planner.py",
+        "partitions": plan["partition_count"],
+        "kernel_variants": plan["kernel_variant_count"],
+        "maximal_accelerator_islands": plan["maximal_accelerator_island_count"],
+        "capture_semantics_executable_partitions": plan["capture_semantics_executable_partition_count"],
+        "manifests": [
+            "whole_capture_plan/dependency_manifest.json",
+            "whole_capture_plan/lifetime_manifest.json",
+            "whole_capture_plan/abi_manifest.json",
+        ],
+    },
+    "compact_bias_fix": {
+        "path": "submission/mlir_oot/codegen.py",
+        "before": "bias_add omitted from compact FP8 matmul; first VREDSUM broadcast fix permuted lanes",
+        "after": "explicit BF16 two-register row layout; 960/960 state-projection outputs exact on GSIM",
+        "epilogue_safety": "bias precedes ReLU; unsupported compact scale/ReLU combinations fail closed",
     },
     "hypotheses_ranked_before_fix": [
         "missing commit-result SSA registration",

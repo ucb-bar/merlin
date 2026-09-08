@@ -56,7 +56,7 @@
     ],
     "fits_imem": true,
     "imem_words": 32768,
-    "instruction_words": 5692,
+    "instruction_words": 8037,
     "measurement": "exact emitted .word count"
   },
   "remaining_proofs": [

@@ -1,0 +1,33 @@
+{
+  "case": "smolvla_state_proj_1_32_960",
+  "claim": "bounded elaborated-RTL regression history; not whole-model evidence",
+  "schema": "atlas_state_proj_bias_regression_v1",
+  "stages": [
+    {
+      "all_outputs_bit_exact": false,
+      "cycles": 140686,
+      "instruction_words": 1396,
+      "max_abs_error": 1.0,
+      "mismatches": 640,
+      "outcome": "FP8 compact matmul silently omitted bias_add"
+    },
+    {
+      "all_outputs_bit_exact": false,
+      "cycles": 158418,
+      "instruction_words": 1511,
+      "kernel_sha256": "5f763cbad0ffa53ec0a12eaed348681a9641821b3c00d9d6a1f543fd92bb2422",
+      "max_abs_error": 1.0,
+      "mismatches": 640,
+      "outcome": "VREDSUM pseudo-broadcast executed but permuted BF16 bias lanes"
+    },
+    {
+      "all_outputs_bit_exact": true,
+      "cycles": 154458,
+      "instruction_words": 1509,
+      "kernel_sha256": "853f8396604796ef7bb420811d701cbad4f8cfffd5d38116ff2dd47272a611c6",
+      "max_abs_error": 0.0,
+      "mismatches": 0,
+      "outcome": "explicit two-register row-layout materialization"
+    }
+  ]
+}
