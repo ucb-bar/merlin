@@ -1,0 +1,42 @@
+{
+  "schema": "gemmini_friendly_resnet50_deployment_gate_v1",
+  "declaration_timing": {
+    "declared_before_promotion_decision": true,
+    "exploratory_one_image_metrics_were_already_known": true,
+    "fresh_heldout_qualification_required": true
+  },
+  "model": {
+    "checkpoint": "torchvision.models.resnet50(IMAGENET1K_V2)",
+    "input_contract": "same measured image and preprocessing as the canonical PT2E comparison",
+    "quantization_contract": "native_aligned_per_tensor_i8"
+  },
+  "structural": {
+    "complete_graph": true,
+    "opaque_operations": 0,
+    "conv2d_count": 53,
+    "linear_count": 1,
+    "native_scalar_epilogue_eligible": 54
+  },
+  "one_image_logits": {
+    "finite_logits": 1000,
+    "expected_top1": 258,
+    "minimum_cosine_vs_fp32": 0.99,
+    "maximum_absolute_error_vs_fp32": 0.25,
+    "minimum_cosine_vs_portable_qdq": 0.995,
+    "maximum_absolute_error_vs_portable_qdq": 0.25
+  },
+  "imagenet_validation": {
+    "required": true,
+    "minimum_top1_accuracy_percent": 79.8,
+    "maximum_absolute_drop_from_fp32_percent": 1.1
+  },
+  "fairness": {
+    "executorch_export_and_execute_required": true,
+    "merlin_import_required": true,
+    "same_qdq_graph_required": true,
+    "same_checkpoint_required": true,
+    "same_validation_inputs_required": true,
+    "fresh_heldout_qualification_required": true
+  },
+  "promotion_rule": "all checks must pass; missing evidence fails closed"
+}

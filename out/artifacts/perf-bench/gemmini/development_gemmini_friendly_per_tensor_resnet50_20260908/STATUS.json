@@ -1,0 +1,30 @@
+{
+  "schema": "gemmini_friendly_per_tensor_resnet50_status_v1",
+  "compiler_status": "FULL_MODEL_EMITTED",
+  "deployment_status": "REJECTED_NUMERIC_AND_FAIRNESS_GATE",
+  "capture": {
+    "convolutions": 53,
+    "linear_layers": 1,
+    "top1": 258,
+    "cosine_vs_fp32": 0.8852356672286987,
+    "max_abs_vs_fp32": 1.8770968914031982
+  },
+  "placement": {
+    "accelerator_contraction_tasks": 54,
+    "direct_loop_conv_tasks": 0,
+    "host_tasks": 55,
+    "accelerator_regions": 54,
+    "native_narrow_epilogues": 0,
+    "residual_host_source_operations": 2850
+  },
+  "full_compile": {
+    "wall_seconds": 46.90,
+    "maximum_resident_kbytes": 838000,
+    "commands": 162,
+    "target_uncompressed_bytes": 68293031
+  },
+  "next_seam": "canonical i32 bias plus scalar requant/round/saturate/ReLU epilogue, followed by NHWC propagation and source-conv recovery",
+  "firesim_run": false,
+  "private_payload_used": false,
+  "compiler_92_96_modified": false
+}

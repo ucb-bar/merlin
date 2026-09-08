@@ -1,0 +1,220 @@
+{
+  "check_count": 22,
+  "checks": [
+    {
+      "name": "checkpoint",
+      "observed": "torchvision.models.resnet50(IMAGENET1K_V2)",
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": "torchvision.models.resnet50(IMAGENET1K_V2)"
+      }
+    },
+    {
+      "name": "complete_graph",
+      "observed": true,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "opaque_operations",
+      "observed": 0,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 0
+      }
+    },
+    {
+      "name": "conv2d_count",
+      "observed": 53,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 53
+      }
+    },
+    {
+      "name": "linear_count",
+      "observed": 1,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 1
+      }
+    },
+    {
+      "name": "native_scalar_epilogue_eligible",
+      "observed": 54,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 54
+      }
+    },
+    {
+      "name": "finite_logits",
+      "observed": 1000,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 1000
+      }
+    },
+    {
+      "name": "top1",
+      "observed": 258,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": 258
+      }
+    },
+    {
+      "name": "cosine_vs_fp32",
+      "observed": 0.8852356672286987,
+      "passed": false,
+      "requirement": {
+        "relation": "ge",
+        "value": 0.99
+      }
+    },
+    {
+      "name": "max_abs_vs_fp32",
+      "observed": 1.8770968914031982,
+      "passed": false,
+      "requirement": {
+        "relation": "le",
+        "value": 0.25
+      }
+    },
+    {
+      "name": "cosine_vs_portable_qdq",
+      "observed": 0.9956095218658447,
+      "passed": true,
+      "requirement": {
+        "relation": "ge",
+        "value": 0.995
+      }
+    },
+    {
+      "name": "max_abs_vs_portable_qdq",
+      "observed": 0.16269731521606445,
+      "passed": true,
+      "requirement": {
+        "relation": "le",
+        "value": 0.25
+      }
+    },
+    {
+      "name": "merlin_import",
+      "observed": true,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "executorch_export",
+      "observed": false,
+      "passed": false,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "executorch_execute",
+      "observed": false,
+      "passed": false,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "same_qdq_graph",
+      "observed": false,
+      "passed": false,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "same_checkpoint",
+      "observed": true,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "same_validation_inputs",
+      "observed": true,
+      "passed": true,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "fresh_heldout_qualification",
+      "observed": false,
+      "passed": false,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "imagenet_validation_complete",
+      "observed": false,
+      "passed": false,
+      "requirement": {
+        "relation": "eq",
+        "value": true
+      }
+    },
+    {
+      "name": "imagenet_top1",
+      "observed": null,
+      "passed": false,
+      "requirement": {
+        "relation": "ge",
+        "value": 79.8
+      }
+    },
+    {
+      "name": "imagenet_top1_drop",
+      "observed": null,
+      "passed": false,
+      "requirement": {
+        "relation": "le",
+        "value": 1.1
+      }
+    }
+  ],
+  "failed_checks": [
+    "cosine_vs_fp32",
+    "max_abs_vs_fp32",
+    "executorch_export",
+    "executorch_execute",
+    "same_qdq_graph",
+    "fresh_heldout_qualification",
+    "imagenet_validation_complete",
+    "imagenet_top1",
+    "imagenet_top1_drop"
+  ],
+  "failed_count": 9,
+  "interpretation": "candidate only; must not replace the canonical numerical contract or support a performance claim",
+  "passed_count": 13,
+  "promotion_eligible": false,
+  "schema": "gemmini_friendly_resnet50_deployment_gate_assessment_v1",
+  "status": "rejected"
+}

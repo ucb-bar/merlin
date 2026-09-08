@@ -1,0 +1,62 @@
+{
+  "schema": "pinned_loop_ws_descriptor_v1",
+  "macro_name": "gemmini_loop_ws",
+  "macro_line": 390,
+  "header_sha256": "007826db4fdaf35783e5d91ad3f21c2df9a310c1c51d53499f7745fc379974de",
+  "params_sha256": "3758ae967af3a179497660970201093a7fb624be00173990ce33d3f5c38da924",
+  "geometry": {
+    "DIM": 16,
+    "BANK_NUM": 4,
+    "BANK_ROWS": 4096,
+    "ACC_ROWS": 1024
+  },
+  "capacity": {
+    "max_spad_rows": {
+      "source_expression": "BANK_NUM * BANK_ROWS / 2",
+      "rows": 8192
+    },
+    "max_acc_rows": {
+      "source_expression": "ACC_ROWS / 2",
+      "rows": 512
+    }
+  },
+  "records": [
+    {
+      "name": "k_LOOP_WS_CONFIG_BOUNDS",
+      "funct": 9,
+      "rs1": "((pad_K) << 32) | ((pad_J) << 16) | (pad_I)",
+      "rs2": "((K) << 32) | ((J) << 16) | (I)"
+    },
+    {
+      "name": "k_LOOP_WS_CONFIG_ADDRS_AB",
+      "funct": 10,
+      "rs1": "A",
+      "rs2": "B"
+    },
+    {
+      "name": "k_LOOP_WS_CONFIG_ADDRS_DC",
+      "funct": 11,
+      "rs1": "D",
+      "rs2": "C"
+    },
+    {
+      "name": "k_LOOP_WS_CONFIG_STRIDES_AB",
+      "funct": 12,
+      "rs1": "A_stride",
+      "rs2": "B_stride"
+    },
+    {
+      "name": "k_LOOP_WS_CONFIG_STRIDES_DC",
+      "funct": 13,
+      "rs1": "D_stride",
+      "rs2": "C_stride"
+    },
+    {
+      "name": "k_LOOP_WS",
+      "funct": 8,
+      "rs1": "((a_spad_id) << 18) | ((b_spad_id) << 16) | ((act) << 8) | ((low_D) << 2) | ((full_C) << 1) | (ex_accumulate)",
+      "rs2": "((is_resadd) << 2) | ((B_transpose) << 1) | (A_transpose)"
+    }
+  ],
+  "scope": "exact pinned public header fields and WS double-buffer capacity; runtime hardware pin qualification remains separate"
+}

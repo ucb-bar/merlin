@@ -1,0 +1,894 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: gemmini_xdsl_oot_v0
+language: python
+authoring:
+  mode: agent_generated_from_rtl_facts
+  author: capsule_bench agent (arm4 merlin_assisted_rtlchecks)
+  generated_by_agent: true
+integrity_exempt: false
+
+entrypoints:
+  tool: gemmini-opt
+
+commands:
+  parse:
+    argv: ["{tool}", "--source-convolution", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--source-convolution", "--convert-iface-to-gemmini", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--source-convolution", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--source-convolution", "--convert-iface-to-gemmini", "--emit-target-artifact", "{input_mlir}"]
+  emit_analysis_bundle:
+    argv: ["{tool}", "--source-convolution", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+
+optimization_surfaces:
+  - id: exact_per_tensor_qdq_layout_reuse
+    scope: canonicalization
+    path: mlir_oot/frontend/gemmini_friendly_quant.py
+    symbol: _static_per_tensor_i8_layout_chain
+    effects: [movement, memory_planning, fusion]
+    cca_axes: [communication.intermediate_materialized, memory.capacity_fit]
+    mechanism: >-
+      Commute a calibrated symmetric per-tensor i8 value and its scalar scale through statically
+      proven reshape, transpose, zero-pad, and pure-gather operations before integer contraction.
+    emitted_delta: >-
+      Rebuild only layout operations on i8 and erase the replaced f32 expansion chain; preserve the
+      exact captured qvalue and scale rather than introducing a second dynamic quantizer.
+    validation: >-
+      Require exact zero point and padding, static shapes, pure gather bodies, focused refusal tests,
+      108/108 full-model operand reuse, and unchanged 54-task accelerator coverage.
+    abandonment: >-
+      Refuse computed transforms, nonzero padding/zero points, shared unsafe chains, unsupported
+      ranks, or any graph whose post-rewrite verifier or numerical contract does not hold.
+  - id: linear_global_task_provenance_tagging
+    scope: codegen
+    path: mlir_oot/codegen/builder.py
+    symbol: FnBuilder._decorate
+    effects: [compile_time]
+    cca_axes: [envelope.runtime_calls]
+    mechanism: >-
+      Attach the active global-task attribute when each LLVM operation is inserted, rather than
+      rescanning every accumulated CFG block after every scheduled task.
+    emitted_delta: >-
+      Preserve task ownership while reducing attribution work from tasks times accumulated blocks
+      to one visit per newly inserted operation.
+    validation: >-
+      Unit-test insertion and absence of whole-CFG rescans; compile the full 109-task graph under a
+      120-second cap; require all task IDs -1 through 108 in the verified output.
+    abandonment: >-
+      Revert if any inserted operation loses or changes task ownership, or if a construction path
+      bypasses the scoped builder without an explicit owner.
+  - id: accuracy_bounded_global_requantization_regions
+    scope: heuristic
+    path: mlir_oot/frontend/requantization_contract.py
+    symbol: evaluate_accuracy_gate
+    effects: [fusion, movement, encoding]
+    cca_axes: [communication.intermediate_materialized, communication.resident_across_calls,
+      layout.operand_major, memory.capacity_fit]
+    mechanism: >-
+      Preserve an exact target-neutral quantized-epilogue contract (scale granularity and axis,
+      zero points, bias domain, ordered stages, rounding and saturation), prefer universal proof,
+      and otherwise admit native narrow readout only under an explicit normalized-source/site/
+      semantic-contract-bound held-out accuracy budget supported by the target capability.
+      Post-selection formation joins maximal dependency-connected accelerator regions across one
+      retained physical encoding and reports every remaining host operation and refusal.
+    emitted_delta: >-
+      For a passing opt-in site, replace the full-width accumulator readback plus host f32/QDQ
+      chain with the declared native scalar-scale i8 readout, retain compatible encoded values
+      across consumers, and delete the represented host operations and i32 boundary. Exact-default
+      behavior and all failing or absent-policy sites remain unchanged.
+    validation: >-
+      Recompute candidate outputs from held-out i32 accumulator/channel samples; check source,
+      semantic, dataset, independent-reference and output hashes; enforce sample/channel coverage,
+      maximum and mean LSB error, mismatch and saturation-mismatch budgets; verify target stage
+      order/capability; run focused exact/refusal/stale-evidence/whole-region tests and all fixed
+      portfolio compile gates.
+    abandonment: >-
+      Refuse absent or false opt-in, stale/ambiguous evidence, training rather than held-out data,
+      missing provenance, unsupported target scale/bias/zero-point/order, inadequate channel
+      coverage, any exceeded error dimension, or a host/layout boundary that prevents region
+      joining. Never relabel empirical qualification as all-input equivalence.
+  - id: global_model_partition_and_batched_contraction
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: MixedBuilder
+    effects: [fusion, movement, encoding, tiling]
+    cca_axes: [coverage.claimed_mac_fraction, coverage.unclaimed_op_classes,
+      coverage.non_contraction_op_fraction, communication.intermediate_materialized,
+      dispatch.loop_offloaded]
+    mechanism: >-
+      Select and construct target-independent mixed-lane regions for complete models, including
+      rank-general batched integer contractions whose batch dimensions can be flattened, broadcast,
+      or explicitly represented without changing source arithmetic.
+    emitted_delta: >-
+      Replace eligible host contraction tasks and their materialized representation boundaries with
+      verified accelerator tasks while preserving every source operation, batch index, reduction
+      order, tensor shape/dtype, dependency, and external binding.
+    validation: >-
+      Recompile every fixed portfolio member and require monotonic ready-member coverage, exact
+      graph/plan/task ownership, unchanged contraction MACs and ABI, legal capacity, and fewer host
+      contraction MACs, boundaries, or payload on each affected model; qualify a reduced instance
+      of every newly admitted rank/broadcast pattern.
+    abandonment: >-
+      Refuse dynamic or non-bijective batch mappings, nonzero accumulator initializers, mismatched
+      batch extents, unproved broadcasts, or capacity overflow; revert if any ready portfolio member
+      regresses or the emitted plan does not remove the intended host work.
+  - id: global_mesh_eligibility
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: mesh_eligible
+    effects: [fusion, movement, encoding]
+    cca_axes: [coverage.claimed_mac_fraction, coverage.unclaimed_op_classes,
+      memory.capacity_fit]
+    mechanism: >-
+      Decide mesh eligibility from operation semantics, operand/result ranks, dtypes, batch mapping,
+      initializer identity, and target-derived capacity rather than a model or capsule name.
+    emitted_delta: >-
+      Move only structurally representable integer contractions from host to accelerator placement.
+    validation: >-
+      Require exact full-portfolio plan emission plus targeted positive and negative reduced witnesses
+      covering rank-2, batched, broadcast, nonzero-init, dtype mismatch, and capacity cases.
+    abandonment: >-
+      Revert on any silent fallback, lost source ownership, shape/dtype change, unsupported initializer,
+      or newly introduced trace/residency finding.
+  - id: integer_contraction_geometry
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: IntegerContraction
+    effects: [movement, encoding, tiling]
+    cca_axes: [compute.contraction_form, memory.access_pattern]
+    mechanism: >-
+      Carry source-derived rank, batch, M/K/N, and operand-variation facts for an integer
+      contraction without attaching workload names or target-specific shape constants.
+    emitted_delta: >-
+      Permit a verified rank-general contraction representation to replace host work while keeping
+      the source tensor shapes, element types, batch semantics, and output ownership explicit.
+    validation: >-
+      Recompile every fixed portfolio member and require exact graph/task/source ownership, then
+      qualify reduced rank-2, shared-RHS batched, broadcast, and independently batched witnesses.
+    abandonment: >-
+      Revert if geometry is inferred from provenance names, a batch axis is lost, M/K/N disagree
+      with source types, or any affected portfolio member loses readiness.
+  - id: integer_mac_body_recognition
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _is_integer_mac_body
+    effects: [encoding]
+    cca_axes: [compute.contraction_form, coverage.claimed_mac_fraction]
+    mechanism: >-
+      Prove that a generic contraction body is exactly integer multiply-add over its two inputs and
+      accumulator before allowing the target-independent model partitioner to replace that region.
+    emitted_delta: >-
+      Admit only scalar bodies whose arithmetic is preserved by the accelerator contraction task;
+      leave every non-MAC or decorated body on the host.
+    validation: >-
+      Use positive and negative reduced bodies covering extension, operand order, extra arithmetic,
+      non-additive reductions, and variadic yields, plus exact full-portfolio plan ownership.
+    abandonment: >-
+      Refuse any unrecognized scalar operation, wrong accumulator use, ambiguous product operand,
+      or body whose source arithmetic would be deleted rather than represented.
+  - id: contraction_affine_map_recognition
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _map_positions
+    effects: [encoding]
+    cca_axes: [memory.access_pattern, layout.operand_major]
+    mechanism: >-
+      Read only symbol-free affine dimension projections used to prove rank-general contraction
+      indexing; reject composed or symbolic maps rather than guessing their meaning.
+    emitted_delta: >-
+      Enable structural batch/M/N/K map comparison without changing any emitted tensor access.
+    validation: >-
+      Exercise exact, permuted, symbolic, constant, and composed affine-map witnesses and require
+      unchanged logical work and source coverage on all fixed portfolio members.
+    abandonment: >-
+      Refuse a map containing symbols or any expression other than a direct dimension projection.
+  - id: leading_batch_broadcast_recognition
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _leading_broadcast_source
+    effects: [movement, encoding]
+    cca_axes: [communication.intermediate_materialized,
+      communication.resident_across_calls, memory.access_pattern]
+    mechanism: >-
+      Peel only an explicit broadcast that adds exactly the contraction's leading batch axes so a
+      shared rank-2 operand is not materialized or packed once per batch.
+    emitted_delta: >-
+      Replace duplicated broadcast storage and movement with one shared source binding while
+      preserving every batch result.
+    validation: >-
+      Qualify reduced shared-LHS and shared-RHS broadcasts plus wrong-axis, rank-changing, fanout,
+      and non-broadcast controls; require exact portfolio graph/task/source ownership.
+    abandonment: >-
+      Refuse missing, reordered, partial, dynamic, or non-leading broadcast axes and any source
+      whose rank/shape does not prove the shared matrix semantics.
+  - id: rank_general_integer_contraction
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _integer_contraction
+    effects: [movement, encoding, tiling]
+    cca_axes: [compute.contraction_form, coverage.claimed_mac_fraction,
+      dispatch.loop_offloaded]
+    mechanism: >-
+      Recover rank-2 and batched integer contraction geometry from tensor types, iterator kinds,
+      affine maps, and the verified scalar MAC body, optionally recognizing a shared broadcast.
+    emitted_delta: >-
+      Turn structurally equivalent rank-general source contractions into the same explicit M/K/N
+      scheduling problem without changing batch order, reduction order, dtypes, or results.
+    validation: >-
+      Recompile all portfolio graphs and qualify reduced rank-2, rank-3, multi-axis batch, shared
+      operand, two-varying-operand, malformed-map, malformed-body, and shape-mismatch witnesses.
+    abandonment: >-
+      Return no contraction for dynamic/ambiguous geometry, inconsistent batch extents, unsupported
+      body/maps, or any case whose flattening cannot be proved from row-major source semantics.
+  - id: batched_contraction_capacity_guard
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _block_diagonal_is_safe
+    effects: [movement, encoding, tiling]
+    cca_axes: [memory.capacity_fit, memory.onchip_resident]
+    mechanism: >-
+      Decide whether a batched contraction is a direct shared-operand flattening or a bounded
+      block-diagonal construction whose operands are immutable entry leaves with exclusive use.
+    emitted_delta: >-
+      Admit only derived representations that stay within the target-derived construction budget
+      and do not duplicate or reinterpret values produced by earlier dynamic tasks.
+    validation: >-
+      Check exact reduced block-diagonal numerical references and negative capacity, non-leaf,
+      fanout, shared-LHS, and shared-both cases; require no portfolio ownership or ABI regression.
+    abandonment: >-
+      Refuse capacity overflow, non-entry operands, fanout, unsupported shared-LHS geometry, or any
+      representation that would require unmodeled runtime packing.
+  - id: contraction_lane_reclassification
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _place_integer_contractions
+    effects: [movement, encoding]
+    cca_axes: [coverage.claimed_mac_fraction, coverage.unclaimed_op_classes]
+    mechanism: >-
+      Re-evaluate a contraction region from the actual operation operands when an earlier region
+      summary first observed its wider zero initializer, using the central target placement rule.
+    emitted_delta: >-
+      Correct false host placement for valid operand-width contractions without changing the
+      central capability policy or admitting any unsupported dtype.
+    validation: >-
+      Require the fixed portfolio to preserve every prior ready member while reducing false host
+      contraction work; qualify initializer-first and operand-first region-order witnesses.
+    abandonment: >-
+      Refuse nonzero initialization, unsupported operand types, unsafe batch representation, missing
+      region identity, or any placement not accepted by the central target capability rule.
+  - id: contraction_absorbed_source_ops
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _absorbed_candidates
+    effects: [fusion, movement, encoding]
+    cca_axes: [communication.intermediate_materialized, envelope.runtime_calls]
+    mechanism: >-
+      Identify only source operations whose semantics are represented inside one admitted
+      contraction task: its exact zero initializer and any exclusive explicit leading broadcast
+      peeled into a shared operand view.
+    emitted_delta: >-
+      Assign those represented operations to the contraction task instead of executing duplicate
+      host initialization or broadcast work, while retaining their source ownership indices.
+    validation: >-
+      Require every complete portfolio source index exactly once and qualify reduced exclusive,
+      fanout, initializer, and shared-broadcast witnesses with unchanged outputs and dependencies.
+    abandonment: >-
+      Do not absorb nonzero/computed initialization, non-broadcast transforms, nonexclusive values,
+      or any operation whose arithmetic or externally visible result is not represented by the task.
+  - id: exclusive_contraction_absorption
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _exclusive_absorbed
+    effects: [fusion, movement, encoding]
+    cca_axes: [communication.intermediate_materialized, envelope.runtime_calls]
+    mechanism: >-
+      Resolve absorbed-source ownership across the complete set of admitted contractions and keep
+      only operations used exclusively by exactly one represented contraction.
+    emitted_delta: >-
+      Remove duplicate host tasks for safely represented initialization/broadcast operations without
+      dropping fanout work or assigning a source operation to multiple tasks.
+    validation: >-
+      Check exact once-only source ownership across all portfolio graphs and reduced shared/fanout
+      controls, with no change to logical dispatch, external ABI, or dependency order.
+    abandonment: >-
+      Retain an operation on the host if it is shared, externally observed, not uniquely attributable,
+      or would create missing/duplicate source ownership in the verified global plan.
+  - id: additive_identity_recognition
+    scope: heuristic
+    path: mlir_oot/lowering/model_lane.py
+    symbol: _is_zero_init
+    effects: [encoding]
+    cca_axes: [compute.contraction_form, coverage.claimed_mac_fraction]
+    mechanism: >-
+      Recognize the additive identity only when an explicit linalg.fill or tensor.splat is fed by an
+      exact scalar zero constant of the source type.
+    emitted_delta: >-
+      Allow from-zero contraction lowering for both canonical initializer spellings while retaining
+      every nonzero or computed initializer on the host.
+    validation: >-
+      Exercise integer and floating zero, nonzero, computed, fill, splat, and unrelated-producer
+      witnesses and require unchanged source ownership throughout the portfolio.
+    abandonment: >-
+      Refuse absent producers, computed values, non-fill/splat producers, or constants not exactly
+      equal to the additive identity.
+  - id: source_convolution_global_partition
+    scope: heuristic
+    path: mlir_oot/lowering/source_conv_model_lane.py
+    symbol: SourceConvBuilder
+    effects: [fusion, movement, encoding, tiling]
+    cca_axes: [coverage.non_contraction_op_fraction, compute.epilogue,
+      communication.intermediate_materialized, memory.onchip_resident,
+      dispatch.loop_offloaded, envelope.calls_in_loop, envelope.runtime_calls,
+      spatial.accumulator_resident]
+    mechanism: >-
+      Compose direct convolution, contraction, epilogue, residual, and host regions across an entire
+      normalized model while retaining target-independent source ownership and explicit boundaries.
+    emitted_delta: >-
+      Form larger legal accelerator regions, keep accumulator-width intermediates resident when
+      consumers permit it, and eliminate avoidable host materialization and synchronization.
+    validation: >-
+      Recompile the complete portfolio, preserve exact source/plan/ABI semantics, and require affected
+      models to reduce host tasks, boundary payload, conversions, or fences without increasing work.
+    abandonment: >-
+      Refuse fusion across observable values, fanout, incompatible encodings, residual operands without
+      a legal implementation, or unproved dependencies; revert any coverage or semantic regression.
+  - id: source_convolution_mesh_eligibility
+    scope: heuristic
+    path: mlir_oot/lowering/source_conv_model_lane.py
+    symbol: mesh_eligible
+    effects: [fusion, movement, encoding]
+    cca_axes: [coverage.claimed_mac_fraction, coverage.unclaimed_op_classes,
+      memory.capacity_fit]
+    mechanism: >-
+      Select direct convolution and integer contraction regions from structural semantics and target
+      capabilities, including rank/batch forms, without workload-specific names or dimensions.
+    emitted_delta: >-
+      Convert eligible host regions to verified accelerator tasks with explicit representation and
+      capacity evidence.
+    validation: >-
+      Require exact portfolio emission and reduced positive/negative witnesses for every newly admitted
+      operation form, with unchanged logical work and ABI.
+    abandonment: >-
+      Revert on unsupported ranks, layouts, initializers, batch maps, capacity, source ownership, or
+      any regression of a previously ready member.
+  - id: exact_second_tensor_residual_epilogue
+    scope: heuristic
+    path: mlir_oot/frontend/residual_epilogue.py
+    symbol: recognize_all
+    effects: [fusion, movement, encoding]
+    cca_axes: [compute.epilogue, communication.intermediate_materialized,
+      coverage.non_contraction_op_fraction]
+    mechanism: >-
+      Recognize an exact target-neutral second-tensor residual add whose input branches retain
+      source-ordered i32-to-f32 conversion, accumulator scale, per-channel scale and bias, followed
+      by optional ReLU and an ordered reciprocal-scale, round-to-nearest-even, zero-point and i8
+      clamp sink. Preserve the original affine indexing maps, including projected and constant
+      broadcasting, and make no target-instruction choice.
+    emitted_delta: >-
+      Dependency-schedule an exclusive producer branch to its residual join when legal, then emit
+      the residual epilogue in one host traversal with an optional live f32 boundary write. Delete
+      private intermediate materializations and task boundaries without reassociating floating-point
+      operations or changing accelerator commands.
+    validation: >-
+      Require positive witnesses across varied shapes, projected broadcasting and optional ReLU;
+      refuse reordered arithmetic, ordinary adds, non-roundeven quantization and fanout; compare
+      exact f32 bits and i8 values; compile the complete four-model portfolio; and run one exact
+      warm/measured full-model proxy gate only when the executable target changes.
+    abandonment: >-
+      Refuse any missing stage, non-single-use branch, unsupported indexing expression, out-of-range
+      broadcast, non-exact clamp or quantization sink, source ownership ambiguity, dependency cycle,
+      or observed numerical/portfolio regression.
+  - id: affine_window_packing_specialization
+    scope: codegen
+    path: mlir_oot/codegen/llvm_emit.py
+    symbol: Emitter.emit_im2col_row
+    effects: [movement, encoding, latency_hiding]
+    cca_axes: [memory.access_pattern, communication.intermediate_materialized,
+      envelope.calls_in_loop]
+    mechanism: >-
+      Derive the output-column interval whose affine input coordinate is in bounds for every
+      kernel column from the convolution's static geometry. Hoist flattened-k row bases and y
+      classification outside the output-column loop, emit pointer-increment-style loads/stores
+      for the common interior, and retain guarded gather semantics only at the borders.
+    emitted_delta: >-
+      Delete repeated bounds masks, clamps, and NCHW address reconstruction from interior packed
+      bytes without changing the packed K-by-W encoding, zero padding, staging buffers, fences,
+      accelerator descriptors, DMA, source ownership, or ABI.
+    validation: >-
+      Exhaustively prove the common interval over varied static widths, kernels, strides,
+      dilations, and padding; compare a segmented executable reference with naive im2col; compile
+      irregular source witnesses; require exact full-model output and unchanged command buffers;
+      and require byte-identical unaffected portfolio artifacts.
+    abandonment: >-
+      Refuse nonpositive or dynamic extents/strides and negative padding. Revert on any packed-byte
+      mismatch, source/task/dependency change, accelerator stream or payload delta, stack-policy
+      failure, unaffected-model artifact change, or full-model numerical mismatch.
+  - id: scalar_loop_state
+    scope: codegen
+    path: mlir_oot/codegen/builder.py
+    symbol: FnBuilder.for_range
+    effects: [movement, tiling]
+    cca_axes: [compute.reduction_form, envelope.calls_in_loop,
+      envelope.runtime_calls]
+    mechanism: >-
+      Carry one typed scalar recurrence through LLVM CFG block arguments when an owning host
+      lowering proves that the value is an innermost source reduction accumulator.
+    emitted_delta: >-
+      Replace repeated result-buffer accumulator loads and stores with one loop-carried SSA value;
+      retain the same trip count, induction order, scalar operations, and per-step rounding.
+    validation: >-
+      Recompile the fixed complete graph and require verified CFG structure, unchanged source and
+      task ownership, contraction work, device commands, movement, boundary payload, and ABI, with
+      fewer host loads and stores and no machine-site increase.
+    abandonment: >-
+      Revert if the carried value is not type-identical, the loop is not the exact innermost source
+      reduction, CFG verification fails, traffic does not fall, or any source/dependency/work field
+      changes.
+  - id: host_structured_control_and_scalar_lowering
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg
+    effects: [fusion, movement, tiling, encoding, dtype]
+    cca_axes: [coverage.non_contraction_op_fraction, compute.activation_vectorization,
+      compute.epilogue, envelope.calls_in_loop, envelope.runtime_calls,
+      memory.access_pattern]
+    mechanism: >-
+      Lower the complete source-defined host portion with statically bounded tensor loops, typed
+      scalar arithmetic, variadic generic results/reductions, and structured scf.for/scf.if control
+      flow. Keep loop-private tensor updates and scalar recurrences in verified LLVM CFG state, and
+      use source element widths for i1, integer, bf16, f32, and f64 storage and rounding.
+    emitted_delta: >-
+      Make previously opaque host regions explicit and optimizable, then delete only proven
+      redundant host materialization/address/scalar work while preserving source branch behavior,
+      loop trip/order, tensor updates, result arity, dtype rounding, task boundaries, accelerator
+      commands, and boundary payload.
+    validation: >-
+      Recompile every fixed portfolio graph and require exact source/task/CFG ownership, logical
+      work, device commands, boundary payload, storage ABI, and dependencies. Qualify reduced
+      witnesses for each changed control-flow, dtype, variadic-result, tensor-update, reduction, or
+      fusion mechanism and require the predicted host-work delta on each affected complete graph.
+    abandonment: >-
+      Refuse dynamic or unbounded loops, unsupported scalar/storage types, ambiguous tensor aliasing,
+      mismatched branch/result types, unproved functional updates, or unknown effects; revert if any
+      portfolio member loses readiness, semantics/ownership/work changes, machine sites increase
+      without an explained mechanism, or applicable qualification fails.
+  - id: llvm_f64_to_f32_cast
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: FPTruncOp
+    effects: [dtype, encoding]
+    cca_axes: [compute.epilogue, coverage.non_contraction_op_fraction]
+    mechanism: >-
+      Represent the standard LLVM narrowing floating-point cast missing from the pinned xDSL build
+      so source f64-to-f32 conversion remains an ordinary typed LLVM operation.
+    emitted_delta: >-
+      Replace no arithmetic; emit the exact fptrunc operation instead of declining or routing
+      floating conversion through integer bits.
+    validation: >-
+      Parse and verify emitted LLVM and qualify reduced f64 values covering finite, signed zero,
+      subnormal, infinity, and NaN behavior before accepting a changed region.
+    abandonment: >-
+      Use only for an f64 source and f32 result; refuse other widths or any path that changes source
+      rounding, exception, or payload semantics.
+  - id: bounded_tanh_exp_clamp_elision
+    scope: codegen
+    path: mlir_oot/codegen/fpbuilder.py
+    symbol: FpBuilder
+    effects: [dtype, quantization]
+    cca_axes: [compute.activation_vectorization, compute.epilogue]
+    mechanism: >-
+      Reuse the existing tanh input clamp proof when calling the generated exp primitive:
+      clamping an f32 to [-15, 15] and multiplying by exactly representable 2.0 bounds the
+      exp input to [-30, 30], strictly inside exp's defensive [-87, 88] interval. General
+      exp callers retain their clamp, and the tanh approximation and rounding order are unchanged.
+    emitted_delta: >-
+      Delete only the redundant second f32 clamp and its bitwise blend operations from each
+      generated tanh element; retain the tanh clamp, multiply, exp range reduction and polynomial,
+      division, loads, stores, source operations, task boundaries, and accelerator commands.
+    validation: >-
+      Recompile the fixed complete graph and require exact source/task/CFG coverage, unchanged
+      graph and plan digests, dispatch, contraction work, movement, payload, allocation and
+      synchronization, with fewer host floating/integer operations and fewer machine sites;
+      qualify the actual changed tanh region with the host-selected semantic witness.
+    abandonment: >-
+      Revert if the bounded call is reachable without the exact preceding f32 clamp and multiply,
+      any source/dependency/plan/payload field changes, the intended host operation reduction is
+      absent, machine sites increase, or changed-region semantic qualification fails.
+  - id: row_major_address_strength_reduction
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg
+    effects: [movement, tiling]
+    cca_axes: [memory.access_pattern, envelope.calls_in_loop]
+    mechanism: >-
+      Build statically bounded row-major tensor offsets with a Horner recurrence, and decode
+      bounded flat indices with a minor-to-major mixed-radix recurrence whose final quotient is
+      the highest non-unit coordinate; specialize unit extents and unit divisors while retaining
+      the source loop nest, tensor representation, and exact element access order.
+    emitted_delta: >-
+      Delete redundant host integer multiply, add, divide, and highest-axis remainder operations
+      used only for tensor address calculation; retain every load, store, scalar computation,
+      allocation, source operation, dependency, accelerator command, and boundary payload.
+    validation: >-
+      Recompile the fixed complete graph and require exact source/task/CFG coverage, unchanged
+      graph and plan digests, logical dispatch, accelerator work, movement payload, storage,
+      synchronization and ABI, with fewer host integer operations and no machine-site increase;
+      qualify the actual changed host indexing mechanism when a witness is available.
+    abandonment: >-
+      Revert if index bounds are not static and non-negative, full-model analysis changes any
+      access count, payload, source/dependency/dispatch field, or synchronization, the intended
+      integer-operation delta is absent, machine sites increase, or semantic qualification fails.
+  - id: pipeline_issue
+    scope: codegen
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.contraction
+    effects: [issue, latency_hiding, tiling]
+    cca_axes: [dispatch.loop_offloaded, dispatch.descriptor_reuse,
+      dispatch.dma_overlap, spatial.accumulator_resident,
+      communication.resident_across_calls, memory.capacity_fit]
+    mechanism: >-
+      Select the pinned target LOOP_WS endpoint sequencer for capacity-bounded bias-free
+      i8 by i8 contractions whose emitted boundary is the exact raw i32 accumulator form;
+      retain the explicit schedule for bias initialization and narrowed native readout.
+    emitted_delta: >-
+      Replace repeated host-issued load, preload, compute, and readout commands with one
+      descriptor sequence per capacity block, carrying later K-block partial sums through
+      the descriptor's explicit D input without changing source arithmetic or tensor ABI.
+    validation: >-
+      Recompile the fixed complete graph, require exact source/task/CFG coverage, unchanged
+      logical dispatch, contraction MACs and boundary payload, and verify every descriptor's
+      bounds, strides, offsets, capacity, accumulator continuation and decoded opcode fields;
+      qualify the changed contraction mechanism and profile only an admitted reduced witness.
+    abandonment: >-
+      Retain the explicit schedule for bias, non-i32 or activated/scaled readout, invalid
+      capacity or representation; revert if whole-model emission has no descriptor delta,
+      changes source/dependency coverage, arithmetic, payload, or fails semantic qualification.
+  - id: one_use_pointwise_reduction_fusion
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._lazy_pointwise
+    effects: [fusion, movement, encoding]
+    cca_axes: [compute.reduction_form, compute.epilogue,
+      communication.intermediate_materialized]
+    mechanism: >-
+      Preserve the exact authored one-use full-shape pointwise-to-reduction fusion;
+      the source-native reduction visits each producer input element exactly once,
+      retaining producer rounding and reduction order.
+    emitted_delta: >-
+      Delete the producer materialization, stores and reloads without changing
+      floating arithmetic, conversions or reduction initialization semantics.
+    validation: >-
+      Compile all complete frozen model graphs with this single compiler, require
+      verified source/plan/CFG ownership, and preserve the original scoped authored
+      numerical receipt rather than claiming the merge is a new agent experiment.
+    abandonment: >-
+      Refuse fanout, mismatched reduction input shape, output initializer use or
+      cross-task producer consumers. Do not reassociate or reorder reduction arithmetic.
+  - id: one_use_reduction_pointwise_fusion
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg
+    effects: [fusion, movement]
+    mechanism: >-
+      Keep a final-axis scalar reduction recurrence lazy when its result has exactly one
+      same-segment pointwise consumer whose input map is bijective, so the consumer evaluates
+      each reduced element once without an intervening memory-backed tensor.
+    emitted_delta: >-
+      Remove the reduction-result allocation, final reduction stores, and matching pointwise
+      input loads while retaining every initializer read, source reduction step, dtype rounding,
+      pointwise scalar operation, source operation identity, and dependency.
+    validation: >-
+      Recompile every fixed portfolio member and require unchanged graph ownership, ABI,
+      accelerator work, command stream and dispatch structure, with a per-affected-model decrease
+      in host allocation and load/store payload; qualify the host-selected changed reduction chain.
+    abandonment: >-
+      Retain materialization for non-final or multi-input reductions, fanout, boundary results,
+      broadcast/constant/non-bijective consumer maps, dynamic shapes, or any readiness, semantic,
+      source-ownership, work, movement, or per-model host-cost regression.
+  - id: uniform_map_before_padded_gather
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._emit_commuted_gather
+    effects: [encoding, movement, fusion]
+    cca_axes: [memory.access_pattern, layout.transpose_materialized,
+      communication.intermediate_materialized]
+    mechanism: >-
+      Evaluate a uniform pure scalar chain on each interior input and the constant padding
+      scalar once, then gather transformed values through original bijective encodings.
+      Candidate-only gather_commute.py proves source geometry, bounds and one-use ownership,
+      complete interior source coverage, and at least one original padding access.
+    emitted_delta: >-
+      Delete repeated floating point/conversion work and float padded materialization;
+      retain exact scalar rounding and transformed padding, encoded padded storage and
+      final boundary stores. No native saturated output substitution is involved.
+    validation: >-
+      Require full source/task/CFG coverage and unchanged accelerator commands; compare
+      actual dynamic scalar work and payload, then run reduced overlapping padded source
+      witnesses including negative values and nonzero transformed padding controls.
+    abandonment: >-
+      Refuse unknown index bounds or incomplete/unproved source coverage, unused padding,
+      nonconstant padding, nonuniform side inputs, fanout,
+      nonbijective views, nonboundary sinks, or an interior-plus-padding evaluation count
+      not strictly smaller than the original gather count.
+  - id: bounded_readonly_gather_view
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._lazy_gather_view
+    effects: [encoding, movement, fusion]
+    cca_axes: [memory.access_pattern, layout.transpose_materialized,
+      communication.intermediate_materialized]
+    mechanism: >-
+      Compose a statically bounded readonly tensor gather through single-use bijective
+      reshape/transpose views into an equal-domain pure pointwise consumer; index range
+      proof is implemented by mlir_oot/codegen/gather_view.py.
+    emitted_delta: >-
+      Delete the float or integer gathered tensor allocation, initializer, stores and
+      reloads while preserving every source read, index evaluation and scalar operation.
+    validation: >-
+      Verify complete source/task/CFG ownership, unchanged accelerator stream and scalar
+      arithmetic counts, plus actual-source reduced overlapping/padded gather witnesses.
+    abandonment: >-
+      Refuse unknown or overflowing integer bounds, out-of-bounds source indices,
+      fanout, non-bijective views, output accumulator reads and cross-task consumers.
+  - id: single_consumer_pointwise_fusion
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._lazy_pointwise
+    effects: [fusion, movement, encoding]
+    cca_axes: [compute.epilogue, communication.intermediate_materialized,
+      coverage.non_contraction_op_fraction]
+    mechanism: >-
+      Inline a pure scalar producer into its unique pointwise consumer or full-shape
+      reduction input, optionally through a one-use element-count-preserving chain of
+      reshape/collapse/expand and verified transpose views. Preserve every scalar operation,
+      dtype rounding and evaluation count; broadcast and slicing are not bijective views.
+    emitted_delta: >-
+      Remove intermediate allocation, initialization, store and reload operations;
+      retain floating arithmetic, width conversions and accelerator commands.
+    validation: >-
+      Verify the complete source/task plan and compare emitted dynamic host work and payload;
+      prove each traversed view is bijective and execute an actual changed reduced composed-map
+      witness with shape-changing views, signed overflow and f32 rounding.
+    abandonment: >-
+      Refuse fanout, broadcast, slice, element-count change, invalid transpose, partial-domain
+      or multi-use reduction consumers, output accumulator use, unknown indexing, non-scalar
+      effects and cross-task consumers. No arithmetic reassociation.
+  - id: lazy_affine_copy_encoding
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._lazy_copy_map
+    effects: [encoding, movement, fusion]
+    cca_axes: [layout.transpose_materialized, memory.access_pattern,
+      communication.intermediate_materialized]
+    mechanism: >-
+      Represent a same-dtype, pure-copy, all-parallel affine generic with proven in-bounds
+      indexing as a lazy reindexing view for one consumer in the same host segment.
+    emitted_delta: >-
+      Delete intermediate allocation, initialization, copy stores and unused output loads;
+      preserve consumer payload loads and arithmetic and every source/task dependency.
+    validation: >-
+      Compare complete-model emitted dynamic host work and payload bytes; independently
+      execute reduced signed-integer and float affine-copy consumers with negative inputs.
+    abandonment: >-
+      Decline fusion on unknown bounds, non-permutation output indexing, dtype mismatch,
+      output-accumulator use, fanout, unknown consumer effects or task-boundary crossing.
+  - id: direct_pointwise_boundary_store
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._lazy_segment_output
+    effects: [fusion, movement, encoding]
+    cca_axes: [compute.epilogue, communication.intermediate_materialized,
+      envelope.runtime_calls]
+    mechanism: >-
+      Defer a pure pointwise result with static in-bounds projected indexing until the host
+      segment writes its declared boundary output, optionally following an exclusive chain of
+      element-count-preserving reshape/collapse/expand or verified transpose views. Recognize
+      the source result of target-neutral quantization normalization, reject any same-segment
+      consumer beyond that view chain, and evaluate every scalar operation and dtype rounding
+      exactly once per output element directly at the existing boundary store.
+    emitted_delta: >-
+      Remove the pointwise result's private stack allocation, initialization, element stores,
+      and reloads while retaining the required DRAM boundary buffer and its stores, every source
+      scalar operation, all later device or host reads, and the global task dependency order.
+    validation: >-
+      Recompile the fixed complete model with analyze-whole-model; require verified source/task
+      coverage and CFG dependencies, identical logical dispatch and accelerator work, unchanged
+      boundary payload, and reduced host allocations, loads, and stores attributable to the
+      terminal pointwise maps; qualify normalized pointwise and bijective-view boundary chains
+      with shape-changing and transpose controls in an admitted reduced witness.
+    abandonment: >-
+      Materialize normally for a non-pointwise op, unknown or out-of-bounds indexing, output
+      accumulator use, dynamic or non-scalar effects, fanout, non-bijective or dtype-changing
+      views, a same-segment consumer beyond the exclusive view chain, or any analysis change to
+      source/task coverage, logical dispatch, boundary payload, or accelerator work.
+  - id: dead_pointwise_initializer_elision
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._t_linalg_generic
+    effects: [movement, fusion]
+    cca_axes: [communication.intermediate_materialized, envelope.runtime_calls]
+    mechanism: >-
+      For a statically bounded all-parallel linalg.generic whose output indexing map is a full
+      permutation and whose scalar body does not read the outs block argument, allocate the
+      unfused result without copying its dead initializer; fanout and task boundaries still force
+      result materialization, while every result element is written exactly once.
+    emitted_delta: >-
+      Remove only initializer loads, address calculations, and stores for otherwise materialized
+      pointwise results; retain the result allocation, every source scalar operation, every final
+      result store and all consumers, task boundaries, accelerator commands, and dependencies.
+    validation: >-
+      Recompile the fixed complete model with analyze-whole-model; require verified source/task
+      coverage and CFG dependencies, identical logical dispatch, accelerator work, boundary
+      payload, and synchronization, with reduced host dynamic stores attributable to pointwise
+      tasks; qualify the actual changed region with the host-selected semantic witness.
+    abandonment: >-
+      Materialize the initializer normally if the scalar output argument is used, any iterator is
+      non-parallel, the output map is not a full permutation, bounds or scalar effects are unknown,
+      or whole-model analysis changes source/task coverage, dependencies, dispatch, accelerator
+      work, boundary payload, or synchronization.
+  - id: retire_nested_host_epilogue_hazard_frontier
+    scope: heuristic
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.run
+    effects: [synchronization, issue, latency_hiding]
+    cca_axes: [communication.fences, dispatch.dma_overlap]
+    mechanism: >-
+      When a contraction uses a non-native readout, its mandatory fence retires all prior
+      accelerator accesses before the synchronous host epilogue writes the declared destination;
+      clear the device hazard frontier and continue tracking that destination as host-written.
+    emitted_delta: >-
+      Remove only a redundant FENCE before an immediately following host segment; retain the
+      contraction's device-to-host fence, later host-to-device fences, endpoint commands, source
+      operation ownership, and dependency order.
+    validation: >-
+      Recompile the fixed complete model with analyze-whole-model and require verified source and
+      task coverage with no dependency problems, unchanged accelerator work, and fewer emitted
+      synchronization instructions attributable to adjacent host work.
+    abandonment: >-
+      Abandon if full-model analysis does not reduce synchronization, changes compute or movement
+      instruction counts, loses any source operation or task, reports a plan/CFG dependency
+      problem, or fails changed-region semantic qualification.
+  - id: global_issue_and_fences
+    scope: heuristic
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.run
+    effects: [synchronization, issue, latency_hiding]
+    cca_axes: [communication.fences, dispatch.dma_overlap]
+    mechanism: >-
+      Emit the kernel-exit completion fence only while the verified global-program hazard
+      frontier contains outstanding device reads or writes. A non-native contraction readout
+      already fences before its synchronous host epilogue and retires that frontier; retain the
+      conservative exit fence when the verified global-program receipt is unavailable.
+    emitted_delta: >-
+      Delete exactly one redundant terminal FENCE when all accelerator accesses completed before
+      terminal host work; retain every device-to-host and host-to-device fence, endpoint command,
+      source operation, dependency, arithmetic operation, movement, and boundary payload.
+    validation: >-
+      Recompile the fixed complete model with analyze-whole-model; require exact source/task/CFG
+      coverage, unchanged graph and logical-dispatch digests, and a changed plan digest attributable
+      only to the deleted terminal fence; require identical accelerator work, movement,
+      configuration and payload, and exactly one fewer synchronization instruction.
+    abandonment: >-
+      Revert if the exit frontier is not provably empty, whole-model analysis does not delete
+      exactly one synchronization, any source/task/dependency/work/payload field changes, machine
+      sites increase, or changed-region semantic qualification fails.
+  - id: final_target_emission
+    scope: codegen
+    path: mlir_oot/codegen/llvm_emit.py
+    symbol: Emitter.build
+    effects: [issue, latency_hiding]
+    cca_axes: [dispatch.descriptor_reuse, dispatch.loop_offloaded]
+    mechanism: >-
+      Cache only the Gemmini configuration registers that are truly global. Program bounds, AB/DC
+      addresses, AB/DC strides, and launch for every LOOP_WS descriptor because the target owns one
+      descriptor register file per concurrent loop slot; a value equal to the preceding launch is
+      not proof that the alternate slot contains it. Omit load-stream-2 configuration only when a
+      null D address proves that the optional accumulator input is inactive.
+    emitted_delta: >-
+      Emit a complete slot-local descriptor for every overlapping launch while continuing to delete
+      only repeated truly-global configurations and inactive-D CONFIG_LD writes; retain all active
+      movement, arithmetic, readout, synchronization, source ownership, and ABI behavior.
+    validation: >-
+      Recompile the fixed complete graph, require one each of bounds, AB/DC addresses, AB/DC strides,
+      and launch per LOOP_WS descriptor, exact source/task/CFG coverage, unchanged logical dispatch,
+      contraction MACs, movement, payload, synchronization, and a reduced two-launch overlap witness.
+    abandonment: >-
+      Revert if any loop slot can observe a stale descriptor record, an accumulating block can
+      observe an unemitted stream-2 value, a changed global configuration is skipped, or whole-model
+      analysis changes source coverage, dependencies, arithmetic, movement, payload,
+      synchronization, or ABI behavior.
+  - id: host_tensor_workspace_lifetime
+    scope: codegen
+    path: mlir_oot/codegen/loop_host_linalg.py
+    symbol: LoopHostLinalg._storage_for
+    effects: [movement, memory_planning]
+    cca_axes: [memory.capacity_fit, communication.intermediate_materialized, envelope.runtime_calls]
+    mechanism: >-
+      Derive each statically sized host tensor temporary's lifetime from ordered host segments,
+      allocate multi-element values in one 64-byte-aligned internal byte workspace, and reuse offsets
+      after a segment boundary. Values that cross a host/accelerator migration use the existing
+      explicit intermediate buffers; only bounded one-element scalar temporaries remain on stack.
+    emitted_delta: >-
+      Replace function-local tensor allocas with deterministic workspace GEPs and emit a
+      whole_program_host_storage_v1 receipt, without adding an ABI pointer or changing the command,
+      task, schedule, tensor encoding, dependency, or source-ownership plan.
+    validation: >-
+      Require deterministic reduced host-only and mixed-lane storage witnesses, byte-identical
+      command buffers after removing only params.host_storage, unchanged kernel ABI argument count,
+      target-policy stack preflight, and exact warm/measured full-model execution on a normal stack.
+    abandonment: >-
+      Keep a value in an explicit cross-lane buffer or refuse the transformation when its extent,
+      element width, lifetime, producer, consumer, or lane migration is not statically proved; revert
+      on alias overlap, ABI growth, changed scheduling, stack-policy failure, or numerical mismatch.
+
+# Which submission-relative sources each declared command actually rides on.
+# `manifest.yaml` is listed under every command because it declares that command's argv, and the
+# documentation is listed too: nothing in the package should be unattributable, and an
+# unattributable path invalidates every certificate the package has earned.
+components:
+  parse:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+  lower_interface_to_target:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/
+  emit_analysis_bundle:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/cmdbuf.py
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/
+  emit_command_buffer:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/cmdbuf.py
+    - mlir_oot/tables/
+    - mlir_oot/ir/
+    - mlir_oot/codegen/
+  lower_target_to_llvm:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/

@@ -1,0 +1,57 @@
+{
+  "schema": "gemmini_friendly_resnet50_full_compile_receipt_v1",
+  "status": "passed",
+  "input": {
+    "source_sha256": "b62e3713ea06eb842b4023101caa2ed57e6fa55a71e1af77dd0d0b5b18427486",
+    "contract": "designated_i32_staged_f32_v1",
+    "source_convolution_enabled": true
+  },
+  "bounded_attempt_before_linear_tagging": {
+    "status": "timeout",
+    "timeout_seconds": 120,
+    "wall_seconds_including_teardown": 122.75,
+    "user_seconds": 122.32,
+    "maximum_resident_kbytes": 351936,
+    "interrupted_at": "llvm_emit.Emitter.build previous_last whole-CFG snapshot"
+  },
+  "linear_tagging_attempt": {
+    "status": "passed",
+    "exit_status": 0,
+    "wall_seconds": 46.90,
+    "user_seconds": 46.26,
+    "system_seconds": 0.60,
+    "maximum_resident_kbytes": 838000
+  },
+  "command_buffer": {
+    "path": "full_compile_linear_tagging/command_buffer.json",
+    "bytes": 1128299,
+    "sha256": "a17bd17170b82a78cc3753e891672f359e2fcc8078d6b04de6526c210a52d722",
+    "schema_valid": true,
+    "commands": 162,
+    "opcode_histogram": {
+      "RES_PACK": 54,
+      "MATMUL_RESIDENT": 54,
+      "COMMIT": 54
+    },
+    "global_tasks": 109,
+    "accelerator_contraction_tasks": 54,
+    "direct_loop_conv_tasks": 0,
+    "host_tasks": 55,
+    "maximal_accelerator_regions": 54,
+    "residual_host_source_operations": 2850,
+    "host_spill_bytes": 28559808,
+    "host_workspace_bytes": 10953728,
+    "native_narrow_epilogues": 0,
+    "residual_epilogues": 0
+  },
+  "target_artifact": {
+    "uncompressed_bytes": 68293031,
+    "uncompressed_sha256": "95ea5bb9f5caf0308fc948cac01ed763467a008881aab7066d858dd8c50319fa",
+    "compressed_path": "full_compile_linear_tagging/target.mlir.gz",
+    "compressed_sha256": "a325b4550c45d032a8ba126e2f607266c9c399e69fd72203a5299e6363ed9404",
+    "module_verified_before_print": true,
+    "global_task_attribute_count": 338008,
+    "global_task_ids_present": "all IDs -1 through 108"
+  },
+  "claim_boundary": "complete compiler artifact only; no simulator or hardware execution was performed"
+}

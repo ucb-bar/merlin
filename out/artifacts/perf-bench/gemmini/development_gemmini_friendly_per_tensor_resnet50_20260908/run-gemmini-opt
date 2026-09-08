@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+
+bundle_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo_dir=$(CDPATH= cd -- "$bundle_dir/../../../../.." && pwd)
+python_bin=${MERLIN_PYTHON:-python3}
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONPATH="$bundle_dir/compiler:$repo_dir/merlin/python${PYTHONPATH:+:$PYTHONPATH}"
+exec "$python_bin" "$bundle_dir/compiler/gemmini-opt" "$@"

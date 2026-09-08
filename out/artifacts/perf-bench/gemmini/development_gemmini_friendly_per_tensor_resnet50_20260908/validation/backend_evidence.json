@@ -1,0 +1,22 @@
+{
+  "schema": "gemmini_friendly_resnet50_backend_evidence_v1",
+  "merlin": {
+    "import_complete": true,
+    "opaque_operations": 0,
+    "note": "model2MLIR imported the full portable PT2E QDQ graph"
+  },
+  "executorch": {
+    "export_complete": false,
+    "execute_complete": false,
+    "reason": "no Executorch Python package is installed in the repository, model2MLIR, or system Python environments inspected on 2026-09-08"
+  },
+  "same_qdq_graph": false,
+  "same_checkpoint": true,
+  "same_validation_inputs": true,
+  "fresh_heldout_qualification": false,
+  "imagenet_validation": {
+    "complete": false,
+    "top1_accuracy_percent": null,
+    "fp32_top1_accuracy_percent": null
+  }
+}

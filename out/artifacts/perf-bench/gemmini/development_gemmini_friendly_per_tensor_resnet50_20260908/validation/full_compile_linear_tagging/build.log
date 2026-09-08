@@ -1,0 +1,23 @@
+	Command being timed: "timeout --signal=INT --kill-after=10s 120s env MERLIN_PYTHON=.venv/bin/python out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/run-gemmini-opt --integer-contract designated_i32_staged_f32_v1 --source-convolution --emit-command-buffer out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/validation/full_compile_linear_tagging/command_buffer.json --emit-target-artifact -o out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/validation/full_compile_linear_tagging/target.mlir out/artifacts/perf-bench/gemmini/development_phase2_native_aligned_per_tensor_i8_20260908/validation/native_aligned_capture/linalg.mlir"
+	User time (seconds): 46.26
+	System time (seconds): 0.60
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:46.90
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 838000
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 227140
+	Voluntary context switches: 152
+	Involuntary context switches: 194
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 135600
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

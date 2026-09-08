@@ -1,0 +1,42 @@
+Traceback (most recent call last):
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/gemmini-opt", line 15, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/mlir_oot/gemmini_opt.py", line 265, in main
+    pipe.run()
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/mlir_oot/gemmini_opt.py", line 198, in run
+    self.lower()
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/mlir_oot/gemmini_opt.py", line 151, in lower
+    self.artifact = llvm_emit.emit(plan, self.instrs, staging)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/mlir_oot/codegen/llvm_emit.py", line 792, in emit
+    return Emitter(plan, instrs, staging).build()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/compiler/mlir_oot/codegen/llvm_emit.py", line 693, in build
+    previous_last = {block: block.last_op for block in self.fb.region.blocks}
+                     ^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+Command exited with non-zero status 124
+	Command being timed: "timeout --signal=INT --kill-after=10s 120s env MERLIN_PYTHON=.venv/bin/python out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/run-gemmini-opt --integer-contract designated_i32_staged_f32_v1 --source-convolution --emit-command-buffer out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/validation/full_compile/command_buffer.json --emit-target-artifact -o out/artifacts/perf-bench/gemmini/development_gemmini_friendly_per_tensor_resnet50_20260908/validation/full_compile/target.mlir out/artifacts/perf-bench/gemmini/development_phase2_native_aligned_per_tensor_i8_20260908/validation/native_aligned_capture/linalg.mlir"
+	User time (seconds): 122.32
+	System time (seconds): 0.30
+	Percent of CPU this job got: 99%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 2:02.75
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 351936
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 88320
+	Voluntary context switches: 312
+	Involuntary context switches: 782
+	Swaps: 0
+	File system inputs: 960
+	File system outputs: 0
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 124
