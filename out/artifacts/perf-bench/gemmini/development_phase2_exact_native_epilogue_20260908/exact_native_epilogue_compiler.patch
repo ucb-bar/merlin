@@ -1,0 +1,942 @@
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/codegen/llvm_emit.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/llvm_emit.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 05:32:49.985213950 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/codegen/llvm_emit.py	2026-09-08 05:56:18.304130154 -0700
+@@ -338,13 +338,16 @@
+         """Lower a capacity-bounded matrix block through Gemmini's LOOP_WS sequencer."""
+         a = ins.attrs
+         a_name, b_name, c_name = ins.bufs
+-        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES["i32"]
++        c_dtype = str(a.get("c_dtype", "i32"))
++        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES[c_dtype]
+ 
+         # These are the same ordinary Gemmini configurations used by tiled_matmul_auto.  The
+         # LOOP_WS engine consumes three independent load streams: A, B and the optional i32 D.
+         configs = (
+             isa.config_ex(dataflow=isa.WEIGHT_STATIONARY, sys_act=isa.NO_ACTIVATION),
+-            isa.config_st(stride=c_byte_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0),
++            isa.config_st(stride=c_byte_stride,
++                          acc_act=int(a.get("acc_act", isa.NO_ACTIVATION)),
++                          acc_scale=float(a.get("acc_scale", 1.0))),
+             isa.config_ld(stride=int(a["a_stride"]), load_id=0),
+             isa.config_ld(stride=int(a["b_stride"]), load_id=1),
+             isa.config_ld(stride=c_byte_stride, shrunk=False, load_id=2),
+@@ -382,11 +385,14 @@
+         """
+         a = ins.attrs
+         a_name, b_name, c_name = ins.bufs
+-        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES["i32"]
++        c_dtype = str(a.get("c_dtype", "i32"))
++        c_byte_stride = int(a["c_stride"]) * DTYPE_BYTES[c_dtype]
+         configs = {
+             "ex": isa.config_ex(dataflow=isa.WEIGHT_STATIONARY, sys_act=isa.NO_ACTIVATION),
+             "st": isa.config_st(
+-                stride=c_byte_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0),
++                stride=c_byte_stride,
++                acc_act=int(a.get("acc_act", isa.NO_ACTIVATION)),
++                acc_scale=float(a.get("acc_scale", 1.0))),
+             "ld0": isa.config_ld(stride=int(a["a_stride"]), load_id=0),
+             "ld1": isa.config_ld(stride=int(a["b_stride"]), load_id=1),
+             "ld2": isa.config_ld(stride=c_byte_stride, shrunk=False, load_id=2),
+@@ -431,12 +437,16 @@
+             **{key: a[key] for key in static_keys})
+         for funct, rs1, rs2 in (config1, config2, config3, config4):
+             self.rocc(funct, self.fb.const(rs1), self.fb.const(rs2))
+-        input_name, weight_name, output_name = ins.bufs
++        input_name, weight_name, output_name = ins.bufs[:3]
++        bias_name = ins.bufs[3] if len(ins.bufs) == 4 else None
+         self.rocc(loop_conv.K_CONFIG_5,
+                   self.dram_addr(weight_name, int(a["weight_offset"])),
+                   (self.dram_addr(output_name, int(a["output_offset"]))
+                    if bool(a["write_output"]) else self.fb.const(0)))
+-        self.rocc(loop_conv.K_CONFIG_6, self.fb.const(0),
++        self.rocc(loop_conv.K_CONFIG_6,
++                  (self.dram_addr(bias_name, int(a["bias_offset"]))
++                   if bias_name is not None and not bool(a["no_bias"])
++                   else self.fb.const(0)),
+                   self.dram_addr(input_name, int(a["input_offset"])))
+         self.rocc(launch[0], self.fb.const(launch[1]), self.fb.const(launch[2]))
+ 
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/frontend/quantized_epilogue.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/frontend/quantized_epilogue.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/frontend/quantized_epilogue.py	1969-12-31 16:00:00.000000000 -0800
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/frontend/quantized_epilogue.py	2026-09-08 06:23:52.624056375 -0700
+@@ -0,0 +1,373 @@
++"""Structural formation of exact contraction-to-i8 epilogues.
++
++This is a source-semantic recognizer, not a target selector.  It deliberately records the
++floating-point operation order rather than replacing it with an algebraically equivalent
++formula: two rounded ``mulf`` operations are not one multiply by a precomputed product.  Target
++lowering may therefore choose an exact fused host loop, or a native readout only when a separate
++capability proof says the target implements every recorded stage in that order.
++"""
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Any
++
++from xdsl.dialects.builtin import IntegerType, TensorType
++from xdsl.ir import Operation, SSAValue
++from xdsl.ir.affine import AffineDimExpr
++
++
++@dataclass(frozen=True)
++class QuantizedEpilogue:
++    """One exact, single-use i32 contraction epilogue ending at an i8 tensor."""
++
++    producer: Operation
++    operations: tuple[Operation, ...]
++    output: SSAValue
++    shape: tuple[int, ...]
++    channel_axis: int
++    per_channel_scale: SSAValue
++    per_channel_bias: SSAValue
++    accumulator_scale: SSAValue
++    output_scale_reciprocal: SSAValue
++    zero_point: SSAValue
++    relu: bool
++
++    @property
++    def stages(self) -> tuple[str, ...]:
++        stages = ["ordered_f32_acc_scale", "per_channel_scale", "per_channel_bias"]
++        if self.relu:
++            stages.append("relu")
++        stages.extend(("output_scale_reciprocal", "roundeven", "zero_point", "clamp_i8"))
++        return tuple(stages)
++
++    def receipt(self, source_indices: dict[Operation, int]) -> dict[str, Any]:
++        return {
++            "schema": "target_neutral_quantized_epilogue_v1",
++            "producer_source_op_index": source_indices[self.producer],
++            "source_op_indices": [source_indices[op] for op in self.operations],
++            "sink_source_op_index": source_indices[self.operations[-1]],
++            "shape": list(self.shape),
++            "channel_axis": self.channel_axis,
++            "stages": list(self.stages),
++            "output_dtype": "i8",
++            "numeric_contract": {
++                "float_order_preserved": True,
++                "rounding": "round_to_nearest_even",
++                "clamp": [-128, 127],
++                "reassociation": False,
++            },
++            # Target selection is deliberately absent here.  This record describes source
++            # semantics; a backend capability selector decides whether it can erase the
++            # full-width boundary or must retain the original host chain.
++            "target_selection": "deferred",
++        }
++
++
++@dataclass(frozen=True)
++class Refusal:
++    producer: Operation
++    reason: str
++    blocker: Operation | None = None
++
++    def receipt(self, source_indices: dict[Operation, int]) -> dict[str, Any]:
++        row: dict[str, Any] = {
++            "producer_source_op_index": source_indices[self.producer],
++            "reason": self.reason,
++        }
++        if self.blocker is not None and self.blocker in source_indices:
++            row["blocker_source_op_index"] = source_indices[self.blocker]
++            row["blocker_op"] = self.blocker.name
++        return row
++
++
++def _shape(value: SSAValue) -> tuple[int, ...] | None:
++    ty = value.type
++    if not isinstance(ty, TensorType):
++        return None
++    return tuple(int(dim) for dim in ty.get_shape())
++
++
++def _width(value: SSAValue) -> int | None:
++    ty = value.type
++    if not isinstance(ty, TensorType) or not isinstance(ty.element_type, IntegerType):
++        return None
++    return int(ty.element_type.width.data)
++
++
++def _maps(op: Operation) -> tuple[tuple[int, ...], ...] | None:
++    attr = op.properties.get("indexing_maps") or op.attributes.get("indexing_maps")
++    data = getattr(attr, "data", None)
++    if data is None:
++        return None
++    result = []
++    for item in data:
++        amap = getattr(item, "data", None)
++        if amap is None or amap.num_symbols:
++            return None
++        positions = []
++        for expr in amap.results:
++            if not isinstance(expr, AffineDimExpr):
++                return None
++            positions.append(int(expr.position))
++        result.append(tuple(positions))
++    return tuple(result)
++
++
++def _parallel_pointwise(op: Operation, shape: tuple[int, ...]) -> bool:
++    if op.name != "linalg.generic" or len(op.results) != 1 or _shape(op.results[0]) != shape:
++        return False
++    attrs = op.properties.get("iterator_types") or op.attributes.get("iterator_types")
++    entries = getattr(attrs, "data", ())
++    return len(entries) == len(shape) and all("parallel" in str(item) for item in entries)
++
++
++def _body(op: Operation, names: tuple[str, ...], argc: int):
++    if len(op.regions) != 1 or len(op.regions[0].blocks) != 1:
++        return None
++    block = op.regions[0].blocks[0]
++    if len(block.args) != argc or tuple(item.name for item in block.ops) != names:
++        return None
++    return block, tuple(block.ops)
++
++
++def _sole_consumer(value: SSAValue) -> Operation | None:
++    uses = list(value.uses)
++    return uses[0].operation if len(uses) == 1 else None
++
++
++def _literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "arith.constant":
++        return None
++    attr = owner.properties.get("value")
++    if attr is None:
++        attr = owner.attributes.get("value")
++    raw = getattr(getattr(attr, "value", None), "data", None)
++    if raw is None:
++        raw = getattr(attr, "data", None)
++    return raw if isinstance(raw, (int, float)) else None
++
++
++def _splat_literal(value: SSAValue) -> float | int | None:
++    owner = value.owner if isinstance(value.owner, Operation) else None
++    if owner is None or owner.name != "tensor.splat" or not owner.operands:
++        return None
++    return _literal(owner.operands[0])
++
++
++def exact_identity_narrowing(value: QuantizedEpilogue) -> tuple[bool, str]:
++    """Prove the strict subset equal to a native identity-scale narrow readout.
++
++    This is intentionally a semantic proof, not an approximate scale combiner.  For the
++    admitted subset the source evaluates ``float(acc) * 1 * 1 + 0``, optionally applies ReLU,
++    multiplies by the reciprocal of an output scale equal to one, round-even converts, and
++    clamps to i8.  Native identity narrowing has the same result for every i32 accumulator:
++    values in the i8 range are exactly representable in f32 and values outside it saturate to
++    the same endpoint.  Runtime/per-channel values and non-identity arithmetic fail closed.
++
++    The proof is target-neutral.  It says the rich source operation can be reduced to the
++    abstract stages ``[optional relu, narrow_i8]``; target capability selection remains in the
++    lowering layer.
++    """
++    if _splat_literal(value.accumulator_scale) != 1.0:
++        return False, "accumulator_scale_is_not_proven_identity"
++    if _splat_literal(value.per_channel_scale) != 1.0:
++        return False, "per_channel_scale_is_not_proven_uniform_identity"
++    if _splat_literal(value.per_channel_bias) != 0.0:
++        return False, "per_channel_bias_is_not_proven_uniform_zero"
++    reciprocal = value.output_scale_reciprocal.owner
++    if (not isinstance(reciprocal, Operation) or reciprocal.name != "linalg.generic"
++            or len(reciprocal.operands) < 1
++            or _splat_literal(reciprocal.operands[0]) != 1.0):
++        return False, "output_scale_is_not_proven_identity"
++    if _splat_literal(value.zero_point) != 0:
++        return False, "output_zero_point_is_not_proven_zero"
++    return True, "exact_identity_narrowing"
++
++
++def _match_affine(op: Operation, source: SSAValue, shape: tuple[int, ...]):
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 3:
++        return None
++    maps = _maps(op)
++    identity = tuple(range(len(shape)))
++    if maps is None or len(maps) != 4 or maps[0] != identity or maps[1] != () or maps[3] != identity:
++        return None
++    channel = maps[2]
++    if len(channel) != 1 or op.inputs[0] is not source:
++        return None
++    found = _body(op, ("arith.sitofp", "arith.mulf", "arith.mulf", "linalg.yield"), 4)
++    if found is None:
++        return None
++    block, (cast, first, second, yielded) = found
++    if (tuple(cast.operands) != (block.args[0],)
++            or tuple(first.operands) != (cast.results[0], block.args[1])
++            or tuple(second.operands) != (first.results[0], block.args[2])
++            or tuple(yielded.operands) != (second.results[0],)):
++        return None
++    return int(channel[0]), op.inputs[1], op.inputs[2]
++
++
++def _looks_like_affine(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    """Whether the outer maps claim the affine stage whose body must be checked exactly."""
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 3 or op.inputs[0] is not source:
++        return False
++    maps = _maps(op)
++    identity = tuple(range(len(shape)))
++    return (maps is not None and len(maps) == 4 and maps[0] == identity
++            and maps[1] == () and len(maps[2]) == 1 and maps[3] == identity)
++
++
++def _match_bias(op: Operation, source: SSAValue, shape: tuple[int, ...], channel_axis: int):
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 2 or op.inputs[0] is not source:
++        return None
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, (channel_axis,), identity):
++        return None
++    found = _body(op, ("arith.addf", "linalg.yield"), 3)
++    if found is None:
++        return None
++    block, (add, yielded) = found
++    if (tuple(add.operands) != (block.args[0], block.args[1])
++            or tuple(yielded.operands) != (add.results[0],)):
++        return None
++    return op.inputs[1]
++
++
++def _match_relu(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 1 or op.inputs[0] is not source:
++        return False
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, identity):
++        return False
++    found = _body(op, ("arith.constant", "arith.maximumf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (zero, maximum, yielded) = found
++    return (_literal(zero.results[0]) == 0.0
++            and tuple(maximum.operands) == (block.args[0], zero.results[0])
++            and tuple(yielded.operands) == (maximum.results[0],))
++
++
++def _match_reciprocal(value: SSAValue) -> bool:
++    op = value.owner if isinstance(value.owner, Operation) else None
++    if op is None or op.name != "linalg.generic" or _shape(value) != () or len(op.inputs) != 1:
++        return False
++    if _maps(op) != ((), ()):
++        return False
++    found = _body(op, ("arith.constant", "arith.divf", "linalg.yield"), 2)
++    if found is None:
++        return False
++    block, (one, divide, yielded) = found
++    return (_literal(one.results[0]) == 1.0
++            and tuple(divide.operands) == (one.results[0], block.args[0])
++            and tuple(yielded.operands) == (divide.results[0],))
++
++
++def _match_quantize(op: Operation, source: SSAValue, shape: tuple[int, ...]):
++    if (not _parallel_pointwise(op, shape) or _width(op.results[0]) != 8
++            or len(op.inputs) != 3 or op.inputs[0] is not source):
++        return None
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, (), (), identity):
++        return None
++    reciprocal, zero_point = op.inputs[1], op.inputs[2]
++    if not _match_reciprocal(reciprocal) or _splat_literal(zero_point) != 0:
++        return None
++    found = _body(op, (
++        "arith.mulf", "math.roundeven", "arith.sitofp", "arith.addf",
++        "arith.maximumf", "arith.minimumf", "arith.fptosi", "linalg.yield"), 4)
++    if found is None:
++        return None
++    block, (scale, rounded, zp_float, added, lower, upper, convert, yielded) = found
++    if (tuple(scale.operands) != (block.args[0], block.args[1])
++            or tuple(rounded.operands) != (scale.results[0],)
++            or tuple(zp_float.operands) != (block.args[2],)
++            or tuple(added.operands) != (rounded.results[0], zp_float.results[0])
++            or lower.operands[0] is not added.results[0]
++            or upper.operands[0] is not lower.results[0]
++            or tuple(convert.operands) != (upper.results[0],)
++            or tuple(yielded.operands) != (convert.results[0],)
++            or _literal(lower.operands[1]) != -128.0
++            or _literal(upper.operands[1]) != 127.0):
++        return None
++    return reciprocal, zero_point
++
++
++def _is_dynamic_tensor_add(op: Operation, source: SSAValue, shape: tuple[int, ...]) -> bool:
++    if not _parallel_pointwise(op, shape) or len(op.inputs) != 2 or source not in op.inputs:
++        return False
++    identity = tuple(range(len(shape)))
++    if _maps(op) != (identity, identity, identity):
++        return False
++    other = op.inputs[1] if op.inputs[0] is source else op.inputs[0]
++    if _shape(other) != shape:
++        return False
++    found = _body(op, ("arith.addf", "linalg.yield"), 3)
++    return found is not None
++
++
++def recognize(producer: Operation) -> QuantizedEpilogue | Refusal | None:
++    """Recognize the exact common chain starting at an i32 contraction result.
++
++    ``None`` means the producer does not begin this spelling.  A :class:`Refusal` means the
++    chain began exactly but reached a semantically important unsupported branch, which is useful
++    evidence rather than a silent non-match.
++    """
++    if len(producer.results) != 1 or _width(producer.results[0]) != 32:
++        return None
++    shape = _shape(producer.results[0])
++    if shape is None or len(shape) < 2:
++        return None
++    affine = _sole_consumer(producer.results[0])
++    if affine is None:
++        return None
++    affine_match = _match_affine(affine, producer.results[0], shape)
++    if affine_match is None:
++        if _looks_like_affine(affine, producer.results[0], shape):
++            return Refusal(
++                producer,
++                "ordered affine body is not exact accumulator-scale then per-channel-scale",
++                affine)
++        return None
++    channel_axis, accumulator_scale, channel_scale = affine_match
++    bias = _sole_consumer(affine.results[0])
++    if bias is None:
++        return Refusal(producer, "affine result is not single-use")
++    bias_value = _match_bias(bias, affine.results[0], shape, channel_axis)
++    if bias_value is None:
++        if _is_dynamic_tensor_add(bias, affine.results[0], shape):
++            return Refusal(producer, "dynamic second tensor/residual terminates epilogue", bias)
++        return Refusal(producer, "ordered affine is not followed by exact per-channel bias", bias)
++
++    current = bias.results[0]
++    operations = [affine, bias]
++    next_op = _sole_consumer(current)
++    if next_op is None:
++        return Refusal(producer, "bias result is not single-use")
++    relu = _match_relu(next_op, current, shape)
++    if relu:
++        operations.append(next_op)
++        current = next_op.results[0]
++        next_op = _sole_consumer(current)
++        if next_op is None:
++            return Refusal(producer, "relu result is not single-use")
++    if _is_dynamic_tensor_add(next_op, current, shape):
++        return Refusal(producer, "dynamic second tensor/residual terminates epilogue", next_op)
++    quant = _match_quantize(next_op, current, shape)
++    if quant is None:
++        return Refusal(producer, "chain does not end in exact roundeven/clamp i8 quantize", next_op)
++    reciprocal, zero_point = quant
++    operations.append(next_op)
++    return QuantizedEpilogue(
++        producer=producer,
++        operations=tuple(operations),
++        output=next_op.results[0],
++        shape=shape,
++        channel_axis=channel_axis,
++        per_channel_scale=channel_scale,
++        per_channel_bias=bias_value,
++        accumulator_scale=accumulator_scale,
++        output_scale_reciprocal=reciprocal,
++        zero_point=zero_point,
++        relu=relu,
++    )
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/model_lane.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/model_lane.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/model_lane.py	2026-09-08 02:59:11.094800377 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/model_lane.py	2026-09-08 06:22:14.906279881 -0700
+@@ -25,6 +25,12 @@
+ 
+ from ..codegen.host_linalg import HOST_LINALG_ELEMENT_BUDGET, attr_of, estimate_cost
+ from ..frontend.linalg_reader import HOST_LANE, MESH_LANE, LinalgWorkload, place
++from ..frontend.quantized_epilogue import (
++    QuantizedEpilogue,
++    Refusal as EpilogueRefusal,
++    exact_identity_narrowing,
++    recognize as recognize_quantized_epilogue,
++)
+ from ..tables import rtl_facts as F
+ from .plan import (BLOCK_DIAGONAL_ELEM_BUDGET, Buffer, Epilogue, LoweringDeclined,
+                    Plan, kernel_args)
+@@ -381,6 +387,8 @@
+         self.im2col_recipes: list[dict[str, Any]] = []
+         self.batched_contractions: list[dict[str, Any]] = []
+         self.host_tensor_spills: dict[str, SSAValue] = {}
++        self.native_epilogues: dict[Operation, QuantizedEpilogue] = {}
++        self.epilogue_refusals: list[dict[str, Any]] = []
+         self._scratch = 0
+         self.source_indices = {op: i for i, op in enumerate(self.block.ops)
+                                if op.name != "func.return"}
+@@ -420,6 +428,13 @@
+ 
+         mesh_ops = [op for op in ops if mesh_eligible(op, self.lane_of)]
+         self.absorbed_by = _exclusive_absorbed(mesh_ops)
++        self._select_exact_native_epilogues(mesh_ops)
++        for producer, formation in self.native_epilogues.items():
++            owned = self._exclusive_epilogue_owners(producer, formation)
++            prior = self.absorbed_by.setdefault(producer, [])
++            self.absorbed_by[producer] = sorted(
++                set(prior) | owned,
++                key=lambda item: list(item.parent_block().ops).index(item))
+         absorbed = {item for items in self.absorbed_by.values() for item in items}
+         # Source-native host loops no longer expand in proportion to tensor size.
+ 
+@@ -476,6 +491,9 @@
+             if kind == "mesh":
+                 self._mesh(payload, in_dram)
+                 in_dram.add(payload.results[0])
++                formation = self.native_epilogues.get(payload)
++                if formation is not None:
++                    in_dram.add(formation.output)
+                 continue
+             host_ops = carry + [op for op in payload if op.name != "func.return"]
+             host_set = set(host_ops)
+@@ -532,6 +550,51 @@
+         return Plan("gemmini", self.buffers, self.ordered, cb,
+                     kernel_args(cb, list(self.order)))
+ 
++    def _select_exact_native_epilogues(self, mesh_ops: list[Operation]) -> None:
++        """Select only source chains proven equal to abstract native i8 narrowing."""
++        for producer in mesh_ops:
++            result = recognize_quantized_epilogue(producer)
++            if isinstance(result, EpilogueRefusal):
++                row = result.receipt(self.source_indices)
++                row["stage"] = "structural_formation"
++                self.epilogue_refusals.append(row)
++                continue
++            if not isinstance(result, QuantizedEpilogue):
++                continue
++            eligible, reason = exact_identity_narrowing(result)
++            if not eligible:
++                self.epilogue_refusals.append({
++                    "producer_source_op_index": self.source_indices[producer],
++                    "reason": reason,
++                    "stage": "exact_native_equivalence",
++                })
++                continue
++            self.native_epilogues[producer] = result
++
++    def _exclusive_epilogue_owners(
++            self, producer: Operation, formation: QuantizedEpilogue) -> set[Operation]:
++        """Return the complete, single-use source slice erased by native formation.
++
++        Besides the four linalg stages, the slice owns their tensor.empty initializers,
++        scalar splats/constants, and reciprocal computation.  Backward closure is admitted only
++        when every live use is already inside the slice, preventing a constant or derived tensor
++        shared with another branch from disappearing.
++        """
++        owned = set(formation.operations)
++        changed = True
++        while changed:
++            changed = False
++            for operation in tuple(owned):
++                for operand in operation.operands:
++                    candidate = operand.owner if isinstance(operand.owner, Operation) else None
++                    if (candidate is None or candidate is producer or candidate in owned
++                            or candidate.parent_block() is not self.block):
++                        continue
++                    if all(use.operation in owned for value in candidate.results for use in value.uses):
++                        owned.add(candidate)
++                        changed = True
++        return owned
++
+     # -- one mesh contraction ----------------------------------------------------------------
+     def _mesh(self, op: Operation, in_dram: set[SSAValue]) -> None:
+         from .plan import Contraction
+@@ -540,7 +603,9 @@
+         if spec is None or not _block_diagonal_is_safe(op, spec):
+             raise LoweringDeclined("integer contraction geometry changed after placement",
+                                    op="model_lane")
+-        lhs_v, rhs_v, out_v = spec.lhs, spec.rhs, spec.output
++        lhs_v, rhs_v = spec.lhs, spec.rhs
++        formation = self.native_epilogues.get(op)
++        out_v = formation.output if formation is not None else spec.output
+         for operand in (lhs_v, rhs_v):
+             if operand not in in_dram:
+                 raise LoweringDeclined(
+@@ -577,7 +642,7 @@
+         # Integer tensor arithmetic wraps at its declared width. Native narrowed
+         # accelerator readout saturates, so preserve a full accumulator and let
+         # submitted host code truncate it. This policy follows source types.
+-        modular = int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:])
++        modular = formation is None and int(out_dtype[1:]) < int(F.ACCUMULATOR_DTYPE[1:])
+         temporary = self.declare(f"{dst}_accumulator", [m, n], F.ACCUMULATOR_DTYPE,
+                                  self.INTERMEDIATE_ROLE) if modular else None
+         handle = self.residents.get(rhs)
+@@ -593,14 +658,21 @@
+                                            "rhs": handle, "dst": acc}})
+         self.commands.append({"opcode": "COMMIT",
+                               "operands": {"src": acc, "dst": temporary or dst},
+-                              "attributes": {"epilogue": [], "output_dtype":
++                              "attributes": {"epilogue": (["relu"] if formation is not None
++                                                            and formation.relu else []), "output_dtype":
+                                              F.ACCUMULATOR_DTYPE if modular else out_dtype}})
+         self.ordered.append(
+             Contraction(contraction_lhs, rhs, dst, m, k, n,
+                         lhs_row_elems=k, rhs_row_elems=n,
+-                        epilogue=Epilogue(stages=[], output_dtype=out_dtype,
+-                                          integer_output_policy="modular"),
++                        epilogue=Epilogue(
++                            stages=(["relu"] if formation is not None and formation.relu else []),
++                            output_dtype=out_dtype,
++                            integer_output_policy=("saturate" if formation is not None
++                                                   else "modular")),
+                         accumulator_temporary=temporary))
++        if formation is not None:
++            self.of_value[spec.output] = dst
++            self.of_value[formation.output] = dst
+         self.ordered[-1].source_op_indices = [
+             *[self.source_indices[item] for item in self.absorbed_by.get(op, [])],
+             self.source_indices[op],
+@@ -684,9 +756,44 @@
+                     {"regions": seg.regions,
+                      "reads": [n for _, n in seg.inputs],
+                      "writes": [n for _, n in seg.outputs]} for seg in segments],
++                "target_neutral_quantized_epilogues": self._epilogue_receipt(),
+             },
+         }
+ 
++    def _epilogue_receipt(self) -> dict[str, Any]:
++        formed = []
++        boundary_bytes = 0
++        source_ops = 0
++        for producer, formation in self.native_epilogues.items():
++            full_width_bytes = prod(formation.shape) * 4
++            boundary_bytes += full_width_bytes
++            source_ops += len(self.absorbed_by.get(producer, ()))
++            row = formation.receipt(self.source_indices)
++            row.update({
++                "selected_lowering": "native_identity_scale_i8_readout",
++                "logical_device_to_host_boundary_eliminated": 1,
++                "full_width_intermediate_bytes_eliminated": full_width_bytes,
++                "output_dma_bytes_before": full_width_bytes,
++                "output_dma_bytes_after": full_width_bytes // 4,
++                "output_dma_bytes_eliminated": full_width_bytes * 3 // 4,
++            })
++            formed.append(row)
++        return {
++            "schema": "target_neutral_quantized_epilogue_lowering_v2",
++            "formed": formed,
++            "refused": list(self.epilogue_refusals),
++            "selected_count": len(formed),
++            "source_ops_absorbed": source_ops,
++            "full_width_intermediate_bytes_eliminated": boundary_bytes,
++            "logical_device_to_host_boundaries_eliminated": len(formed),
++            "output_dma_bytes_eliminated": boundary_bytes * 3 // 4,
++            # Physical fence count is a schedule-level fact.  A terminal result still needs the
++            # final completion fence, so formation alone must never claim one disappeared.
++            "physical_fences_eliminated": 0,
++            "numeric_contract": "exact_for_every_i32_accumulator",
++            "approximation": False,
++        }
++
+ 
+ def build(module, wl: LinalgWorkload) -> Plan:
+     return MixedBuilder(module, wl).build()
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/native_conv_selector.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 04:08:23.142282950 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/native_conv_selector.py	2026-09-08 05:56:18.303130136 -0700
+@@ -9,7 +9,8 @@
+ from ..tables import rtl_facts as F
+ 
+ 
+-def select_native_loop_conv(c, activation, weight, dst, *, epilogue_stages=(), bias=None
++def select_native_loop_conv(c, activation, weight, dst, *, epilogue_stages=(), bias=None,
++                            bias_buffer=None, acc_scale=1.0
+                             ) -> tuple[bool, str]:
+     """Return whether ``c`` is exactly representable by the pinned LOOP_CONV_WS contract."""
+     if not F.HAS_LOOP_CONV:
+@@ -20,10 +21,24 @@
+             or dst.dtype != F.OPERAND_DTYPE):
+         # LoopConvSt hardwires read_full=false; accepting i32 would silently saturate.
+         return False, "loop_conv_store_is_narrow_only"
+-    if epilogue_stages or bias is not None:
+-        # The first compiler-owned route is the exact bare-convolution subset.  Rich epilogues
+-        # remain on Contraction until their scale/activation/bias semantics are represented here.
+-        return False, "native_loop_conv_epilogue_not_yet_represented"
++    stages = list(epilogue_stages)
++    allowed = {"bias", "bias_add", "acc_scale", "relu"}
++    if any(stage not in allowed for stage in stages):
++        return False, "native_loop_conv_epilogue_not_representable"
++    bias_stages = [i for i, stage in enumerate(stages) if stage in {"bias", "bias_add"}]
++    if bias_stages and (len(bias_stages) != 1 or bias_stages[0] != 0):
++        return False, "native_loop_conv_bias_must_initialize_accumulator"
++    if bool(bias_stages) != (bias is not None):
++        return False, "native_loop_conv_bias_stage_and_operand_disagree"
++    if bias is not None:
++        if bias_buffer is None or bias_buffer.dtype != F.ACCUMULATOR_DTYPE:
++            return False, "native_loop_conv_bias_must_be_i32_accumulator_units"
++        if bias_buffer.shape != [c.co]:
++            return False, "native_loop_conv_bias_shape_mismatch"
++    if "acc_scale" not in stages and float(acc_scale) != 1.0:
++        return False, "native_loop_conv_scale_without_acc_scale_stage"
++    if float(acc_scale) <= 0.0:
++        return False, "native_loop_conv_acc_scale_must_be_positive"
+     if (c.input_layout, c.weight_layout, c.output_layout) != ("NHWC", "HWIO", "NHWC"):
+         return False, "native_layout_contract_not_satisfied"
+     if c.kh != c.kw or c.stride_h != c.stride_w or c.dilation_h != c.dilation_w:
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/schedule.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/schedule.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/schedule.py	2026-09-08 04:06:44.096341814 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/schedule.py	2026-09-08 05:56:18.303130136 -0700
+@@ -442,9 +442,10 @@
+         if native:
+             self.native_convolution(c)
+             return
+-        if activation.dtype != "i8" or weight.dtype != "i8" or dst.dtype != "i32":
++        if (activation.dtype != "i8" or weight.dtype != "i8"
++                or dst.dtype != c.output_dtype or c.output_dtype not in ("i8", "i32")):
+             raise LoweringDeclined(
+-                f"streamed conv requires i8 x i8 -> i32; got {activation.dtype} x "
++                f"streamed conv requires i8 x i8 -> i8/i32; got {activation.dtype} x "
+                 f"{weight.dtype} -> {dst.dtype}", op="conv2d")
+         kdim = c.ci * c.kh * c.kw
+         if weight.shape != [c.co, kdim]:
+@@ -458,7 +459,15 @@
+         out_w_pitch = row_pitch(c.wo)
+         out_plane_pitch = c.ho * out_w_pitch
+         mt, nt, kt = _ceil_div(c.co, DIM), _ceil_div(c.wo, DIM), _ceil_div(kdim, DIM)
+-        bm, bn, bk = loop_ws.block_shape(mt, nt, kt)
++        if c.output_dtype == F.OPERAND_DTYPE:
++            native_shape = loop_ws.reduction_resident_block_shape(mt, nt, kt)
++            if native_shape is None:
++                raise LoweringDeclined(
++                    "native narrow convolution cannot spill a partial i8 reduction",
++                    op="conv2d", shape=[c.co, kdim, c.wo])
++            bm, bn, bk = native_shape
++        else:
++            bm, bn, bk = loop_ws.block_shape(mt, nt, kt)
+         for batch in range(c.batch):
+             for oy in range(c.ho):
+                 if packed is None:
+@@ -492,7 +501,9 @@
+                             rows = min(bm * DIM, c.co - m0 * DIM)
+                             cols = min(bn * DIM, c.wo - n0 * DIM)
+                             depth = min(bk * DIM, kdim - k0 * DIM)
+-                            c_offset = (out_base + m0 * DIM * out_plane_pitch + n0 * DIM) * DTYPE_BYTES["i32"]
++                            out_bytes = DTYPE_BYTES[c.output_dtype]
++                            c_offset = (out_base + m0 * DIM * out_plane_pitch
++                                        + n0 * DIM) * out_bytes
+                             self.emit(
+                                 "loop_ws_block", [c.weight, rhs_name, c.dst],
+                                 rows=rows, cols=cols, depth=depth,
+@@ -501,13 +512,24 @@
+                                 a_offset=m0 * DIM * lhs_pitch + k0 * DIM,
+                                 b_offset=rhs_base + k0 * DIM * rhs_pitch + n0 * DIM,
+                                 c_offset=c_offset, d_offset=c_offset,
+-                                accumulate=k0 != 0, full_c=True,
++                                accumulate=k0 != 0,
++                                full_c=c.output_dtype == F.ACCUMULATOR_DTYPE,
++                                c_dtype=c.output_dtype,
++                                acc_act=isa.RELU if c.relu else isa.NO_ACTIVATION,
++                                acc_scale=c.acc_scale,
+                                 implementation="gemmini_loop_ws")
+ 
+     def native_convolution_eligibility(self, c: Convolution) -> tuple[bool, str]:
+         """Whether the source semantics and physical encodings fit LOOP_CONV_WS exactly."""
+         activation, weight, dst = self.buf(c.activation), self.buf(c.weight), self.buf(c.dst)
+-        return select_native_loop_conv(c, activation, weight, dst)
++        stages = (["bias"] if c.bias else [])
++        if c.relu:
++            stages.append("relu")
++        if c.acc_scale != 1.0:
++            stages.append("acc_scale")
++        return select_native_loop_conv(
++            c, activation, weight, dst, epilogue_stages=stages, bias=c.bias,
++            bias_buffer=self.buf(c.bias) if c.bias else None, acc_scale=c.acc_scale)
+ 
+     def native_convolution(self, c: Convolution) -> None:
+         """Tile an eligible NHWC/HWIO convolution into complete LOOP_CONV_WS descriptors."""
+@@ -516,7 +538,13 @@
+             batch=c.batch, ho=c.ho, wo=c.wo, co=c.co, kh=c.kh, kw=c.kw, ci=c.ci,
+             stride=c.stride_h, kernel_dilation=c.dilation_h)
+         in_stride, weight_stride, out_stride = activation.pitch, weight.pitch, dst.pitch
+-        self.config_st(stride=out_stride, acc_act=isa.NO_ACTIVATION, acc_scale=1.0)
++        st = {"stride": out_stride,
++              "acc_act": isa.RELU if c.relu else isa.NO_ACTIVATION,
++              "acc_scale": c.acc_scale}
++        # CONFIG_ST is global asynchronous state.  Retire a prior readout before changing it.
++        if self._st_key is not None and tuple(sorted(st.items())) != self._st_key:
++            self.emit("fence")
++        self.config_st(**st)
+         self.config_ex(dataflow=isa.WEIGHT_STATIONARY, act=isa.NO_ACTIVATION,
+                        acc_scale=1.0, a_stride=c.stride_h, c_stride=1)
+         for b in range(0, c.batch, batches):
+@@ -545,8 +573,12 @@
+                                     final = (krow + tile_kr == c.kh
+                                              and kcol + tile_kc == c.kw
+                                              and kch + tile_kch == c.ci)
++                                    first = krow == 0 and kcol == 0 and kch == 0
++                                    bufs = [c.activation, c.weight, c.dst]
++                                    if c.bias:
++                                        bufs.append(c.bias)
+                                     self.emit(
+-                                        "loop_conv_ws", [c.activation, c.weight, c.dst],
++                                        "loop_conv_ws", bufs,
+                                         batch_size=c.batch, in_row_dim=c.hi,
+                                         in_col_dim=c.wi, in_channels=c.ci,
+                                         out_channels=c.co, out_row_dim=c.ho,
+@@ -561,7 +593,8 @@
+                                         plpad=0, prpad=0, pupad=0, pdpad=0,
+                                         orows=tile_or, ocols=tile_oc,
+                                         in_stride=in_stride, weight_stride=weight_stride,
+-                                        out_stride=out_stride, no_bias=True, no_pool=True,
++                                        out_stride=out_stride,
++                                        no_bias=not (c.bias and first), no_pool=True,
+                                         downsample=False, wrot180=False, input_dilated=False,
+                                         activation=isa.NO_ACTIVATION,
+                                         trans_output_1203=False, trans_weight_1203=False,
+@@ -578,6 +611,7 @@
+                                         output_offset=((b * c.ho * c.wo
+                                                         + orow * c.wo + ocol)
+                                                        * out_stride + poch),
++                                        bias_offset=poch * DTYPE_BYTES["i32"],
+                                         write_output=final,
+                                         implementation="gemmini_loop_conv_ws")
+ 
+@@ -618,12 +652,10 @@
+         # descriptor owns one capacity-bounded [M,N,K] block; later K blocks read the prior i32
+         # partial sum through D, preserving the source contraction while moving the repetitive
+         # issue loop from the host instruction stream to the endpoint sequencer.
+-        use_loop_ws = (
+-            not e.bias
+-            and out_dtype == F.ACCUMULATOR_DTYPE
+-            and acc_act == isa.NO_ACTIVATION
+-            and acc_scale == 1.0
+-        )
++        use_loop_ws = (not e.bias and (
++            (out_dtype == F.ACCUMULATOR_DTYPE
++             and acc_act == isa.NO_ACTIVATION and acc_scale == 1.0)
++            or (mode == "native" and out_dtype == F.OPERAND_DTYPE)))
+         resident_loop_shape = (
+             loop_ws.reduction_resident_block_shape(mt, nt, kt) if use_loop_ws else None
+         )
+@@ -636,7 +668,7 @@
+                         cols = min(bn * DIM, c.n - n0 * DIM)
+                         depth = min(bk * DIM, c.k - k0 * DIM)
+                         c_offset = ((out_row_offset + m0 * DIM) * out_row_elems
+-                                    + n0 * DIM) * DTYPE_BYTES[F.ACCUMULATOR_DTYPE]
++                                    + n0 * DIM) * out_bytes
+                         self.emit(
+                             "loop_ws_block", [c.lhs, c.rhs, out_buf.name],
+                             rows=rows, cols=cols, depth=depth,
+@@ -647,7 +679,8 @@
+                             b_offset=(rhs_base + k0 * DIM * rhs_pitch + n0 * DIM)
+                             * DTYPE_BYTES[rhs.dtype],
+                             c_offset=c_offset, d_offset=c_offset,
+-                            accumulate=k0 != 0, full_c=True,
++                            accumulate=k0 != 0, full_c=full_row,
++                            c_dtype=out_dtype, acc_act=acc_act, acc_scale=acc_scale,
+                             implementation="gemmini_loop_ws")
+         else:
+             bm, bn, bk = self.block_shape(mt, nt, kt)
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-07 02:03:22.527425913 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_model_lane.py	2026-09-08 06:12:32.875682927 -0700
+@@ -202,6 +202,7 @@
+             # leaking into ordinary matmul/host graphs or introducing artificial
+             # mesh work. Use this extension only when it owns an admitted conv.
+             return MixedBuilder(self.module, self.wl).build()
++        self._select_exact_native_epilogues(mesh_ops)
+         # Source-native host loops no longer expand in proportion to tensor size.
+ 
+         # interface tensors: the entry's arguments, then its results, in declaration order
+@@ -277,6 +278,11 @@
+                     break
+                 exclusive = kept
+             absorbed_by[sink] = [item for item in owned if item in exclusive]
++        for producer, formation in self.native_epilogues.items():
++            owned = self._exclusive_epilogue_owners(producer, formation)
++            absorbed_by[producer] = sorted(
++                set(absorbed_by.get(producer, ())) | owned,
++                key=lambda item: list(item.parent_block().ops).index(item))
+         absorbed = {item for owned in absorbed_by.values() for item in owned}
+         self.absorbed_by = absorbed_by
+ 
+@@ -308,6 +314,9 @@
+             if kind == "mesh":
+                 self._mesh(payload, in_dram)
+                 in_dram.add(payload.results[0])
++                formation = self.native_epilogues.get(payload)
++                if formation is not None:
++                    in_dram.add(formation.output)
+                 continue
+             host_ops = carry + [op for op in payload if op.name != "func.return"]
+             host_set = set(host_ops)
+@@ -436,7 +445,9 @@
+                     op="conv2d")
+         activation = self.of_value.get(spec.activation) or self.buffer_for(spec.activation)
+         weight = self.of_value.get(spec.weight) or self.buffer_for(spec.weight)
+-        dst = self.of_value.get(spec.output) or self.buffer_for(spec.output)
++        formation = self.native_epilogues.get(op)
++        out_value = formation.output if formation is not None else spec.output
++        dst = self.of_value.get(out_value) or self.buffer_for(out_value)
+         # The compiler ABI consumes an offline-packed [Co,K] view. OIHW flattening preserves
+         # element order; only end-of-row DIM padding is added by the bundle packer.
+         original_shape = list(self.buffers[weight].shape)
+@@ -450,21 +461,32 @@
+         self.commands.append({"opcode": "RES_PACK", "operands": {"src": weight,
+                               "dst": f"{weight}_res"},
+                               "attributes": {"layout": "packed_conv_lhs"}})
++        attributes = {"kernel": [spec.kh, spec.kw, spec.ci, spec.co],
++                      "stride": [spec.stride_h, spec.stride_w],
++                      "padding": [spec.pad_top, spec.pad_left,
++                                  spec.pad_bottom, spec.pad_right],
++                      "dilation": [spec.dilation_h, spec.dilation_w],
++                      "layout": "nchw_streamed_row_im2col",
++                      "output_dtype": ("i8" if formation is not None else "i32")}
++        # Keep an unselected command byte-for-byte stable.  An empty epilogue list is redundant
++        # semantics, but adding it to every existing convolution obscures whether any physical work
++        # changed in command-buffer A/B evidence.
++        if formation is not None:
++            attributes["epilogue"] = ["relu"] if formation.relu else []
+         self.commands.append({"opcode": "CONV2D",
+                               "operands": {"ifm": activation, "weight": f"{weight}_res",
+                                            "dst": dst},
+-                              "attributes": {"kernel": [spec.kh, spec.kw, spec.ci, spec.co],
+-                                             "stride": [spec.stride_h, spec.stride_w],
+-                                             "padding": [spec.pad_top, spec.pad_left,
+-                                                         spec.pad_bottom, spec.pad_right],
+-                                             "dilation": [spec.dilation_h, spec.dilation_w],
+-                                             "layout": "nchw_streamed_row_im2col",
+-                                             "output_dtype": "i32"}})
++                              "attributes": attributes})
+         task = Convolution(
+             activation, weight, dst, spec.batch, spec.ci, spec.hi, spec.wi, spec.co,
+             spec.kh, spec.kw, spec.ho, spec.wo, spec.stride_h, spec.stride_w,
+             spec.dilation_h, spec.dilation_w, spec.pad_top, spec.pad_left,
+-            spec.pad_bottom, spec.pad_right, spec.direct_dma)
++            spec.pad_bottom, spec.pad_right, spec.direct_dma,
++            output_dtype=("i8" if formation is not None else "i32"),
++            relu=bool(formation is not None and formation.relu))
++        if formation is not None:
++            self.of_value[spec.output] = dst
++            self.of_value[formation.output] = dst
+         task.source_op_indices = [self.source_indices[item]
+                                   for item in [*self.absorbed_by.get(op, []), op]]
+         self.ordered.append(task)
+@@ -538,6 +560,7 @@
+                     {"regions": seg.regions,
+                      "reads": [n for _, n in seg.inputs],
+                      "writes": [n for _, n in seg.outputs]} for seg in segments],
++                "target_neutral_quantized_epilogues": self._epilogue_receipt(),
+                 "weight_prepack_recipes": list(self.weight_prepack),
+                 "convolution_lowering": {
+                     "owner": "generated_phase1_target_dialect",
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/source_conv_plan.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_plan.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 03:33:08.622563713 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/lowering/source_conv_plan.py	2026-09-08 05:53:16.508907701 -0700
+@@ -34,3 +34,9 @@
+     weight_layout: str = "CoK"
+     output_layout: str = "NCHW"
+     output_dtype: str = "i32"
++    # Abstract epilogue selected from source semantics.  This path currently admits only the
++    # exact identity-scale, zero-bias subset; richer scalar-scale/i32-bias support exists in the
++    # target but is selected only when a separate source-equivalence proof supplies it.
++    bias: str | None = None
++    acc_scale: float = 1.0
++    relu: bool = False
+diff -ruN out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/tables/loop_ws.py out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/loop_ws.py
+--- out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908/compiler/mlir_oot/tables/loop_ws.py	2026-09-08 01:14:37.179139648 -0700
++++ out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908/compiler/mlir_oot/tables/loop_ws.py	2026-09-08 05:55:21.202115168 -0700
+@@ -103,8 +103,8 @@
+ 
+ def loop_ws_static(*, rows, cols, depth, row_stride_a, row_stride_b, row_stride_c,
+                    full_c=True, activation=0, accumulate=False):
+-    if min(rows,cols,depth,row_stride_a,row_stride_b,row_stride_c) <= 0 or not full_c:
+-        raise ValueError("source convolution requires positive full-width loop geometry")
++    if min(rows,cols,depth,row_stride_a,row_stride_b,row_stride_c) <= 0:
++        raise ValueError("LOOP_WS requires positive static geometry")
+     tiles = [-(-n//F.DIM) for n in (rows,cols,depth)]
+     values = dict(zip(("I","J","K"),tiles))
+     values.update(dict(zip(("pad_I","pad_J","pad_K"),

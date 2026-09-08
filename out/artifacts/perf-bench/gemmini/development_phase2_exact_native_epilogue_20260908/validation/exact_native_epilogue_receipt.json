@@ -1,0 +1,217 @@
+{
+  "schema": "merlin_phase2_exact_native_epilogue_codegen_v1",
+  "status": "passed_scoped_exact_no_resnet_codegen_change",
+  "date": "2026-09-08",
+  "scope": "isolated compiler artifact; no shared-source edit, commit, L3, FireSim, or queue action",
+  "lineage": {
+    "baseline": "out/artifacts/perf-bench/gemmini/development_phase2_canonical_multimodel_affine_im2col_20260908",
+    "analysis_only_predecessor": "out/artifacts/perf-bench/gemmini/development_bf62_fused_narrow_epilogue_20260908",
+    "generic_native_conv_evidence_only": "out/artifacts/perf-bench/gemmini/development_native_loop_conv_int8_epilogue_v1_20260908",
+    "candidate": "out/artifacts/perf-bench/gemmini/development_phase2_exact_native_epilogue_20260908"
+  },
+  "candidate_identity": {
+    "compiler_tree_sha256": "c6429ca7055b8b9df3ae2fc4dc0bf311a0b0d92678cc7661fbe75fdc5f6b61fa",
+    "compiler_tree_files": 43,
+    "tests_tree_sha256": "0a2a419fc88924991f02308f7f6948449c2b7a52487ba9d026f34b44bab47ec4",
+    "tests_tree_files": 14,
+    "compiler_patch": "exact_native_epilogue_compiler.patch",
+    "compiler_patch_sha256": "0e882560625d17c1ff9840d26670f0a492e4c5a24d4cbdef9ee0d9fa600ae88a",
+    "compiler_patch_lines": 942
+  },
+  "semantic_contract": {
+    "source_formation": "target-neutral ordered quantized epilogue",
+    "source_order": [
+      "i32_accumulation",
+      "f32_accumulator_scale",
+      "f32_per_channel_scale",
+      "f32_per_channel_bias",
+      "optional_relu",
+      "output_scale_reciprocal",
+      "roundeven",
+      "zero_point",
+      "clamp_i8"
+    ],
+    "native_subset": "identity accumulator/output/per-channel scales plus zero per-channel bias; optional ReLU and narrow i8",
+    "proof_scope": "exact for every i32 accumulator; in-range integers are exactly representable in f32 and out-of-range values saturate identically",
+    "reassociation": false,
+    "approximation": false,
+    "dynamic_or_nonidentity_parameters": "fail closed",
+    "residual_second_tensor": "fail closed",
+    "altered_stage_order": "explicitly refused and regression tested",
+    "native_bias_order_guard": "an i32 accumulator-unit bias, when used by the generic LOOP_CONV interface, must be the first epilogue stage before scaling and activation"
+  },
+  "focused_tests": {
+    "status": "passed",
+    "passed": 44,
+    "seconds": 1.14,
+    "includes": [
+      "exact selected matmul epilogue",
+      "runtime per-channel refusal",
+      "altered bias/scale-order refusal",
+      "all-i32 saturation regimes",
+      "narrow reduction-resident source convolution",
+      "native LOOP_CONV capability/fallback/reduction tests",
+      "affine im2col, native scalar, dynamic-weight bridge, host workspace, and schedule regressions"
+    ]
+  },
+  "warm_reentrant_exact_micro_ab": {
+    "status": "passed",
+    "protocol": "same ELF process: one complete untimed warm invocation then one measured invocation",
+    "shape": {"m": 17, "k": 31, "n": 19},
+    "semantic_cases": ["M/K/N tails", "negative", "positive", "ReLU", "i8 saturation"],
+    "baseline": {
+      "cycles": 13760,
+      "tasks": 3,
+      "host_tasks": 2,
+      "commands": 3,
+      "schedule_instructions": 6,
+      "physical_fences": 2,
+      "host_segments": 2,
+      "target_sha256": "1ca0da7df4a5387ba124666422cbbeeadf6c155274e53b974145587b08c8432e",
+      "object_sha256": "e2aa97c28abfaf18c882b2ced8d70c71c69c02ec3e72135842e1fa1608ebd5dd",
+      "receipt": "validation/exact_epilogue_warm_spike/baseline/receipt.json",
+      "receipt_sha256": "27f457b64538dbee16e90cad315945b5197108fb358c963decaafec88834d1f8"
+    },
+    "candidate": {
+      "cycles": 56,
+      "tasks": 1,
+      "host_tasks": 0,
+      "commands": 3,
+      "schedule_instructions": 4,
+      "physical_fences": 2,
+      "host_segments": 0,
+      "full_width_intermediate_bytes_eliminated": 1292,
+      "output_dma_bytes_before": 1292,
+      "output_dma_bytes_after": 323,
+      "output_dma_bytes_eliminated": 969,
+      "logical_device_to_host_boundaries_eliminated": 1,
+      "physical_fences_eliminated": 0,
+      "target_sha256": "d21d15d4b904b7c22b5c38fedb9ba26e5fcb36fbb2e0a433487d2d8c122362ad",
+      "object_sha256": "f22ca1a6f49446df364de9deec7c2d27fefda01bbf47c73a1df96e17921e11f4",
+      "receipt": "validation/exact_epilogue_warm_spike/receipt.json",
+      "receipt_sha256": "b6e89a5dd9400ff409ba8d3668985c0a5661ea3233131334a138a3ff469df639"
+    },
+    "delta": {
+      "cycles_saved": 13704,
+      "spike_proxy_speedup": 245.71428571428572,
+      "tasks": -2,
+      "host_tasks": -2,
+      "commands": 0,
+      "schedule_instructions": -2,
+      "physical_fences": 0
+    },
+    "performance_role": "focused Spike proxy demonstrating real code generation; not FPGA performance evidence"
+  },
+  "resnet50_exact_ab": {
+    "status": "passed_unchanged_codegen",
+    "prepared_source_sha256": "76c26171096661650e2ee440fb545926936b1e770d2bfd0206a6509e6e835e94",
+    "compile_wall_seconds": 31.91,
+    "compile_max_rss_kb": 202756,
+    "source_operations": 1240,
+    "convolutions": 53,
+    "mesh_regions": 54,
+    "host_regions": 119,
+    "tasks": 109,
+    "host_tasks": 55,
+    "host_segments": 55,
+    "commands": 109,
+    "schedule_instructions": 5439,
+    "physical_fences": 1050,
+    "llvm_roundeven_sites": 50,
+    "llvm_fptosi_sites": 50,
+    "native_loop_conv_after_source_semantic_formation": 0,
+    "exact_native_epilogues_selected": 0,
+    "exact_refusal_histogram": {
+      "accumulator_scale_is_not_proven_identity": 32,
+      "dynamic_second_tensor/residual_terminates_epilogue": 20,
+      "chain_does_not_end_in_exact_roundeven/clamp_i8_quantize": 2
+    },
+    "refusal_interpretation": {
+      "non_residual_pt2e_chains": "32 reach the exact chain but carry runtime/nonidentity scale and therefore retain the existing host pass",
+      "residual_paths": "20 require a second tensor operand and are outside this non-residual change",
+      "structural_ends": "the stem/maxpool path and terminal FC do not have the admitted terminal chain",
+      "all_convolution_native_audit": "all 53 captured PT2E convolutions also have per-channel f32 weight scales and non-integer f32 biases; no bias is an exact accumulator-unit offset"
+    },
+    "logical_boundary_bytes_remaining": {
+      "device_to_host": 44459936,
+      "host_to_device": 9058816,
+      "total": 53518752,
+      "declared_intermediate_storage_bytes": 75600408
+    },
+    "delta_vs_canonical_affine": {
+      "dynamic_scalar_instructions": 0,
+      "static_object_instructions": 0,
+      "full_width_intermediate_bytes": 0,
+      "logical_boundary_bytes": 0,
+      "physical_fences": 0,
+      "gemmini_dma_bytes": 0,
+      "tasks": 0,
+      "host_tasks": 0,
+      "host_segments": 0,
+      "commands": 0,
+      "loop_ws_launches": 0,
+      "native_loop_conv_launches": 0
+    },
+    "candidate_command_buffer_sha256": "4e376f3c1407cb3a2de9b898b291a5c4570834508e08c1e36804f581e0298680",
+    "normalized_command_buffer_sha256": "431727281a0a84db34d0672e542c92e5716a1d778966115a9310f85632d8babc",
+    "normalized_command_buffer_equal_to_fresh_canonical": true,
+    "target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859",
+    "target_byte_identical_to_canonical": true,
+    "llvm_sha256": "98d7187cab7cbb7bf4df5cfdf335543c42bab942794ed628985d6fc7bb3a5f90",
+    "object_sha256": "e251d0e4d508af30f0828dd1394095de6a580c40c961cd6a8efe240ed3310618",
+    "object_bytes": 425288,
+    "static_object_instructions": 83029,
+    "full_model_spike_ab_run": false,
+    "full_model_spike_ab_reason": "the target and object are byte-identical, so a new run cannot distinguish the candidate"
+  },
+  "existing_host_fusion_explanation": {
+    "already_present": true,
+    "mechanism": "the canonical source planner groups each single-use conv-to-bias/ReLU/QDQ slice into one host segment and the host emitter lowers it as one fused traversal",
+    "why_analysis_only_task_fusion_changed_nothing": "changing task ownership did not change the existing emitted fused host loop, full-width accumulator MVOUT, or required device-to-host fence",
+    "why_this_resnet_target_stays_identical": "every native narrowing candidate failed the exact runtime-scale/bias capability proof, so the physical schedule and existing host pass were retained"
+  },
+  "transferred_q535_identity_evidence": {
+    "basis": "candidate ResNet object SHA-256 equals the exact object measured by q535",
+    "q535_receipt": "out/artifacts/perf-bench/gemmini/q535_affine_im2col_hardware_receipt.json",
+    "q535_measured_cycles": 1316619699,
+    "q535_instret": 506265232,
+    "q535_gemmini_read_dma_bytes": 1142808576,
+    "q535_gemmini_write_dma_bytes": 54136736,
+    "q535_gemmini_total_dma_bytes": 1196945312,
+    "q535_correctness": "1000/1000 exact, bad=0, top1=258, checksum=c6e777c3fe0aae90",
+    "new_hardware_claim": false,
+    "new_speedup_over_q535": 1.0
+  },
+  "sequential_four_model_compile_gate": {
+    "status": "passed",
+    "peak_rss_kb": 308976,
+    "resnet50": {"seconds": 31.91, "rss_kb": 202756, "target_sha256": "c18b8671a2c2ee3af17e0a89309a4cdc82dd2f4e3afac2fe65787743a01db859", "selected": 0, "refused": 54},
+    "tinyllama_default": {"seconds": 1.31, "rss_kb": 55232, "target_sha256": "859f0f45c349f4e206dbc21127a804fa2148de410529d699c63c286eb0ea1fc5", "selected": 0, "refused": 0},
+    "lstmnetvit": {"seconds": 50.95, "rss_kb": 188072, "target_sha256": "4c912f9ac995f8eb2677be1ff286369c32178166d6a02a037e49f7f4dbeed0f7", "selected": 0, "refused": 0},
+    "smolvla": {"seconds": 47.26, "rss_kb": 308976, "target_sha256": "f1cdc9aed4b3db465733b5af4e201e92c6eddafb685b76f7607daeb607969b3b", "selected": 0, "refused": 0},
+    "target_hashes_equal_canonical": true,
+    "command_buffers_equal_canonical_after_removing_analysis_receipt": true,
+    "dynamic_weight_bridge": "preserved and separately covered by focused tests; default remains off"
+  },
+  "next_target_neutral_requirement": {
+    "mechanism": "attach an ordered runtime per-channel quantized-epilogue value to convolution results, with explicit accumulator encoding/layout and a legal fused-host fallback",
+    "smallest_gemmini_adapter_step": "prove compute-only LOOP_CONV accumulator layout and emit an explicit full-width accumulator MVOUT into the existing exact one-pass runtime-scale host readout",
+    "expected_first_win": "delete scalar row-im2col packing and its synchronization without changing PT2E quantization; this does not yet delete the full-width boundary",
+    "required_for_exact_boundary_deletion": "a target implementation of ordered post-accumulation per-channel f32 scale then f32 bias then activation/rounding, or a separately authorized quantization-contract change",
+    "forbidden_shortcuts": [
+      "precombine the two f32 multiplications",
+      "convert non-integral f32 bias to accumulator bias",
+      "use one scalar scale for per-channel scales",
+      "import TVM/model constants or layer names",
+      "reuse the q536 model-specific stitcher or TVM host"
+    ]
+  },
+  "limitations": {
+    "firesim_run": false,
+    "l3_run": false,
+    "queue_action": false,
+    "residual_epilogue": "not implemented",
+    "current_pt2e_resnet_native_narrowing": "no exact candidate admitted",
+    "performance_claim": "real generic micro codegen and warm correctness; zero additional full-ResNet performance over q535"
+  }
+}
