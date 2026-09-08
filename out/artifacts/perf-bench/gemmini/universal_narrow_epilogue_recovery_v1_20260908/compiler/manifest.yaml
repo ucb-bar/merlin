@@ -1,0 +1,145 @@
+artifact_type: mlir_oot_target_backend
+target: gemmini
+package_id: gemmini_xdsl_oot_v0
+language: python
+authoring:
+  mode: agent_generated_from_rtl_facts
+  author: capsule_bench agent (arm4 merlin_assisted_rtlchecks)
+  generated_by_agent: true
+integrity_exempt: false
+
+entrypoints:
+  tool: gemmini-opt
+
+commands:
+  parse:
+    argv: ["{tool}", "--verify-diagnostics", "{input_mlir}"]
+  lower_interface_to_target:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "{input_mlir}"]
+  emit_command_buffer:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "{input_mlir}"]
+  lower_target_to_llvm:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-target-artifact", "{input_mlir}"]
+  emit_analysis_bundle:
+    argv: ["{tool}", "--convert-iface-to-gemmini", "--emit-command-buffer={output_json}", "--emit-target-artifact", "{input_mlir}"]
+
+optimization_surfaces:
+  - id: target-readout-capability
+    scope: knob
+    path: mlir_oot/tables/target_profile.py
+    symbol: load
+    effects: [placement, dtype, encoding]
+    cca_axes: [memory.readout_width, dispatch.target_capability]
+    mechanism: load the selected operator target contract and reject readout modes absent in hardware
+    emitted_delta: no LOOP_WS full-C launch or accumulator MVOUT full-width bit on a small-read target
+    validation: structural readout audit over the complete emitted LLVM-dialect artifact
+    abandonment: contract mismatch, undecodable readout fields, or any forbidden full-width encoding
+  - id: accumulator-readout-selection
+    scope: heuristic
+    path: mlir_oot/lowering/schedule.py
+    symbol: readout_plan
+    effects: [dtype, encoding, quantization, placement]
+    cca_axes: [memory.readout_width, numeric.epilogue_placement]
+    mechanism: choose a target-legal narrow, full-width, or generated scalar epilogue path
+    emitted_delta: readout width and epilogue placement change while declared arithmetic is preserved
+    validation: exact capsule comparison plus decoded readout-field audit
+    abandonment: unavailable target port, unsupported scalar stage, or numerical mismatch
+  - id: tile-residency-shape
+    scope: heuristic
+    path: mlir_oot/lowering/schedule.py
+    symbol: Scheduler.block_shape
+    effects: [tiling, residency, movement]
+    cca_axes: [spatial.dataflow, communication.resident_across_calls]
+    mechanism: size legal M/N/K tile blocks from the derived scratchpad and accumulator capacities
+    emitted_delta: fewer tile transfers or launches with the same complete edge coverage
+    validation: shape coverage followed by decoded transfer and compute counts
+    abandonment: capacity violation, uncovered edge, or no emitted movement reduction
+  - id: mixed-program-partition
+    scope: pass
+    path: mlir_oot/lowering/model_lane.py
+    symbol: MixedBuilder.build
+    effects: [placement, movement, synchronization, fusion]
+    cca_axes: [dispatch.lane_partition, communication.materialized_seams]
+    mechanism: partition a source program into ordered mesh and generated scalar tasks with explicit seams
+    emitted_delta: task placement or materialized cross-lane buffers change in the global program plan
+    validation: source-ownership audit, lane trace checks, and whole-program numerical comparison
+    abandonment: missing or duplicate source ownership, illegal lane claim, or numerical mismatch
+  - id: region-lane-placement
+    scope: heuristic
+    path: mlir_oot/frontend/linalg_reader.py
+    symbol: place
+    effects: [placement]
+    cca_axes: [dispatch.target_capability]
+    mechanism: admit a provenance region only when its family and dtype match the derived datapath
+    emitted_delta: lane_placement and the resulting accelerator instruction classes change together
+    validation: capability check joined to decoded accelerator trace
+    abandonment: claimed mesh region has no emitted implementation or violates the target profile
+
+# Which submission-relative sources each declared command actually rides on.
+# `manifest.yaml` is listed under every command because it declares that command's argv, and the
+# documentation is listed too: nothing in the package should be unattributable, and an
+# unattributable path invalidates every certificate the package has earned.
+components:
+  parse:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+  lower_interface_to_target:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/
+  emit_command_buffer:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/cmdbuf.py
+    - mlir_oot/tables/
+    - mlir_oot/ir/
+    - mlir_oot/codegen/
+  lower_target_to_llvm:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/
+  emit_analysis_bundle:
+    - manifest.yaml
+    - REPORT.md
+    - docs/
+    - gemmini-opt
+    - mlir_oot/__init__.py
+    - mlir_oot/__pycache__/
+    - mlir_oot/gemmini_opt.py
+    - mlir_oot/frontend/
+    - mlir_oot/lowering/
+    - mlir_oot/cmdbuf.py
+    - mlir_oot/ir/
+    - mlir_oot/tables/
+    - mlir_oot/codegen/

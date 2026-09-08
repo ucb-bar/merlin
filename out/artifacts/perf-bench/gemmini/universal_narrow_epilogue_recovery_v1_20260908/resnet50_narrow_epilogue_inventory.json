@@ -1,0 +1,2348 @@
+{
+  "summary": {
+    "schema": "merlin_gemmini_native_narrow_epilogue_inventory_v1",
+    "source": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/model2mlir_direct.mlir",
+    "weights": "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/resnet50_pt2e_w8a8_universal_dog_direct_20260906/weights.safetensors",
+    "prepared_integer_convolutions": 53,
+    "convolutions_audited": 53,
+    "native_exact_admitted": 0,
+    "native_exact_refused": 53,
+    "all_channels_nonzero_bias": 53,
+    "per_channel_scale": 53,
+    "residual_add_paths": 20,
+    "maxpool_paths": 1,
+    "global_tail_paths": 1,
+    "hardware_qualification": "not_run_no_candidate_admitted"
+  },
+  "convolutions": [
+    {
+      "index": 0,
+      "region": "conv_1",
+      "fqn": "model.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 3,
+        "hi": 224,
+        "wi": 224,
+        "co": 64,
+        "kh": 7,
+        "kw": 7,
+        "ho": 112,
+        "wo": 112
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "slice_scatter",
+        "max_pool2d",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 0,
+        "tensor": "model.conv1.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -9.418174743652344,
+        "max": 22.49496078491211
+      },
+      "weight_scale": {
+        "arg": 54,
+        "tensor": "_scale_0",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.002115613780915737,
+        "max": 0.034609682857990265
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "maxpool_requires_native_loop_conv_emission"
+      ]
+    },
+    {
+      "index": 1,
+      "region": "conv_3",
+      "fqn": "model.layer1.0.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 1,
+        "tensor": "model.layer1.0.conv1.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -20.147268295288086,
+        "max": 15.999448776245117
+      },
+      "weight_scale": {
+        "arg": 56,
+        "tensor": "_scale_1",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.000432610948337242,
+        "max": 0.007242873311042786
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 2,
+      "region": "conv_5",
+      "fqn": "model.layer1.0.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 3,
+        "kw": 3,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 2,
+        "tensor": "model.layer1.0.conv2.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -12.553802490234375,
+        "max": 14.834203720092773
+      },
+      "weight_scale": {
+        "arg": 58,
+        "tensor": "_scale_2",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.0005532541545107961,
+        "max": 0.005443095229566097
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 3,
+      "region": "conv_7",
+      "fqn": "model.layer1.0.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 3,
+        "tensor": "model.layer1.0.conv3.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -14.034213066101074,
+        "max": 11.683894157409668
+      },
+      "weight_scale": {
+        "arg": 60,
+        "tensor": "_scale_3",
+        "channels": 256,
+        "unique_f32_values": 249,
+        "min": 0.000244140625,
+        "max": 0.02263873815536499
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 4,
+      "region": "conv_9",
+      "fqn": "model.layer1.0.downsample.0",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 4,
+        "tensor": "model.layer1.0.downsample.0.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -14.145302772521973,
+        "max": 24.49135398864746
+      },
+      "weight_scale": {
+        "arg": 62,
+        "tensor": "_scale_4",
+        "channels": 256,
+        "unique_f32_values": 246,
+        "min": 0.000244140625,
+        "max": 0.015958605334162712
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 5,
+      "region": "conv_11",
+      "fqn": "model.layer1.1.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 5,
+        "tensor": "model.layer1.1.conv1.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -9.282356262207031,
+        "max": 32.378662109375
+      },
+      "weight_scale": {
+        "arg": 64,
+        "tensor": "_scale_5",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.000244140625,
+        "max": 0.04120953008532524
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 6,
+      "region": "conv_13",
+      "fqn": "model.layer1.1.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 3,
+        "kw": 3,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 6,
+        "tensor": "model.layer1.1.conv2.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -1.486552357673645,
+        "max": 5.628358840942383
+      },
+      "weight_scale": {
+        "arg": 66,
+        "tensor": "_scale_6",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.001354826963506639,
+        "max": 0.007514799013733864
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 7,
+      "region": "conv_15",
+      "fqn": "model.layer1.1.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 7,
+        "tensor": "model.layer1.1.conv3.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -8.83262825012207,
+        "max": 12.252721786499023
+      },
+      "weight_scale": {
+        "arg": 68,
+        "tensor": "_scale_7",
+        "channels": 256,
+        "unique_f32_values": 235,
+        "min": 0.000244140625,
+        "max": 0.022403353825211525
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 8,
+      "region": "conv_17",
+      "fqn": "model.layer1.2.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 8,
+        "tensor": "model.layer1.2.conv1.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -8.432600975036621,
+        "max": 4.936821937561035
+      },
+      "weight_scale": {
+        "arg": 70,
+        "tensor": "_scale_8",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.0013803269248455763,
+        "max": 0.014200020581483841
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 9,
+      "region": "conv_19",
+      "fqn": "model.layer1.2.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 64,
+        "kh": 3,
+        "kw": 3,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 9,
+        "tensor": "model.layer1.2.conv2.weight_bias",
+        "channels": 64,
+        "nonzero_channels": 64,
+        "min": -11.86962604522705,
+        "max": 6.579132556915283
+      },
+      "weight_scale": {
+        "arg": 72,
+        "tensor": "_scale_9",
+        "channels": 64,
+        "unique_f32_values": 64,
+        "min": 0.001009904546663165,
+        "max": 0.00917009450495243
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 10,
+      "region": "conv_21",
+      "fqn": "model.layer1.2.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 64,
+        "hi": 56,
+        "wi": 56,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 10,
+        "tensor": "model.layer1.2.conv3.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -10.943815231323242,
+        "max": 14.686656951904297
+      },
+      "weight_scale": {
+        "arg": 74,
+        "tensor": "_scale_10",
+        "channels": 256,
+        "unique_f32_values": 220,
+        "min": 0.000244140625,
+        "max": 0.04141407087445259
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 11,
+      "region": "conv_23",
+      "fqn": "model.layer2.0.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 56,
+        "wi": 56,
+        "co": 128,
+        "kh": 1,
+        "kw": 1,
+        "ho": 56,
+        "wo": 56
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 11,
+        "tensor": "model.layer2.0.conv1.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -9.545639038085938,
+        "max": 4.6019792556762695
+      },
+      "weight_scale": {
+        "arg": 76,
+        "tensor": "_scale_11",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0012258955975994468,
+        "max": 0.008354236371815205
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 12,
+      "region": "conv_25",
+      "fqn": "model.layer2.0.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 56,
+        "wi": 56,
+        "co": 128,
+        "kh": 3,
+        "kw": 3,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 12,
+        "tensor": "model.layer2.0.conv2.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -1.207034945487976,
+        "max": 4.810915470123291
+      },
+      "weight_scale": {
+        "arg": 78,
+        "tensor": "_scale_12",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.00047022372018545866,
+        "max": 0.0020253004040569067
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 13,
+      "region": "conv_27",
+      "fqn": "model.layer2.0.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 13,
+        "tensor": "model.layer2.0.conv3.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -16.608327865600586,
+        "max": 11.61974811553955
+      },
+      "weight_scale": {
+        "arg": 80,
+        "tensor": "_scale_13",
+        "channels": 512,
+        "unique_f32_values": 486,
+        "min": 0.000244140625,
+        "max": 0.012875834479928017
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 14,
+      "region": "conv_29",
+      "fqn": "model.layer2.0.downsample.0",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 56,
+        "wi": 56,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 14,
+        "tensor": "model.layer2.0.downsample.0.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -8.700763702392578,
+        "max": 9.98996353149414
+      },
+      "weight_scale": {
+        "arg": 82,
+        "tensor": "_scale_14",
+        "channels": 512,
+        "unique_f32_values": 507,
+        "min": 0.000244140625,
+        "max": 0.012985304929316044
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 15,
+      "region": "conv_31",
+      "fqn": "model.layer2.1.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 15,
+        "tensor": "model.layer2.1.conv1.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -9.920166969299316,
+        "max": 4.073278427124023
+      },
+      "weight_scale": {
+        "arg": 84,
+        "tensor": "_scale_15",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0004169318708591163,
+        "max": 0.005259242374449968
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 16,
+      "region": "conv_33",
+      "fqn": "model.layer2.1.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 3,
+        "kw": 3,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 16,
+        "tensor": "model.layer2.1.conv2.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -13.5668306350708,
+        "max": 8.072240829467773
+      },
+      "weight_scale": {
+        "arg": 86,
+        "tensor": "_scale_16",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0008538793190382421,
+        "max": 0.005011498928070068
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 17,
+      "region": "conv_35",
+      "fqn": "model.layer2.1.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 17,
+        "tensor": "model.layer2.1.conv3.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -6.752218723297119,
+        "max": 5.60001802444458
+      },
+      "weight_scale": {
+        "arg": 88,
+        "tensor": "_scale_17",
+        "channels": 512,
+        "unique_f32_values": 505,
+        "min": 0.000244140625,
+        "max": 0.020653527230024338
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 18,
+      "region": "conv_37",
+      "fqn": "model.layer2.2.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 18,
+        "tensor": "model.layer2.2.conv1.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -7.345354080200195,
+        "max": 3.24829363822937
+      },
+      "weight_scale": {
+        "arg": 90,
+        "tensor": "_scale_18",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0009642891236580908,
+        "max": 0.005654599517583847
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 19,
+      "region": "conv_39",
+      "fqn": "model.layer2.2.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 3,
+        "kw": 3,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 19,
+        "tensor": "model.layer2.2.conv2.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -3.279099941253662,
+        "max": 6.68617057800293
+      },
+      "weight_scale": {
+        "arg": 92,
+        "tensor": "_scale_19",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0008552457438781857,
+        "max": 0.008676409721374512
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 20,
+      "region": "conv_41",
+      "fqn": "model.layer2.2.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 20,
+        "tensor": "model.layer2.2.conv3.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -6.772764682769775,
+        "max": 4.626742362976074
+      },
+      "weight_scale": {
+        "arg": 94,
+        "tensor": "_scale_20",
+        "channels": 512,
+        "unique_f32_values": 493,
+        "min": 0.000244140625,
+        "max": 0.0244293212890625
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 21,
+      "region": "conv_43",
+      "fqn": "model.layer2.3.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 21,
+        "tensor": "model.layer2.3.conv1.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -4.224554061889648,
+        "max": 2.7518701553344727
+      },
+      "weight_scale": {
+        "arg": 96,
+        "tensor": "_scale_21",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0007014293223619461,
+        "max": 0.0034415607806295156
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 22,
+      "region": "conv_45",
+      "fqn": "model.layer2.3.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 128,
+        "kh": 3,
+        "kw": 3,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 22,
+        "tensor": "model.layer2.3.conv2.weight_bias",
+        "channels": 128,
+        "nonzero_channels": 128,
+        "min": -5.147319793701172,
+        "max": 5.488915920257568
+      },
+      "weight_scale": {
+        "arg": 98,
+        "tensor": "_scale_22",
+        "channels": 128,
+        "unique_f32_values": 128,
+        "min": 0.0006473077228292823,
+        "max": 0.005292139947414398
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 23,
+      "region": "conv_47",
+      "fqn": "model.layer2.3.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 128,
+        "hi": 28,
+        "wi": 28,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 23,
+        "tensor": "model.layer2.3.conv3.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -11.459210395812988,
+        "max": 7.954369068145752
+      },
+      "weight_scale": {
+        "arg": 100,
+        "tensor": "_scale_23",
+        "channels": 512,
+        "unique_f32_values": 479,
+        "min": 0.000244140625,
+        "max": 0.014826848171651363
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 24,
+      "region": "conv_49",
+      "fqn": "model.layer3.0.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 28,
+        "wi": 28,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 28,
+        "wo": 28
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 24,
+        "tensor": "model.layer3.0.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -5.776217937469482,
+        "max": 4.646461009979248
+      },
+      "weight_scale": {
+        "arg": 102,
+        "tensor": "_scale_24",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0010262422729283571,
+        "max": 0.0074451034888625145
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 25,
+      "region": "conv_51",
+      "fqn": "model.layer3.0.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 28,
+        "wi": 28,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 25,
+        "tensor": "model.layer3.0.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -1.819549560546875,
+        "max": 3.8689894676208496
+      },
+      "weight_scale": {
+        "arg": 104,
+        "tensor": "_scale_25",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0004411841800902039,
+        "max": 0.0035717503633350134
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 26,
+      "region": "conv_53",
+      "fqn": "model.layer3.0.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 26,
+        "tensor": "model.layer3.0.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -7.228767395019531,
+        "max": 8.161531448364258
+      },
+      "weight_scale": {
+        "arg": 106,
+        "tensor": "_scale_26",
+        "channels": 1024,
+        "unique_f32_values": 1006,
+        "min": 0.000244140625,
+        "max": 0.011739013716578484
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 27,
+      "region": "conv_55",
+      "fqn": "model.layer3.0.downsample.0",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 28,
+        "wi": 28,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 27,
+        "tensor": "model.layer3.0.downsample.0.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -6.735016345977783,
+        "max": 5.402318477630615
+      },
+      "weight_scale": {
+        "arg": 108,
+        "tensor": "_scale_27",
+        "channels": 1024,
+        "unique_f32_values": 1014,
+        "min": 0.000244140625,
+        "max": 0.009929516352713108
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 28,
+      "region": "conv_57",
+      "fqn": "model.layer3.1.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 28,
+        "tensor": "model.layer3.1.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -4.058315277099609,
+        "max": 4.522781848907471
+      },
+      "weight_scale": {
+        "arg": 110,
+        "tensor": "_scale_28",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0003151945711579174,
+        "max": 0.005968920886516571
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 29,
+      "region": "conv_59",
+      "fqn": "model.layer3.1.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 29,
+        "tensor": "model.layer3.1.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -5.925135612487793,
+        "max": 6.228141784667969
+      },
+      "weight_scale": {
+        "arg": 112,
+        "tensor": "_scale_29",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0006677912315353751,
+        "max": 0.0106861162930727
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 30,
+      "region": "conv_61",
+      "fqn": "model.layer3.1.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 30,
+        "tensor": "model.layer3.1.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -5.187296390533447,
+        "max": 4.831145286560059
+      },
+      "weight_scale": {
+        "arg": 114,
+        "tensor": "_scale_30",
+        "channels": 1024,
+        "unique_f32_values": 1016,
+        "min": 0.000244140625,
+        "max": 0.020328795537352562
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 31,
+      "region": "conv_63",
+      "fqn": "model.layer3.2.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 31,
+        "tensor": "model.layer3.2.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -3.1252357959747314,
+        "max": 3.442765474319458
+      },
+      "weight_scale": {
+        "arg": 116,
+        "tensor": "_scale_31",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.00043929796083830297,
+        "max": 0.0044686803594231606
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 32,
+      "region": "conv_65",
+      "fqn": "model.layer3.2.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 32,
+        "tensor": "model.layer3.2.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -2.4722583293914795,
+        "max": 4.424267768859863
+      },
+      "weight_scale": {
+        "arg": 118,
+        "tensor": "_scale_32",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0008220479357987642,
+        "max": 0.008896511048078537
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 33,
+      "region": "conv_67",
+      "fqn": "model.layer3.2.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 33,
+        "tensor": "model.layer3.2.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -7.154050827026367,
+        "max": 5.396468639373779
+      },
+      "weight_scale": {
+        "arg": 120,
+        "tensor": "_scale_33",
+        "channels": 1024,
+        "unique_f32_values": 995,
+        "min": 0.000244140625,
+        "max": 0.02500213123857975
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 34,
+      "region": "conv_69",
+      "fqn": "model.layer3.3.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 34,
+        "tensor": "model.layer3.3.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -3.495725631713867,
+        "max": 3.277282953262329
+      },
+      "weight_scale": {
+        "arg": 122,
+        "tensor": "_scale_34",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0005069399485364556,
+        "max": 0.003982411697506905
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 35,
+      "region": "conv_71",
+      "fqn": "model.layer3.3.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 35,
+        "tensor": "model.layer3.3.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -3.6695897579193115,
+        "max": 4.069202899932861
+      },
+      "weight_scale": {
+        "arg": 124,
+        "tensor": "_scale_35",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0007808390073478222,
+        "max": 0.009041155688464642
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 36,
+      "region": "conv_73",
+      "fqn": "model.layer3.3.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 36,
+        "tensor": "model.layer3.3.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -7.58204460144043,
+        "max": 3.9578564167022705
+      },
+      "weight_scale": {
+        "arg": 126,
+        "tensor": "_scale_36",
+        "channels": 1024,
+        "unique_f32_values": 1024,
+        "min": 0.000244140625,
+        "max": 0.019077632576227188
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 37,
+      "region": "conv_75",
+      "fqn": "model.layer3.4.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 37,
+        "tensor": "model.layer3.4.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -3.3195958137512207,
+        "max": 1.710150957107544
+      },
+      "weight_scale": {
+        "arg": 128,
+        "tensor": "_scale_37",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.00047321428428404033,
+        "max": 0.005033443216234446
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 38,
+      "region": "conv_77",
+      "fqn": "model.layer3.4.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 38,
+        "tensor": "model.layer3.4.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -4.696188449859619,
+        "max": 4.687714576721191
+      },
+      "weight_scale": {
+        "arg": 130,
+        "tensor": "_scale_38",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0008442388498224318,
+        "max": 0.0055062416940927505
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 39,
+      "region": "conv_79",
+      "fqn": "model.layer3.4.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 39,
+        "tensor": "model.layer3.4.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -7.952134609222412,
+        "max": 3.9050252437591553
+      },
+      "weight_scale": {
+        "arg": 132,
+        "tensor": "_scale_39",
+        "channels": 1024,
+        "unique_f32_values": 930,
+        "min": 0.000244140625,
+        "max": 0.018436670303344727
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 40,
+      "region": "conv_81",
+      "fqn": "model.layer3.5.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 40,
+        "tensor": "model.layer3.5.conv1.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -3.009478807449341,
+        "max": 3.398073673248291
+      },
+      "weight_scale": {
+        "arg": 134,
+        "tensor": "_scale_40",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0004763644828926772,
+        "max": 0.003570954082533717
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 41,
+      "region": "conv_83",
+      "fqn": "model.layer3.5.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 256,
+        "kh": 3,
+        "kw": 3,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 41,
+        "tensor": "model.layer3.5.conv2.weight_bias",
+        "channels": 256,
+        "nonzero_channels": 256,
+        "min": -5.109373092651367,
+        "max": 3.9009556770324707
+      },
+      "weight_scale": {
+        "arg": 136,
+        "tensor": "_scale_41",
+        "channels": 256,
+        "unique_f32_values": 256,
+        "min": 0.0007129249861463904,
+        "max": 0.004994019400328398
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 42,
+      "region": "conv_85",
+      "fqn": "model.layer3.5.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 256,
+        "hi": 14,
+        "wi": 14,
+        "co": 1024,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 42,
+        "tensor": "model.layer3.5.conv3.weight_bias",
+        "channels": 1024,
+        "nonzero_channels": 1024,
+        "min": -6.390344619750977,
+        "max": 3.7934517860412598
+      },
+      "weight_scale": {
+        "arg": 138,
+        "tensor": "_scale_42",
+        "channels": 1024,
+        "unique_f32_values": 1002,
+        "min": 0.000244140625,
+        "max": 0.011211850680410862
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 43,
+      "region": "conv_87",
+      "fqn": "model.layer4.0.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 14,
+        "wo": 14
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 43,
+        "tensor": "model.layer4.0.conv1.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -3.226940155029297,
+        "max": 1.6000139713287354
+      },
+      "weight_scale": {
+        "arg": 140,
+        "tensor": "_scale_43",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.0008074426441453397,
+        "max": 0.00531521812081337
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 44,
+      "region": "conv_89",
+      "fqn": "model.layer4.0.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 14,
+        "wi": 14,
+        "co": 512,
+        "kh": 3,
+        "kw": 3,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 44,
+        "tensor": "model.layer4.0.conv2.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -1.9576716423034668,
+        "max": 5.953485488891602
+      },
+      "weight_scale": {
+        "arg": 142,
+        "tensor": "_scale_44",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.0005283411010168493,
+        "max": 0.0027385882567614317
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 45,
+      "region": "conv_91",
+      "fqn": "model.layer4.0.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 7,
+        "wi": 7,
+        "co": 2048,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 45,
+        "tensor": "model.layer4.0.conv3.weight_bias",
+        "channels": 2048,
+        "nonzero_channels": 2048,
+        "min": -7.966121673583984,
+        "max": 8.913094520568848
+      },
+      "weight_scale": {
+        "arg": 144,
+        "tensor": "_scale_45",
+        "channels": 2048,
+        "unique_f32_values": 2043,
+        "min": 0.000244140625,
+        "max": 0.01246605534106493
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 46,
+      "region": "conv_93",
+      "fqn": "model.layer4.0.downsample.0",
+      "geometry": {
+        "n": 1,
+        "ci": 1024,
+        "hi": 14,
+        "wi": 14,
+        "co": 2048,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 46,
+        "tensor": "model.layer4.0.downsample.0.weight_bias",
+        "channels": 2048,
+        "nonzero_channels": 2048,
+        "min": -6.620062828063965,
+        "max": 5.5980682373046875
+      },
+      "weight_scale": {
+        "arg": 146,
+        "tensor": "_scale_46",
+        "channels": 2048,
+        "unique_f32_values": 2048,
+        "min": 0.001113584148697555,
+        "max": 0.015215524472296238
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 47,
+      "region": "conv_95",
+      "fqn": "model.layer4.1.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 2048,
+        "hi": 7,
+        "wi": 7,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 47,
+        "tensor": "model.layer4.1.conv1.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -5.670987129211426,
+        "max": 3.1857028007507324
+      },
+      "weight_scale": {
+        "arg": 148,
+        "tensor": "_scale_47",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.0003472371899988502,
+        "max": 0.0033003073185682297
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 48,
+      "region": "conv_97",
+      "fqn": "model.layer4.1.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 7,
+        "wi": 7,
+        "co": 512,
+        "kh": 3,
+        "kw": 3,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 48,
+        "tensor": "model.layer4.1.conv2.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -6.859125137329102,
+        "max": 4.024154186248779
+      },
+      "weight_scale": {
+        "arg": 150,
+        "tensor": "_scale_48",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.0006532492698170245,
+        "max": 0.004550349898636341
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 49,
+      "region": "conv_99",
+      "fqn": "model.layer4.1.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 7,
+        "wi": 7,
+        "co": 2048,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 49,
+        "tensor": "model.layer4.1.conv3.weight_bias",
+        "channels": 2048,
+        "nonzero_channels": 2048,
+        "min": -13.521289825439453,
+        "max": 5.127305507659912
+      },
+      "weight_scale": {
+        "arg": 152,
+        "tensor": "_scale_49",
+        "channels": 2048,
+        "unique_f32_values": 2047,
+        "min": 0.0010747218038886786,
+        "max": 0.021408922970294952
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize"
+      ]
+    },
+    {
+      "index": 50,
+      "region": "conv_101",
+      "fqn": "model.layer4.2.conv1",
+      "geometry": {
+        "n": 1,
+        "ci": 2048,
+        "hi": 7,
+        "wi": 7,
+        "co": 512,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 50,
+        "tensor": "model.layer4.2.conv1.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -4.767824649810791,
+        "max": 1.5657347440719604
+      },
+      "weight_scale": {
+        "arg": 154,
+        "tensor": "_scale_50",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.00025290329358540475,
+        "max": 0.003971239551901817
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 51,
+      "region": "conv_103",
+      "fqn": "model.layer4.2.conv2",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 7,
+        "wi": 7,
+        "co": 512,
+        "kh": 3,
+        "kw": 3,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "minmax",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 51,
+        "tensor": "model.layer4.2.conv2.weight_bias",
+        "channels": 512,
+        "nonzero_channels": 512,
+        "min": -8.537635803222656,
+        "max": 8.516261100769043
+      },
+      "weight_scale": {
+        "arg": 156,
+        "tensor": "_scale_51",
+        "channels": 512,
+        "unique_f32_values": 512,
+        "min": 0.0006601610803045332,
+        "max": 0.010581361129879951
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration"
+      ]
+    },
+    {
+      "index": 52,
+      "region": "conv_105",
+      "fqn": "model.layer4.2.conv3",
+      "geometry": {
+        "n": 1,
+        "ci": 512,
+        "hi": 7,
+        "wi": 7,
+        "co": 2048,
+        "kh": 1,
+        "kw": 1,
+        "ho": 7,
+        "wo": 7
+      },
+      "path_to_quantize": [
+        "conv2d",
+        "conv2d",
+        "add",
+        "minmax",
+        "linalg.reduce",
+        "adaptive_avg_pool2d",
+        "reshape",
+        "reshape",
+        "view",
+        "view",
+        "quantize_per_tensor"
+      ],
+      "bias": {
+        "arg": 52,
+        "tensor": "model.layer4.2.conv3.weight_bias",
+        "channels": 2048,
+        "nonzero_channels": 2048,
+        "min": -9.319655418395996,
+        "max": 3.583876132965088
+      },
+      "weight_scale": {
+        "arg": 158,
+        "tensor": "_scale_52",
+        "channels": 2048,
+        "unique_f32_values": 2048,
+        "min": 0.0025681816041469574,
+        "max": 0.040420033037662506
+      },
+      "native_exact_admitted": false,
+      "refusal_reasons": [
+        "nonzero_bias_requires_live_d_preload",
+        "per_channel_scale_requires_channel_partitioned_store_configuration",
+        "residual_add_precedes_quantize",
+        "global_reduction_or_fc_precedes_quantize"
+      ]
+    }
+  ]
+}

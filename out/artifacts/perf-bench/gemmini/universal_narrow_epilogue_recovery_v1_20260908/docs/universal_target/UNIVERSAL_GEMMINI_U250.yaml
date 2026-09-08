@@ -1,0 +1,101 @@
+schema_version: 1
+name: universal_resnet50_gemmini_u250
+status: source_config_frozen_not_elaborated_not_built
+selection: AutoComp large memory build plus the shared lean execution overrides
+
+array:
+  input_type: sint8
+  weight_type: sint8
+  accumulator_type: sint32
+  projected_input_type: sint8
+  projected_weight_type: sint8
+  projected_accumulator_type: sint32
+  spatial_input_type: sint8
+  spatial_weight_type: sint8
+  spatial_output_type: sint20
+  tile_rows: 1
+  tile_columns: 1
+  mesh_rows: 16
+  mesh_columns: 16
+  processing_elements: 256
+  dataflow: weight_stationary_only
+
+local_memory:
+  scratchpad_capacity_kib: 256
+  scratchpad_banks: 4
+  scratchpad_rows_per_bank: 4096
+  scratchpad_total_rows: 16384
+  scratchpad_singleported: true
+  accumulator_capacity_kib: 64
+  accumulator_banks: 2
+  accumulator_rows_per_bank: 512
+  accumulator_total_rows_ACC_ROWS: 1024
+  accumulator_singleported: false
+
+queues:
+  reservation_station_entries: {load: 8, store: 4, execute: 16}
+  instruction_queue_lengths: {load: 8, store: 2, execute: 8}
+  max_in_flight_memory_requests: 64
+
+dma:
+  maximum_bytes: 64
+  bus_width_bits: 128
+  maximum_block_length_rows: 4
+
+execution_restrictions:
+  accumulator_read_full_width: false
+  accumulator_read_small_width: true
+  execute_read_from_scratchpad: true
+  execute_read_from_accumulator: false
+  execute_write_to_scratchpad: false
+  execute_write_to_accumulator: true
+  hardcode_d_to_garbage_address: true
+  consequence: output_stationary and live-D/raw-hazard programs are outside this target contract
+
+features:
+  mvin_scale: float32_round_nearest_even
+  accumulator_scale: float32_round_nearest_even
+  mx_scaling: false
+  training_convolutions: true
+  max_pool: true
+  nonlinear_activations: true
+  depthwise_convolutions: true
+  first_layer_optimizations: true
+  loop_convolution: true
+  performance_counters: 8
+
+soc:
+  cores: 1
+  core: Rocket_Huge
+  isa: rv64gc_zicntr
+  rvv: false
+  system_bus_width_bits: 128
+  platform: Xilinx_Alveo_U250_FireSim
+  target_config: firechip.chip.FireSimUniversalResNet50GemminiRocketConfig
+
+expected_generated_header:
+  DIM: 16
+  ADDR_LEN: 32
+  BANK_NUM: 4
+  BANK_ROWS: 4096
+  ACC_ROWS: 1024
+  MAX_BYTES: 64
+  elem_t: int8_t
+  acc_t: int32_t
+  scale_t: float
+  acc_scale_t: float
+  scale_acc_t: int32_t
+  HAS_MVIN_SCALE: defined
+  ACC_READ_FULL_WIDTH: absent
+
+build_gate:
+  require_fresh_elaboration: true
+  require_one_bitstream_for_all_compilers: true
+  reject_preexisting_images_without_RTL_and_header_identity_proof: true
+  record:
+    - Chipyard and Gemmini commit IDs plus dirty-tree patch hashes
+    - elaborated parameter dump
+    - generated header SHA256
+    - FireSim tarball SHA256
+    - platform and memory-model configuration
+

@@ -1,0 +1,18 @@
+{
+  "schema": "merlin_gemmini_narrow_recovery_provenance_v1",
+  "parent_compiler_artifact": "out/artifacts/perf-bench/gemmini/universal_d_preload_guard_recovery_20260908",
+  "source_mlir": {
+    "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/model2mlir_direct.mlir",
+    "sha256": "d92b9eccacc1fa2f2ecfa96de46870ea072f9a9ab9231a47622173e0189217c5"
+  },
+  "weights": {
+    "path": "out/artifacts/recaptures/resnet50_pt2e_w8a8_universal_dog_direct_20260906/weights.safetensors",
+    "sha256": "db71b9d4b82b73892bcf5af388d6c4461cb6d9c13a4c5e70fb281cf9a4d4a1bd"
+  },
+  "argument_manifest": {
+    "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/weights.safetensors.manifest.json",
+    "sha256": "93d5ba6a921647f118d70b767602978f3f7e0639b0e964065ee1ff5899243d73"
+  },
+  "inventory_sha256": "1f22e91bc8fe3ffb9e2c4b956f5975efa53feb7562060919a09683050932de88",
+  "hardware_qualification": "not_run_no_candidate_admitted"
+}
