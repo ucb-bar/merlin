@@ -44,9 +44,13 @@ def test_legacy_public_mirror_is_a_valid_named_smoke_subset(tmp_path):
 def test_materializer_caps_tiers_below_ceiling(tmp_path):
     materialize_public_capsules(tmp_path, tier_ceiling="L2")
     for cap_yaml in tmp_path.rglob("capsule.yaml"):
-        tiers = _load(cap_yaml).get("required_oracle_tiers", [])
+        doc = _load(cap_yaml)
+        tiers = doc.get("required_oracle_tiers", [])
         assert all(t in ("L0", "L1", "L2") for t in tiers), (
             f"{cap_yaml.parent.name} requires an unreachable tier in the sandbox: {tiers}")
+        assert doc["oracle_tier_ceiling"] == "L2", (
+            "the materialized ceiling must constrain optional adapters too, not only rewrite the "
+            "required tier list")
 
 
 def test_materializer_copies_whole_model_compile_inputs(tmp_path):

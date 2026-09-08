@@ -463,6 +463,25 @@ def _grade(tmp_path, run_id, program, calls):
                           config=_two_tier_config(), oracle_adapters=_adapters(program, calls))
 
 
+def test_materialized_execution_ceiling_does_not_invoke_a_higher_adapter(tmp_path, _ladder):
+    """An available L3 adapter must remain cold during an L2 search phase.
+
+    This counts actual adapter calls.  Inspecting only the final tier record would miss the regression
+    where GSIM ran first and its result was later hidden by grading logic.
+    """
+    calls: dict = {}
+    capsule = _capsule()
+    capsule["required_oracle_tiers"] = ["L2"]
+    capsule["oracle_tier_ceiling"] = "L2"
+    result = CR.run_capsule(
+        capsule, "unused-package", runs_root=tmp_path / "ceiling", run_id="ceiling",
+        config=_two_tier_config(), oracle_adapters=_adapters(b"\x7fELF-search", calls),
+    )
+    assert result["status"] == "pass", result.get("failure")
+    assert calls == {"L2": 1}, "an L2 search view must never launch the available L3/GSIM adapter"
+    assert "L3" not in result["tiers"]
+
+
 def test_ladder_carries_the_cert_tier_and_reruns_after_one_byte(tmp_path, _ladder):
     """The whole point, and its falsifier, in one test.
 

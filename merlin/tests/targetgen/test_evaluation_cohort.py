@@ -43,6 +43,8 @@ def test_radiance_derived_gsim_materialization_makes_l3_mandatory(tmp_path, monk
         doc = yaml.safe_load((out / name / "capsule.yaml").read_text())
         assert "L3" in doc["required_oracle_tiers"]
         assert "max_oracle_tier" not in doc
+        assert "oracle_tier_ceiling" not in doc, (
+            "the frozen evaluation copy must unlock L3 after the search view constrained execution")
         assert doc["evaluation_stage"] == {
             "name": "derived_gsim",
             "policy": "radiance_model_derived_l3_frozen_candidate_v1",

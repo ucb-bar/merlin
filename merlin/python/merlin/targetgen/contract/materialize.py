@@ -247,7 +247,9 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
 
     Copies the capsule bundle verbatim (including optional PyTorch/linalg sources and whole-model
     weights), then rewrites ``capsule.yaml``'s ``required_oracle_tiers`` to the subset reachable
-    at/below ``tier_ceiling`` (preserving every other field exactly).
+    at/below ``tier_ceiling`` and records that ceiling for the runner.  The explicit field matters even
+    when every required tier survives: the runner may have higher-fidelity adapters available, and a
+    search view must not spend them merely because cost calibration orders an unmeasured adapter first.
 
     ``corpus_roots`` (target-AGNOSTIC): materialize the public capsules found directly under these roots
     (the descriptor's ``capsule_corpus`` + sibling corpora). When omitted, falls back to the legacy
@@ -289,6 +291,12 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                 continue
             if f == "capsule.yaml":
                 cap = yaml.safe_load(sp.read_text(encoding="utf-8")) or {}
+                # This is an EXECUTION ceiling, not merely documentation of how required tiers were
+                # rewritten below.  Without it an L2 search view still ran every configured adapter;
+                # Radiance consequently launched GSIM L3 before Cyclotron because the never-measured
+                # tier is deliberately calibrated first.  Evaluation cohorts remove this field when
+                # they freeze a candidate and promote the exact same capsules to mandatory L3.
+                cap["oracle_tier_ceiling"] = tier_ceiling
                 tiers = cap.get("required_oracle_tiers")
                 if isinstance(tiers, list):
                     kept, unreachable = _cap_required(tiers, keep)
@@ -298,10 +306,9 @@ def materialize_public_capsules(dest: str | Path, *, tier_ceiling: str = _DEFAUL
                         # Carry the dropped DECLARED tiers forward so the grader can fail closed and NAME
                         # them, instead of reporting a bare "no oracle" — or, as it once did, silently
                         # substituting the ceiling tier and grading against something never declared.
-                        # Only annotated in that case, so a capsule whose numeric floor survives capping
-                        # (the ordinary case) stays byte-identical to the source.
+                        # The dropped tier list is only needed in this case; the ceiling itself is always
+                        # recorded above because it also constrains optional adapters.
                         cap["unreachable_required_oracle_tiers"] = unreachable
-                        cap["oracle_tier_ceiling"] = tier_ceiling
                 (d / f).write_text(yaml.safe_dump(cap, sort_keys=False), encoding="utf-8")
             else:
                 shutil.copyfile(sp, d / f)

@@ -4127,8 +4127,31 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
         # The ordering conclusion is unchanged -- 0.276 < 3.68 either way -- but anything PRICED off
         # 24.5 s is wrong by 6.3x. See docs/design/performance_budget_unit.md.)
         # that refutes the same capsules (measured: 12 of 12, identical signature). See tier_policy.
-        _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""),
-                                            set(cfg.oracle_tiers) | set(adapters or {}))
+        _available_tiers = set(cfg.oracle_tiers) | set(adapters or {})
+        _execution_ceiling = capsule.get("oracle_tier_ceiling")
+        if _execution_ceiling is not None:
+            # A materialized phase view is allowed to make LESS fidelity reachable than the endpoint
+            # can provide.  Filter BEFORE cost ordering: unknown-first calibration would otherwise pick
+            # an available L3 adapter ahead of the intended L2 search oracle and silently spend GSIM.
+            # Tier names are fidelity indices, so only the canonical L<number> form has an ordering.
+            def _fidelity_index(value: object) -> int | None:
+                spelling = str(value).upper()
+                return int(spelling[1:]) if spelling.startswith("L") and spelling[1:].isdigit() else None
+
+            _ceiling_index = _fidelity_index(_execution_ceiling)
+            if _ceiling_index is None:
+                raise ValueError(
+                    f"invalid oracle_tier_ceiling {_execution_ceiling!r} for capsule {name!r}; "
+                    "expected a fidelity tier such as L2")
+            _tier_indices = {t: _fidelity_index(t) for t in _available_tiers}
+            _bad_tiers = sorted(t for t, index in _tier_indices.items() if index is None)
+            if _bad_tiers:
+                raise ValueError(
+                    f"cannot apply oracle_tier_ceiling {_execution_ceiling!r} to non-fidelity "
+                    f"tier name(s) {_bad_tiers} for capsule {name!r}")
+            _available_tiers = {t for t, index in _tier_indices.items()
+                                if index is not None and index <= _ceiling_index}
+        _tier_seq = _tier_policy.tier_order(str(cfg.target or target or ""), _available_tiers)
         _screen_tier = _tier_seq[0] if _tier_seq else None
         # When set, a mandatory tier failure does not abort the ladder: the remaining tiers still run and
         # record, and the FIRST failure is raised once the loop completes. Costs the later tiers on a
