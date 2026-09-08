@@ -8,10 +8,10 @@
     "mismatches": 0
   },
   "compile_receipt": "evidence/receipts/compile/matmul_50_32_720_bias.json",
-  "compile_receipt_sha256": "b16fd6ad0600c7c436503cbbed9aba68b4a5019302cafee320a43896a7b3b321",
-  "cycles": 573715,
-  "cycles_per_second": 422158.7800382043,
-  "elapsed_ns": 1359002885,
+  "compile_receipt_sha256": "4a8f82f143db9791483a3a4b62211cf128a33fb44c704212a815d562e1829c3f",
+  "cycles": 1063043,
+  "cycles_per_second": 773226.1917067197,
+  "elapsed_ns": 1374815043,
   "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim_assert",
   "engine_kind": "assertion-enabled elaborated RTL GSIM",
   "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
@@ -25,8 +25,8 @@
   "returncode": 0,
   "schema": "atlas_shape_rtl_numeric_receipt_v1",
   "spec": "numeric/matmul_50_32_720_bias/raw_gsim_spec.json.gz",
-  "spec_sha256": "ba5caaa6e6620964da77ac6d7c50d124733829b8706bdeed878f7a378f03d12e",
+  "spec_sha256": "35fc6c0f1e245a8c8a35aa456f0b853c71a7b3bb43c2eba635c588242e93d306",
   "stderr_observation": "empty",
   "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-  "stdout_sha256": "802b74adbeee47246e76caa8a5334f35db18f486218c10a426baf21d1557788d"
+  "stdout_sha256": "3c19a0838ce7e8e06ed8c181724589990930ee4b79c37e7dce6d4c0800260b99"
 }

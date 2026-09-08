@@ -1,0 +1,21 @@
+{
+  "claim_scope": "assertion-sensitivity control only; never positive qualification evidence",
+  "compile_receipt": "evidence/negative/pre_fix_batched_15_50_64_113/matmul_batched_15_50_64_113.json",
+  "compile_receipt_sha256": "dc81423256799c94aa8b5815644ae922e73a2a4595f7d85633ca9bc833863efb",
+  "control": "pre-fix unchunked batched image on identical 15x50x64x113 workload/stimulus",
+  "control_passed": true,
+  "elapsed_ns": 1389933293,
+  "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim_assert",
+  "engine_kind": "assertion-enabled elaborated RTL GSIM",
+  "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+  "expected_assertion": "DMA VMEM transfer range exceeds VMEM capacity",
+  "kernel_id": "matmul_batched_15_50_64_113",
+  "process_error": null,
+  "returncode": -6,
+  "schema": "atlas_shape_rtl_negative_control_v1",
+  "spec": "negative/pre_fix_batched_15_50_64_113/raw_gsim_spec.json.gz",
+  "spec_sha256": "0d248bd9d9702a99c968d80284dcbc7d093ea5b112d89dd02b40f7b8ad9997ae",
+  "stderr_observation": "expected_assertion",
+  "stderr_sha256": "281542a97ef0ae3807fbc9f7fc4a186ca9d28cf8f8b0758530e4e27a91a8480d",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

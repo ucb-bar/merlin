@@ -1,24 +1,27 @@
 {
-  "assembly_sha256": "bf0665d9180a2e04a50d0024cc32c5a09517d73e1a6672363f6440907fb6e06b",
+  "assembly_sha256": "90705f0eb795ec072f79e46cf053c6a3d13fb582fa71c538360d9876fb57d8cc",
+  "baseline_assembly_match": false,
+  "baseline_assembly_sha256": "bf0665d9180a2e04a50d0024cc32c5a09517d73e1a6672363f6440907fb6e06b",
   "bias_fused": true,
   "claim_scope": "shape compilation and static image validation only; not numeric or physical-partition qualification",
   "command_buffer_sha256": "5c1975899d8b4c2cd20a0a27121ec1e18e304b6ce8f74206f451040c94d70e73",
-  "compiler": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/submission/mlir_oot/atlas-opt",
+  "compiler": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/shape_batch_qualification_v1/backend_fixed/mlir_oot/atlas-opt",
   "compiler_sha256": "c0306634c4965b9a339bc970d1597ed65319412038bfed56cbee879217a073d8",
   "control_flow": {
-    "backward_edges": 12,
-    "branches": 12,
+    "backward_edges": 18,
+    "branches": 18,
     "jumps": 12
   },
-  "elapsed_ns": 346553029,
+  "elapsed_ns": 245476301,
   "errors": [],
   "geometry": {
     "K": 1440,
     "M": 50,
     "N": 720
   },
+  "hardware_bounds_change_expected": true,
   "imem_words": 32768,
-  "instruction_words": 23175,
+  "instruction_words": 22269,
   "kernel_id": "matmul_50_1440_720_bias",
   "kind": "matmul",
   "pair_bank_validation": "passed",

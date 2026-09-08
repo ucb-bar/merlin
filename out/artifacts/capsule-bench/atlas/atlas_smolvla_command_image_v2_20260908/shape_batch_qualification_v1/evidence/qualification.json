@@ -35,14 +35,16 @@
     "compile_qualified_partitions": 391,
     "physical_partitions_qualified": 3,
     "physical_partitions_unqualified": 388,
-    "shape_rtl_numeric_qualified_partitions": 3,
+    "rtl_negative_controls_passed": 1,
+    "rtl_negative_controls_tested": 1,
+    "shape_rtl_numeric_qualified_partitions": 11,
     "shape_rtl_numeric_tested_partitions": 11,
     "unique_shapes_compile_qualified": 28,
     "unique_shapes_compile_tested": 28,
     "unique_shapes_compile_unqualified": 0,
-    "unique_shapes_rtl_numeric_qualified": 3,
+    "unique_shapes_rtl_numeric_qualified": 4,
     "unique_shapes_rtl_numeric_tested": 4,
-    "unique_shapes_rtl_numeric_unqualified": 1,
+    "unique_shapes_rtl_numeric_unqualified": 0,
     "unique_shapes_total": 28
   },
   "direct_physical_qualifications": {
@@ -147,7 +149,27 @@
     "whole_model_numerically_qualified": false,
     "whole_model_runnable": false
   },
+  "isolated_backend": {
+    "baseline_tree_sha256": "07831274956800adbb5e52766a77d50e0ba61a35e4aa13f74fc3b9aef1e726b5",
+    "changed_files": [
+      "codegen.py"
+    ],
+    "expected_changed_files": [
+      "codegen.py"
+    ],
+    "fixed_tree_sha256": "3277ca9cd03d520b2b3601a390e9492d81d17eb72bec158d7102bce070060edb",
+    "hardware_bounds": {
+      "dma_beat_bytes": 32,
+      "source": "AtlasCore24 DMA launch assertions: size>>5 and final line < 0xc000",
+      "vmem_dma_line_capacity": 49152
+    },
+    "source_copy_scope": "complete mlir_oot package: 13 Python modules plus atlas-opt"
+  },
   "partition_receipt_map": "partition_receipt_map.json",
+  "rtl_negative_control": {
+    "control_passed": true,
+    "receipt": "negative/pre_fix_batched_15_50_64_113/receipt.json"
+  },
   "rtl_numeric_receipts": {
     "matmul_1_32_960_bias": "numeric/matmul_1_32_960_bias/receipt.json",
     "matmul_50_32_720_bias": "numeric/matmul_50_32_720_bias/receipt.json",
@@ -157,46 +179,47 @@
   "schema": "atlas_smolvla_shape_batch_qualification_v1",
   "source_plan": "whole_capture_plan/partition_plan.json",
   "source_plan_sha256": "8460edd1ce1ba5c14c002ae673733e760d3652e9d861df7ce61f79d183bb3653",
-  "status": "bounded_progress_with_detected_rtl_failure",
+  "status": "bounded_progress_fail_closed",
   "timing": {
-    "compile_subprocess_elapsed_ns": 9910405965,
-    "overall_elapsed_ns": 14669843114,
+    "compile_subprocess_elapsed_ns": 6794770280,
+    "overall_elapsed_ns": 15656684967,
     "per_shape_compile_elapsed_ns": {
-      "matmul_1024_3072_768_bias": 389295398,
-      "matmul_1024_768_3072_bias": 258119105,
-      "matmul_1024_768_768_bias": 245316183,
-      "matmul_113_2560_960": 381077535,
-      "matmul_113_320_320": 295892506,
-      "matmul_113_960_2560": 313748454,
-      "matmul_113_960_320": 264798763,
-      "matmul_113_960_960": 378812764,
-      "matmul_1_32_960_bias": 243778779,
-      "matmul_50_1440_720_bias": 346553029,
-      "matmul_50_2048_720": 406421131,
-      "matmul_50_32_720_bias": 391238340,
-      "matmul_50_720_2048": 383853776,
-      "matmul_50_720_320": 392399340,
-      "matmul_50_720_32_bias": 392825277,
-      "matmul_50_720_720_bias": 430994570,
-      "matmul_50_720_960": 398099572,
-      "matmul_50_960_720": 406257852,
-      "matmul_64_12288_960": 382847248,
-      "matmul_768_768_1024": 385471862,
-      "matmul_batched_12_1024_1024_64": 282784176,
-      "matmul_batched_12_1024_64_1024": 372375474,
-      "matmul_batched_15_113_113_64": 416192569,
-      "matmul_batched_15_113_64_113": 390609278,
-      "matmul_batched_15_50_113_64": 407400377,
-      "matmul_batched_15_50_163_64": 384893155,
-      "matmul_batched_15_50_64_113": 276788484,
-      "matmul_batched_15_50_64_163": 291560968
+      "matmul_1024_3072_768_bias": 266145632,
+      "matmul_1024_768_3072_bias": 222345996,
+      "matmul_1024_768_768_bias": 228354320,
+      "matmul_113_2560_960": 228064591,
+      "matmul_113_320_320": 225614369,
+      "matmul_113_960_2560": 228972112,
+      "matmul_113_960_320": 229181438,
+      "matmul_113_960_960": 233010322,
+      "matmul_1_32_960_bias": 235507774,
+      "matmul_50_1440_720_bias": 245476301,
+      "matmul_50_2048_720": 252962565,
+      "matmul_50_32_720_bias": 231904607,
+      "matmul_50_720_2048": 228535103,
+      "matmul_50_720_320": 273201571,
+      "matmul_50_720_32_bias": 246087348,
+      "matmul_50_720_720_bias": 275890206,
+      "matmul_50_720_960": 244269274,
+      "matmul_50_960_720": 251629889,
+      "matmul_64_12288_960": 233545426,
+      "matmul_768_768_1024": 226825074,
+      "matmul_batched_12_1024_1024_64": 240263053,
+      "matmul_batched_12_1024_64_1024": 226540935,
+      "matmul_batched_15_113_113_64": 253917384,
+      "matmul_batched_15_113_64_113": 271039535,
+      "matmul_batched_15_50_113_64": 234495216,
+      "matmul_batched_15_50_163_64": 235918964,
+      "matmul_batched_15_50_64_113": 264232748,
+      "matmul_batched_15_50_64_163": 260838527
     },
     "per_shape_rtl_numeric_elapsed_ns": {
-      "matmul_1_32_960_bias": 378321392,
-      "matmul_50_32_720_bias": 1359002885,
-      "matmul_50_720_32_bias": 993295467,
-      "matmul_batched_15_50_64_113": 1878465042
+      "matmul_1_32_960_bias": 239053332,
+      "matmul_50_32_720_bias": 1374815043,
+      "matmul_50_720_32_bias": 446200204,
+      "matmul_batched_15_50_64_113": 4981305813
     },
-    "rtl_numeric_subprocess_elapsed_ns": 4609084786
+    "rtl_negative_control_elapsed_ns": 1389933293,
+    "rtl_numeric_subprocess_elapsed_ns": 7041374392
   }
 }

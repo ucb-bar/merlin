@@ -1,0 +1,3 @@
+[1;31mAssertion failed: ASSERT FAIL: DMA VMEM transfer range exceeds VMEM capacity
+[0m
+atlas_gsim_sim_assert: AtlasCore24.cpp:37242: void SAtlasCore::subStep24(): Assertion `!vpu$core$sinCos$_T_9 || dma$_T_17' failed.

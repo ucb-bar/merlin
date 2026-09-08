@@ -28,12 +28,15 @@ HERE = Path(__file__).resolve().parent
 ARTIFACT = HERE.parent
 REPO = ARTIFACT.parents[4]
 PLAN_PATH = ARTIFACT / "whole_capture_plan/partition_plan.json"
-ATLAS_OPT = ARTIFACT / "submission/mlir_oot/atlas-opt"
+ISOLATED_BASELINE = HERE / "backend_baseline/mlir_oot"
+ISOLATED_FIXED = HERE / "backend_fixed/mlir_oot"
+ATLAS_OPT = ISOLATED_FIXED / "atlas-opt"
+BASELINE_ATLAS_OPT = ISOLATED_BASELINE / "atlas-opt"
 GSIM_ROOT = Path("/scratch/agustin/tmp/gsim-atlas-core")
 IMEM_WORDS = 32768
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 sys.path.insert(0, str(REPO / "merlin/python"))
-sys.path.insert(0, str(ARTIFACT / "submission"))
+sys.path.insert(0, str(HERE / "backend_fixed"))
 
 from merlin.targetgen.fp8_codec import fp8_e4m3_encode  # noqa: E402
 from mlir_oot import encoder as atlas_encoder  # noqa: E402
@@ -47,6 +50,40 @@ NUMERIC_CASES = (
     "matmul_50_720_32_bias",
     "matmul_batched_15_50_64_113",
 )
+
+# The fix is deliberately in the shared compact-loop row-store helper, so every
+# compact-loop image must change.  This explicit allowlist makes a missing or
+# newly introduced shape fail closed instead of silently accepting hash drift.
+EXPECTED_ASSEMBLY_CHANGES = {
+    "matmul_1024_3072_768_bias",
+    "matmul_1024_768_3072_bias",
+    "matmul_1024_768_768_bias",
+    "matmul_113_2560_960",
+    "matmul_113_320_320",
+    "matmul_113_960_2560",
+    "matmul_113_960_320",
+    "matmul_113_960_960",
+    "matmul_1_32_960_bias",
+    "matmul_50_1440_720_bias",
+    "matmul_50_2048_720",
+    "matmul_50_32_720_bias",
+    "matmul_50_720_2048",
+    "matmul_50_720_320",
+    "matmul_50_720_32_bias",
+    "matmul_50_720_720_bias",
+    "matmul_50_720_960",
+    "matmul_50_960_720",
+    "matmul_64_12288_960",
+    "matmul_768_768_1024",
+    "matmul_batched_12_1024_1024_64",
+    "matmul_batched_12_1024_64_1024",
+    "matmul_batched_15_113_113_64",
+    "matmul_batched_15_113_64_113",
+    "matmul_batched_15_50_113_64",
+    "matmul_batched_15_50_163_64",
+    "matmul_batched_15_50_64_113",
+    "matmul_batched_15_50_64_163",
+}
 
 # These results are the only existing evidence allowed to promote a physical capture
 # occurrence.  Shape tests below are never consulted by this table.
@@ -63,6 +100,18 @@ def sha256_bytes(raw: bytes) -> str:
 
 def sha256_file(path: Path) -> str:
     return sha256_bytes(path.read_bytes())
+
+
+def tree_digest(path: Path) -> tuple[str, dict[str, str]]:
+    files = {
+        item.relative_to(path).as_posix(): sha256_file(item)
+        for item in sorted(path.rglob("*"))
+        if item.is_file() and "__pycache__" not in item.parts and item.suffix != ".pyc"
+    }
+    digest = hashlib.sha256()
+    for name, value in files.items():
+        digest.update(name.encode() + b"\0" + value.encode() + b"\0")
+    return digest.hexdigest(), files
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -158,9 +207,11 @@ def validate_plan(plan: dict[str, Any]) -> tuple[dict[str, dict], dict[str, dict
 
 
 def compile_kernel(
-    kernel: dict[str, Any], *, atlas_opt: Path, receipt_dir: Path
+    kernel: dict[str, Any], *, atlas_opt: Path, receipt_dir: Path,
+    enforce_expected_changes: bool = True,
 ) -> tuple[dict[str, Any], list[int], str, dict[str, Any] | None]:
     kernel_id = str(kernel["kernel_id"])
+    change_expected = enforce_expected_changes and kernel_id in EXPECTED_ASSEMBLY_CHANGES
     interface = ARTIFACT / str(kernel["interface"])
     started = time.monotonic_ns()
     errors: list[str] = []
@@ -194,10 +245,13 @@ def compile_kernel(
                 errors.append("compiler emitted no instruction words")
             if len(words) > IMEM_WORDS:
                 errors.append(f"image exceeds IMEM: {len(words)} > {IMEM_WORDS}")
-            if len(words) != kernel.get("instruction_words"):
+            assembly_changed = sha256_bytes(assembly.encode()) != kernel.get("assembly_sha256")
+            if len(words) != kernel.get("instruction_words") and not change_expected:
                 errors.append("fresh instruction count differs from source plan")
-            if sha256_bytes(assembly.encode()) != kernel.get("assembly_sha256"):
+            if assembly_changed and not change_expected:
                 errors.append("fresh assembly hash differs from source plan")
+            if change_expected and not assembly_changed:
+                errors.append("expected hardware-bounds backend change did not affect image")
             if not command_path.is_file():
                 errors.append("compiler emitted no command buffer")
             else:
@@ -234,6 +288,9 @@ def compile_kernel(
         "instruction_words": len(words),
         "imem_words": IMEM_WORDS,
         "assembly_sha256": sha256_bytes(assembly.encode()),
+        "baseline_assembly_sha256": kernel["assembly_sha256"],
+        "baseline_assembly_match": sha256_bytes(assembly.encode()) == kernel["assembly_sha256"],
+        "hardware_bounds_change_expected": change_expected,
         "command_buffer_sha256": (
             sha256_bytes((json.dumps(command_buffer, sort_keys=True) + "\n").encode())
             if command_buffer is not None
@@ -435,6 +492,89 @@ def run_numeric_case(
     return receipt
 
 
+def run_pre_fix_negative_control(
+    *,
+    words: list[int],
+    cb: dict[str, Any],
+    compile_receipt_path: Path,
+    gsim_binary: Path,
+    output_root: Path,
+) -> dict[str, Any]:
+    """Prove the same unchunked image still trips the assertion used by the fix."""
+    kernel_id = "matmul_batched_15_50_64_113"
+    case_dir = output_root / "pre_fix_batched_15_50_64_113"
+    case_dir.mkdir(parents=True, exist_ok=True)
+    preload, _expected = numeric_fixture(kernel_id, cb)
+    output = cb["tensors"]["Y0"]
+    spec = {
+        "words": words,
+        "preload": [[base, raw.hex()] for base, raw in preload],
+        "reads": [[int(output["base"]), math.prod(output["shape"]) * 2]],
+        "max_cycles": 60_000_000,
+    }
+    spec_raw = (json.dumps(spec, separators=(",", ":")) + "\n").encode()
+    with gzip.GzipFile(
+        filename="", mode="wb",
+        fileobj=(case_dir / "raw_gsim_spec.json.gz").open("wb"), mtime=0,
+    ) as stream:
+        stream.write(spec_raw)
+    started = time.monotonic_ns()
+    returncode = -1
+    stdout = stderr = ""
+    process_error = None
+    with tempfile.TemporaryDirectory(prefix="atlas-shape-negative-") as raw_tmp:
+        spec_path = Path(raw_tmp) / "spec.json"
+        spec_path.write_bytes(spec_raw)
+        try:
+            proc = subprocess.run(
+                [str(gsim_binary), str(spec_path)],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            returncode, stdout, stderr = proc.returncode, proc.stdout, proc.stderr
+        except (OSError, subprocess.TimeoutExpired) as error:
+            process_error = f"{type(error).__name__}: {error}"
+    elapsed_ns = time.monotonic_ns() - started
+    with gzip.GzipFile(
+        filename="", mode="wb",
+        fileobj=(case_dir / "raw_gsim_stdout.txt.gz").open("wb"), mtime=0,
+    ) as stream:
+        stream.write(stdout.encode())
+    (case_dir / "raw_gsim_stderr.txt").write_text(stderr, encoding="utf-8")
+    assertion = "DMA VMEM transfer range exceeds VMEM capacity"
+    passed = (
+        process_error is None
+        and returncode != 0
+        and "Assertion failed" in stderr
+        and assertion in stderr
+        and not stdout.strip()
+    )
+    receipt = {
+        "schema": "atlas_shape_rtl_negative_control_v1",
+        "control": "pre-fix unchunked batched image on identical 15x50x64x113 workload/stimulus",
+        "claim_scope": "assertion-sensitivity control only; never positive qualification evidence",
+        "kernel_id": kernel_id,
+        "compile_receipt": compile_receipt_path.relative_to(HERE).as_posix(),
+        "compile_receipt_sha256": sha256_file(compile_receipt_path),
+        "engine_binary": str(gsim_binary),
+        "engine_sha256": sha256_file(gsim_binary),
+        "engine_kind": "assertion-enabled elaborated RTL GSIM",
+        "returncode": returncode,
+        "elapsed_ns": elapsed_ns,
+        "expected_assertion": assertion,
+        "stderr_observation": "expected_assertion" if passed else "unexpected",
+        "spec": "negative/pre_fix_batched_15_50_64_113/raw_gsim_spec.json.gz",
+        "spec_sha256": sha256_bytes(spec_raw),
+        "stdout_sha256": sha256_bytes(stdout.encode()),
+        "stderr_sha256": sha256_bytes(stderr.encode()),
+        "process_error": process_error,
+        "control_passed": passed,
+    }
+    write_json(case_dir / "receipt.json", receipt)
+    return receipt
+
+
 def _verify_raw_capture_receipt(path: Path) -> dict[str, Any]:
     receipt = load_json(path)
     errors = []
@@ -579,6 +719,8 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
     plan_sha256 = sha256_bytes(plan_raw)
     plan = json.loads(plan_raw)
     kernel_by_id, partition_by_id = validate_plan(plan)
+    if set(kernel_by_id) != EXPECTED_ASSEMBLY_CHANGES:
+        raise ValueError("hardware-bounds image-change allowlist differs from shape library")
     output_root = HERE / "evidence"
     compile_dir = output_root / "receipts/compile"
     compile_receipts: dict[str, dict] = {}
@@ -592,6 +734,7 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
             runtime_artifacts[kernel_id] = (words, cb)
 
     numeric_receipts: dict[str, dict] = {}
+    negative_control = None
     gsim_binary = gsim_root / "atlas_gsim_sim_assert"
     if not skip_rtl:
         if not gsim_binary.is_file():
@@ -612,6 +755,25 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
                 gsim_binary=gsim_binary,
                 output_root=output_root / "numeric",
             )
+        baseline_kernel = kernel_by_id["matmul_batched_15_50_64_113"]
+        baseline_receipt_dir = output_root / "negative/pre_fix_batched_15_50_64_113"
+        baseline_receipt, baseline_words, _assembly, baseline_cb = compile_kernel(
+            baseline_kernel,
+            atlas_opt=BASELINE_ATLAS_OPT,
+            receipt_dir=baseline_receipt_dir,
+            enforce_expected_changes=False,
+        )
+        if not baseline_receipt["qualified"] or baseline_cb is None:
+            raise RuntimeError("isolated pre-fix backend no longer reproduces the planned image")
+        negative_control = run_pre_fix_negative_control(
+            words=baseline_words,
+            cb=baseline_cb,
+            compile_receipt_path=(
+                baseline_receipt_dir / "matmul_batched_15_50_64_113.json"
+            ),
+            gsim_binary=gsim_binary,
+            output_root=output_root / "negative",
+        )
 
     direct = direct_capture_qualifications(partition_by_id, compile_receipts)
     partition_map = build_partition_map(plan, compile_receipts, numeric_receipts, direct)
@@ -621,12 +783,21 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
     elapsed_ns = time.monotonic_ns() - overall_started
     compile_elapsed = sum(int(row["elapsed_ns"]) for row in compile_receipts.values())
     numeric_elapsed = sum(int(row.get("elapsed_ns", 0)) for row in numeric_receipts.values())
+    negative_elapsed = int((negative_control or {}).get("elapsed_ns", 0))
+    baseline_tree_sha256, baseline_files = tree_digest(ISOLATED_BASELINE)
+    fixed_tree_sha256, fixed_files = tree_digest(ISOLATED_FIXED)
+    changed_backend_files = sorted(
+        name for name in set(baseline_files) | set(fixed_files)
+        if baseline_files.get(name) != fixed_files.get(name)
+    )
     summary = {
         "schema": "atlas_smolvla_shape_batch_qualification_v1",
         "status": (
             "bounded_progress_fail_closed"
             if all(row["qualified"] for row in compile_receipts.values())
             and all(row.get("qualified") for row in numeric_receipts.values())
+            and negative_control is not None
+            and negative_control.get("control_passed")
             else (
                 "bounded_progress_with_detected_rtl_failure"
                 if all(row["qualified"] for row in compile_receipts.values())
@@ -645,12 +816,15 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
             "unique_shapes_rtl_numeric_tested": len(numeric_receipts),
             "unique_shapes_rtl_numeric_qualified": sum(row.get("qualified", False) for row in numeric_receipts.values()),
             "unique_shapes_rtl_numeric_unqualified": len(numeric_receipts) - sum(row.get("qualified", False) for row in numeric_receipts.values()),
+            "rtl_negative_controls_tested": int(negative_control is not None),
+            "rtl_negative_controls_passed": int(bool(negative_control and negative_control.get("control_passed"))),
             **partition_map["counts"],
         },
         "timing": {
             "overall_elapsed_ns": elapsed_ns,
             "compile_subprocess_elapsed_ns": compile_elapsed,
             "rtl_numeric_subprocess_elapsed_ns": numeric_elapsed,
+            "rtl_negative_control_elapsed_ns": negative_elapsed,
             "per_shape_compile_elapsed_ns": {
                 kernel_id: row["elapsed_ns"] for kernel_id, row in sorted(compile_receipts.items())
             },
@@ -665,6 +839,22 @@ def run(*, atlas_opt: Path, gsim_root: Path, skip_rtl: bool = False) -> dict[str
             kernel_id: f"numeric/{kernel_id}/receipt.json" for kernel_id in sorted(numeric_receipts)
         },
         "direct_physical_qualifications": direct,
+        "rtl_negative_control": {
+            "receipt": "negative/pre_fix_batched_15_50_64_113/receipt.json",
+            "control_passed": bool(negative_control and negative_control.get("control_passed")),
+        },
+        "isolated_backend": {
+            "baseline_tree_sha256": baseline_tree_sha256,
+            "fixed_tree_sha256": fixed_tree_sha256,
+            "changed_files": changed_backend_files,
+            "expected_changed_files": ["codegen.py"],
+            "source_copy_scope": "complete mlir_oot package: 13 Python modules plus atlas-opt",
+            "hardware_bounds": {
+                "dma_beat_bytes": 32,
+                "vmem_dma_line_capacity": 49152,
+                "source": "AtlasCore24 DMA launch assertions: size>>5 and final line < 0xc000",
+            },
+        },
         "partition_receipt_map": "partition_receipt_map.json",
         "fail_closed": {
             "shape_compile_does_not_imply_shape_numeric": True,
@@ -689,6 +879,7 @@ def main() -> int:
     return 0 if (
         counts["unique_shapes_compile_qualified"] == counts["unique_shapes_total"]
         and counts["unique_shapes_rtl_numeric_qualified"] == len(NUMERIC_CASES)
+        and counts["rtl_negative_controls_passed"] == 1
         and counts["physical_partitions_qualified"] == 3
         and counts["physical_partitions_unqualified"] == 388
     ) else 1

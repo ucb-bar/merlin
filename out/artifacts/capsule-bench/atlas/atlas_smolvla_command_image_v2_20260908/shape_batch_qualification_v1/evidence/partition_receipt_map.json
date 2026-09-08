@@ -5,7 +5,7 @@
     "compile_qualified_partitions": 391,
     "physical_partitions_qualified": 3,
     "physical_partitions_unqualified": 388,
-    "shape_rtl_numeric_qualified_partitions": 3,
+    "shape_rtl_numeric_qualified_partitions": 11,
     "shape_rtl_numeric_tested_partitions": 11
   },
   "partitions": [
@@ -3967,7 +3967,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -4237,7 +4237,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -4507,7 +4507,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -4777,7 +4777,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -5047,7 +5047,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -5317,7 +5317,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -5587,7 +5587,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
@@ -5857,7 +5857,7 @@
       "physical_partition_qualified": false,
       "physical_qualification_source": null,
       "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
-      "shape_rtl_numeric_qualified": false,
+      "shape_rtl_numeric_qualified": true,
       "shape_rtl_numeric_receipt": "numeric/matmul_batched_15_50_64_113/receipt.json"
     },
     {
