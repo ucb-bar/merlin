@@ -21,7 +21,7 @@ sys.path.insert(0, str(_REPO / "merlin" / "python"))
 from merlin.benchharness import runs_root
 from merlin.benchharness.perf import run_perf, perf_table
 from merlin.benchharness.spec import BenchTargetSpec
-from merlin.runtime.backends.muon import FP_PEAK_GFLOPS
+from merlin.runtime.backends import base as _backend_base
 from merlin.targetgen import muon_capsule_runner as MR
 
 
@@ -50,11 +50,16 @@ def main(argv: list[str] | None = None) -> int:
 
     # resolve a relative --contract against the repo root (robust to CWD)
     contract = a.contract if Path(a.contract).is_absolute() else str(_REPO / a.contract)
+    capacity = _backend_base.get_backend("muon")._rtl_machine_capacity("muon")
+    if capacity.get("peak_gflops") is None or capacity.get("clock_hz") is None:
+        raise RuntimeError("Muon FP peak is unavailable because the RTL-derived clock is unknown")
     spec = BenchTargetSpec(
         name="Muon", runner=MR, corpus_root=_REPO / a.kernels_root,
         labels=set(a.labels.split(",")) if a.labels else None, contract=contract, perf_tier="L2",
         perf_fields=lambda t: {"gflops": t.get("gflops"), "pct_fp_peak": t.get("pct_fp_peak")},
-        peak_note=f"the Muon SIMT FP peak ({FP_PEAK_GFLOPS:g} GFLOP/s, 64 flop/cycle @ 500 MHz)")
+        peak_note=(f"the RTL-derived Muon SIMT FP peak ({capacity['peak_gflops']:g} GFLOP/s, "
+                   f"{capacity['peak_flops_per_cycle']} flop/cycle @ "
+                   f"{capacity['clock_hz'] / 1e6:g} MHz)"))
 
     out_dir = Path(a.out) if a.out else (runs_root("muon", "perf-bench") / a.run_id)
     try:

@@ -20,7 +20,7 @@ from merlin.targetgen.capsule_common import discover_capsules, load_capsule  # n
 from merlin.targetgen.capsule_runner import TierResult, OracleUnavailable  # noqa: F401
 from .muon_oracles import default_adapters, flops_from_cb
 from merlin.targetgen.runner_config import RunnerConfig
-from .muon import MuonUnavailable, FP_PEAK_GFLOPS  # noqa: F401
+from .muon import MuonUnavailable  # noqa: F401
 
 SUITE = "muon-perf-bench"
 TARGET = "muon"

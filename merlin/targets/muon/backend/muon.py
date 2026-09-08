@@ -31,8 +31,10 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import subprocess
 import tempfile
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -59,12 +61,6 @@ VERILATOR_CONFIG = "RadianceTapeoutSimConfig"
 # backend that owns the target rather than in the generic fixed-format builder, which cannot know it.
 OCCUPANCY_SYMBOL = "__mu_num_warps"
 
-# Muon SIMT FP peak (RadianceMuonConfig, config_muon.toml): 2 cores x 16 lanes x 2 flop/FMA = 64
-# flop/cycle; at 500 MHz that is 32 GFLOP/s. Reported conservatively as a denominator for utilization.
-FP_PEAK_FLOPS_PER_CYCLE = 64
-CLOCK_HZ = 500_000_000
-FP_PEAK_GFLOPS = FP_PEAK_FLOPS_PER_CYCLE * CLOCK_HZ / 1e9  # 32.0
-
 ORACLE = {
     "cyclotron": {"kind": "cyclotron_perf_model", "derived_from_rtl": False},
     "vcs": {"kind": "rtl_vcs_muon_difftest", "derived_from_rtl": True},
@@ -82,6 +78,73 @@ class MuonError(RuntimeError):
 
 class MuonUnavailable(RuntimeError):
     """The requested oracle exists but cannot complete (fail-closed; never a silent pass)."""
+
+
+@lru_cache(maxsize=None)
+def _rtl_machine_capacity(target: str) -> dict[str, Any]:
+    """Return SIMT geometry and FP capacity grounded in the target's RTL facts.
+
+    The Cyclotron config is a model input and therefore only a cross-check; it
+    cannot define the hardware being graded.  Geometry comes from the reviewed
+    RTL-facts resolver.  Clock frequency comes from the elaborated device tree
+    when available.  Peak FLOPs/cycle does not need a clock: one IEEE FMA is two
+    mathematical operations per active lane.
+    """
+    from merlin.targetgen.rtl.facts import load_facts
+
+    try:
+        document = load_facts(target)
+    except Exception as exc:  # noqa: BLE001 -- absent facts make the instrument unavailable
+        raise MuonUnavailable(
+            f"cannot configure Cyclotron without RTL facts for {target!r}: {exc}") from exc
+    facts = document.get("facts") if isinstance(document, dict) else None
+    simt = facts.get("simt") if isinstance(facts, dict) else None
+    names = ("cores", "warps_per_core", "lanes_per_warp")
+    geometry = {name: simt.get(name) if isinstance(simt, dict) else None for name in names}
+    bad = {name: value for name, value in geometry.items()
+           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
+    if bad:
+        raise MuonUnavailable(
+            f"RTL facts for {target!r} do not carry complete positive SIMT geometry: {bad}")
+
+    clock_hz = None
+    fp = facts.get("fp_datapath") if isinstance(facts, dict) else None
+    if isinstance(fp, dict) and isinstance(fp.get("clock_hz"), int) and fp["clock_hz"] > 0:
+        clock_hz = fp["clock_hz"]
+    else:
+        # The normalized reviewed pin predates fp_datapath retention.  The
+        # target-specific introspector reads the clock from the elaborated DTS;
+        # use it only when its geometry agrees with the reviewed facts.
+        try:
+            from . import muon_introspect
+            live_facts = muon_introspect.build_facts().get("facts", {})
+            live_simt = live_facts.get("simt", {})
+            if any(live_simt.get(name) != geometry[name] for name in names):
+                raise MuonUnavailable(
+                    "live RTL introspection disagrees with reviewed SIMT geometry: "
+                    f"reviewed={geometry}, live="
+                    f"{{{', '.join(f'{name!r}: {live_simt.get(name)!r}' for name in names)}}}")
+            live_fp = live_facts.get("fp_datapath", {})
+            if (live_fp.get("state") == "derived"
+                    and isinstance(live_fp.get("clock_hz"), int)
+                    and live_fp["clock_hz"] > 0):
+                clock_hz = live_fp["clock_hz"]
+        except MuonUnavailable:
+            raise
+        except Exception:  # noqa: BLE001 -- clockless still permits cycle-domain utilization
+            clock_hz = None
+
+    flop_per_fma = 2
+    peak_flops_per_cycle = geometry["cores"] * geometry["lanes_per_warp"] * flop_per_fma
+    return {
+        **geometry,
+        "flop_per_fma": flop_per_fma,
+        "peak_flops_per_cycle": peak_flops_per_cycle,
+        "clock_hz": clock_hz,
+        "peak_gflops": (peak_flops_per_cycle * clock_hz / 1e9
+                         if clock_hz is not None else None),
+        "source": "target RTL facts; clock from elaborated device tree",
+    }
 
 
 # --- toolchain resolution -------------------------------------------------------------------------
@@ -826,7 +889,11 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # 2. runner-owned EXTERN-kernel harness main (operands from the cb) -> STOCK clang rv32 -> main.o
     harness = muon_harness.external_main_from_cb(
         cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page,
-        compact_expected=compact_expected, compact_policy=compact_policy)
+        compact_expected=compact_expected, compact_policy=compact_policy,
+        # Generated only after the submitted MLIR has been lowered and its
+        # object compiled above.  A kernel that named the old predictable
+        # expected symbol therefore retains an unresolved reference.
+        compact_symbol_tag=(f"n{secrets.token_hex(16)}" if compact_expected is not None else None))
     if harness is None:
         raise MuonError("could not derive harness operands from the command buffer: "
                         + muon_harness.why_no_operands(cb))
@@ -935,7 +1002,85 @@ def _cycles_from_console(console: str) -> int | None:
     return int(tail[0]) if tail and tail[0].isdigit() else None
 
 
-def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | None]:
+def _cyclotron_run_config(
+    source: str, capacity: dict[str, Any], *, timeout_cycles: int,
+) -> tuple[str, dict[str, Any]]:
+    """Bind one Cyclotron run config to RTL-derived geometry.
+
+    Only ``[muon]`` geometry and ``[sim].timeout`` are rewritten.  Every other
+    line, especially relative ``[timing].include`` entries, is retained exactly.
+    A missing, duplicate, or malformed geometry key makes the instrument
+    unavailable rather than leaving a stale model default in force.
+    """
+    derived = {
+        "num_cores": capacity.get("cores"),
+        "num_warps": capacity.get("warps_per_core"),
+        "num_lanes": capacity.get("lanes_per_warp"),
+    }
+    bad = {key: value for key, value in derived.items()
+           if not isinstance(value, int) or isinstance(value, bool) or value <= 0}
+    if bad:
+        raise MuonUnavailable(f"invalid RTL-derived Cyclotron geometry: {bad}")
+    if not isinstance(timeout_cycles, int) or isinstance(timeout_cycles, bool) or timeout_cycles <= 0:
+        raise MuonUnavailable(f"invalid Cyclotron cycle cap: {timeout_cycles!r}")
+
+    lines = source.splitlines()
+    section = ""
+    seen: dict[str, int] = {}
+    original: dict[str, int] = {}
+    timeout_seen = 0
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped[1:-1].strip()
+            continue
+        key_text, sep, value_text = stripped.partition("=")
+        if not sep:
+            continue
+        key = key_text.strip()
+        if section == "muon" and key in derived:
+            if key in seen:
+                raise MuonUnavailable(f"Cyclotron config repeats [muon].{key}")
+            raw_value = value_text.split("#", 1)[0].strip()
+            try:
+                parsed = int(raw_value, 0)
+            except ValueError as exc:
+                raise MuonUnavailable(
+                    f"Cyclotron config has non-integer [muon].{key}={raw_value!r}") from exc
+            seen[key] = index
+            original[key] = parsed
+            comment = "#" + value_text.split("#", 1)[1] if "#" in value_text else ""
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[index] = f"{indent}{key} = {derived[key]}" + (f" {comment}" if comment else "")
+        elif section == "sim" and key == "timeout":
+            timeout_seen += 1
+            if timeout_seen > 1:
+                raise MuonUnavailable("Cyclotron config repeats [sim].timeout")
+            comment = "#" + value_text.split("#", 1)[1] if "#" in value_text else ""
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[index] = f"{indent}timeout = {timeout_cycles}" + (f" {comment}" if comment else "")
+
+    missing = sorted(set(derived) - set(seen))
+    if missing or timeout_seen != 1:
+        fields = [*(f"[muon].{key}" for key in missing)]
+        if timeout_seen != 1:
+            fields.append("[sim].timeout")
+        raise MuonUnavailable(
+            "Cyclotron config is missing required unique field(s): " + ", ".join(fields))
+    record = {
+        "source": capacity.get("source"),
+        "rtl": derived,
+        "config_original": original,
+        "corrected": {key: {"from": original[key], "to": derived[key]}
+                      for key in derived if original[key] != derived[key]},
+        "timeout_cycles": timeout_cycles,
+    }
+    return "\n".join(lines) + "\n", record
+
+
+def _run_cyclotron(
+    elf: Path, timeout: int, *, target: str = "radiance",
+) -> tuple[str, int | None, dict | None]:
     """Run cyclotron --timing on the ELF; return (console, cycles, summary_json|None).
 
     cyclotron resolves the config's relative ``[timing] include = ["config/timing/..."]`` paths
@@ -964,9 +1109,12 @@ def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | Non
     # ``[timing] include = ["config/timing/…"]`` paths resolve against the config's dir, i.e. through the
     # ``config`` symlink created above, so they stay valid. Parsed structurally (no regex).
     run_cfg = work / "cyclotron.run.toml"
-    _bumped = ["timeout = 20000000" if ln.strip().startswith("timeout ") and "=" in ln else ln
-               for ln in config_path().read_text(encoding="utf-8").splitlines()]
-    run_cfg.write_text("\n".join(_bumped) + "\n", encoding="utf-8")
+    capacity = _rtl_machine_capacity(target)
+    run_text, geometry_record = _cyclotron_run_config(
+        config_path().read_text(encoding="utf-8"), capacity, timeout_cycles=20_000_000)
+    run_cfg.write_text(run_text, encoding="utf-8")
+    (work / "cyclotron.run.geometry.json").write_text(
+        json.dumps(geometry_record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     cmd = [str(cyclotron_path()), str(run_cfg),
            "--binary-path", str(elf), "--timing", "--log", "0"]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
@@ -984,6 +1132,9 @@ def _run_cyclotron(elf: Path, timeout: int) -> tuple[str, int | None, dict | Non
                 summary = json.loads(sj.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 summary = None
+    if summary is None:
+        summary = {}
+    summary["merlin_runtime_geometry"] = geometry_record
     return console, cycles, summary
 
 
@@ -1291,7 +1442,7 @@ def _read_tail(path: Path, n: int = 4000) -> str:
 
 
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
-            timeout: int = 600) -> tuple[str, int | None, dict | None]:
+            timeout: int = 600, *, target: str = "radiance") -> tuple[str, int | None, dict | None]:
     """Run the ELF on the chosen oracle; return (console, cycles, summary_json|None)."""
     # Resolve to an ABSOLUTE path up front: every sim below runs with ``cwd`` set to a workdir, so a
     # caller-supplied RELATIVE elf/runs-root (e.g. ``out/runs/...``) would otherwise resolve against the
@@ -1299,7 +1450,7 @@ def run_elf(elf: str | Path, simulator: str = "cyclotron",
     # identically to an absolute one — one less thing to get right on a fresh clone / other machine.
     elf = Path(elf).resolve()
     if simulator == "cyclotron":
-        return _run_cyclotron(elf, timeout)
+        return _run_cyclotron(elf, timeout, target=target)
     if simulator == "vcs":
         console, cycles = _run_vcs(elf, timeout)
         return console, cycles, None
@@ -1357,16 +1508,20 @@ def _num(tok: str) -> Any:
         return float(tok)
 
 
-def gflops(flops: int | None, cycles: int | None) -> float | None:
-    """Achieved GFLOP/s = flops / (cycles / CLOCK_HZ) / 1e9."""
+def gflops(flops: int | None, cycles: int | None, *, target: str = "radiance") -> float | None:
+    """Achieved GFLOP/s using the clock derived from the elaborated device tree."""
     if not flops or not cycles:
         return None
-    return flops * CLOCK_HZ / cycles / 1e9
+    clock_hz = _rtl_machine_capacity(target).get("clock_hz")
+    return None if clock_hz is None else flops * clock_hz / cycles / 1e9
 
 
-def pct_fp_peak(flops: int | None, cycles: int | None) -> float | None:
-    g = gflops(flops, cycles)
-    return None if g is None else round(100.0 * g / FP_PEAK_GFLOPS, 2)
+def pct_fp_peak(flops: int | None, cycles: int | None, *, target: str = "radiance") -> float | None:
+    """Percent of RTL-derived lane peak, entirely in the cycle domain."""
+    if not flops or not cycles:
+        return None
+    peak = _rtl_machine_capacity(target)["peak_flops_per_cycle"]
+    return round(100.0 * (flops / cycles) / peak, 2)
 
 
 def _metrics(raw: dict[str, int], simulator: str, summary: dict | None) -> dict[str, Any]:
@@ -1383,7 +1538,7 @@ def _metrics(raw: dict[str, int], simulator: str, summary: dict | None) -> dict[
 
 def run_kernel(kernel_src: str, cb: dict[str, Any], *, workdir: str | Path | None = None,
                simulator: str = "cyclotron", timeout: int = 600,
-               flops: int | None = None) -> dict[str, Any]:
+               flops: int | None = None, target: str = "radiance") -> dict[str, Any]:
     """Compile + run a SIMT kernel on Muon and gate its outputs on reference equality.
 
     Returns {outputs, metrics, raw_metrics, correct, oracle, elf, console, cycles, gflops,
@@ -1395,7 +1550,8 @@ def run_kernel(kernel_src: str, cb: dict[str, Any], *, workdir: str | Path | Non
     own_tmp = workdir is None
     work = Path(tempfile.mkdtemp(prefix="merlin_muon_")) if own_tmp else Path(workdir)
     elf = compile_kernel(kernel_src, work)
-    console, cycles, summary = run_elf(elf, simulator=simulator, timeout=timeout)
+    console, cycles, summary = run_elf(
+        elf, simulator=simulator, timeout=timeout, target=target)
     outputs, raw = parse_output(console, cycles)
     ref = reference_outputs(cb)
     return {
@@ -1407,6 +1563,6 @@ def run_kernel(kernel_src: str, cb: dict[str, Any], *, workdir: str | Path | Non
         "elf": str(elf),
         "console": console,
         "cycles": cycles,
-        "gflops": gflops(flops, cycles),
-        "pct_fp_peak": pct_fp_peak(flops, cycles),
+        "gflops": gflops(flops, cycles, target=target),
+        "pct_fp_peak": pct_fp_peak(flops, cycles, target=target),
     }

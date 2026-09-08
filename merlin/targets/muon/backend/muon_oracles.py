@@ -14,6 +14,7 @@ This module imports nothing from the frozen Gemmini ``capsule_runner``; it is a 
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -106,8 +107,18 @@ def _adapter(simulator: str) -> Callable:
         target = cb.get("target", "radiance")
         expected = cb.get("_oracle_expected_outputs")
         numeric_policy = cb.get("_oracle_numeric_policy")
-        compact_numeric = (simulator == "cyclotron" and isinstance(expected, dict)
-                           and bool(expected) and muon.is_mlir_artifact(kernel_src))
+        # The compact comparator and expected bounds share the submitted
+        # kernel's address space.  A post-compile nonce prevents direct symbol
+        # references, but cannot make one address space a cryptographic
+        # boundary against memory scanning.  It is therefore explicit opt-in
+        # for our frozen/non-adversarial derived evaluation, never general
+        # agentic anti-cheat evidence.
+        compact_opt_in = os.environ.get(
+            "MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "").strip().lower() in (
+                "1", "true", "yes", "on")
+        compact_numeric = (compact_opt_in and simulator == "cyclotron"
+                           and isinstance(expected, dict) and bool(expected)
+                           and muon.is_mlir_artifact(kernel_src))
         # A block-scaled MX capsule is graded on the HARNESS's reference MX kernel, whatever the artifact.
         #
         # This branch used to exist only inside program_from_cb, i.e. only on the inline-SOURCE path. An
@@ -166,7 +177,8 @@ def _adapter(simulator: str) -> Callable:
             program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
         t1 = time.perf_counter()
-        console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
+        console, cycles, summary = muon.run_elf(
+            elf, simulator=simulator, timeout=timeout, target=target)
         t2 = time.perf_counter()
         completion_only = False
         compact_verdict = (_compact_numeric_from_console(
@@ -192,8 +204,8 @@ def _adapter(simulator: str) -> Callable:
             "console": console,
             "toolchain": toolchain,
             "timing": _timing(t1 - t0, t2 - t1),
-            "gflops": muon.gflops(flops, cycles),
-            "pct_fp_peak": muon.pct_fp_peak(flops, cycles),
+            "gflops": muon.gflops(flops, cycles, target=target),
+            "pct_fp_peak": muon.pct_fp_peak(flops, cycles, target=target),
             "summary": summary,
         }
         if completion_only:
@@ -202,6 +214,7 @@ def _adapter(simulator: str) -> Callable:
             result["numeric_verdict"] = {
                 **compact_verdict,
                 "policy": dict(numeric_policy or {}),
+                "trust_scope": "frozen_non_adversarial_derived_evaluation_only",
             }
         return result
     return run
@@ -482,8 +495,8 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
                               "markers_preserved": list(muon._GSIM_MARKERS)},
             "toolchain": toolchain,
             "timing": _timing(t1 - t0, t2 - t1),
-            "gflops": muon.gflops(flops, cycles),
-            "pct_fp_peak": muon.pct_fp_peak(flops, cycles),
+            "gflops": muon.gflops(flops, cycles, target=target),
+            "pct_fp_peak": muon.pct_fp_peak(flops, cycles, target=target),
             "completion_only": True,
         }
     return run

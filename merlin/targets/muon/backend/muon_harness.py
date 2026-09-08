@@ -23,6 +23,7 @@ This covers the whole-computation kernel functions the functional ladder needs.
 from __future__ import annotations
 
 import struct
+import secrets
 from dataclasses import dataclass
 from typing import Any
 
@@ -146,6 +147,7 @@ def _words_blob(words: list[int]) -> bytes:
 
 def _compact_numeric_support(
     outputs: list[TensorArg], expected: dict[str, Any], policy: dict[str, Any] | None,
+    *, symbol_tag: str,
 ) -> tuple[list[str], list[str], dict[str, bytes], int]:
     """Trusted, integer-only post-kernel comparison for the Cyclotron L2 path.
 
@@ -155,6 +157,9 @@ def _compact_numeric_support(
     emitting one compact verdict.  The submitted kernel still computes the full
     shape; only result transport changes.
     """
+    if (not symbol_tag or any(not (ch.isalnum() or ch == "_") for ch in symbol_tag)
+            or symbol_tag[0].isdigit()):
+        raise ValueError("compact comparator symbol tag must be a non-empty C identifier")
     compare = str((policy or {}).get("compare", "exact_int"))
     atol = float((policy or {}).get("atol", 1e-3))
     rtol = float((policy or {}).get("rtol", 0.0))
@@ -175,7 +180,7 @@ def _compact_numeric_support(
                 f"expected output {out.name!r} has {len(values)} elements, harness declares {count}")
         arr = f"_out_{out.name}"
         if compare in ("exact_int", "exact") and out.dtype == "i32":
-            symbol = f"_merlin_expected_{index}"
+            symbol = f"_merlin_private_{symbol_tag}_{index}"
             blobs[symbol] = _words_blob([int(value) for value in values])
             checks += [
                 f"  for(uint32_t _i=0;_i<{count}u;++_i){{",
@@ -190,8 +195,8 @@ def _compact_numeric_support(
                 tol = 0.0 if compare in ("exact_int", "exact") else atol + rtol * abs(want)
                 lower.append(_f32_bits(want - tol))
                 upper.append(_f32_bits(want + tol))
-            lo_symbol = f"_merlin_expected_lo_{index}"
-            hi_symbol = f"_merlin_expected_hi_{index}"
+            lo_symbol = f"_merlin_private_{symbol_tag}_lo_{index}"
+            hi_symbol = f"_merlin_private_{symbol_tag}_hi_{index}"
             blobs[lo_symbol] = _words_blob(lower)
             blobs[hi_symbol] = _words_blob(upper)
             checks += [
@@ -1068,7 +1073,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                                *, kernel_symbol: str, model,
                                result_page: bool = False,
                                compact_expected: dict[str, Any] | None = None,
-                               compact_policy: dict[str, Any] | None = None) -> Harness:
+                               compact_policy: dict[str, Any] | None = None,
+                               compact_symbol_tag: str | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
     EXTERN (not inlined), embeds every input, calls it, prints ``OUT <name> <r> <c> ...`` + ``DONE``. Unlike
     :func:`build_program` (which inlines a *source* kernel to stay relocation-free), the extern call leaves a
@@ -1102,8 +1108,14 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     compact_decls: list[str] = []
     compact_checks: list[str] = []
     if compact_expected is not None:
+        # The submitted object is linked into this address space, so a fixed
+        # answer-symbol name would be directly referenceable by an adversarial
+        # kernel.  Generate an unguessable name when the caller does not supply
+        # one.  compile_mlir_forkfree supplies it only after compiling/fixing
+        # the submitted object; direct tests may inject a deterministic tag.
+        compact_symbol_tag = compact_symbol_tag or f"n{secrets.token_hex(16)}"
         compact_decls, compact_checks, compact_blobs, _ = _compact_numeric_support(
-            out_args, compact_expected, compact_policy)
+            out_args, compact_expected, compact_policy, symbol_tag=compact_symbol_tag)
         blobs.update(compact_blobs)
 
     # Blob and .bss symbols are file-scope, so they must be declared before main.
@@ -1111,7 +1123,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     # compact_decls are created after input blobs, so derive externs only after
     # adding the private expected-bound blobs above.
     externs = [f"extern const uint32_t {sym}[];" for sym in sorted(blobs)
-               if not sym.startswith("_merlin_expected")]
+               if not sym.startswith("_merlin_private_")]
     body += externs + statics + result_decls + compact_decls \
         + ([""] if (externs or statics or result_decls or compact_decls) else [])
     body += [f"extern void {kernel_symbol}({ptrs});", "",
@@ -1259,7 +1271,8 @@ def why_no_operands(cb: dict) -> str:
 def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                           result_page: bool = False,
                           compact_expected: dict[str, Any] | None = None,
-                          compact_policy: dict[str, Any] | None = None) -> Harness | None:
+                          compact_policy: dict[str, Any] | None = None,
+                          compact_symbol_tag: str | None = None) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1273,7 +1286,8 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
     in_args, out_args = derived
     return build_external_kernel_main(in_args, out_args, kernel_symbol=kernel_symbol, model=model,
                                       result_page=result_page, compact_expected=compact_expected,
-                                      compact_policy=compact_policy)
+                                      compact_policy=compact_policy,
+                                      compact_symbol_tag=compact_symbol_tag)
 
 
 def program_from_cb(cb: dict, kernel_fn_src: str, model, *, result_page: bool = False) -> str | None:

@@ -44,14 +44,15 @@ def test_compact_harness_checks_every_word_and_does_not_print_output_values() ->
         kernel_symbol="kernel", model=MODEL,
         compact_expected={"Y": [1.0, -2.0]},
         compact_policy={"compare": "tolerance_float", "atol": 0.0, "rtol": 0.0},
+        compact_symbol_tag="n_test",
     )
 
     assert '_ps("OUT Y' not in harness.source
     assert '_ps("MERLIN_NUMERIC ")' in harness.source
     assert "for(uint32_t _i=0;_i<2u;++_i)" in harness.source
     assert "_merlin_bad+=_nan||" in harness.source
-    assert _u32(harness.blobs["_merlin_expected_lo_0"]) == [0x3F800000, 0xC0000000]
-    assert _u32(harness.blobs["_merlin_expected_hi_0"]) == [0x3F800000, 0xC0000000]
+    assert _u32(harness.blobs["_merlin_private_n_test_lo_0"]) == [0x3F800000, 0xC0000000]
+    assert _u32(harness.blobs["_merlin_private_n_test_hi_0"]) == [0x3F800000, 0xC0000000]
     assert harness.results == [{"name": "Y", "elements": 2, "dtype": "f32"}]
 
 
@@ -61,13 +62,32 @@ def test_compact_expected_is_private_and_changes_the_linked_bounds_only() -> Non
         out_args=[H.TensorArg("Y", 1, 1, [0.0], "f32")],
         kernel_symbol="kernel", model=MODEL,
         compact_policy={"compare": "exact"},
+        compact_symbol_tag="n_test",
     )
     positive = H.build_external_kernel_main(**common, compact_expected={"Y": [1.0]})
     perturbed = H.build_external_kernel_main(**common, compact_expected={"Y": [2.0]})
 
     assert positive.source == perturbed.source
-    assert positive.blobs["_merlin_expected_lo_0"] != perturbed.blobs["_merlin_expected_lo_0"]
-    assert b"1.0" not in positive.blobs["_merlin_expected_lo_0"]
+    assert positive.blobs["_merlin_private_n_test_lo_0"] != \
+        perturbed.blobs["_merlin_private_n_test_lo_0"]
+    assert b"1.0" not in positive.blobs["_merlin_private_n_test_lo_0"]
+
+
+def test_legacy_predictable_answer_symbol_cannot_name_compact_key() -> None:
+    harness = H.build_external_kernel_main(
+        [H.TensorArg("X", 1, 1, [0.0], "f32")],
+        [H.TensorArg("Y", 1, 1, [0.0], "f32")],
+        kernel_symbol="kernel", model=MODEL,
+        compact_expected={"Y": [1.0]}, compact_policy={"compare": "exact"},
+        compact_symbol_tag="n_4c02f13a2b8d4e61",
+    )
+
+    malicious_legacy_reference = "extern float _merlin_expected_lo_0[];"
+    assert "_merlin_expected_lo_0" in malicious_legacy_reference
+    assert all("_merlin_expected_lo_0" not in symbol for symbol in harness.blobs)
+    assert "_merlin_expected_lo_0" not in harness.source
+    assert all("n_4c02f13a2b8d4e61" in symbol for symbol in harness.blobs
+               if symbol.startswith("_merlin_private_"))
 
 
 @pytest.mark.parametrize(("marker", "status", "mismatches"), [
@@ -104,6 +124,7 @@ def test_compact_parser_rejects_partial_output_check() -> None:
 def test_cyclotron_adapter_reports_perturbed_result_as_numeric_fail(monkeypatch, tmp_path) -> None:
     compiled = {}
 
+    monkeypatch.setenv("MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "1")
     monkeypatch.setattr(MU, "available", lambda simulator: simulator == "cyclotron")
     monkeypatch.setattr(MU, "is_mlir_artifact", lambda source: True)
 
@@ -126,3 +147,85 @@ def test_cyclotron_adapter_reports_perturbed_result_as_numeric_fail(monkeypatch,
     assert result["numeric_verdict"]["status"] == "fail"
     assert result["numeric_verdict"]["mismatch_count"] == 1
     assert result["numeric_verdict"]["witness"] == "trusted_muon_post_kernel_comparator"
+    assert result["numeric_verdict"]["trust_scope"] == \
+        "frozen_non_adversarial_derived_evaluation_only"
+
+
+def test_cyclotron_compact_path_requires_explicit_non_adversarial_opt_in(
+        monkeypatch, tmp_path) -> None:
+    compiled = {}
+    monkeypatch.delenv("MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", raising=False)
+    monkeypatch.setattr(MU, "available", lambda simulator: simulator == "cyclotron")
+    monkeypatch.setattr(MU, "is_mlir_artifact", lambda source: True)
+
+    def compile_stub(source, cb, workdir, **kwargs):
+        compiled.update(kwargs)
+        return tmp_path / "kernel.elf"
+
+    monkeypatch.setattr(MU, "compile_mlir_forkfree", compile_stub)
+    monkeypatch.setattr(
+        MU, "run_elf",
+        lambda *args, **kwargs: ("OUT Y 1 1 1.0\nDONE\n"
+                                 "simulation finished after 100 cycles\n", 100, {}),
+    )
+
+    result = MO.cyclotron_adapter()(_cb(), "builtin.module { llvm.func @k() }", tmp_path, 60)
+
+    assert compiled["compact_expected"] is None
+    assert result["outputs"] == {"Y": [[1.0]]}
+    assert "numeric_verdict" not in result
+
+
+def test_cyclotron_run_config_corrects_geometry_and_preserves_timing_includes() -> None:
+    source = """[muon]
+num_lanes = 16
+num_warps = 8
+num_cores = 2 # stale model default
+
+[sim]
+timeout = 1000000
+
+[timing]
+include = [
+  "config/timing/gmem.toml",
+  "config/timing/execute.toml",
+]
+"""
+    capacity = {
+        "cores": 1, "warps_per_core": 8, "lanes_per_warp": 16,
+        "source": "reviewed RTL facts",
+    }
+
+    rendered, record = MU._cyclotron_run_config(
+        source, capacity, timeout_cycles=20_000_000)
+
+    assert "num_cores = 1 # stale model default" in rendered
+    assert "timeout = 20000000" in rendered
+    assert ('include = [\n  "config/timing/gmem.toml",\n'
+            '  "config/timing/execute.toml",\n]') in rendered
+    assert record["rtl"] == {"num_cores": 1, "num_warps": 8, "num_lanes": 16}
+    assert record["corrected"] == {"num_cores": {"from": 2, "to": 1}}
+
+
+@pytest.mark.parametrize("source", [
+    "[muon]\nnum_lanes=16\nnum_warps=8\n[sim]\ntimeout=1\n",
+    ("[muon]\nnum_lanes=16\nnum_warps=8\nnum_cores=2\nnum_cores=1\n"
+     "[sim]\ntimeout=1\n"),
+])
+def test_cyclotron_run_config_refuses_missing_or_duplicate_geometry(source) -> None:
+    with pytest.raises(MU.MuonUnavailable):
+        MU._cyclotron_run_config(
+            source,
+            {"cores": 1, "warps_per_core": 8, "lanes_per_warp": 16},
+            timeout_cycles=20_000_000,
+        )
+
+
+def test_fp_rates_use_rtl_derived_single_core_capacity(monkeypatch) -> None:
+    monkeypatch.setattr(MU, "_rtl_machine_capacity", lambda target: {
+        "clock_hz": 500_000_000,
+        "peak_flops_per_cycle": 32,
+    })
+
+    assert MU.gflops(32, 1, target="radiance") == 16.0
+    assert MU.pct_fp_peak(32, 1, target="radiance") == 100.0
