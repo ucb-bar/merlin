@@ -85,6 +85,7 @@ class FamilyDecision:
 @dataclass(frozen=True)
 class SelectionReport:
     request: KernelRequest
+    hardware_features: tuple[str, ...]
     selected_family: str | None
     decisions: tuple[FamilyDecision, ...]
 
@@ -96,6 +97,7 @@ class SelectionReport:
                 "dtype": self.request.dtype,
                 "shape": dict(sorted(self.request.shape.items())),
             },
+            "derived_hardware_features": list(self.hardware_features),
             "selected_family": self.selected_family,
             "selection_is_numeric_qualification": False,
             "decisions": [decision.to_dict() for decision in self.decisions],
@@ -267,4 +269,108 @@ def select_kernel_family(
         else:
             decisions.append(decision)
     assert not selected or selected in qualified
-    return SelectionReport(req, selected, tuple(decisions))
+    return SelectionReport(req, tuple(sorted(hw.features)), selected, tuple(decisions))
+
+
+_DTYPE_NAMES = {
+    "f32": "fp32",
+    "float32": "fp32",
+    "f16": "fp16",
+    "float16": "fp16",
+    "bf16": "bf16",
+    "i8": "int8",
+    "int8": "int8",
+    "mxfp4": "mxfp4",
+    "mxfp6": "mxfp6",
+    "mxfp8": "mxfp8",
+}
+
+
+def derive_hardware_capabilities(target_contract: Mapping[str, Any]) -> HardwareCapabilities:
+    """Derive selector facts from a target contract without guessing absent capabilities.
+
+    The standardized feature names in ``features`` are accepted as declarations.  Structural facts
+    add only their direct meanings: a SIMT unit, an MX-capable systolic unit, block-E8M0 scaling, and
+    shared memory.  In particular, math operations such as exp/tanh and mesh readback are *not*
+    inferred from a target family or name.
+    """
+    features = {
+        str(item).strip()
+        for item in target_contract.get("features", ())
+        if str(item).strip()
+    }
+    for unit in target_contract.get("compute_units", ()):
+        if not isinstance(unit, Mapping):
+            continue
+        kind = str(unit.get("kind") or "").strip()
+        if kind == "simt":
+            features.add("simt")
+        elif kind == "systolic":
+            features.add("mx_mesh")
+        if str(unit.get("scaling") or "").strip() == "block_e8m0":
+            features.add("block_e8m0")
+    memory = target_contract.get("memory_model")
+    if isinstance(memory, Mapping) and memory.get("shared_memory") is True:
+        features.add("shared_memory")
+    return HardwareCapabilities(frozenset(features))
+
+
+def request_from_command_buffer(cb: Mapping[str, Any]) -> KernelRequest:
+    """Extract a semantic request from a command buffer at the Muon emission boundary.
+
+    This first production bridge is intentionally narrow: it recognizes the standalone 2-D fp32
+    row-broadcast add used by SmolVLA.  Shape, dtype, and operation are reconstructed from the command
+    and tensor ABI; capsule identity and oracle data are never inspected.  More command families must
+    add equally explicit extractors before they can opt into contract-driven family dispatch.
+    """
+    commands = cb.get("commands")
+    tensors = cb.get("tensors")
+    if not isinstance(commands, list) or not isinstance(tensors, Mapping):
+        raise KernelSelectionContractError("command buffer has no commands/tensors selection facts")
+    if len(commands) != 1 or not isinstance(commands[0], Mapping):
+        raise KernelSelectionContractError(
+            "semantic family extraction currently requires one command")
+    command = commands[0]
+    operands = command.get("operands")
+    attrs = command.get("attributes") or {}
+    if (str(command.get("opcode") or "").upper() != "VECTOR_MAP"
+            or not isinstance(operands, Mapping)
+            or not isinstance(attrs, Mapping)
+            or attrs.get("combine", "add") != "add"):
+        raise KernelSelectionContractError(
+            "semantic family extraction currently supports row-broadcast VECTOR_MAP(add)")
+    lhs, rhs, dst = operands.get("lhs"), operands.get("rhs"), operands.get("dst")
+    if not all(isinstance(name, str) and name in tensors for name in (lhs, rhs, dst)):
+        raise KernelSelectionContractError("bias-add operands are absent from the tensor ABI")
+    lhs_spec, rhs_spec, dst_spec = tensors[lhs], tensors[rhs], tensors[dst]
+    if not all(isinstance(spec, Mapping) for spec in (lhs_spec, rhs_spec, dst_spec)):
+        raise KernelSelectionContractError("bias-add tensor specifications are not mappings")
+    lhs_shape = lhs_spec.get("shape")
+    rhs_shape = rhs_spec.get("shape")
+    dst_shape = dst_spec.get("shape")
+    if (not isinstance(lhs_shape, list) or len(lhs_shape) != 2
+            or rhs_shape != [lhs_shape[1]] or dst_shape != lhs_shape):
+        raise KernelSelectionContractError(
+            "VECTOR_MAP(add) is not a 2-D row-broadcast bias add")
+    raw_dtype = str(dst_spec.get("dtype") or lhs_spec.get("dtype") or "").lower()
+    dtype = _DTYPE_NAMES.get(raw_dtype)
+    if dtype is None:
+        raise KernelSelectionContractError(f"unsupported command-buffer dtype {raw_dtype!r}")
+    return KernelRequest.from_mapping({
+        "op": "bias_add",
+        "dtype": dtype,
+        "shape": {"rows": lhs_shape[0], "cols": lhs_shape[1]},
+    })
+
+
+def select_command_buffer_family(
+    cb: Mapping[str, Any],
+    hardware_contract: Mapping[str, Any],
+    selection_contract: Mapping[str, Any],
+) -> SelectionReport:
+    """Run semantic selection on a real emitted candidate using only compiler-visible facts."""
+    return select_kernel_family(
+        request_from_command_buffer(cb),
+        derive_hardware_capabilities(hardware_contract),
+        selection_contract,
+    )

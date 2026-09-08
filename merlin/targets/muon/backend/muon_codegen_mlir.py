@@ -14,7 +14,7 @@ the kernel carries no scheduling. fp32 epilogues supported: ``relu`` and ``bias_
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 from .muon_codegen import _plan
 from merlin.runtime.commandbuffer import materialize_inputs
@@ -1199,7 +1199,13 @@ def _shape2(env: dict, name: str) -> tuple[int, int]:
     return t.shape[0], t.shape[1]
 
 
-def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
+def emit_kernel_mlir(
+    cb: dict[str, Any],
+    *,
+    target: str | None = None,
+    selection_contract: Mapping[str, Any] | None = None,
+    hardware_contract: Mapping[str, Any] | None = None,
+) -> str:
     """Emit the LLVM-dialect MLIR kernel module for ``cb``. Dispatches on the command-buffer op: a single fp32
     matmul commit (the SIMT gemm corpus, optional relu/bias epilogue), attention scores ``Q@K^T``
     (``ATTENTION_QK``), or row RMSNorm (``RMSNORM``); raises on an unsupported shape (chained matmuls / mx),
@@ -1210,6 +1216,29 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
     target = target or cb.get("target")
     if not target:
         raise MuonMlirCodegenError("emit_kernel_mlir needs a target (arg or cb['target'])")
+    if (selection_contract is None) != (hardware_contract is None):
+        raise MuonMlirCodegenError(
+            "semantic family selection needs both selection_contract and hardware_contract")
+    selected_family = None
+    if selection_contract is not None and hardware_contract is not None:
+        from .muon_kernel_selection import (
+            KernelSelectionContractError,
+            select_command_buffer_family,
+        )
+        try:
+            selection = select_command_buffer_family(cb, hardware_contract, selection_contract)
+        except KernelSelectionContractError as exc:
+            raise MuonMlirCodegenError(f"cannot derive semantic family: {exc}") from exc
+        # The command buffer is the durable candidate record used by later qualification tiers.  Keep
+        # every refused/disabled family, not merely the winner, so corpus coverage is auditable.
+        cb.setdefault("params", {})["kernel_family_selection"] = selection.to_dict()
+        selected_family = selection.selected_family
+        if selected_family is None:
+            raise MuonMlirCodegenError(
+                "semantic kernel family selection refused every declared strategy")
+        if selected_family != "kernels/bias_add":
+            raise MuonMlirCodegenError(
+                f"selected family {selected_family!r} has no registered Muon MLIR emitter")
     env = materialize_inputs(cb)
     sym = f"{target}_kernel"
 
@@ -1345,6 +1374,9 @@ def emit_kernel_mlir(cb: dict[str, Any], *, target: str | None = None) -> str:
                 n *= d
             nest = _elementwise_loop_nest(a, b, dst, n, combine)
         elif len(ta.shape) == 2 and tb.shape == (ta.shape[1],):      # row broadcast B[n] over A[m,n]
+            if selection_contract is not None and selected_family != "kernels/bias_add":
+                raise MuonMlirCodegenError(
+                    "row-broadcast add was not selected as the qualified bias-add strategy")
             m, n = ta.shape
             nest = _broadcast_row_loop_nest(a, b, dst, m, n, combine)
         else:

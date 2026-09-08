@@ -7,6 +7,8 @@ import pytest
 
 from merlin.common.paths import repo_root
 from merlin.runtime.backends.base import get_backend
+from merlin.targetgen.contract.linalg_iface import parse_linalg_mlir
+from merlin.targetgen.linalg_lower import lower_linalg_to_cb
 
 
 KS = get_backend("muon").muon_kernel_selection
@@ -26,6 +28,16 @@ def _hardware(*features: str):
 
 def _decision(report, family: str):
     return next(item for item in report.decisions if item.family == family)
+
+
+def _bias_add_cb():
+    capsule = (
+        repo_root()
+        / "merlin/contract/capsules/radiance/model_slices/RP16_bias_add_fp32_pt"
+        / "capsule.interface.mlir"
+    )
+    parsed = parse_linalg_mlir(capsule.read_text(encoding="utf-8"))
+    return lower_linalg_to_cb(parsed, target="radiance")
 
 
 def test_every_declared_family_has_one_compiler_rule():
@@ -136,3 +148,51 @@ def test_unknown_shape_dimension_is_a_recorded_refusal():
     decision = _decision(report, "kernels/patch_embed")
     assert decision.status == "refused"
     assert "shape dimension out_channels is unknown" in decision.reasons
+
+
+def test_real_bias_add_lowering_selects_at_muon_emission_seam():
+    cb = _bias_add_cb()
+    mlir = get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(
+        cb,
+        selection_contract=_contract(),
+        hardware_contract={
+            "compute_units": [{"kind": "simt", "scaling": "none"}],
+            "memory_model": {"shared_memory": True},
+        },
+    )
+    report = cb["params"]["kernel_family_selection"]
+    assert report["request"] == {
+        "op": "bias_add", "dtype": "fp32", "shape": {"cols": 16, "rows": 16}}
+    assert report["derived_hardware_features"] == ["shared_memory", "simt"]
+    assert report["selected_family"] == "kernels/bias_add"
+    assert len(report["decisions"]) == 23
+    assert "llvm.func @radiance_kernel" in mlir
+
+
+def test_emission_records_all_refusals_then_fails_closed_without_simt():
+    cb = _bias_add_cb()
+    with pytest.raises(
+        get_backend("muon").muon_codegen_mlir.MuonMlirCodegenError,
+        match="refused every declared strategy",
+    ):
+        get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(
+            cb,
+            selection_contract=_contract(),
+            hardware_contract={"compute_units": [], "memory_model": {}},
+        )
+    report = cb["params"]["kernel_family_selection"]
+    assert report["selected_family"] is None
+    bias = next(d for d in report["decisions"] if d["family"] == "kernels/bias_add")
+    assert bias["status"] == "refused"
+    assert "simt" in " ".join(bias["reasons"])
+
+
+def test_command_buffer_semantics_ignore_capsule_and_oracle_fields():
+    cb = _bias_add_cb()
+    disguised = deepcopy(cb)
+    disguised["capsule_name"] = "choose_a_special_kernel"
+    disguised["_oracle_expected_outputs"] = {"out": [[999.0] * 16] * 16}
+    hardware = {"features": ["simt"]}
+    a = KS.select_command_buffer_family(cb, hardware, _contract()).to_dict()
+    b = KS.select_command_buffer_family(disguised, hardware, _contract()).to_dict()
+    assert a == b
