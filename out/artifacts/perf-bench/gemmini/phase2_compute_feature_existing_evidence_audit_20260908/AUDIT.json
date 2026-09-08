@@ -1,0 +1,95 @@
+{
+  "schema": "phase2_compute_existing_evidence_audit_v1",
+  "status": "incomplete",
+  "conclusion": "no_admissible_compute_feature_receipt",
+  "calibration_ready": false,
+  "canonical_preparation": {
+    "path": "preparation.json",
+    "file_sha256": "fb05de29c7ccb14dc0528fc270c58e56b471fc6e93af151daad9f98a4d98a079",
+    "receipt_sha256": "9d04dc68833a758ca1fafcc0d410dfd98929d9073cdc68301972c6a4240ccd84",
+    "status": "incomplete",
+    "valid_controlled_points": 0
+  },
+  "contract": {
+    "path": "merlin/python/merlin/perf/phase2_feature_calibration.py",
+    "sha256": "c5d3d518885420946a83ee2c90e36c653fb6c20768500f4a3db122697d6a7df6",
+    "commit": "556b6c86cc029b8fbc87db7723532bf5f46d64ce"
+  },
+  "target_descriptor": {
+    "path": "/scratch/agustin/projects/oscar-merlin/merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml",
+    "sha256": "667990eef06958951d9ee46d51535d64bcff9557a17c982d146bcf1acc15985e"
+  },
+  "candidate_assessments": [
+    {
+      "id": "counter_partition_gsim_A0_A3",
+      "status": "inadmissible",
+      "useful_facts": [
+        "A0_config_smoke reports exact_macs=4096 and measured L3 cycles=306",
+        "A3_k_accumulation reports exact_macs=8192 and measured L3 cycles=366",
+        "both consoles bind counter schema sha256 5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669"
+      ],
+      "missing_proof": [
+        "neither run carries a phase2_controlled_feature_controls_v1 document",
+        "neither run carries a phase2_controlled_feature_observation_v1 document binding exact target, source, and controls bytes",
+        "the capsule results do not bind the exact target-descriptor SHA-256",
+        "the source MLIR bytes are not bound by the measured result",
+        "the records contain one measured-now invocation but no sealed preceding unmeasured warm invocation",
+        "the two programs were not sealed as a controlled series whose only varied quantity is emitted compute MACs"
+      ],
+      "prohibited_inference": "MAIN_EX_CYCLES and other busy-cycle counters are occupancy evidence, not issued compute units, and were not converted to a feature quantity"
+    },
+    {
+      "id": "masked_tiny_warm_measured",
+      "status": "inadmissible",
+      "useful_facts": [
+        "shape_supplement.json reports warm_invocations=1, measured_invocations=1, cycles=550, and source_sha256=b83a84dda62d0a0425e3f899242cbc8f3e4fcb18a49aa0d89d05ae911f4fc104",
+        "the supplement describes a 36-MAC reduced source"
+      ],
+      "missing_proof": [
+        "the original receipt remains status refused",
+        "the supplement does not bind the exact target descriptor or a controlled-variable contract",
+        "no phase2_controlled_feature_observation_v1 binds source, target, controls, exact emitted compute quantity, and measured cycles",
+        "only one candidate feature point is present"
+      ]
+    },
+    {
+      "id": "complete_source_pair_reduced_gsim",
+      "status": "inadmissible",
+      "useful_facts": [
+        "the K=5 and K=17 reduced runs each report warm_invocations=1 followed by measured_invocations=1 and one cycle result per compiler arm",
+        "their outer receipts carry target digest 667990eef06958951d9ee46d51535d64bcff9557a17c982d146bcf1acc15985e and exact source hashes"
+      ],
+      "missing_proof": [
+        "the runs were sealed as before/after compiler source-pair probes, not as a controlled emitted-compute-volume series",
+        "no phase2_controlled_feature_controls_v1 document binds invariants and the varied feature",
+        "no phase2_controlled_feature_observation_v1 binds each measurement to exact target, source, and controls bytes",
+        "the receipts do not expose exact emitted compute as an emitted_feature quantity object",
+        "each selected arm records declared_plan_status=refused and target_route_verified=false"
+      ]
+    },
+    {
+      "id": "spike_warm_measured_receipts",
+      "status": "excluded",
+      "reason": "Spike is functional proxy evidence and is not FPGA or RTL performance truth"
+    }
+  ],
+  "exact_missing_evidence": [
+    "at least one phase2_controlled_feature_controls_v1 contract bound to the exact target descriptor and declaring emitted compute as the sole varied feature",
+    "two distinct source points and two measured observation files, each with exact target_sha256, source_sha256, and controls_sha256 bindings",
+    "for each point, an exact emitted compute quantity with unit mac and scope emitted_feature plus a cycle quantity with scope target_execution",
+    "for any protocol requiring warming, a sealed one-unmeasured-warm-predecessor then one-measured-invocation sequence for each controlled point"
+  ],
+  "execution": {
+    "new_target_execution": false,
+    "simulator_execution": false,
+    "full_layer_or_model_execution": false,
+    "firesim_execution": false,
+    "l3_execution": false,
+    "host_evidence_join_only": true
+  },
+  "forbidden_shortcuts_used": {
+    "spike_as_fpga_truth": false,
+    "busy_cycles_as_issued_units": false,
+    "target_or_model_conditionals": false
+  }
+}

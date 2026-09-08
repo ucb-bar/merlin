@@ -1,0 +1,97 @@
+{
+  "candidate_evidence_files": [
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/capsule_result.json",
+      "sha256": "9f0c0fbd195ac197205f1415b54517e0b371947087c8c2309a6c43df6042b539"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/generated/input.interface.mlir",
+      "sha256": "987047d4a99a969dc307e1929b80a6bf6ad4ceeb0b3fa4f70c283551ea2d87a1"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/rtl_gsim_console.log",
+      "sha256": "94b5dcfecf521cf258440e1dd8d859ed6e5327891d43afa264f7ae76a041eb6c"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/capsule_result.json",
+      "sha256": "0f35765a2fb9241d49734212df104e55118e3ed11684fc46fa47a4d54595a778"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/generated/input.interface.mlir",
+      "sha256": "4d92a08ab4fd2c83e5886d628db4704920e99ca75ecf0bf836cbc9c7c5e8f789"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/rtl_gsim_console.log",
+      "sha256": "6fc1f0c1e62e192f1adccae13622eaa47700480fe0597362e80a16bf0c664c16"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_masked_program_warm_20260907/receipt.json",
+      "sha256": "abe0b6facc75de7417b8f136cac4b10d6b69d1ce6a238546a0f8df840aee861e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_masked_program_warm_20260907/shape_supplement.json",
+      "sha256": "88de6169497515d9616952c91b9986c4d04ea3a6f0958b7df64b6b1545990760"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_masked_program_warm_20260907/source/capsule.interface.mlir",
+      "sha256": "b83a84dda62d0a0425e3f899242cbc8f3e4fcb18a49aa0d89d05ae911f4fc104"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_attempt4_20260907/receipt.json",
+      "sha256": "b35dc04aad85e43865af83b7d1306df14472629e6e2f7a01cb7f868daec59ae1"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_attempt4_20260907/source_pair_runtime/complete_source_pair_evfz5qw3/execution.json",
+      "sha256": "fc27d3bfd26588f91509452358c2e1e1222a4a78919c876e3987568e661e9d41"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_attempt4_20260907/source_pair_runtime/complete_source_pair_evfz5qw3/before/build_worker/source.mlir",
+      "sha256": "482e7b3fb42b571a88e6bebff35121ada1ae17250fa50522f6a45743566fc5f8"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_attempt4_20260907/source_pair_runtime/complete_source_pair_evfz5qw3/before/build_worker/command_buffer.json",
+      "sha256": "89b513c8638d88e9ab5ebd0d047e57c75b94407da49343374dd34e63e8a1f6e7"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_reduction_tail_fresh_20260907/receipt.json",
+      "sha256": "73ed5296ca1d536894ef38d5506ff34d9bf0b1122b0d120355137129ff311d7f"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_reduction_tail_fresh_20260907/source_pair_runtime/complete_source_pair_91vok1h4/execution.json",
+      "sha256": "f4858ccc51b65414734e91770c24246c1ea882bfddea6626ba4c952e7fbbdcd7"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_reduction_tail_fresh_20260907/source_pair_runtime/complete_source_pair_91vok1h4/before/build_worker/source.mlir",
+      "sha256": "7a9f9907d4cb103be4a400c84f62714b16cf5f32cc13f85c121ced754fe0bb4c"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_complete_source_pair_m2_reduction_tail_fresh_20260907/source_pair_runtime/complete_source_pair_91vok1h4/before/build_worker/command_buffer.json",
+      "sha256": "6b273d71728c85e817503300e313ff64742ce880ac9d9d0153dfd4e3baf1c9a0"
+    }
+  ],
+  "controlled_pairs": [],
+  "feature": {
+    "effects": [
+      "compute"
+    ],
+    "evidence_pointer": "/quantities/emitted_compute",
+    "id": "gemmini_emitted_compute_macs",
+    "kind": "compute",
+    "pointer": "/issued/compute_macs",
+    "resource": "execute",
+    "unit": "mac"
+  },
+  "measurements": [
+    {
+      "coefficient": "cycles_per_unit",
+      "evidence_pointer": "/quantities/measured_cycles",
+      "scope": "target_execution",
+      "unit": "cycle"
+    }
+  ],
+  "schema": "phase2_analytical_feature_calibration_request_v1",
+  "target_descriptor": {
+    "path": "/scratch/agustin/projects/oscar-merlin/merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml",
+    "sha256": "667990eef06958951d9ee46d51535d64bcff9557a17c982d146bcf1acc15985e"
+  }
+}
