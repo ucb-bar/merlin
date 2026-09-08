@@ -659,6 +659,17 @@ def main(argv=None):
         if isinstance(_barrier_cycles, int) and not isinstance(_barrier_cycles, bool) \
                 and _barrier_cycles > 0:
             row["barrier_cycles"] = _barrier_cycles
+        # The L2 cycle count is meaningful only with the exact performance-model bytes and timing
+        # configuration that produced it.  The Cyclotron adapter writes this sidecar immediately around
+        # the successful invocation; absent/malformed provenance stays absent so the downstream seal
+        # rejects the row instead of attributing it to whichever simulator happens to be installed later.
+        if bar_used == "L2":
+            try:
+                _binding = json.loads((gen / "cyclotron_engine_binding.json").read_text())
+            except (OSError, json.JSONDecodeError):
+                _binding = None
+            if isinstance(_binding, dict):
+                row["barrier_engine_binding"] = _binding
         # A STATED DECLINE IS THE MOST ACTIONABLE THING THIS REPORT CAN CARRY, so it rides the row
         # whether or not the capsule passed, and ahead of the numeric block. Without it a declined
         # capsule reads exactly like one whose arithmetic is wrong -- an output of zeros and a

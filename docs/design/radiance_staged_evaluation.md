@@ -56,8 +56,8 @@ neither coverage nor a gap.  The machine-readable census and L2 receipt are unde
 
 Run the paid loop only on the descriptor's sixteen-member `search_cohort`.  A score can open Stage 2
 only when its per-capsule evidence names exactly those sixteen members (including the exact add and
-multiply), every row records an L2 numeric pass, execution digest, and positive measured barrier-cycle
-count, and the suite reports 16/16.
+multiply), every row records an L2 numeric pass, execution digest, positive measured barrier-cycle
+count, and the identical content-addressed Cyclotron engine/config binding, and the suite reports 16/16.
 Seal that score with the candidate and source-tree digests; the seal must live outside the candidate.
 
 The self-check runner defaults to the repository's default target when no descriptor is supplied, so
@@ -87,9 +87,14 @@ PYTHONPATH=merlin/python .venv/bin/python -m merlin.targetgen.evaluation_cohort 
 ```
 
 The command refuses 15/16, a missing or extra capsule, a non-L2 row, a missing execution digest or
-measured cycle count, a
-non-model-derived source, a stale score, or a candidate/source tree changed after the run.  Creating the
-seal does not certify unrepresented operation families or an E2E model.  The candidate digest excludes
+measured cycle count, a missing/mixed L2 engine identity, a non-model-derived source, a stale score, or
+a candidate/source tree changed after the run. The Stage-1 score and v3 seal cite the canonical binary
+path and SHA-256, its source commit when Git can resolve it, the base config path and SHA-256, and the
+complete timing-config tree path and digest. The adapter snapshots that identity immediately before and
+after each successful Cyclotron invocation; a rebuild or config edit during the run fails closed. Seal
+creation and every later validation resolve it again, so v1/v2 seals and evidence produced by a previous
+simulator build cannot size a new GSIM run. Creating the seal does not certify unrepresented operation
+families or an E2E model.  The candidate digest excludes
 only Python interpreter byproducts (`__pycache__`, `.pyc`, `.pyo`), so importing the frozen package during
 grading does not invalidate it; authored source, manifests, configuration, schedules, and binaries remain
 strictly content-addressed.

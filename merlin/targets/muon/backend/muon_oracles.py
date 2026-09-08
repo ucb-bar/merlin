@@ -14,6 +14,7 @@ This module imports nothing from the frozen Gemmini ``capsule_runner``; it is a 
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -246,8 +247,24 @@ def _adapter(simulator: str) -> Callable:
             program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
         t1 = time.perf_counter()
+        engine_binding = None
+        engine_binding_path = Path(workdir) / "cyclotron_engine_binding.json"
+        if simulator == "cyclotron":
+            # Capture immediately around the measured invocation.  A prior failed/replayed run must not
+            # leave reusable provenance, and changing either executable or timing config while the
+            # process runs makes this measurement unsealable rather than ambiguously attributed.
+            engine_binding_path.unlink(missing_ok=True)
+            from merlin.targetgen.evaluation_cohort import cyclotron_l2_engine_binding
+            engine_binding = cyclotron_l2_engine_binding(str(target))
         console, cycles, summary = muon.run_elf(
             elf, simulator=simulator, timeout=timeout, target=target)
+        if simulator == "cyclotron":
+            after_binding = cyclotron_l2_engine_binding(str(target))
+            if after_binding != engine_binding:
+                raise muon.MuonUnavailable(
+                    "Cyclotron executable/config identity changed during the measured L2 invocation")
+            engine_binding_path.write_text(
+                json.dumps(engine_binding, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         t2 = time.perf_counter()
         completion_only = False
         compact_verdict = (_compact_numeric_from_console(

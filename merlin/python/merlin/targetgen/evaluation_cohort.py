@@ -14,6 +14,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 import yaml
@@ -65,6 +66,111 @@ def _canonical_json_sha256(value: Any) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _git_source_identity(path: Path) -> dict[str, str]:
+    """Best-effort source citation; executable/config byte hashes remain authoritative."""
+    try:
+        root = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        commit = subprocess.run(
+            ["git", "-C", root, "rev-parse", "HEAD"],
+            check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return {"path": str(path.resolve())}
+    return {"path": str(path.resolve()), "git_root": str(Path(root).resolve()),
+            "git_commit": commit}
+
+
+def configured_executable_binding(
+    *, engine: str, binary: str | Path, source: str | Path,
+    config: str | Path, config_tree: str | Path,
+) -> dict[str, Any]:
+    """Content-address one executable and every configuration byte it may consume.
+
+    This is target-neutral provenance machinery.  The backend owns which paths constitute its engine;
+    this helper merely refuses aliases/symlinks and binds regular bytes, relative names, and (when
+    resolvable) the source commit that produced the executable.
+    """
+    binary, source, config, config_tree = (
+        Path(binary), Path(source), Path(config), Path(config_tree))
+    if not engine:
+        raise ValueError("configured executable binding requires an engine name")
+    if source.is_symlink() or not source.is_dir():
+        raise ValueError(f"engine source is not a regular directory: {source}")
+    if config_tree.is_symlink() or not config_tree.is_dir():
+        raise ValueError(f"engine config tree is not a regular directory: {config_tree}")
+    binding: dict[str, Any] = {
+        "schema": "configured_executable_binding_v1",
+        "engine": engine,
+        "binary": {
+            "path": str(binary.resolve()),
+            "sha256": _file_sha256(binary, what=f"{engine} executable"),
+        },
+        "source": _git_source_identity(source),
+        "config": {
+            "path": str(config.resolve()),
+            "sha256": _file_sha256(config, what=f"{engine} config"),
+            "tree": str(config_tree.resolve()),
+            "tree_sha256": _tree_sha256(config_tree),
+        },
+    }
+    binding["binding_sha256"] = _canonical_json_sha256(binding)
+    return binding
+
+
+def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
+    """Resolve the exact Cyclotron executable/config identity used by the Muon L2 adapter."""
+    from merlin.runtime.backends.base import get_backend
+
+    # Cyclotron is the ENGINE here; the target being EVALUATED is the `target` parameter, recorded
+    # as binding["target"] and checked by _validate_l2_engine_binding.
+    backend = get_backend("muon")  # target-ok: cyclotron is the muon backend's simulator, and the evaluated target is the `target` parameter
+    binary = backend.cyclotron_path().resolve()
+    # An explicit executable override may come from a different checkout than the timing tree.  Cite
+    # both honestly: the binary's source tree is inferred from its canonical Cargo output layout while
+    # config_tree is the directory the runtime actually links into each work directory.
+    source = binary.parent.parent.parent if binary.parent.name == "release" else backend.cyclotron_root()
+    binding = configured_executable_binding(
+        engine="cyclotron",
+        binary=binary,
+        source=source,
+        config=backend.config_path(),
+        config_tree=backend.cyclotron_root() / "config",
+    )
+    binding["target"] = target
+    binding["binding_sha256"] = _canonical_json_sha256(
+        {key: value for key, value in binding.items() if key != "binding_sha256"})
+    return binding
+
+
+def _validate_l2_engine_binding(binding: Any, *, target: str) -> dict[str, Any]:
+    if (not isinstance(binding, dict)
+            or binding.get("schema") != "configured_executable_binding_v1"
+            or binding.get("engine") != "cyclotron"
+            or binding.get("target") != target):
+        raise ValueError("search score has no valid Cyclotron L2 engine binding")
+    expected_sha = binding.get("binding_sha256")
+    unsigned = {key: value for key, value in binding.items() if key != "binding_sha256"}
+    if _canonical_json_sha256(unsigned) != expected_sha:
+        raise ValueError("Cyclotron L2 engine binding record digest mismatch")
+    binary = binding.get("binary")
+    config = binding.get("config")
+    if not isinstance(binary, dict) or not isinstance(config, dict):
+        raise ValueError("Cyclotron L2 engine binding is malformed")
+    if _file_sha256(Path(str(binary.get("path", ""))), what="bound Cyclotron executable") \
+            != binary.get("sha256"):
+        raise ValueError("bound Cyclotron executable content digest mismatch")
+    if _file_sha256(Path(str(config.get("path", ""))), what="bound Cyclotron config") \
+            != config.get("sha256"):
+        raise ValueError("bound Cyclotron config content digest mismatch")
+    tree = Path(str(config.get("tree", "")))
+    if tree.is_symlink() or not tree.is_dir() or _tree_sha256(tree) != config.get("tree_sha256"):
+        raise ValueError("bound Cyclotron config tree content digest mismatch")
+    return binding
+
+
 def _source_capsules(te: TargetExperiment) -> dict[str, Path]:
     out: dict[str, Path] = {}
     for root in te.graded_roots():
@@ -100,7 +206,7 @@ def _search_source_records(te: TargetExperiment) -> list[dict[str, str]]:
     return sorted(records, key=lambda row: row["name"])
 
 
-def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
+def _search_score_problems(score: Any, expected_names: list[str], *, target: str) -> list[str]:
     """Accept only an exact, non-vacuous L2 numeric pass from the self-check score schema.
 
     Search deliberately stops at Cyclotron L2.  Successful self-check rows are compact: ``pass`` and
@@ -130,6 +236,7 @@ def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
     row_names = [row.get("capsule") for row in rows if isinstance(row, dict)]
     if len(row_names) != len(set(row_names)) or sorted(row_names) != expected_names:
         problems.append("score per_capsule names do not exactly cover the search cohort")
+    engine_bindings: list[dict[str, Any]] = []
     for row in rows:
         if not isinstance(row, dict):
             problems.append("score contains a malformed per_capsule row")
@@ -148,6 +255,13 @@ def _search_score_problems(score: Any, expected_names: list[str]) -> list[str]:
         cycles = row.get("barrier_cycles")
         if not isinstance(cycles, int) or isinstance(cycles, bool) or cycles <= 0:
             problems.append(f"{name} has no positive measured L2 barrier cycle count")
+        binding = row.get("barrier_engine_binding")
+        try:
+            engine_bindings.append(_validate_l2_engine_binding(binding, target=target))
+        except ValueError as exc:
+            problems.append(f"{name} has invalid L2 engine provenance: {exc}")
+    if engine_bindings and any(binding != engine_bindings[0] for binding in engine_bindings[1:]):
+        problems.append("search capsules were measured by different L2 engine/config identities")
     return problems
 
 
@@ -188,11 +302,16 @@ def create_search_pass_seal(
     score_doc = json.loads(score_path.read_text(encoding="utf-8"))
     source_records = _search_source_records(te)
     names = [row["name"] for row in source_records]
-    problems = _search_score_problems(score_doc, names)
+    problems = _search_score_problems(score_doc, names, target=te.target)
     if problems:
         raise ValueError("search pass evidence rejected: " + "; ".join(problems))
+    score_binding = score_doc["per_capsule"][0]["barrier_engine_binding"]
+    if score_binding != cyclotron_l2_engine_binding(te.target):
+        raise ValueError(
+            "search pass evidence rejected: measured Cyclotron executable/config identity differs "
+            "from the current L2 engine")
     record = {
-        "schema": "descriptor_search_pass_v2",
+        "schema": "descriptor_search_pass_v3",
         "claim_scope": "admitted_search_covering_set_not_e2e_readiness",
         "target": te.target,
         "policy": te.graded_cohort_policy,
@@ -206,6 +325,7 @@ def create_search_pass_seal(
         "capsules": source_records,
         "l2_cycles": {str(row["capsule"]): int(row["barrier_cycles"])
                       for row in score_doc["per_capsule"]},
+        "l2_engine_binding": score_binding,
         "n_capsules": len(names),
         "n_passed": len(names),
     }
@@ -220,7 +340,7 @@ def validate_search_pass_seal(
     path, candidate = Path(path), Path(candidate)
     seal_sha256 = _file_sha256(path, what="search pass seal")
     record = json.loads(path.read_text(encoding="utf-8"))
-    if record.get("schema") != "descriptor_search_pass_v2":
+    if record.get("schema") != "descriptor_search_pass_v3":
         raise ValueError(f"unsupported search pass seal: {path}")
     if (record.get("target") != te.target or record.get("descriptor_sha256") != te.descriptor_sha256
             or record.get("policy") != te.graded_cohort_policy):
@@ -252,13 +372,20 @@ def validate_search_pass_seal(
     if _file_sha256(score_path, what="sealed search score") != record.get("score_sha256"):
         raise ValueError("search score evidence digest mismatch")
     score_doc = json.loads(score_path.read_text(encoding="utf-8"))
-    problems = _search_score_problems(score_doc, [row["name"] for row in expected_records])
+    problems = _search_score_problems(
+        score_doc, [row["name"] for row in expected_records], target=te.target)
     if problems:
         raise ValueError("sealed search score no longer proves the pass: " + "; ".join(problems))
     score_cycles = {str(row["capsule"]): int(row["barrier_cycles"])
                     for row in score_doc["per_capsule"]}
     if record.get("l2_cycles") != score_cycles:
         raise ValueError("search pass seal L2 cycle map differs from its hash-bound score evidence")
+    score_binding = score_doc["per_capsule"][0]["barrier_engine_binding"]
+    if record.get("l2_engine_binding") != score_binding:
+        raise ValueError("search pass seal L2 engine differs from its hash-bound score evidence")
+    current_binding = cyclotron_l2_engine_binding(te.target)
+    if score_binding != current_binding:
+        raise ValueError("sealed Cyclotron executable/config identity differs from the current engine")
     return {**record, "seal": str(path.resolve()), "seal_sha256": seal_sha256}
 
 
@@ -623,6 +750,7 @@ def materialize_evaluation_cohort(
             "required_oracle_tier": search_evidence["required_oracle_tier"],
             "claim_scope": search_evidence["claim_scope"],
             "l2_cycles": search_evidence["l2_cycles"],
+            "l2_engine_binding": search_evidence["l2_engine_binding"],
         }
     if predecessor is not None:
         record["predecessor_pass_evidence"] = predecessor
@@ -700,7 +828,8 @@ def validate_evaluation_cohort(
             raise ValueError("search pass seal evidence digest mismatch")
         sealed = validate_search_pass_seal(seal_path, te, candidate)
         for field in ("seal_sha256", "score", "score_sha256", "candidate_tree_sha256",
-                      "capsules", "n_capsules", "n_passed", "required_oracle_tier", "claim_scope"):
+                      "capsules", "n_capsules", "n_passed", "required_oracle_tier", "claim_scope",
+                      "l2_cycles", "l2_engine_binding"):
             if search_evidence.get(field) != sealed.get(field):
                 raise ValueError(f"search pass evidence field changed: {field}")
     elif search_evidence is not None:

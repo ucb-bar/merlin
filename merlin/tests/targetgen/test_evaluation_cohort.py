@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from merlin.common.paths import repo_root
+from merlin.targetgen import evaluation_cohort as EC
 from merlin.targetgen.evaluation_cohort import (
     create_search_pass_seal,
     materialize_evaluation_cohort,
@@ -19,6 +20,7 @@ from merlin.targetgen.target_experiment import load_target_experiment
 
 
 RADIANCE = repo_root() / "merlin/experiments/capsule_bench/targets/radiance/target_experiment.yaml"
+_SEARCH_BINDING: dict = {}
 
 
 def _sha(path: Path) -> str:
@@ -28,6 +30,29 @@ def _sha(path: Path) -> str:
 def _canonical_sha(value: dict) -> str:
     return hashlib.sha256(json.dumps(
         value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+@pytest.fixture(autouse=True)
+def _working_search_engine(tmp_path, monkeypatch):
+    binary = tmp_path / "cyclotron"
+    source = tmp_path / "cyclotron-source"
+    config = tmp_path / "config.toml"
+    config_tree = source / "config"
+    source.mkdir()
+    config_tree.mkdir()
+    binary.write_bytes(b"cyclotron")
+    config.write_text("[sim]\ntimeout = 1\n")
+    (config_tree / "timing.toml").write_text("latency = 4\n")
+    binding = EC.configured_executable_binding(
+        engine="cyclotron", binary=binary, source=source,
+        config=config, config_tree=config_tree)
+    binding["target"] = "radiance"
+    binding["binding_sha256"] = _canonical_sha(
+        {key: value for key, value in binding.items() if key != "binding_sha256"})
+    _SEARCH_BINDING.clear()
+    _SEARCH_BINDING.update(binding)
+    monkeypatch.setattr(EC, "cyclotron_l2_engine_binding", lambda _target: copy.deepcopy(binding))
+    return binding
 
 
 def _working_engine(tmp_path: Path, monkeypatch) -> dict:
@@ -86,6 +111,7 @@ def _passing_search_score(path: Path, te) -> None:
         "per_capsule": [
             {"capsule": name, "pass": True, "barrier_tier": "L2",
              "barrier_status": "pass", "barrier_cycles": 1000 + index,
+             "barrier_engine_binding": copy.deepcopy(_SEARCH_BINDING),
              "execution_digest": hashlib.sha256(name.encode()).hexdigest()}
             for index, name in enumerate(names)
         ],
@@ -189,16 +215,17 @@ def test_search_pass_seal_freezes_candidate_and_score(tmp_path):
         validate_search_pass_seal(seal, te, candidate)
 
 
-def test_search_pass_v1_and_cycle_map_mutation_are_rejected(tmp_path):
+def test_stale_search_seals_and_cycle_map_mutation_are_rejected(tmp_path):
     te = load_target_experiment(RADIANCE)
     candidate = _candidate(tmp_path)
     seal = _search_seal(tmp_path, te, candidate)
     original = json.loads(seal.read_text())
 
-    stale = dict(original, schema="descriptor_search_pass_v1")
-    seal.write_text(json.dumps(stale))
-    with pytest.raises(ValueError, match="unsupported search pass seal"):
-        validate_search_pass_seal(seal, te, candidate)
+    for schema in ("descriptor_search_pass_v1", "descriptor_search_pass_v2"):
+        stale = dict(original, schema=schema)
+        seal.write_text(json.dumps(stale))
+        with pytest.raises(ValueError, match="unsupported search pass seal"):
+            validate_search_pass_seal(seal, te, candidate)
 
     tampered = copy.deepcopy(original)
     first = sorted(tampered["l2_cycles"])[0]
@@ -206,6 +233,68 @@ def test_search_pass_v1_and_cycle_map_mutation_are_rejected(tmp_path):
     seal.write_text(json.dumps(tampered))
     with pytest.raises(ValueError, match="differs from its hash-bound score evidence"):
         validate_search_pass_seal(seal, te, candidate)
+
+
+def test_search_pass_rejects_missing_or_mixed_l2_engine_binding(tmp_path):
+    te = load_target_experiment(RADIANCE)
+    candidate = _candidate(tmp_path)
+    score = tmp_path / "search-score.json"
+    _passing_search_score(score, te)
+    doc = json.loads(score.read_text())
+    doc["per_capsule"][0].pop("barrier_engine_binding")
+    score.write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match="invalid L2 engine provenance"):
+        create_search_pass_seal(tmp_path / "missing.json", te, candidate, score)
+
+    _passing_search_score(score, te)
+    doc = json.loads(score.read_text())
+    altered = doc["per_capsule"][0]["barrier_engine_binding"]
+    altered["target"] = "another-target"
+    altered["binding_sha256"] = _canonical_sha(
+        {key: value for key, value in altered.items() if key != "binding_sha256"})
+    score.write_text(json.dumps(doc))
+    with pytest.raises(ValueError, match="invalid L2 engine provenance"):
+        create_search_pass_seal(tmp_path / "mixed.json", te, candidate, score)
+
+
+def test_search_pass_detects_cyclotron_binary_and_config_mutation(tmp_path):
+    te = load_target_experiment(RADIANCE)
+    candidate = _candidate(tmp_path)
+    seal = _search_seal(tmp_path, te, candidate)
+
+    binary = Path(_SEARCH_BINDING["binary"]["path"])
+    binary.write_bytes(b"rebuilt-cyclotron")
+    with pytest.raises(ValueError, match="executable content digest mismatch"):
+        validate_search_pass_seal(seal, te, candidate)
+
+    binary.write_bytes(b"cyclotron")
+    config_member = Path(_SEARCH_BINDING["config"]["tree"]) / "timing.toml"
+    config_member.write_text("latency = 9\n")
+    with pytest.raises(ValueError, match="config tree content digest mismatch"):
+        validate_search_pass_seal(seal, te, candidate)
+
+
+def test_configured_executable_binding_cites_resolvable_source_commit(tmp_path, monkeypatch):
+    binary = tmp_path / "engine"
+    source = tmp_path / "source"
+    config = tmp_path / "engine.toml"
+    tree = source / "config"
+    source.mkdir()
+    tree.mkdir()
+    binary.write_bytes(b"engine")
+    config.write_text("mode = 1\n")
+    (tree / "timing.toml").write_text("latency = 2\n")
+
+    def git_stub(args, **_kwargs):
+        value = str(source) if args[-1] == "--show-toplevel" else "d" * 40
+        return type("Completed", (), {"stdout": value + "\n"})()
+
+    monkeypatch.setattr(EC.subprocess, "run", git_stub)
+    binding = EC.configured_executable_binding(
+        engine="test", binary=binary, source=source, config=config, config_tree=tree)
+
+    assert binding["source"]["git_root"] == str(source.resolve())
+    assert binding["source"]["git_commit"] == "d" * 40
 
 
 def test_engine_preflight_failure_does_not_materialize(tmp_path, monkeypatch):
