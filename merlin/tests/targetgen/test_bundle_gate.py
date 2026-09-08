@@ -307,6 +307,11 @@ class TestTheGateIsDerivedFromTheCapturesOwnContract:
         base.update(over)
         return base
 
+    #: The fixture writes its quality reference at correctness + 0.5, so 0.5 is the spread the
+    #: derivable-tolerance rule measures. Tests that are about a DIFFERENT rule clear it rather
+    #: than disabling it, so the tolerance rule stays live in all of them.
+    FIXTURE_FLOOR = 0.6
+
     def _bundle(self, tmp_path, steps=4, per_step=(2, 3)):
         import numpy as np
         from merlin.targetgen import bundle_gate as G
@@ -322,7 +327,8 @@ class TestTheGateIsDerivedFromTheCapturesOwnContract:
     def test_it_builds_the_gate_the_contract_declares(self, tmp_path):
         from merlin.targetgen import bundle_gate as G
         gate = G.gate_from_session_contract(self._bundle(tmp_path), model="m", datapath="w8a8",
-                                            bundle_dir=tmp_path, atol=1e-4, rtol=1e-4)
+                                            bundle_dir=tmp_path, atol=self.FIXTURE_FLOOR,
+                                            rtol=0.0)
         assert gate.reference_kind == "eager_same_precision"
         assert gate.comparison == "trajectory" and gate.steps == 4
         assert gate.session_key == "actions" and gate.output_elements == 6
@@ -338,7 +344,8 @@ class TestTheGateIsDerivedFromTheCapturesOwnContract:
         (tmp_path / "session_goldens.npz").unlink()
         np.savez(tmp_path / "session_goldens.npz", actions=same, unrelated=np.zeros(3))
         assert G.gate_from_session_contract(contract, model="m", datapath="w8a8",
-                                            bundle_dir=tmp_path, atol=1e-4, rtol=1e-4)
+                                            bundle_dir=tmp_path, atol=self.FIXTURE_FLOOR,
+                                            rtol=0.0)
 
     def test_a_golden_that_is_not_the_declared_one_is_REFUSED(self, tmp_path):
         import numpy as np
@@ -412,7 +419,7 @@ class TestTheTwoChannelsAreDifferentClaims:
         """Refusing this would refuse the measurement, not the misattribution."""
         from merlin.targetgen import bundle_gate as G
         gate = G.gate_from_session_contract(self._bundle(tmp_path), model="m", datapath="w8a8",
-                                            bundle_dir=tmp_path, atol=5e-2, rtol=5e-2,
+                                            bundle_dir=tmp_path, atol=0.6, rtol=0.0,
                                             channel="quality")
         assert gate.reference_kind == "eager_fp32" and gate.channel == "quality"
         assert "quantization cost" in gate.to_dict()["channel_asks"]
@@ -430,7 +437,7 @@ class TestTheTwoChannelsAreDifferentClaims:
         from merlin.targetgen import bundle_gate as G
         contract = self._bundle(tmp_path)
         blocks = [G.gate_from_session_contract(contract, model="m", datapath="w8a8",
-                                               bundle_dir=tmp_path, atol=1e-1, rtol=1e-1,
+                                               bundle_dir=tmp_path, atol=0.6, rtol=0.0,
                                                channel=ch).to_dict()
                   for ch in ("correctness", "quality")]
         assert {b["channel"] for b in blocks} == {"correctness", "quality"}
@@ -530,15 +537,41 @@ class TestItAgreesWithEveryContractOnDisk:
                 assert G.reference_digest(golden, str(spec["key"])) == spec["reference_sha256"], \
                     f"{path}:{field}"
 
-    def test_every_capture_yields_a_gate_from_its_own_contract(self):
+    def test_every_capture_yields_a_gate_from_its_own_DERIVED_tolerance(self):
+        """The tolerance comes from the capture's own reference spread, not from a chosen number.
+
+        A fixed 1e-4 was refused for SmolVLA, correctly: its two references differ by 5.36e-2.
+        """
         from merlin.targetgen import bundle_gate as G
         for path, contract in self._contracts():
             datapath = "fp32" if "fp32" in path.parent.name or "fp32" in str(path.parent) else "w8a8"
+            spread = G.reference_spread(path.parent / contract["correctness"]["golden"],
+                                        path.parent / contract["quality"]["golden"],
+                                        str(contract["correctness"]["key"]))
             gate = G.gate_from_session_contract(contract, model=path.parent.name,
                                                 datapath=datapath, bundle_dir=path.parent,
-                                                atol=1e-4, rtol=1e-4)
+                                                atol=spread.max_absolute, rtol=0.0)
             assert gate.steps >= 2 and gate.output_elements >= 1
             assert gate.session_key
+            assert f"{spread.max_absolute:.6g}" in gate.scope_note
+
+    def test_a_FIXED_tolerance_is_refused_wherever_the_spread_exceeds_it(self):
+        """The defect this rule closes, held against the real captures."""
+        from merlin.targetgen import bundle_gate as G
+        refused = 0
+        for path, contract in self._contracts():
+            datapath = "fp32" if "fp32" in path.parent.name or "fp32" in str(path.parent) else "w8a8"
+            spread = G.reference_spread(path.parent / contract["correctness"]["golden"],
+                                        path.parent / contract["quality"]["golden"],
+                                        str(contract["correctness"]["key"]))
+            if spread.max_absolute <= 2e-4:
+                continue                     # nothing to refuse for this capture
+            with pytest.raises(G.GateError, match="tighter than this capture"):
+                G.gate_from_session_contract(contract, model=path.parent.name,
+                                             datapath=datapath, bundle_dir=path.parent,
+                                             atol=1e-4, rtol=1e-4)
+            refused += 1
+        assert refused >= 1, "no capture on disk exercises the rule; it would be untested"
 
 
 _SESSION_STUB = """
@@ -938,3 +971,276 @@ class TestTheFarBlobsTwoHalvesComeFromOneNumber:
     def test_an_empty_blob_path_is_refused(self):
         with pytest.raises(BH.BundleHarnessError):
             BH.render_far_blob_assembly(blob_path="")
+
+
+class TestAConsoleWithNoFloatSupportMustNotBeAskedForOne:
+    """A baremetal printf implements `c s d u x l` and no float conversions.
+
+    MEASURED, on a real 10-step SmolVLA run: the harness asked for `%.9g`, and the target's
+    `vprintfmt` printed the SPECIFIER LITERALLY and then mis-consumed the varargs. 16,000 value
+    lines each read `MERLIN_OUT 0 %.9g`, and the header claimed `elements=-350469331`. The verdict
+    itself was sound -- the comparison is C arithmetic and `bad`/`argmax`/`digest` use integer
+    conversions -- but the diagnostic carried no data, so no magnitude could be recovered and the
+    run had to be repeated. A value dump that prints no values still looks like a value dump.
+    """
+
+    def _plan(self):
+        return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
+                                    "Y0": {"shape": [1, 8], "dtype": "f32"}},
+                        "params": {},
+                        "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
+                                                {"tensor": "Y0", "access": "write"}]}},
+                       row_pitch_elements=16)
+
+    def _gate(self, **kw):
+        base = dict(model="m", datapath="w8a8", reference_kind="w8a8_independent",
+                    comparison="tolerance_and_topk", atol=1e-4, rtol=1e-4, output_elements=8,
+                    expected_argmax=0)
+        base.update(kw)
+        return BG.gate_for(**base)
+
+    def test_no_rendered_fragment_asks_printf_for_a_float(self):
+        h = BH.render_bundle_harness(self._plan(), self._gate(), entry_symbol="k",
+                                     output_tensor="Y0")
+        for key in ("declarations", "call", "reseed", "gate"):
+            BH.assert_console_portable(h[key])          # raises if it does
+
+    def test_the_guard_catches_every_float_conversion(self):
+        for bad in ("%f", "%g", "%e", "%.9g", "%.17g", "%lf", "%G", "%E", "%F"):
+            with pytest.raises(BH.BundleHarnessError, match="does not implement"):
+                BH.assert_console_portable(f'printf("v={bad}\\n", x);')
+
+    def test_integer_conversions_are_allowed(self):
+        BH.assert_console_portable('printf("%d %u %s %c %016llx %lu\\n", a, b, c, d, e, f);')
+
+    def test_values_are_dumped_as_BIT_PATTERNS_with_the_step_on_every_line(self):
+        h = BH.render_bundle_harness(self._plan(), self._gate(), entry_symbol="k",
+                                     output_tensor="Y0")
+        assert "MERLIN_GATE_MODE value_bits" in h["gate"]
+        assert 'MERLIN_OUT %d %d %016llx' in h["gate"], "step, index, bits"
+        assert h["dumps_values"] is True
+
+    def test_the_tolerances_travel_as_bits_since_their_decimals_are_unprintable(self):
+        h = BH.render_bundle_harness(self._plan(), self._gate(), entry_symbol="k",
+                                     output_tensor="Y0")
+        assert "atol_bits=%016llx" in h["gate"] and "rtol_bits=%016llx" in h["gate"]
+        # and the decimal values remain recorded where they ARE readable
+        assert h["gate_declaration"]["atol"] == 1e-4
+
+    def test_the_dump_needs_no_header_it_cannot_be_sure_of(self):
+        """The fragment is spliced into someone else's translation unit."""
+        h = BH.render_bundle_harness(self._plan(), self._gate(), entry_symbol="k",
+                                     output_tensor="Y0")
+        assert "memcpy(&merlin_word" not in h["gate"], "no <string.h> dependency"
+        assert "union {" not in h["gate"], "no type punning either"
+
+    @pytest.mark.skipif(_CC is None, reason="no C compiler on this host")
+    def test_the_bit_dump_round_trips_through_a_real_run(self, tmp_path):
+        """Compile it, run it, and decode the printed bits back to the floats that were stored."""
+        import struct
+        h = BH.render_bundle_harness(self._plan(), self._gate(), entry_symbol="k",
+                                     output_tensor="Y0")
+        values = [0.0, 1.5, -2.25, 3.0e-8, 1234.5, -0.0, 7.0, 0.1]
+        stub = ("#include <string.h>\n"
+                "const float merlin_reference[8] = {"
+                + ",".join(f"{v!r}f" for v in values) + "};\n"
+                "const unsigned char merlin_const_blob_start[64];\n"
+                "unsigned char merlin_mutable_blob[256];\n"
+                "static const float SRC[8] = {" + ",".join(f"{v!r}f" for v in values) + "};\n"
+                "void k(void *a, void *b) { (void)a; memcpy(b, SRC, sizeof(SRC)); }\n")
+        (tmp_path / "stub.c").write_text(stub, encoding="utf-8")
+        (tmp_path / "h.c").write_text(
+            "#include <stdio.h>\n" + h["declarations"]
+            + "\nint main(void) {\n" + h["call"] + "\n  return merlin_gate_check();\n}\n",
+            encoding="utf-8")
+        binary = tmp_path / "bits"
+        build = subprocess.run(
+            [_CC, "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-gcc-install-dir-libstdcxx",
+             "-o", str(binary), str(tmp_path / "h.c"), str(tmp_path / "stub.c")],
+            capture_output=True, text=True)
+        assert build.returncode == 0, build.stderr[:2000]
+        run = subprocess.run([str(binary)], capture_output=True, text=True, timeout=60)
+        printed = {}
+        for line in run.stdout.splitlines():
+            parts = line.split()
+            if len(parts) == 4 and parts[0] == "MERLIN_OUT":
+                word = int(parts[3], 16)
+                printed[int(parts[2])] = struct.unpack(
+                    "<f", struct.pack("<I", word & 0xFFFFFFFF))[0]
+        assert len(printed) == 8, run.stdout[:1000]
+        for index, want in enumerate(values):
+            # The stored value is a `float`, so the comparison is against its SINGLE-precision
+            # round-trip -- not the Python double, which is a different number.
+            as_f32 = struct.unpack("<f", struct.pack("<f", want))[0]
+            assert printed[index] == as_f32, (
+                f"element {index}: decoded {printed[index]!r} from bits, stored {as_f32!r}")
+        assert "%.9g" not in run.stdout and "%g" not in run.stdout
+
+
+class TestTheConsoleBudgetIsATotalNotAPerStepFigure:
+    """`prints_values` asks about ONE step's elements, which is right for a one-shot program and
+    wrong for a session: SmolVLA's 1,600 elements clear the 4,096 cap, and ten steps is 16,000
+    lines. The console is the binding constraint on what is gradeable at all.
+    """
+
+    def _plan(self, elements):
+        return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
+                                    "arg1": {"shape": [1, 8], "dtype": "f32"},
+                                    "Y0": {"shape": [elements], "dtype": "f32"},
+                                    "Y1": {"shape": [1, 8], "dtype": "f32"}},
+                        "params": {},
+                        "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
+                                                {"tensor": "arg1", "access": "read"},
+                                                {"tensor": "Y0", "access": "write"},
+                                                {"tensor": "Y1", "access": "write"}]}},
+                       row_pitch_elements=16,
+                       session_states=(BP.SessionState("s", input_arg=1, output_index=1),))
+
+    def _gate(self, elements, steps):
+        return BG.gate_for(model="m", datapath="w8a8", reference_kind="eager_same_precision",
+                           comparison="trajectory", atol=1e-4, rtol=1e-4,
+                           output_elements=elements, steps=steps, session_key="a")
+
+    def test_a_per_step_count_under_the_cap_still_overflows_across_steps(self):
+        """SmolVLA's real shape: 1,600 x 10 = 16,000 lines."""
+        gate = self._gate(1600, 10)
+        assert gate.prints_values, "per-step, it is under the cap -- which is the trap"
+        h = BH.render_bundle_harness(self._plan(1600), gate, entry_symbol="k", output_tensor="Y0")
+        assert h["dumps_values"] is False
+        assert h["total_value_lines"] == 0
+        assert "MERLIN_GATE_MODE digest_and_argmax" in h["gate"]
+        assert "steps=%d" in h["gate"], "and it says the step count is why"
+
+    def test_a_session_that_fits_the_total_budget_still_dumps(self):
+        gate = self._gate(100, 10)
+        h = BH.render_bundle_harness(self._plan(100), gate, entry_symbol="k", output_tensor="Y0")
+        assert h["dumps_values"] is True and h["total_value_lines"] == 1000
+
+    def test_the_budget_is_reported_so_a_reader_can_see_what_bound_it(self):
+        gate = self._gate(1600, 10)
+        h = BH.render_bundle_harness(self._plan(1600), gate, entry_symbol="k", output_tensor="Y0")
+        assert h["console_line_budget"] == BH.CONSOLE_LINE_BUDGET
+
+
+class TestATOLERANCEMustBeDerivableNotMerelyDeclaredEarly:
+    """Declaring a tolerance before the run is the right discipline and is not sufficient.
+
+    MEASURED. A gate for SmolVLA was declared up front at atol=rtol=1e-4 -- in good faith, and
+    arbitrary. Comparing the capture's OWN two references to each other, 98.4% of elements fail that
+    tolerance and the worst disagreement is 5.36e-2. The device run duly reported bad=1600/1600 on
+    every step, which says nothing about the device: a gate that tight fails for any conforming
+    datapath. That is this repo's cos-0.484 incident in a subtler form -- there the wrong REFERENCE
+    was chosen, here the right reference with an impossible threshold.
+
+    So the capture's own reference pair supplies the floor, and a tighter tolerance is refused with
+    the numbers rather than accepted because it arrived early.
+    """
+
+    def _paths(self, tmp_path, gap):
+        import numpy as np
+        from merlin.targetgen import bundle_gate as G
+        base = np.arange(24, dtype=np.float32).reshape((4, 6))
+        np.savez(tmp_path / "session_goldens.npz", actions=base)
+        np.savez(tmp_path / "session_quality_fp32.npz", actions=base + np.float32(gap))
+        contract = {
+            "version": 1, "steps": 4,
+            "correctness": {"scope": "trajectory", "golden": "session_goldens.npz",
+                            "key": "actions", "output_index": 0,
+                            "reference": "eager_same_precision",
+                            "reference_sha256": G.reference_digest(
+                                tmp_path / "session_goldens.npz", "actions")},
+            "quality": {"scope": "trajectory", "golden": "session_quality_fp32.npz",
+                        "key": "actions", "output_index": 0, "reference": "eager_fp32",
+                        "reference_sha256": G.reference_digest(
+                            tmp_path / "session_quality_fp32.npz", "actions")}}
+        return contract
+
+    def test_the_spread_is_measured_from_the_two_references(self, tmp_path):
+        from merlin.targetgen import bundle_gate as G
+        self._paths(tmp_path, 0.25)
+        spread = G.reference_spread(tmp_path / "session_goldens.npz",
+                                    tmp_path / "session_quality_fp32.npz", "actions")
+        assert spread.max_absolute == pytest.approx(0.25, rel=1e-6)
+        assert spread.mean_absolute == pytest.approx(0.25, rel=1e-6)
+        assert spread.elements == 24
+        assert 0.0 < spread.cosine <= 1.0
+
+    def test_a_tolerance_INSIDE_the_spread_is_refused_with_the_numbers(self, tmp_path):
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        with pytest.raises(G.GateError) as excinfo:
+            G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                         bundle_dir=tmp_path, atol=1e-4, rtol=1e-4)
+        message = str(excinfo.value)
+        assert "tighter than this capture" in message
+        assert "0.25" in message, "the refusal must carry the measured floor"
+        assert "Declare a tolerance at or above" in message
+
+    def test_a_tolerance_AT_the_spread_is_accepted(self, tmp_path):
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        gate = G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                            bundle_dir=tmp_path, atol=0.25, rtol=0.0)
+        assert gate.atol == 0.25
+
+    def test_atol_and_rtol_are_counted_TOGETHER_against_the_floor(self, tmp_path):
+        """Either can carry the budget; a gate splitting it between them is not tighter."""
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        assert G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                            bundle_dir=tmp_path, atol=0.10, rtol=0.15)
+
+    def test_the_accepted_gate_RECORDS_the_floor_it_was_checked_against(self, tmp_path):
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        gate = G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                            bundle_dir=tmp_path, atol=0.25, rtol=0.0)
+        assert "own two references differ by up to 0.25" in gate.scope_note
+        assert "which is the floor this tolerance was checked against" in gate.scope_note
+
+    def test_the_rule_can_be_waived_but_only_EXPLICITLY(self, tmp_path):
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        gate = G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                            bundle_dir=tmp_path, atol=1e-4, rtol=1e-4,
+                                            require_derivable_tolerance=False)
+        assert gate.atol == 1e-4
+
+    def test_a_capture_with_only_ONE_reference_cannot_be_checked_and_is_not_pretended_to_be(
+            self, tmp_path):
+        """No pair means no floor. The gate is still built; its scope_note simply says nothing."""
+        from merlin.targetgen import bundle_gate as G
+        contract = self._paths(tmp_path, 0.25)
+        contract.pop("quality")
+        gate = G.gate_from_session_contract(contract, model="m", datapath="w8a8",
+                                            bundle_dir=tmp_path, atol=1e-9, rtol=0.0)
+        assert "floor this tolerance was checked against" not in gate.scope_note
+
+    def test_references_of_different_shapes_yield_no_number(self, tmp_path):
+        import numpy as np
+        from merlin.targetgen import bundle_gate as G
+        np.savez(tmp_path / "a.npz", actions=np.zeros((4, 6), dtype=np.float32))
+        np.savez(tmp_path / "b.npz", actions=np.zeros((4, 7), dtype=np.float32))
+        with pytest.raises(G.GateError, match="not a number about this model"):
+            G.reference_spread(tmp_path / "a.npz", tmp_path / "b.npz", "actions")
+
+    def test_an_absent_key_is_refused(self, tmp_path):
+        import numpy as np
+        from merlin.targetgen import bundle_gate as G
+        np.savez(tmp_path / "a.npz", other=np.zeros(4, dtype=np.float32))
+        np.savez(tmp_path / "b.npz", other=np.zeros(4, dtype=np.float32))
+        with pytest.raises(G.GateError, match="no spread can be measured"):
+            G.reference_spread(tmp_path / "a.npz", tmp_path / "b.npz", "actions")
+
+    def test_the_real_smolvla_floor_is_the_number_that_refuted_my_gate(self):
+        from merlin.common.paths import artifacts_dir
+        from merlin.targetgen import bundle_gate as G
+        capture = (artifacts_dir() / "recaptures" / "smolvla_int8_w8a8_consistent"
+                   / "stages" / "flow_denoise")
+        if not capture.is_dir():
+            pytest.skip("no smolvla recapture in this tree")
+        spread = G.reference_spread(capture / "session_goldens.npz",
+                                    capture / "session_quality_fp32.npz", "actions")
+        assert spread.elements == 16000
+        assert spread.max_absolute > 1e-4, "the floor must exceed the tolerance it refuted"
+        assert spread.cosine > 0.999, "and the two references are otherwise in close agreement"

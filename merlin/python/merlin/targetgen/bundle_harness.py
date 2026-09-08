@@ -65,6 +65,61 @@ class BundleHarnessError(ValueError):
     """The harness cannot be rendered, and the message says what is missing."""
 
 
+#: Total value lines a run may print. `CorrectnessGate.prints_values` decides on the PER-STEP
+#: element count, which is the right question for a one-shot program and the wrong one for a
+#: session: SmolVLA's 1,600 elements are under the 4,096 cap, but ten steps is 16,000 lines. The
+#: console is the binding constraint on what is gradeable at all -- a FireSim console measured
+#: single-digit characters per microsecond -- so the budget is checked against steps x elements.
+CONSOLE_LINE_BUDGET = 4096
+
+#: Float conversion specifiers this module must NEVER emit. A baremetal console's printf is a few
+#: hundred lines of `vprintfmt`, and the gemmini target's implements exactly `c s d u x l` -- no
+#: float conversions at all. A `%.9g` there is not a formatting nicety that degrades gracefully: it
+#: prints the SPECIFIER LITERALLY and then mis-consumes the varargs, so every later field on the
+#: line is garbage. Measured on a real 10-step run: 16,000 value lines each reading
+#: `MERLIN_OUT 0 %.9g`, and a header claiming `elements=-350469331`. A value dump that prints no
+#: values still looks like a value dump, so this is enforced rather than remembered.
+_FORBIDDEN_CONVERSIONS: frozenset[str] = frozenset("fFeEgGaA")
+
+#: Characters that may appear between the ``%`` and its conversion: flags, width, precision, and
+#: length modifiers. Scanned rather than substring-matched, because ``"%.9g"`` does not contain
+#: ``"%g"`` -- a substring check passes it, which is exactly the specifier that was measured
+#: printing itself literally.
+_CONVERSION_PREFIX = frozenset("-+ #0123456789.*hlLqjzZt'")
+
+
+def _conversions_in(fragment: str) -> set[str]:
+    """Every conversion character a printf format in ``fragment`` reaches, parsed structurally."""
+    found: set[str] = set()
+    index = 0
+    length = len(fragment)
+    while index < length:
+        if fragment[index] != "%":
+            index += 1
+            continue
+        index += 1
+        if index < length and fragment[index] == "%":      # an escaped percent converts nothing
+            index += 1
+            continue
+        while index < length and fragment[index] in _CONVERSION_PREFIX:
+            index += 1
+        if index < length:
+            found.add(fragment[index])
+            index += 1
+    return found
+
+
+def assert_console_portable(fragment: str) -> None:
+    """Refuse C that asks a baremetal printf for a float. See :data:`_FORBIDDEN_CONVERSIONS`."""
+    found = sorted(_conversions_in(fragment) & _FORBIDDEN_CONVERSIONS)
+    if found:
+        raise BundleHarnessError(
+            f"the rendered harness asks printf for float conversion(s) {found}, which a baremetal "
+            f"console's vprintfmt does not implement: it prints the specifier literally and "
+            f"mis-consumes every later vararg on the line. Emit the IEEE bit pattern with an "
+            f"integer conversion and decode it off-target instead")
+
+
 def pointer_expression(storage: str, offset: int, *, const_is_far: bool = False) -> str:
     """The C expression for one argument's pointer. Offsets come from the plan, never from order.
 
@@ -149,7 +204,8 @@ def render_session_loop(plan: PackPlan, *, steps: int, call: str,
 
 
 def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
-                step_expression: str = "0", from_trajectory: bool = False) -> str:
+                step_expression: str = "0", from_trajectory: bool = False,
+                dump_values: bool | None = None) -> str:
     """The C for one declared gate. Every branch prints what it checked, not just a verdict.
 
     ``step_expression`` selects this invocation's slice of the reference. For a trajectory the
@@ -164,10 +220,18 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
         f"const {output_ctype} *merlin_out = {out};",
         f"const int merlin_step = (int)({step_expression});",
         f"const {output_ctype} *merlin_want = merlin_reference + (long)merlin_step * {n};",
-        f'printf("MERLIN_GATE reference=%s comparison=%s atol=%.9g rtol=%.9g elements=%d '
-        f'step=%d/%d\\n",',
-        f'       "{gate.reference_file}", "{gate.comparison}", {gate.atol!r}, {gate.rtol!r}, {n},',
-        f"       merlin_step, {int(gate.steps)});",
+        # The tolerances travel as IEEE bit patterns: exact, and printable by a printf with no
+        # float support. Their decimal values are in the recorded gate declaration.
+        f"const double merlin_atol = {gate.atol!r}, merlin_rtol = {gate.rtol!r};",
+        "unsigned long long merlin_atol_bits = 0, merlin_rtol_bits = 0;",
+        "for (unsigned k = 0; k < sizeof(double); ++k) {",
+        "  merlin_atol_bits |= (unsigned long long)((const unsigned char *)&merlin_atol)[k] << (8u * k);",
+        "  merlin_rtol_bits |= (unsigned long long)((const unsigned char *)&merlin_rtol)[k] << (8u * k);",
+        "}",
+        f'printf("MERLIN_GATE reference=%s comparison=%s atol_bits=%016llx rtol_bits=%016llx '
+        f'elements=%d step=%d/%d\\n",',
+        f'       "{gate.reference_file}", "{gate.comparison}", merlin_atol_bits, merlin_rtol_bits,',
+        f"       {n}, merlin_step, {int(gate.steps)});",
         "int merlin_bad = 0, merlin_nonfinite = 0;",
         "unsigned long long merlin_digest = 1469598103934665603ULL;",
         f"int merlin_argmax = 0;",
@@ -193,15 +257,28 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
     ]
     # WHAT MAY BE PRINTED. Above the cap the console is the binding constraint on gradeability, so
     # the digest and the argmax stand in for the values -- and the harness SAYS it did that.
-    if gate.prints_values:
+    if dump_values if dump_values is not None else gate.prints_values:
+        # BIT PATTERNS, not formatted floats: exact, and printable by a printf with no float
+        # support. The step index is on every line, because a dump that cannot say which step it
+        # belongs to is not usable for a trajectory.
         lines += [
-            f'printf("MERLIN_GATE_MODE values elements=%d\\n", {n});',
-            f"for (int i = 0; i < {n}; ++i) printf(\"MERLIN_OUT %d %.9g\\n\", i, (double)merlin_out[i]);",
+            f'printf("MERLIN_GATE_MODE value_bits elements=%d width=%u\\n", {n},',
+            "       (unsigned)sizeof(merlin_out[0]));",
+            f"for (int i = 0; i < {n}; ++i) {{",
+            # Assembled byte by byte rather than by memcpy or a union: no header to include and no
+            # type punning, in a fragment that is spliced into someone else's translation unit.
+            "  unsigned long long merlin_word = 0;",
+            "  const unsigned char *merlin_raw = (const unsigned char *)&merlin_out[i];",
+            "  for (unsigned k = 0; k < sizeof(merlin_out[0]); ++k)",
+            "    merlin_word |= (unsigned long long)merlin_raw[k] << (8u * k);",
+            '  printf("MERLIN_OUT %d %d %016llx\\n", merlin_step, i, merlin_word);',
+            "}",
         ]
     else:
         lines += [
-            f'printf("MERLIN_GATE_MODE digest_and_argmax elements=%d cap=%d\\n",',
-            f"       {n}, {CONSOLE_DUMP_CAP});",
+            f'printf("MERLIN_GATE_MODE digest_and_argmax elements=%d steps=%d '
+            f'line_budget=%d\\n",',
+            f"       {n}, {int(gate.steps)}, {CONSOLE_LINE_BUDGET});",
         ]
     lines += [
         'printf("MERLIN_GATE_RESULT bad=%d nonfinite=%d argmax=%d digest=%016llx\\n",',
@@ -333,8 +410,13 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     steps = int(gate.steps)
     record = ({"offset": graded.offset, "elements": graded_elements, "ctype": output_ctype}
               if steps > 1 else None)
+    # THE CONSOLE BUDGET IS A TOTAL. `gate.prints_values` asks about one step's elements, which is
+    # the right question for a one-shot program and the wrong one for a session.
+    total_value_lines = steps * graded_elements
+    dump_values = gate.prints_values and total_value_lines <= CONSOLE_LINE_BUDGET
     gate_fn = _gate_check(gate, output_offset=graded.offset, output_ctype=output_ctype,
-                          step_expression="merlin_step_index", from_trajectory=steps > 1)
+                          step_expression="merlin_step_index", from_trajectory=steps > 1,
+                          dump_values=dump_values)
     const_declaration = (
         [f"/* The const blob is NOT a symbol here: it lives at the fixed absolute address",
          f"   {CONST_BASE_MACRO}, supplied as a compile-time literal so every reference to it",
@@ -368,6 +450,9 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     recorded_bytes = (steps * graded_elements * _CTYPE_BYTES.get(output_ctype, 0)
                       if record is not None else 0)
 
+    for fragment in (declarations, body, reseed):
+        assert_console_portable(fragment)
+
     return {
         "declarations": declarations,
         # ONE body for both the warm and the measured invocation -- they must be the same program.
@@ -393,6 +478,9 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
         "const_addressing": ("absolute_literal" if far else "linker_symbol"),
         "reachable_bytes": reachable_bytes,
         "pc_relative_reach_bytes": PC_RELATIVE_REACH_BYTES,
+        "dumps_values": dump_values,
+        "total_value_lines": total_value_lines if dump_values else 0,
+        "console_line_budget": CONSOLE_LINE_BUDGET,
         "gate_declaration": gate.to_dict(),
     }
 
