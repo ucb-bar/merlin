@@ -1,0 +1,303 @@
+{
+  "approximation": false,
+  "candidate_count": 16,
+  "float_residual_refused": [
+    {
+      "ordered_i32_branch_count": 2,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 109,
+      "source_shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 180,
+      "source_shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 251,
+      "source_shape": [
+        1,
+        256,
+        56,
+        56
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 2,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 332,
+      "source_shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 403,
+      "source_shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 474,
+      "source_shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 545,
+      "source_shape": [
+        1,
+        512,
+        28,
+        28
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 2,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 626,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 697,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 768,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 839,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 910,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 981,
+      "source_shape": [
+        1,
+        1024,
+        14,
+        14
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 2,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 1062,
+      "source_shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    {
+      "ordered_i32_branch_count": 1,
+      "reasons": [
+        "source operands are f32 at the add; LOOP_WS is_resadd consumes i8 operands",
+        "one residual operand is a live f32 block value, not an exclusive i32 branch",
+        "source uses per-channel branch scales; LOOP_WS exposes one scalar scale per input",
+        "source adds a per-channel f32 bias before the residual join; is_resadd has no bias input",
+        "hardware rounds/clamps each scaled input before addition; source rounds once after f32 addition",
+        "source qparams are runtime SSA tensors; LOOP_WS scale fields must be compile-time f32 constants"
+      ],
+      "selected": false,
+      "source_op_index": 1133,
+      "source_shape": [
+        1,
+        2048,
+        7,
+        7
+      ]
+    },
+    {
+      "reasons": [
+        "residual float result has no unique exact roundeven/clamp i8 sink"
+      ],
+      "selected": false,
+      "source_op_index": 1204
+    }
+  ],
+  "hardware_semantics": "clamp_i8(add_i32(rne_clamp_i8(a*A_scale),rne_clamp_i8(b*B_scale))*C_scale)",
+  "integer_refused": [],
+  "lowering_status": "no_exact_loop_ws_resadd_site_in_canonical_capture",
+  "scheduled_instruction_count": 14308,
+  "schema": "canonical_pt2e_resnet50_gemmini_resadd_census_v1",
+  "selected_count": 0,
+  "source_op_count": 1240,
+  "source_sha256": "76c26171096661650e2ee440fb545926936b1e770d2bfd0206a6509e6e835e94",
+  "target_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673"
+}

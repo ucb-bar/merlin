@@ -1,0 +1,37 @@
+{
+  "artifact_status": "implemented_exact_subset_canonical_resnet_refused_0_of_16",
+  "base_artifact": "development_phase2_compute_only_loop_conv_20260908",
+  "compiler_tree": {
+    "files": 46,
+    "sha256": "7e662856b1a1aadbb9a55bba5c617c6be74c4f460e8a012210f131efdc08ff3f"
+  },
+  "tests_tree": {
+    "files": 17,
+    "sha256": "3ae47998a69705123f106f83db635e5a010df7208f888ce5270fff847e865479"
+  },
+  "canonical_resnet50": {
+    "source_sha256": "76c26171096661650e2ee440fb545926936b1e770d2bfd0206a6509e6e835e94",
+    "candidate_residual_adds": 16,
+    "selected_loop_ws_resadds": 0,
+    "target_sha256": "ac1fb50a5176c3749c6abea51be254f68108174e7f7831c813caca3a872dc673",
+    "target_byte_identical_to_parent": true,
+    "approximation": false
+  },
+  "generic_exact_subset": {
+    "status": "implemented",
+    "input_dtype": "i8",
+    "scales": {"A": 1.0, "B": 1.0, "C": 1.0},
+    "rounding": "identity_exact",
+    "saturation": [-128, 127],
+    "optional_relu": true,
+    "all_i8_pairs_checked": 65536
+  },
+  "tests": "65_passed_6_subtests",
+  "hardware": {
+    "firesim_run": false,
+    "l3_run": false,
+    "queue_action": false,
+    "performance_claim": "none"
+  },
+  "next_required_contract": "native_aligned_per_tensor_i8_branches_with_hardware_order_rounding"
+}
