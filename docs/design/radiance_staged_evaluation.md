@@ -28,6 +28,12 @@ writer and Muon emitter reproduce; their sources point to byte-pinned capture re
 shapes. These retain application shapes and run through the fast functional oracle. No
 capsule selected because it resembles Radiance PR #1 is in this cohort.
 
+The corpus currently has thirty directories marked `source_role: model_derived`: these sixteen exact
+full-shape members and fourteen reduced `_l3` siblings of the contraction members.  Thus the staged
+cohort contains every available full-shape model-derived capsule.  The fourteen omitted directories are
+smoke-size duplicates, not additional application shapes; they cannot contribute to either the exact
+L2 convergence score or the exact GSIM evaluation score.
+
 This is the current **model-derived admitted search covering set**.  A 16/16 result is not an E2E
 SmolVLA/LSTMNetVIT result and must not be reported as whole-application readiness.  The census contains
 13,046 classified regions. The fourteen contraction shapes plus the two exact maps do not represent
