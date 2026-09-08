@@ -225,3 +225,129 @@ class TestItReproducesTheShippedResNetBundleExactly:
         buf = _buffer([_arg("arg0")], {"arg0": _t([4, 4])})
         assert BP.plan(buf, row_pitch_elements=16).digest() != \
             BP.plan(buf, row_pitch_elements=32).digest()
+
+
+class TestWritingTheBytes:
+    """Planning a layout and producing one are different claims; this is the second.
+
+    THE ACCEPTANCE TEST is byte-for-byte agreement with the shipped ResNet-50 blob: 217/217 tensors,
+    all 26,563,328 bytes, packed from the capture that bundle pinned. That bundle ran correctly on
+    FireSim, so a difference is this writer being wrong. Getting there needed the declared weight
+    prepack -- without it 216 of 217 matched and the dense layer was transposed, which is correct
+    arithmetic on the wrong bytes for one layer out of 54 and is invisible to any size check.
+    """
+
+    def _plan(self, shape=(2, 16), dtype="i8", extra=None):
+        tensors = {"arg0": _t(shape, dtype), "Y0": _t((1, 4), "i32")}
+        args = [_arg("arg0"), _arg("Y0", "write")]
+        return BP.plan(_buffer(args, tensors, params=extra or {}), row_pitch_elements=16)
+
+    def _source(self, payload):
+        def source(key):
+            if key not in payload:
+                raise KeyError(key)
+            return payload[key]
+        return source
+
+    def test_it_writes_exactly_the_planned_size(self, tmp_path):
+        plan = self._plan()
+        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(32)}),
+                                      tmp_path / "const.bin")
+        assert receipt["bytes"] == plan.const_bytes
+        assert (tmp_path / "const.bin").stat().st_size == plan.const_bytes
+
+    def test_the_receipt_digests_the_bytes_actually_written(self, tmp_path):
+        import hashlib
+        plan = self._plan()
+        receipt = BP.write_const_blob(plan, self._source({"arg0": bytes(range(32))}),
+                                      tmp_path / "const.bin")
+        on_disk = hashlib.sha256((tmp_path / "const.bin").read_bytes()).hexdigest()
+        assert receipt["sha256"] == on_disk
+
+    def test_a_missing_weight_is_refused_never_packed_as_zeros(self, tmp_path):
+        """A zero weight is a real number the device would happily compute with."""
+        with pytest.raises(BundlePackError, match="cannot be packed as zeros"):
+            BP.write_const_blob(self._plan(), self._source({}), tmp_path / "const.bin")
+
+    def test_a_short_or_long_source_is_refused(self, tmp_path):
+        for wrong in (bytes(31), bytes(33)):
+            with pytest.raises(BundlePackError, match="byte\\(s\\) and the source supplied"):
+                BP.write_const_blob(self._plan(), self._source({"arg0": wrong}),
+                                    tmp_path / "const.bin")
+
+    def test_row_padding_is_written_explicitly_as_zeros(self, tmp_path):
+        """A reader cannot tell an intentional zero from an uninitialised one."""
+        plan = self._plan(shape=(2, 4), dtype="i8")          # 4 cols padded to a 16-element pitch
+        BP.write_const_blob(plan, self._source({"arg0": bytes([7] * 8)}), tmp_path / "const.bin")
+        written = (tmp_path / "const.bin").read_bytes()
+        assert written[:4] == bytes([7] * 4), "the row's real bytes"
+        assert written[4:16] == bytes(12), "its pad, explicitly zero"
+
+    def test_the_manifest_names_the_source_under_either_spelling(self, tmp_path):
+        """A capture spells a parameter's source `weight` and a graph INPUT's `name`."""
+        plan = self._plan()
+        for field in ("weight", "name"):
+            receipt = BP.write_const_blob(
+                plan, self._source({"the_source": bytes(32)}), tmp_path / f"c_{field}.bin",
+                weight_manifest={"0": {field: "the_source"}})
+            assert receipt["tensors"][0]["weight"] == "the_source"
+
+
+class TestThePrepackIsAppliedFromTheDeclaredRecipe:
+    def test_a_reshape_transition_leaves_the_bytes_alone(self):
+        raw = bytes(range(24))
+        recipe = {"tensor": "w", "source_shape": [2, 3, 2, 2], "packed_shape": [2, 12],
+                  "source_layout": "OIHW", "packed_layout": "CoK_dim_padded"}
+        assert BP.prepack_bytes(raw, recipe, dtype="i8") == raw
+
+    def test_a_transpose_transition_moves_the_elements(self):
+        """The dense layer: NK [1000,2048] -> KN_dim_padded [2048,1000]."""
+        raw = bytes([0, 1, 2, 3, 4, 5])                       # 2x3, row-major
+        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
+                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        assert BP.prepack_bytes(raw, recipe, dtype="i8") == bytes([0, 3, 1, 4, 2, 5])
+
+    def test_a_transpose_carries_multi_byte_elements_intact(self):
+        """Byte-wise, so a dtype numpy cannot represent (bf16) permutes losslessly."""
+        raw = bytes([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x11, 0x22])   # 2x2 of 2-byte elements
+        recipe = {"tensor": "w", "source_shape": [2, 2], "packed_shape": [2, 2],
+                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        got = BP.prepack_bytes(raw, recipe, dtype="bf16")
+        assert got == bytes([0xAA, 0xBB, 0xEE, 0xFF, 0xCC, 0xDD, 0x11, 0x22])
+
+    def test_an_undeclared_transition_is_refused_not_assumed_to_be_a_reshape(self):
+        """A permutation assumed away is invisible: the element count always matches."""
+        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
+                  "source_layout": "HWIO", "packed_layout": "something_new"}
+        with pytest.raises(BundlePackError, match="does not describe"):
+            BP.prepack_bytes(bytes(6), recipe, dtype="i8")
+
+    def test_a_source_shape_of_the_wrong_rank_is_refused(self):
+        recipe = {"tensor": "w", "source_shape": [6], "packed_shape": [3, 2],
+                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        with pytest.raises(BundlePackError, match="permutes 2 axes"):
+            BP.prepack_bytes(bytes(6), recipe, dtype="i8")
+
+    def test_a_source_of_the_wrong_size_is_refused(self):
+        recipe = {"tensor": "w", "source_shape": [2, 3], "packed_shape": [3, 2],
+                  "source_layout": "NK", "packed_layout": "KN_dim_padded"}
+        with pytest.raises(BundlePackError, match="needs 6 source byte"):
+            BP.prepack_bytes(bytes(5), recipe, dtype="i8")
+
+    def test_the_receipt_records_which_transition_was_applied(self, tmp_path):
+        tensors = {"arg0": _t((3, 2), "i8"), "Y0": _t((1, 4), "i32")}
+        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")], tensors),
+                       row_pitch_elements=16)
+        receipt = BP.write_const_blob(
+            plan, lambda k: bytes(range(6)), tmp_path / "c.bin",
+            prepack_recipes=[{"tensor": "arg0", "source_shape": [2, 3], "packed_shape": [3, 2],
+                              "source_layout": "NK", "packed_layout": "KN_dim_padded"}])
+        assert receipt["tensors"][0]["prepack"] == "NK->KN_dim_padded"
+
+    def test_a_tensor_with_no_recipe_is_left_alone(self, tmp_path):
+        plan = BP.plan(_buffer([_arg("arg0"), _arg("Y0", "write")],
+                               {"arg0": _t((1, 16), "i8"), "Y0": _t((1, 4), "i32")}),
+                       row_pitch_elements=16)
+        receipt = BP.write_const_blob(plan, lambda k: bytes(range(16)), tmp_path / "c.bin",
+                                      prepack_recipes=[{"tensor": "somethingelse"}])
+        assert receipt["tensors"][0]["prepack"] is None
