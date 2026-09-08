@@ -54,6 +54,41 @@ def _timing(build_s: float, sim_s: float) -> dict:
     return {"build_s": round(build_s, 3), "sim_active_s": round(sim_s, 3), "oracle_wait_s": 0.0}
 
 
+def _compact_numeric_from_console(console: str, *, expected_elements: int) -> dict[str, Any]:
+    """Parse the trusted Cyclotron harness's explicit compact verdict.
+
+    A clean process exit is not evidence: require exactly one internally
+    consistent verdict plus the ordinary DONE marker.  This keeps a timeout,
+    truncated UART stream, or a kernel that never reached validation from
+    becoming a pass merely because no full output tensor was printed.
+    """
+    lines = [line.strip() for line in console.splitlines()]
+    markers = [line for line in lines if line.startswith("MERLIN_NUMERIC ")]
+    if len(markers) != 1 or lines.count("DONE") != 1:
+        raise muon.MuonError(
+            "Cyclotron compact numeric validation requires exactly one MERLIN_NUMERIC verdict "
+            "and a DONE marker")
+    fields = markers[0].split()
+    if len(fields) != 4 or fields[1] not in ("PASS", "FAIL"):
+        raise muon.MuonError(f"malformed Cyclotron compact numeric verdict: {markers[0]!r}")
+    try:
+        checked, mismatches = int(fields[2]), int(fields[3])
+    except ValueError as exc:
+        raise muon.MuonError(f"non-integer Cyclotron compact numeric counts: {markers[0]!r}") from exc
+    if (expected_elements <= 0 or checked != expected_elements
+            or mismatches < 0 or mismatches > checked):
+        raise muon.MuonError(f"invalid Cyclotron compact numeric counts: {markers[0]!r}")
+    status = fields[1].lower()
+    if (status == "pass") != (mismatches == 0):
+        raise muon.MuonError(f"inconsistent Cyclotron compact numeric verdict: {markers[0]!r}")
+    return {
+        "status": status,
+        "elements_checked": checked,
+        "mismatch_count": mismatches,
+        "witness": "trusted_muon_post_kernel_comparator",
+    }
+
+
 def _adapter(simulator: str) -> Callable:
     def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
         if not muon.available(simulator):
@@ -69,6 +104,10 @@ def _adapter(simulator: str) -> Callable:
         from . import muon_mx_abi as _mxabi
         from . import muon_mx_codegen as _mx
         target = cb.get("target", "radiance")
+        expected = cb.get("_oracle_expected_outputs")
+        numeric_policy = cb.get("_oracle_numeric_policy")
+        compact_numeric = (simulator == "cyclotron" and isinstance(expected, dict)
+                           and bool(expected) and muon.is_mlir_artifact(kernel_src))
         # A block-scaled MX capsule is graded on the HARNESS's reference MX kernel, whatever the artifact.
         #
         # This branch used to exist only inside program_from_cb, i.e. only on the inline-SOURCE path. An
@@ -119,7 +158,10 @@ def _adapter(simulator: str) -> Callable:
             # THESIS PATH: the agent emitted an LLVM-dialect MLIR kernel (a compiler lowering). Build it
             # fork-free (stock LLVM rv32 + RTL-derived Muon re-encode + runner-owned external-kernel harness);
             # this path is fork-free by construction (never clang-muon), so the toolchain stamp is "fork-free".
-            elf, toolchain = muon.compile_mlir_forkfree(kernel_src, cb, workdir, target=target), "fork-free"
+            elf, toolchain = muon.compile_mlir_forkfree(
+                kernel_src, cb, workdir, target=target,
+                compact_expected=expected if compact_numeric else None,
+                compact_policy=numeric_policy if compact_numeric else None), "fork-free"
         else:
             program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
@@ -127,8 +169,12 @@ def _adapter(simulator: str) -> Callable:
         console, cycles, summary = muon.run_elf(elf, simulator=simulator, timeout=timeout)
         t2 = time.perf_counter()
         completion_only = False
+        compact_verdict = (_compact_numeric_from_console(
+            console,
+            expected_elements=sum(len(_mh._flat_values(value)) for value in expected.values()),
+        ) if compact_numeric else None)
         try:
-            outputs, raw = muon.parse_output(console, cycles)
+            outputs, raw = ({}, "") if compact_verdict is not None else muon.parse_output(console, cycles)
         except muon.MuonError:
             # The Verilator RTL harness runs the kernel to completion (``run_elf`` only returns here
             # once it reached the RTL "finished execution" marker) but does not surface the kernel's
@@ -152,6 +198,11 @@ def _adapter(simulator: str) -> Callable:
         }
         if completion_only:
             result["completion_only"] = True
+        if compact_verdict is not None:
+            result["numeric_verdict"] = {
+                **compact_verdict,
+                "policy": dict(numeric_policy or {}),
+            }
         return result
     return run
 

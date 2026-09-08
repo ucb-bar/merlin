@@ -4173,3 +4173,119 @@ def test_baseline_storage_view_keeps_separate_binding_and_details(tmp_path, boun
     assert "baseline_tensor_392" not in json.dumps(view)
     assert record == original
     assert len(json.dumps(summary)) < 4000
+
+
+def test_host_fast_evaluator_is_bound_recorded_and_exposed_to_agent(tmp_path):
+    from merlin.perf.phase2_portfolio import (
+        FastEvaluationPolicy,
+        QualityBudget,
+        QualityLimit,
+    )
+
+    baseline, candidate, source = (tmp_path / name for name in
+                                   ("fast_base", "fast_candidate", "fast_model"))
+    for path in (baseline, candidate, source):
+        path.mkdir()
+        (path / "source.txt").write_text(path.name)
+    (source / "capsule.yaml").write_text("interface_mlir: capsule.interface.mlir\n")
+    (source / "capsule.interface.mlir").write_text("module {}\n")
+    sentinel = PAS.StageE2ESentinel(
+        "fast-model", str(source), str(source), PAS._exact_tree_record(source)["sha256"],
+        ("lane",), ("L2",))
+
+    def analyzer(base, current, objective, **kwargs):
+        candidate_sha = hash_tree(current)["sha256"]
+        return {
+            "candidate_sha256": candidate_sha,
+            "workload": {"capsule_sha256": objective.capsule_sha256},
+            "emission": {"candidate_lowered_sha256": SHA["llvm"],
+                         "candidate_command_buffer_sha256": SHA["buffer"]},
+            "diagnostics": {
+                "captured_logical_graph": {"status": "verified",
+                    "logical_dispatch_digest": SHA["graph"]},
+                "verified_global_plan_emission": {
+                    "status": "verified", "plan_digest": SHA["plan"],
+                    "candidate_sha256": candidate_sha,
+                    "logical_dispatch_digest": SHA["graph"],
+                    "source_sha256": PAS._sha256_file(source / "capsule.interface.mlir"),
+                    "candidate_lowered_sha256": SHA["llvm"],
+                    "candidate_command_buffer_sha256": SHA["buffer"],
+                    "emitted_dispatches": 1},
+                "arms": {"candidate": {"status": "emitted", "macs": 1,
+                                         "exact": True, "movement": {"known_bytes": 1}}},
+            },
+        }
+
+    def metrics(cycles, placed, islands, boundaries):
+        return {
+            "cycles": {"lo": cycles, "hi": cycles, "provenance": ["host model"]},
+            "movement_bytes": cycles,
+            "movement_scope": "physical",
+            "occupancy": {"total_cycles": cycles,
+                "busy_cycles": {"compute": cycles * (0.6 if cycles < 100 else 0.5),
+                                "move": cycles * 0.5},
+                "compute_resources": ["compute"], "movement_resources": ["move"],
+                "movement_elapsed_cycles": cycles * 0.5,
+                "overlap_cycles": cycles * (0.25 if cycles < 100 else 0.125),
+                "overlap_available_cycles": cycles * 0.5,
+                "movement_bytes": cycles, "encoding_transitions": islands,
+                "provenance": ["explicit activity schedule"]},
+            "coverage": {"supported_work_total": 100, "supported_work_placed": placed,
+                "largest_connected_region_work": placed - 10,
+                "connected_region_work": [placed - 10, 10],
+                "host_islands": [{"taxonomy": "unsupported-control", "count": islands,
+                                  "work": 5}],
+                "boundary_crossings": boundaries, "boundary_bytes": cycles,
+                "work_unit": "source work", "provenance": ["source ownership"]},
+            "roofline": {"lower_bound_cycles": cycles * 0.5,
+                "resource_floors": {"compute": cycles * 0.5, "movement": cycles * 0.4},
+                "limiting_resources": ["compute"],
+                "optimization_effects": ["movement", "tiling"],
+                "composition": "explicit max", "provenance": ["host roofline"]},
+            "encoding_conversions": {"count": islands, "bytes": cycles,
+                "cycles": {"lo": islands, "hi": islands, "provenance": ["host model"]}},
+            "risk_score": 0.05, "provenance": ["bound host adapter"],
+        }
+
+    provider_calls = []
+
+    def provider(**kwargs):
+        provider_calls.append(kwargs["sentinel"].capsule_sha256)
+        assert kwargs["provider_binding"]["implementation_sha256"] == SHA["target"]
+        return {
+            "baseline": metrics(100, 70, 2, 10),
+            "candidate": metrics(80, 80, 1, 8),
+            "baseline_quality": {"values": {"error": 0.01}, "complete": True,
+                                 "provenance": ["independent reference"]},
+            "candidate_quality": {"values": {"error": 0.01}, "complete": True,
+                                  "provenance": ["independent reference"]},
+        }
+
+    budget = QualityBudget((QualityLimit("error", "at_most", 0.02),),
+                           "independent complete output")
+    experiment = G.GlobalPerfExperiment(
+        baseline=baseline, baseline_sha256=hash_tree(baseline)["sha256"],
+        sentinel=sentinel, target="test-target", target_sha256=SHA["target"],
+        output=tmp_path / "fast_run", analyzer=analyzer,
+        fast_evaluation_provider=provider,
+        fast_evaluation_policy=FastEvaluationPolicy(),
+        quality_budgets={sentinel.capsule_sha256: budget},
+        fast_evaluation_provider_binding={
+            "schema": "host_fast_analytical_evaluator_binding_v1",
+            "implementation_sha256": SHA["target"],
+            "execution": "host_analytical_only", "full_model_simulation_allowed": False,
+            "maximum_model_seconds": 1,
+            "calibration_sha256s": [SHA["plan"]]},
+    )
+
+    record = experiment.analyze(candidate, hypothesis="Evaluate a fast global candidate")
+    digest = G.portfolio_action_digest(
+        record, complete_evidence="complete.json", edit_contract=None)
+
+    assert provider_calls == [sentinel.capsule_sha256]
+    assert record["fast_evaluation"]["status"] == "retain"
+    assert record["readiness"]["selection"] == \
+        "multi_model_pareto_without_invented_static_cycle_total"
+    assert digest["fast_accuracy_bounded_evaluation"] == record["fast_evaluation"]
+    assert PAS._mapping_file(experiment.output / "experiment.json")[
+        "fast_evaluation_binding_sha256"] == experiment.fast_evaluation_binding_sha256

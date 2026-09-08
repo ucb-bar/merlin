@@ -2,7 +2,7 @@
 title: "Design: wiring phase 2 — what the performance search can measure, ask, and refuse"
 kind: design
 status: current
-last_verified: 2026-09-06
+last_verified: 2026-09-08
 owner: gemmini-perf-bench
 related: [compiler_plane, expert_gap_attribution, command_stream_reorder_emitter]
 code_refs:
@@ -22,6 +22,7 @@ code_refs:
   - merlin/python/merlin/perf/execution_policy.py
   - merlin/python/merlin/perf/model_placement.py
   - merlin/python/merlin/perf/whole_model_report.py
+  - merlin/python/merlin/perf/phase2_portfolio.py
   - merlin/python/merlin/xdsl_dialects/lowering/global_plan.py
   - merlin/python/merlin/xdsl_dialects/lowering/global_plan_emission.py
   - merlin/python/merlin/runtime/program.py
@@ -38,6 +39,31 @@ because it could not run.
 
 Every number below is measured, from campaign `20260903T222654Z` (three trials) and the frozen
 phase-1 run `merlincirct_arm4_func_20260902_codex5_evidence_gsim` unless stated otherwise.
+
+## Fast accuracy-bounded portfolio gate
+
+`merlin.perf.phase2_portfolio` is the simulation-free selection layer used when a host installs a
+content-bound analytical provider. For every portfolio model and for both the immutable comparison
+compiler and candidate, the provider must supply conservative cycle intervals, physical movement
+bytes, an explicit resource-timeline occupancy/overlap summary, encoding-conversion count/bytes/
+cycles, a composed roofline lower bound, calibration risk, and source-work topology. The topology
+contains supported work placed, largest connected region, typed host islands, and boundary
+crossings/bytes. Unknown inputs remain `UNKNOWN`; they are never zero-filled.
+
+Every model has an explicit complete-output quality budget. The gate rejects a quality violation,
+excess model risk, an over-wide cycle interval, or a regression on any known Pareto axis. It does not
+sum unlike model cycles. A geometric mean is reported only for dimensionless conservative speedup
+ratios. Increasing accelerator coverage alone cannot retain a candidate: at least one cycle,
+physical-movement, occupancy/overlap, encoding, or boundary objective must improve. This penalises
+offloads that merely increase op count while adding transfers or reducing accelerator occupancy.
+
+The provider binding pins its implementation and calibration receipts, declares host-analytical
+execution, forbids complete-model/layer simulation, and caps each model evaluation at 60 seconds.
+Phase 2 writes the resulting gate into each iteration, sealed review artifact, and
+`portfolio_action_digest`. Its recommended levers are intersected with the existing host-frozen edit
+contract, so diagnostics can point the agent to exact files and AST symbols without granting new
+edit authority. A configured non-retain verdict refuses the authored round; without a configured
+provider, the record says `not_configured` and the older structural-only policy is unchanged.
 
 ## The recurring defect: a check that could not run reported success
 
