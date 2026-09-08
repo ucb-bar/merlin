@@ -1,0 +1,32 @@
+{
+  "assertion_clean": true,
+  "claim_scope": "synthetic exact-value shape test on assertion-enabled elaborated RTL GSIM; not capture-partition qualification",
+  "comparison": {
+    "elements": 1600,
+    "expected_sha256": "3c0aa84a15a4b5d7e25424460fdf2351c5758ed7e31e3723f7acd0000462d911",
+    "max_abs_error": 0.0,
+    "mismatches": 0
+  },
+  "compile_receipt": "evidence/receipts/compile/matmul_50_720_32_bias.json",
+  "compile_receipt_sha256": "e3a3a19c2352040536227d9a5c5b5ac3bfcdc9878b50a5378a50452c7b971ef6",
+  "cycles": 310590,
+  "cycles_per_second": 312686.41639738803,
+  "elapsed_ns": 993295467,
+  "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim_assert",
+  "engine_kind": "assertion-enabled elaborated RTL GSIM",
+  "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+  "errors": [],
+  "halt_reason": -1,
+  "halted": true,
+  "kernel_id": "matmul_50_720_32_bias",
+  "qualified": true,
+  "raw_output": "numeric/matmul_50_720_32_bias/raw_output.bf16.bin",
+  "raw_output_sha256": "3c0aa84a15a4b5d7e25424460fdf2351c5758ed7e31e3723f7acd0000462d911",
+  "returncode": 0,
+  "schema": "atlas_shape_rtl_numeric_receipt_v1",
+  "spec": "numeric/matmul_50_720_32_bias/raw_gsim_spec.json.gz",
+  "spec_sha256": "3d49ad39ded60a86d1ba858c3d15190e2d443ea020c771e3b9a891632e27bf8e",
+  "stderr_observation": "empty",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "2111f9df95bff08e511bca2b25ed6cd85eeece63564013c44059da41bc905a95"
+}

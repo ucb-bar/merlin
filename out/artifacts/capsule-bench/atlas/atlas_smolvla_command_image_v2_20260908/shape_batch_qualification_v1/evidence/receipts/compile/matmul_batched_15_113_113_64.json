@@ -1,0 +1,33 @@
+{
+  "assembly_sha256": "892eb681643ca8e73ca183b88537b77033498197afbfe2c8ec90f42c34727cdf",
+  "bias_fused": false,
+  "claim_scope": "shape compilation and static image validation only; not numeric or physical-partition qualification",
+  "command_buffer_sha256": "5a51c39f66c99bc381dacdef61ec6bc66159c6f5338344f86fef8208b05eeb52",
+  "compiler": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/submission/mlir_oot/atlas-opt",
+  "compiler_sha256": "c0306634c4965b9a339bc970d1597ed65319412038bfed56cbee879217a073d8",
+  "control_flow": {
+    "backward_edges": 7,
+    "branches": 7,
+    "jumps": 7
+  },
+  "elapsed_ns": 416192569,
+  "errors": [],
+  "geometry": {
+    "B": 15,
+    "K": 113,
+    "M": 113,
+    "N": 64
+  },
+  "imem_words": 32768,
+  "instruction_words": 21408,
+  "kernel_id": "matmul_batched_15_113_113_64",
+  "kind": "matmul_batched",
+  "pair_bank_validation": "passed",
+  "partition_occurrences": 16,
+  "qualified": true,
+  "returncode": 0,
+  "schema": "atlas_shape_compile_receipt_v1",
+  "source_interface": "whole_capture_plan/interfaces/matmul_batched_15_113_113_64.mlir",
+  "source_interface_sha256": "059253aa368435a835f7121afb37a6646beee09d2757840b8806c8851865862c",
+  "stderr": ""
+}

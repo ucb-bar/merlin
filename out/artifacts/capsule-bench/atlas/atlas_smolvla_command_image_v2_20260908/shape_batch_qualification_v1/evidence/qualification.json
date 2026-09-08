@@ -1,0 +1,202 @@
+{
+  "claim": "fresh compilation of 28 unique FP8 contraction shapes plus representative RTL numerics; not whole-model E2E qualification",
+  "compile_receipts": {
+    "matmul_1024_3072_768_bias": "receipts/compile/matmul_1024_3072_768_bias.json",
+    "matmul_1024_768_3072_bias": "receipts/compile/matmul_1024_768_3072_bias.json",
+    "matmul_1024_768_768_bias": "receipts/compile/matmul_1024_768_768_bias.json",
+    "matmul_113_2560_960": "receipts/compile/matmul_113_2560_960.json",
+    "matmul_113_320_320": "receipts/compile/matmul_113_320_320.json",
+    "matmul_113_960_2560": "receipts/compile/matmul_113_960_2560.json",
+    "matmul_113_960_320": "receipts/compile/matmul_113_960_320.json",
+    "matmul_113_960_960": "receipts/compile/matmul_113_960_960.json",
+    "matmul_1_32_960_bias": "receipts/compile/matmul_1_32_960_bias.json",
+    "matmul_50_1440_720_bias": "receipts/compile/matmul_50_1440_720_bias.json",
+    "matmul_50_2048_720": "receipts/compile/matmul_50_2048_720.json",
+    "matmul_50_32_720_bias": "receipts/compile/matmul_50_32_720_bias.json",
+    "matmul_50_720_2048": "receipts/compile/matmul_50_720_2048.json",
+    "matmul_50_720_320": "receipts/compile/matmul_50_720_320.json",
+    "matmul_50_720_32_bias": "receipts/compile/matmul_50_720_32_bias.json",
+    "matmul_50_720_720_bias": "receipts/compile/matmul_50_720_720_bias.json",
+    "matmul_50_720_960": "receipts/compile/matmul_50_720_960.json",
+    "matmul_50_960_720": "receipts/compile/matmul_50_960_720.json",
+    "matmul_64_12288_960": "receipts/compile/matmul_64_12288_960.json",
+    "matmul_768_768_1024": "receipts/compile/matmul_768_768_1024.json",
+    "matmul_batched_12_1024_1024_64": "receipts/compile/matmul_batched_12_1024_1024_64.json",
+    "matmul_batched_12_1024_64_1024": "receipts/compile/matmul_batched_12_1024_64_1024.json",
+    "matmul_batched_15_113_113_64": "receipts/compile/matmul_batched_15_113_113_64.json",
+    "matmul_batched_15_113_64_113": "receipts/compile/matmul_batched_15_113_64_113.json",
+    "matmul_batched_15_50_113_64": "receipts/compile/matmul_batched_15_50_113_64.json",
+    "matmul_batched_15_50_163_64": "receipts/compile/matmul_batched_15_50_163_64.json",
+    "matmul_batched_15_50_64_113": "receipts/compile/matmul_batched_15_50_64_113.json",
+    "matmul_batched_15_50_64_163": "receipts/compile/matmul_batched_15_50_64_163.json"
+  },
+  "counts": {
+    "capture_partitions_total": 391,
+    "compile_qualified_partitions": 391,
+    "physical_partitions_qualified": 3,
+    "physical_partitions_unqualified": 388,
+    "shape_rtl_numeric_qualified_partitions": 3,
+    "shape_rtl_numeric_tested_partitions": 11,
+    "unique_shapes_compile_qualified": 28,
+    "unique_shapes_compile_tested": 28,
+    "unique_shapes_compile_unqualified": 0,
+    "unique_shapes_rtl_numeric_qualified": 3,
+    "unique_shapes_rtl_numeric_tested": 4,
+    "unique_shapes_rtl_numeric_unqualified": 1,
+    "unique_shapes_total": 28
+  },
+  "direct_physical_qualifications": {
+    "atlas_p0098": {
+      "errors": [],
+      "kernel_id": "matmul_1_32_960_bias",
+      "qualified": true,
+      "raw_gsim_receipts": [
+        {
+          "cycles": 154458,
+          "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+          "errors": [],
+          "path": "capture_semantics_state_proj/raw_gsim_receipt.json",
+          "qualified": true,
+          "sha256": "3e0dd21d90b12cf441b6d42341ee8ca08fae64b1d2802e03371cd3cafe16f573"
+        }
+      ],
+      "result": "capture_semantics_state_proj/result.json",
+      "result_sha256": "33406c5b9cc20d046b9791c4a5daae8a4a327637f291a4823360c8ba26efea1d",
+      "source_f32_comparison": {
+        "cosine_similarity": 0.9994547367095947,
+        "max_abs_error": 0.07092868536710739,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 16.858871459960938,
+        "mean_abs_error": 0.01729688048362732,
+        "rmse": 0.021716563031077385
+      },
+      "source_kind": "direct_capture_bound_rtl_numeric_receipt"
+    },
+    "atlas_p0243": {
+      "errors": [],
+      "kernel_id": "matmul_50_32_720_bias",
+      "qualified": true,
+      "raw_gsim_receipts": [
+        {
+          "cycles": 573715,
+          "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+          "errors": [],
+          "path": "capture_semantics_action_in_proj/raw_gsim_receipt.json",
+          "qualified": true,
+          "sha256": "f31083fe924f5e18bd2703cfe81053b266bde2a1cf0b477b4e74b6345832bef7"
+        }
+      ],
+      "result": "capture_semantics_action_in_proj/result.json",
+      "result_sha256": "ee581411e832471865c39288271d487013ec45f50262d337fed63f0c505733d7",
+      "source_f32_comparison": {
+        "cosine_similarity": 0.9993289113044739,
+        "max_abs_error": 0.10736548900604248,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 47.1974983215332,
+        "mean_abs_error": 0.017213188111782074,
+        "rmse": 0.02191220037639141
+      },
+      "source_kind": "direct_capture_bound_rtl_numeric_receipt"
+    },
+    "atlas_p0244": {
+      "errors": [],
+      "kernel_id": "matmul_50_1440_720_bias",
+      "qualified": true,
+      "raw_gsim_receipts": [
+        {
+          "cycles": 5349687,
+          "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+          "errors": [],
+          "path": "capture_semantics_action_time_mlp_in/dispatch_000_n0000_0256/raw_gsim_receipt.json",
+          "qualified": true,
+          "sha256": "176d9efd30e0069816d7e4f46f659afcab1dc01af228947157574e99a5bdcc49"
+        },
+        {
+          "cycles": 5349687,
+          "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+          "errors": [],
+          "path": "capture_semantics_action_time_mlp_in/dispatch_001_n0256_0512/raw_gsim_receipt.json",
+          "qualified": true,
+          "sha256": "1ba8f2259081d2b80508aed300d09495ce2e281a994c03b7fc8f523dca354b8d"
+        },
+        {
+          "cycles": 4512171,
+          "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+          "errors": [],
+          "path": "capture_semantics_action_time_mlp_in/dispatch_002_n0512_0720/raw_gsim_receipt.json",
+          "qualified": true,
+          "sha256": "c071a05de53d75f08262d8b4cfd50fe846d340afd1816aacdb2f35f190af259b"
+        }
+      ],
+      "result": "capture_semantics_action_time_mlp_in/result.json",
+      "result_sha256": "78bc9dc3cc007454ac68047a382500de112d5a5d00ebe04795e1dd55ba38ee18",
+      "source_f32_comparison": {
+        "cosine_similarity": 0.9990334510803223,
+        "max_abs_error": 0.06637021899223328,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 62.13141632080078,
+        "mean_abs_error": 0.013091406784951687,
+        "rmse": 0.016443632543087006
+      },
+      "source_kind": "direct_capture_bound_rtl_numeric_receipt"
+    }
+  },
+  "fail_closed": {
+    "shape_compile_does_not_imply_shape_numeric": true,
+    "shape_numeric_does_not_imply_physical_partition_numeric": true,
+    "whole_model_numerically_qualified": false,
+    "whole_model_runnable": false
+  },
+  "partition_receipt_map": "partition_receipt_map.json",
+  "rtl_numeric_receipts": {
+    "matmul_1_32_960_bias": "numeric/matmul_1_32_960_bias/receipt.json",
+    "matmul_50_32_720_bias": "numeric/matmul_50_32_720_bias/receipt.json",
+    "matmul_50_720_32_bias": "numeric/matmul_50_720_32_bias/receipt.json",
+    "matmul_batched_15_50_64_113": "numeric/matmul_batched_15_50_64_113/receipt.json"
+  },
+  "schema": "atlas_smolvla_shape_batch_qualification_v1",
+  "source_plan": "whole_capture_plan/partition_plan.json",
+  "source_plan_sha256": "8460edd1ce1ba5c14c002ae673733e760d3652e9d861df7ce61f79d183bb3653",
+  "status": "bounded_progress_with_detected_rtl_failure",
+  "timing": {
+    "compile_subprocess_elapsed_ns": 9910405965,
+    "overall_elapsed_ns": 14669843114,
+    "per_shape_compile_elapsed_ns": {
+      "matmul_1024_3072_768_bias": 389295398,
+      "matmul_1024_768_3072_bias": 258119105,
+      "matmul_1024_768_768_bias": 245316183,
+      "matmul_113_2560_960": 381077535,
+      "matmul_113_320_320": 295892506,
+      "matmul_113_960_2560": 313748454,
+      "matmul_113_960_320": 264798763,
+      "matmul_113_960_960": 378812764,
+      "matmul_1_32_960_bias": 243778779,
+      "matmul_50_1440_720_bias": 346553029,
+      "matmul_50_2048_720": 406421131,
+      "matmul_50_32_720_bias": 391238340,
+      "matmul_50_720_2048": 383853776,
+      "matmul_50_720_320": 392399340,
+      "matmul_50_720_32_bias": 392825277,
+      "matmul_50_720_720_bias": 430994570,
+      "matmul_50_720_960": 398099572,
+      "matmul_50_960_720": 406257852,
+      "matmul_64_12288_960": 382847248,
+      "matmul_768_768_1024": 385471862,
+      "matmul_batched_12_1024_1024_64": 282784176,
+      "matmul_batched_12_1024_64_1024": 372375474,
+      "matmul_batched_15_113_113_64": 416192569,
+      "matmul_batched_15_113_64_113": 390609278,
+      "matmul_batched_15_50_113_64": 407400377,
+      "matmul_batched_15_50_163_64": 384893155,
+      "matmul_batched_15_50_64_113": 276788484,
+      "matmul_batched_15_50_64_163": 291560968
+    },
+    "per_shape_rtl_numeric_elapsed_ns": {
+      "matmul_1_32_960_bias": 378321392,
+      "matmul_50_32_720_bias": 1359002885,
+      "matmul_50_720_32_bias": 993295467,
+      "matmul_batched_15_50_64_113": 1878465042
+    },
+    "rtl_numeric_subprocess_elapsed_ns": 4609084786
+  }
+}
