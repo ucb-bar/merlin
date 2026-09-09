@@ -366,6 +366,40 @@ def _clip(msg: str, budget: int) -> str:
     return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
 
 
+def _range_check_bounds(msg: str):
+    """(index, size) from a C++ ``_M_range_check`` abort, or (None, None).
+
+    libstdc++ spells it ``__n (which is 1024) >= this->size() (which is 1024)``. Parsed STRUCTURALLY --
+    no regex in library code (build_tools/scripts/check_no_regex.py) -- by splitting on the literal
+    ``(which is `` marker, which is what libstdc++ emits. Returns None rather than guessing when the
+    shape does not match, so a changed message degrades to the generic crash text instead of inventing
+    a bound.
+    """
+    if "_M_range_check" not in msg and "out_of_range" not in msg:
+        return None, None
+    marker = "(which is "
+    parts = msg.split(marker)
+    if len(parts) < 3:
+        return None, None
+    vals = []
+    for chunk in parts[1:3]:
+        head = chunk.partition(")")[0].strip()
+        if not head.isdigit():
+            return None, None
+        vals.append(int(head))
+    return vals[0], vals[1]
+
+
+def _out_of_range_reason(sim: str, idx, size) -> str:
+    """Actionable text for an on-chip out-of-bounds index, naming the index and the limit."""
+    return (f"the emitted kernel indexed an on-chip resource OUT OF BOUNDS on {sim}: index {idx} with "
+            f"size {size} (valid 0..{size - 1}). This is a kernel address/tiling bug, not a simulator "
+            f"fault -- the simulator aborted because the access is illegal. Check every scratchpad and "
+            f"accumulator address against the capacities your package compiles against (the ISA header's "
+            f"ACC_ROWS and BANK_NUM x BANK_ROWS), including the last tile of a partial or odd-tail shape, "
+            f"which is where a one-past-the-end row typically comes from.")
+
+
 def _did_not_halt_reason(msg: str) -> str:
     """The tier ``reason`` for a program that ran to the cap without halting."""
     return f"did not halt (ran to the cycle cap): {msg[-240:]}"
@@ -4363,10 +4397,27 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                 # as a functional fault with actionable feedback; mislabeling it tool_crash reads as an
                 # unfixable infra problem and wastes every round (the atlas flat-0/11 pattern).
                 _trapped = ("*** FAILED ***" in _msg) and not _did_not_halt
+                # THIRD CASE, same lesson as the two above. A simulator that aborts with a C++
+                # std::out_of_range / _M_range_check is reporting the AGENT indexing an on-chip resource
+                # one past its end -- the sim dies instead of returning a verdict, so it surfaces as an
+                # infra `tool_crash` carrying only a C++ backtrace. MEASURED 2026-09-08: an arm hit this
+                # 8 times across several grades and never fixed it, because "terminate called after
+                # throwing an instance of 'std::out_of_range'" names neither the resource, nor the index,
+                # nor the limit. No other arm triggered it, so it read as that arm being broken rather
+                # than as an unreadable diagnostic. Parse the bound out and say what was exceeded.
+                _oob_idx, _oob_size = _range_check_bounds(_msg)
+                _oob = _oob_idx is not None
+                # A link failure is likewise the agent's build defect (its emitted object/driver does not
+                # link), not infra -- and the ld error is the whole diagnostic, so it must not be clipped
+                # to the same short budget as a generic crash.
+                _link_failed = "link failed" in _msg and not _did_not_halt
                 tiers[tier] = TierResult(
                     tier, "fail", mand,
                     reason=(_did_not_halt_reason(_msg) if _did_not_halt
                             else f"kernel faulted at runtime: {_clip(_msg, 260)}" if _trapped
+                            else _out_of_range_reason(_sim, _oob_idx, _oob_size) if _oob
+                            else f"the emitted package did not LINK (your build defect, not the "
+                                 f"simulator's): {_clip(_msg, 600)}" if _link_failed
                             else f"{_sim} crash: {_clip(_msg, 300)}"),
                     derived_from_rtl=tier in cfg.rtl_tiers,
                     timing=_failed_adapter_timing(),
@@ -4382,6 +4433,17 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                           "memory-movement instruction uses a valid, in-range DRAM address "
                                           "(derive it from the passed pointer args / the declared DRAM "
                                           f"layout, never a baked 0 or a guessed address): {_clip(_msg, 300)}") from e
+                    # Same reclassification on the MANDATORY path, or the actionable reason built above
+                    # is thrown away and the agent sees TOOL_CRASH again.
+                    if _oob:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          _out_of_range_reason(_sim, _oob_idx, _oob_size)) from e
+                    if _link_failed:
+                        raise CertFailure(_sim, _cat("FUNCTIONAL_MISMATCH"),
+                                          "the emitted package did not LINK, so nothing could be run. "
+                                          "This is a defect in what your compiler emitted (a missing or "
+                                          "duplicate symbol, or an object built against the wrong ABI), "
+                                          f"not a simulator fault: {_clip(_msg, 600)}") from e
                     raise CertFailure(_sim, _cat("TOOL_CRASH"),
                                       f"{_sim} invocation failed: {_clip(_msg, 400)}") from e
                 continue
