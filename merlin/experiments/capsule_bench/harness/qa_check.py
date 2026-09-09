@@ -264,6 +264,11 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             # _emitted_cost: an opaque L3 failure with a null plane was the only feedback on a lowering
             # that moved 2,000x the median capsule's DRAM traffic.
             "emitted_cost": _emitted_cost(cr),
+            # WOULD THIS PROGRAM EVEN RUN ON SILICON. See _liveness_screen: the L2.5 screen's verdict was
+            # computed for every capsule, written beside the result, and never shown to the agent -- 313
+            # `stall` verdicts across 3446 reports on disk with no reader. SURFACED, NOT GATED (see
+            # REFUSING_SEVERITIES): rule names, severities and counts only.
+            "liveness": _liveness_screen(cr),
         }
     return out
 
@@ -326,6 +331,108 @@ def _emitted_cost(capsule_result: Path) -> dict | None:
     # two capsules that exhausted the cert budget against a median of 10 -- so it is reported alone,
     # with its basis named.
     out["movements_basis"] = "decoded_instruction_trace"
+    return out or None
+
+
+#: Every severity the liveness screen can reach, worst first (mirrors ``merlin.liveness.report.Severity``
+#: plus the aggregate ``ok`` verdict). Named here so the redacted row can TYPE-CHECK a severity instead of
+#: passing through whatever string happened to be in the (agent-writable) report file.
+LIVENESS_SEVERITIES: tuple[str, ...] = ("fault", "stall", "unknown", "warn", "info", "ok")
+
+#: Severities a caller COULD treat as fatal — a program the screen says will fault or hang on silicon,
+#: and an UNKNOWN, which is the state in which a real hazard is invisible rather than absent.
+#:
+#: NOTHING IN THIS REPO GATES ON IT, DELIBERATELY. `epilogue_applicability` went from advisory to gating
+#: and instantly failed 10 capsules on a plane the other arms had never been assessed on, invalidating the
+#: cross-arm comparison it was meant to inform. The liveness screen has 3446 reports of measured history
+#: and a known false-positive shape; it is SURFACED here so its verdicts stop being silently dropped, and
+#: promoting it to a gate is a separate, deliberate decision made against that evidence — not a
+#: side effect of this field existing.
+REFUSING_SEVERITIES: frozenset[str] = frozenset({"fault", "stall", "unknown"})
+
+#: The screen's rule slugs (``merlin.liveness.interconnect`` + ``merlin.liveness.preconditions``). An
+#: ALLOWLIST, not a passthrough: `rule` is a string read from a file inside the agent's own work tree, so
+#: an unrecognised slug is counted under ``other`` rather than echoed, and no free-form text can ride out
+#: of the screen onto the redacted row.
+_LIVENESS_RULES: frozenset[str] = frozenset({
+    "scratchpad-address-uninterpretable", "scratchpad-capacity", "scratchpad-overflow",
+    "accumulator-capacity", "accumulator-overflow",
+    "dram-provenance", "dram-provenance-unknown", "dram-unmapped", "dram-window-unknown",
+    "visibility-no-drain",
+    "funct-legality", "untranscodable-op", "vlen-match", "medany-span", "host-assist",
+})
+
+
+def _liveness_screen(capsule_result: Path) -> dict | None:
+    """WOULD THE SUBMISSION'S OWN EMITTED PROGRAM STALL OR FAULT ON SILICON — the advisory verdict the
+    harness already computed and then dropped on the floor.
+
+    `capsule_runner` writes ``generated/liveness_report.json`` beside every result: the L2.5 screen's
+    per-finding severities plus an aggregate verdict. MEASURED across 3446 reports on disk: 313 ``stall``
+    verdicts and 229 ``scratchpad-overflow`` findings, none of which ever reached the agent, so a capsule
+    whose lowering walked past the scratchpad depth got an opaque cert failure instead of the rule name
+    that had already identified it.
+
+    REDACTION-SAFE by construction, on the same discipline as :func:`_emitted_cost`. Three fields, each
+    typed and allowlisted:
+
+    * ``verdict`` — one word from :data:`LIVENESS_SEVERITIES`, or nothing;
+    * ``rules`` — ``{severity: {rule slug: count}}``, slugs from :data:`_LIVENESS_RULES` (anything else
+      counted under ``other``) and counts as ints. NO message, NO ``where``, NO ``evidence``: those carry
+      addresses and values copied out of the program, which is exactly what must not ride here;
+    * ``dram_window_bytes`` / ``dram_window_provenance`` — the DERIVED hardware window. The provenance
+      sentence is NOT echoed from the report (that file sits in the agent's tree and is writable there):
+      it is re-derived from the target's own memory map and included only when its size AGREES with the
+      reported one, so the string on the row is provably this repo's derivation and not file content.
+
+    Nothing else survives. An advisory screen must never break verdict production, so every failure —
+    absent file, unparseable JSON, hostile shape — returns ``None``.
+    """
+    lrep = capsule_result.parent / "generated" / "liveness_report.json"
+    if not lrep.is_file():
+        return None
+    try:
+        rep = json.loads(lrep.read_text()) or {}
+    except Exception:  # noqa: BLE001 -- an advisory screen must never break verdict production
+        return None
+    if not isinstance(rep, dict):
+        return None
+
+    out: dict = {}
+    verdict = rep.get("verdict")
+    if isinstance(verdict, str) and verdict in LIVENESS_SEVERITIES:
+        out["verdict"] = verdict
+
+    rules: dict[str, dict[str, int]] = {}
+    for f in (rep.get("findings") or []):
+        if not isinstance(f, dict):
+            continue
+        sev = f.get("severity")
+        if not (isinstance(sev, str) and sev in LIVENESS_SEVERITIES):
+            continue
+        rule = f.get("rule")
+        slug = rule if (isinstance(rule, str) and rule in _LIVENESS_RULES) else "other"
+        bucket = rules.setdefault(sev, {})
+        bucket[slug] = bucket.get(slug, 0) + 1
+    if rules:
+        out["rules"] = rules
+
+    peaks = rep.get("resource_peaks")
+    win = peaks.get("dram_window_bytes") if isinstance(peaks, dict) else None
+    if isinstance(win, int) and not isinstance(win, bool) and win > 0:
+        out["dram_window_bytes"] = win
+        # The target name comes out of the report file too, and it is used to LOOK UP a descriptor
+        # path. Constrain it to a bare identifier so a crafted `"../.."` cannot aim the derivation at
+        # some other file in the tree; a name that fails the check simply yields no provenance.
+        tgt = rep.get("target")
+        if isinstance(tgt, str) and tgt and all(c.isalnum() or c in "_-" for c in tgt):
+            try:
+                from merlin.targetgen.dram_facts import dram_window_for
+                _base, size, why = dram_window_for(tgt)
+                if isinstance(why, str) and size == win:
+                    out["dram_window_provenance"] = why
+            except Exception:  # noqa: BLE001 -- provenance is a nicety; its absence is not a failure
+                pass
     return out or None
 
 

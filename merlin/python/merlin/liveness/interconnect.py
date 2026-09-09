@@ -40,13 +40,21 @@ def simulate(
     *,
     address_model: str | None = None,
     dram_bytes: int | None = None,
+    dram_window_why: str | None = None,
 ) -> tuple[list[Finding], dict[str, Any]]:
     """Replay ``trace`` against ``facts``. Returns ``(findings, resource_peaks)``.
 
     ``address_model`` is the harness's DRAM-addressing convention (``"pointer_args"`` | ``"fixed_preload"``
     | None) — under ``pointer_args`` a baked literal DRAM address is a provenance fault. ``dram_bytes`` is
-    the DRAM window size when the caller can supply it (from the board/manifest); absent, only the lower
-    bound + provenance are enforced and the upper bound is surfaced as ``UNKNOWN``.
+    the DRAM window size when the caller can supply it (derived from the target's own memory map by
+    ``merlin.targetgen.dram_facts.dram_window_for``); absent, only the lower bound + provenance are
+    enforced and the upper bound is surfaced as ``UNKNOWN``.
+
+    ``dram_window_why`` is that derivation's PROVENANCE — why the size is what it is, or why it could not
+    be derived. It rides here so the ``dram-window-unknown`` finding can name the actual reason (the
+    target ships no memory map / its card gives no upper bound) instead of the generic "not supplied",
+    which read identically whether the gap was in the target's data or in this tooling. Absent, the
+    finding keeps its historical wording, so every existing caller is byte-identically unaffected.
     """
     findings: list[Finding] = []
     peaks: dict[str, Any] = {}
@@ -199,11 +207,20 @@ def simulate(
     peaks["dram_unmapped"] = n_unmapped
     peaks["dram_baked_const"] = n_const
     peaks["dram_unknown_provenance"] = n_unknown
+    peaks["dram_window_bytes"] = dram_bytes if isinstance(dram_bytes, int) else None
     if hi is None and any(c in _MOVEMENT for c in classes) and isinstance(base, int):
+        # WHY the upper bound is missing is the actionable half. "not supplied" was the same string for
+        # a target whose green card ships `start ~ end` and was simply never asked (a tooling gap this
+        # repo owns) and for a target that ships no memory map at all (a target-data gap only new facts
+        # can close). The caller's derivation knows which; carry its sentence verbatim.
         findings.append(Finding(
             "dram-window-unknown", Severity.UNKNOWN,
+            (f"DRAM window upper bound not derivable: {dram_window_why} — enforced the lower bound + "
+             f"provenance only; upper bound unchecked")
+            if dram_window_why else
             "DRAM window size not supplied — enforced the lower bound + provenance only; upper bound unchecked",
-            derived_from="dram_facts (base only)"))
+            derived_from=f"dram_facts.dram_window_for: {dram_window_why}" if dram_window_why
+            else "dram_facts (base only)"))
 
     # ---- 3. visibility / drain: the stream must quiesce so final stores are visible at halt ---------
     has_store = "MVOUT" in classes

@@ -30,6 +30,7 @@ class Program:
     hostless: bool | None = None             # delivery substrate has no fesvr host?
     address_model: str | None = None         # harness DRAM addressing convention (pointer_args/…)
     dram_bytes: int | None = None            # DRAM window size, when the caller can supply it
+    dram_window_why: str | None = None       # provenance of that window (or of why it is not derivable)
     # delivery/build context (not RTL-derivable — the caller who chose the substrate/compile path supplies it):
     declared_vlen: int | None = None         # VLEN the build declared (VECTOR_MAX_LEN / -march zvl)
     hw_vlen: int | None = None               # the target board's hardware VLEN (bits); None = non-vector
@@ -46,7 +47,8 @@ def assess(program: Program, target: str) -> LivenessReport:
         report.extend(funct_legality(program.trace, facts))
         findings, peaks = simulate(
             program.trace, facts,
-            address_model=program.address_model, dram_bytes=program.dram_bytes)
+            address_model=program.address_model, dram_bytes=program.dram_bytes,
+            dram_window_why=program.dram_window_why)
         report.extend(findings)
         report.resource_peaks = peaks
 

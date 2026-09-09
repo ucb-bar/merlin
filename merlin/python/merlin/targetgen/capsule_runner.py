@@ -4129,8 +4129,18 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
             # advisory: it writes liveness_report.json for the author and never gates or crashes the capsule.
             try:
                 from merlin.liveness import Program as _LProg, assess as _lassess
+                from .dram_facts import dram_window_for
                 _lname = capsule.get("id") or capsule.get("name") or "kernel"
-                _lrep = _lassess(_LProg(name=_lname, trace=trace, address_model="pointer_args"), eff_target)
+                # THE DRAM WINDOW IS A DERIVABLE FACT AND WAS NEVER HANDED OVER. The screen's address-map
+                # check bounds a movement transaction against [base, base+size); nothing supplied `size`,
+                # so EVERY report — including targets whose green card ships `start ~ end` — recorded
+                # `dram-window-unknown` and the upper bound went unchecked. The window comes from the
+                # target's OWN memory map (never a board default: fabricating a size would manufacture
+                # false unmapped-address faults), and stays UNKNOWN with its reason named when the target
+                # ships no map.
+                _dwin = dram_window_for(eff_target)   # (base, size_bytes | None, provenance_why)
+                _lrep = _lassess(_LProg(name=_lname, trace=trace, address_model="pointer_args",
+                                        dram_bytes=_dwin[1], dram_window_why=_dwin[2]), eff_target)
                 (paths.generated / "liveness_report.json").write_text(
                     json.dumps(_lrep.to_dict(), indent=2), encoding="utf-8")
             except Exception as _le:  # noqa: BLE001 — advisory: our screener's limit is not the backend's defect
