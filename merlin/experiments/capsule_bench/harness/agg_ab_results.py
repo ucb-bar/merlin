@@ -83,11 +83,19 @@ def _passed(r):
     return (fs.get("all") or {}).get("passed")
 
 
+# L3 IS THE PRIMARY METRIC and is listed first so every table and figure leads with it. `rtl_clean`
+# counts capsules that PASS and clear cycle-accurate L3; `l2_only` counts those the cheap gate passed
+# and L3 rejected. Under bwrap the materializer caps required_oracle_tiers at L2, so a bare `passed`
+# is a GATE number: measured across six gemmini runs it over-stated by exactly six (93/97 gate vs 87
+# RTL-clean), identically regardless of arm or seeding. `passed` is kept because the gate score is
+# still the loop's own convergence signal, but it is no longer what a reader sees first.
 METRICS = {
+    "rtl_clean":    (lambda r, t: r.get("rtl_clean"),                     "capsules RTL-clean (L3)", "#"),
+    "l2_only":      (lambda r, t: r.get("l2_only"),                       "L2-only (L3 rejected)", "#"),
     "cost_usd":     (lambda r, t: r.get("cost_usd"),                      "cost", "$"),
     "wall_s":       (lambda r, t: (r.get("wall_s") or 0) / 60.0,          "active wall", "min"),
     "n_rounds":     (lambda r, t: r.get("n_rounds"),                      "rounds", "rounds"),
-    "passed":       (lambda r, t: _passed(r),                            "capsules passed", "/25"),
+    "passed":       (lambda r, t: _passed(r),                            "capsules passed (L2 gate)", "#"),
     "think_pct":    (lambda r, t: t.get("think_pct"),                     "think+gen share", "%"),
     "sims_skipped": (lambda r, t: (t.get("circt_gate") or {}).get("sims_skipped"), "CIRCT sims skipped", "#"),
     "sims_run":     (lambda r, t: (t.get("circt_gate") or {}).get("sims_run"),     "sims actually run", "#"),
@@ -149,7 +157,7 @@ def plot(agg: dict, outdir: Path) -> list[Path]:
     colors = {"baseline": "#7a7a7a", "cpp_merlininfra": "#b08a3a", "merlin": "#4878a8",
               "merlin_rtlchecks": "#3a8a5a"}
     # one grouped bar chart per metric: x = condition, grouped bars = arm, error bar = std
-    for mk in ("cost_usd", "wall_s", "n_rounds", "sims_skipped"):
+    for mk in ("rtl_clean", "l2_only", "cost_usd", "wall_s", "n_rounds", "sims_skipped"):
         fig, ax = plt.subplots(figsize=(7, 4.2))
         # Bar geometry follows ARM_ORDER instead of assuming three arms. The old `0.25` with an
         # `(i - 1)` offset centred a 3-arm group; a 4th arm overlapped its neighbour and the whole

@@ -90,6 +90,38 @@ def _completeness(run_id: str, audit: dict) -> dict | None:
             "first_failure_planes": bk.get("first_failure_planes"), "language": bk.get("language")}
 
 
+def _l3_evidence(run_dir) -> dict:
+    """RTL-backed evidence for a run: how many capsules PASS **and** clear L3, and how many pass the
+    cheap gate while L3 rejects them.
+
+    Read from the newest verdict's ``per_capsule`` because that is the as-graded record; a capsule with
+    ``status == pass`` and ``tiers.L3 != pass`` is an L2-only pass and must never be counted as evidence.
+    Returns None values rather than zeros when no verdict exists, so "not measured" cannot read as
+    "none found".
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    vs = sorted((_Path(run_dir) / "qa_history").glob("verdict_*.json"),
+                key=lambda q: q.stat().st_mtime)
+    for v in reversed(vs):
+        try:
+            j = _json.loads(v.read_text())
+        except Exception:
+            continue
+        pc = j.get("per_capsule") or []
+        if not pc or not j.get("n_capsules"):
+            continue
+        clean = [c for c in pc if c.get("status") == "pass"
+                 and (c.get("tiers") or {}).get("L3") == "pass"]
+        l2only = [c for c in pc if c.get("status") == "pass"
+                  and (c.get("tiers") or {}).get("L3") not in ("pass", None)]
+        return {"rtl_clean": len(clean), "l2_only": len(l2only),
+                "gate_passed": j.get("n_passed"), "n_capsules": j.get("n_capsules"),
+                "l3_source": v.name}
+    return {"rtl_clean": None, "l2_only": None, "gate_passed": None,
+            "n_capsules": None, "l3_source": None}
+
+
 def load_run(d: Path, audit: dict) -> dict | None:
     ct = d / "cost_time_toolcalls.yaml"
     if not ct.is_file():
@@ -115,6 +147,13 @@ def load_run(d: Path, audit: dict) -> dict | None:
         "public_pass": man.get("public_dev_pass") or man.get("pass_public"),
         "hidden_pass": man.get("hidden_pass") or man.get("pass_hidden"),
         "fullsuite": _completeness(d.name, audit),
+        # L3 IS THE METRIC. A bare pass count is an L2-GATE number: under bwrap the materializer caps
+        # required_oracle_tiers at L2, so capsules can pass the gate and then be REJECTED by
+        # cycle-accurate RTL. Measured across six gemmini runs, the gate over-stated by exactly six
+        # every time (93/97 gate vs 87 RTL-clean), identically regardless of arm or seeding. Reporting
+        # `passed` without this beside it over-claims systematically, so the loader now always carries
+        # it and no consumer has to recompute it.
+        **_l3_evidence(d),
     }
 
 
