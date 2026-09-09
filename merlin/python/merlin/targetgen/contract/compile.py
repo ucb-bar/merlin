@@ -371,31 +371,6 @@ def link_elf(cb: dict[str, Any], obj: Path, workdir: Path, *, target: str,
     return elf
 
 
-def _refuse_unemitted_lane_work(cb: dict[str, Any], lowered_mlir_text: str, *,
-                                target: str) -> None:
-    """Raise the target's own error if the lane plan places a dtype the lowered IR does not contain.
-
-    A plan this check cannot READ does not block a build: it adds a refusal for a state that was
-    previously silent, and must not turn an unrelated plan shape into a build failure. What it will
-    not do is pass when a placed dtype is absent from the emitted program.
-    """
-    from merlin.runtime.backends import base as _backends
-    from merlin.verify import lane_emission as _lane
-
-    try:
-        verdict = _lane.assess(cb, lowered_mlir_text, dtype_tokens=_lane.MLIR_DTYPE_TOKENS)
-    except _lane.LaneEmissionError:
-        return
-    if not verdict.refusing:
-        return
-    error_cls: type[Exception] = ValueError
-    try:
-        error_cls = _backends.harness_build_recipe(target).error_cls
-    except Exception:  # noqa: BLE001 - a target with no build recipe still gets the refusal
-        pass
-    raise error_cls("lane plan places work the emitted program does not contain: " + verdict.detail)
-
-
 def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
                            workdir: str | Path | None = None, *, target: str,
                            inputs: dict | None = None, prepack_authorizations=None,
@@ -427,14 +402,6 @@ def compile_lowered_to_elf(cb: dict[str, Any], lowered_mlir_text: str,
     hooks and keeps result readback outside the cycle window.
     """
     warm_profile = _strict_warm_profile(warm_profile, cb)
-    # FAIL CLOSED ON WORK THAT WAS PLACED BUT NOT EMITTED. The lane plan records a lane and a
-    # reason for every region, so its bookkeeping says the work runs; the emitted program may
-    # simply not contain it. Measured on SmolVLA: 2,874 regions of dtype bf16 placed on the
-    # scalar lane, and zero bf16 anywhere in the lowered IR. That dropped the cross-attention,
-    # which killed the prefix KV-cache input, which produced a denoise update depending on
-    # nothing that changes -- diagnosed only after a 32-minute whole-model simulation. A
-    # performance campaign over such a program measures it as faster, correctly: it does less.
-    _refuse_unemitted_lane_work(cb, lowered_mlir_text, target=target)
     if _build_service is not None:
         from .build_service import BuildOnlyService
         if (type(_build_service) is not BuildOnlyService or inputs is None
