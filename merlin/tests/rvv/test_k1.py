@@ -156,7 +156,18 @@ def test_session_models_share_the_primary_model_flag_composer():
 
     src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
     session = src[src.index("def build_k1_session_binary"):]
-    assert "_model_compile_flags(pkg, features, model_opt)" in session
+    assert "_model_compile_flags(pkg, stage_features, model_opt)" in session
+
+
+def test_session_models_use_the_primary_preparation_and_derived_schedule():
+    """Every stage must lower the concrete schedule derived from that stage's prepared IR."""
+    from merlin.common.paths import merlin_dir
+
+    src = (merlin_dir() / "python" / "merlin" / "mining" / "k1.py").read_text(encoding="utf-8")
+    session = src[src.index("def build_k1_session_binary"):]
+    assert "zm.prepare_for_lowering(" in session
+    assert "features=stage_features" in session
+    assert "parallel_chunks=zm.parallel_arms(stage_work)" in session
 
 
 def test_main_linux_is_glibc_hosted():

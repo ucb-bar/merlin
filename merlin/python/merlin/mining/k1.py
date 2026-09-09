@@ -1472,8 +1472,16 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         bundle_dir = Path(record["bundle"])
         stage_work = work / f"stage_{index}_{name}"
         stage_work.mkdir(parents=True, exist_ok=True)
-        prepared = zm._prepare_model_mlir(
-            bundle_dir / "model.mlir", stage_work, int8_compute=pkg.is_int8)
+        # A session stage is a whole model with a different entrypoint.  Route it through the same
+        # preparation seam as the single-program K1/Spike/Zephyr builders: per-operation blocks,
+        # parallel splits, vector-rank tags, and concrete feature names are derived from THIS
+        # stage's prepared IR.  Calling `_prepare_model_mlir` here used to omit those tables and
+        # handed the lowering the package's unresolved, session-global request instead.
+        prepared, stage_features = zm.prepare_for_lowering(
+            bundle_dir / "model.mlir", stage_work, int8_compute=pkg.is_int8,
+            features=features, harts=(int(parallel_harts) if parallel_harts else 1),
+            vlen=VLEN)
+        stage_features = stage_features or None
         renamed = session_bundle.rename_forward(
             prepared.read_text(encoding="utf-8"), str(record["entrypoint"]))
         if backend_module is not None:
@@ -1500,7 +1508,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
             lowered = lower_model_file(
                 prepared, stage_work / "lower", targets=(), textual=True, vectorize=True,
                 transform_schedule=pkg.schedule_text, hoist_static_allocs=False,
-                features=features, parallel_harts=parallel_harts,
+                features=stage_features, parallel_harts=parallel_harts,
                 parallel_chunks=zm.parallel_arms(stage_work))
         except PipelineError:
             if fallback_policy == "forbid":
@@ -1511,7 +1519,7 @@ def build_k1_session_binary(model_dir: str | Path, work: str | Path, pkg, *,
         model_object = stage_work / "model.o"
         # Same cflags-class features as the primary site; a staged sibling that skipped them would
         # measure a different compiler than the one the feature set names.
-        _stage_flags = _model_compile_flags(pkg, features, model_opt)
+        _stage_flags = _model_compile_flags(pkg, stage_features, model_opt)
         _run([clang23, "--target=riscv64-unknown-linux-gnu", *_stage_flags,
               "-c", lowered.ll_path, "-o", model_object])
         # Same post-codegen census as the primary site (see there): a staged sibling that skipped it
