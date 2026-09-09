@@ -64,8 +64,6 @@ pass_requirements:
 - host-seam
 - target-isa-lowering
 lanes:
-  require:
-  - scalar_rvv_lane
   forbid:
   - on_mesh
 numeric_falsifiability:

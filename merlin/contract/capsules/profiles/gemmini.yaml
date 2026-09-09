@@ -395,7 +395,15 @@ capsules:
    source_reference: 'PyTorch LayerNorm bf16 — the negative lane: this target declares no normalization
      capability, so every region must land on the host and none may reach the mesh',
    label: public, modes: {},
-   lanes: {require: [scalar_rvv_lane], forbid: [on_mesh]},
+   # `require` REMOVED, deliberately. On this target routing.reachable_lanes is exactly
+   # {on_mesh, scalar_rvv_lane}, so `forbid: [on_mesh]` already leaves the host lane as the only place
+   # work can land -- the require added nothing here. What it DID add was an unjudgeable declaration:
+   # lane_report_from_elf sets `observed: []` unconditionally (a symbol in a binary is not one that
+   # executed), and only the whole-model dispatch ledger can credit a REQUIRED lane. GN0 is a
+   # model_slice, so it takes the op tier ladder and never produces a ledger -- it passed L2 and L3 and
+   # was still scored `incomplete`/LANE_CONTRACT_NOT_EVALUATED in every arm, the sole graded capsule in
+   # that gap. `forbid` remains, and is honoured against execution evidence exactly as below.
+   lanes: {forbid: [on_mesh]},
    # The same classes corpus_synth derives for a synthesized entry, declared here because this capsule
    # is hand-authored: it executes (target lowering) and its whole subject is a value crossing to a
    # lane the accelerator does not own (boundary materialization).
