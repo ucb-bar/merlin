@@ -1,0 +1,43 @@
+{
+  "schema": "atlas_patch_im2col_gsim_cap_receipt_v1",
+  "partition_id": "atlas_p0000",
+  "kernel_id": "matmul_768_768_1024",
+  "geometry": {
+    "M": 768,
+    "K": 768,
+    "N": 1024
+  },
+  "source_abi": {
+    "image": [1, 3, 512, 512],
+    "kernel": [768, 3, 16, 16],
+    "bias": [768]
+  },
+  "device_abi": {
+    "A0": [768, 768],
+    "W": [768, 1024],
+    "Y0": [768, 1024]
+  },
+  "normal_engine_attempt": {
+    "cycle_cap": 20000000,
+    "status": "program_did_not_halt_at_cap",
+    "numeric_qualified": false
+  },
+  "assertion_engine_attempt": {
+    "cycle_cap": 1000000,
+    "process_exit_code": 0,
+    "halted": false,
+    "halt_reason": -1,
+    "reads": 206822,
+    "writes": 256,
+    "wrap_hits": 207080,
+    "assertion_diagnostic_observed": false,
+    "numeric_qualified": false
+  },
+  "sha256": {
+    "assertion_probe_spec_ignored": "4290dff84c9b146d0dacc8d4d7ebdfb2918c1be754199e05af99a12a607e8439",
+    "generated_assembly_ignored": "11cdab69b77ded02dff196116c5e11feab7383b9fa2ce024aacc900c7f0fadab",
+    "generated_binary_ignored": "328740d2c94d7f25fe80d977121c4df86d262e5e09a8fc3c38959e1990051953",
+    "assertion_engine_external": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756"
+  },
+  "claim": "bounded assertion-clean progress only; no completed numeric, physical partition, E2E, or performance qualification"
+}

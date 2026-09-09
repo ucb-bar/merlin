@@ -20,7 +20,7 @@ import numpy as np
 from .capture_bridge import calibrate_e4m3, f32_to_bf16_rne
 from .frontend import _str_attr
 from .full_graph import _tensor_dtype, _tensor_shape
-from .host_semantics import _general_affine_map_signature
+from .host_semantics import HostSemanticLane, _general_affine_map_signature
 
 
 class UnsupportedAcceleratorContract(ValueError):
@@ -382,6 +382,179 @@ def _extract_rank2_contract(partition: dict, operations: Mapping[str, tuple], co
     return AcceleratorContract(partition["partition_id"], signature)
 
 
+def _extract_patch_im2col_contract(
+    partition: dict,
+    command: dict,
+    receipt: dict,
+    host_programs: Mapping[str, object],
+    argument_indices: Mapping[object, int],
+) -> AcceleratorContract:
+    """Bind the exact captured patch im2col to the existing rank-2 command ABI.
+
+    The capture expresses convolution as ``kernel_matrix @ patch_matrix``.  The
+    mesh command consumes those two materialized matrices; the surrounding
+    reshape and bias epilogue remain explicit host work.  This is deliberately
+    limited to the complete topology already accepted by HostSemanticLane.
+    """
+    if partition.get("kind") != "matmul":
+        raise UnsupportedAcceleratorContract("patch contraction is not rank-2 matmul")
+    if partition.get("source_semantic") != "convolution_im2col_matmul":
+        raise UnsupportedAcceleratorContract("patch source semantic changed")
+    capture_regions = partition.get("capture_regions", [])
+    if len(capture_regions) != 1:
+        raise UnsupportedAcceleratorContract("patch capture region count changed")
+    region_id = capture_regions[0]
+    program = host_programs.get(region_id)
+    if (program is None
+            or program.signature.get("schema")
+            != "atlas_host_im2col_convolution_signature_v1"):
+        raise UnsupportedAcceleratorContract(
+            "patch im2col topology lacks the exact host preprocessing signature"
+        )
+    contraction_ops = tuple(program.operations)
+    matmuls = [op for op in contraction_ops if op.name == "linalg.matmul"]
+    if len(matmuls) != 1:
+        raise UnsupportedAcceleratorContract("patch region does not contain one matmul")
+    matmul = matmuls[0]
+    if len(matmul.inputs) != 2 or len(matmul.outputs) != 1 or len(matmul.results) != 1:
+        raise UnsupportedAcceleratorContract("patch matmul arity changed")
+    m, k, n = (int(partition["geometry"][key]) for key in ("M", "K", "N"))
+    values = (*matmul.inputs, matmul.results[0])
+    if ([_tensor_shape(value) for value in values] != [(m, k), (k, n), (m, n)]
+            or any(_tensor_dtype(value) != "f32" for value in values)):
+        raise UnsupportedAcceleratorContract("patch matmul shape or dtype changed")
+    if not _zero_splat_initialized(matmul.outputs[0]):
+        raise UnsupportedAcceleratorContract("patch matmul accumulator is not proven zero")
+
+    image, kernel, bias = program.input_values
+    if any(value not in argument_indices for value in (image, kernel, bias)):
+        raise UnsupportedAcceleratorContract(
+            "patch source tensors are not direct function arguments"
+        )
+    image_shape, kernel_shape, bias_shape = (
+        tuple(shape) for shape in program.signature["input_shapes"]
+    )
+    batch, channels, height, width = image_shape
+    out_channels, weight_channels, kernel_h, kernel_w = kernel_shape
+    output_shape = tuple(program.signature["output_shape"])
+    out_batch, result_channels, out_h, out_w = output_shape
+    if (batch != 1 or channels != weight_channels or out_batch != batch
+            or result_channels != out_channels or bias_shape != (out_channels,)
+            or (m, k, n) != (out_channels, channels * kernel_h * kernel_w,
+                              batch * out_h * out_w)
+            or height != out_h * kernel_h or width != out_w * kernel_w):
+        raise UnsupportedAcceleratorContract("patch geometry differs from signed im2col bounds")
+    if tuple(matmul.inputs) != (contraction_ops[4].results[0], contraction_ops[2].results[0]):
+        raise UnsupportedAcceleratorContract("patch matmul does not consume signed matrices")
+
+    abi_inputs = partition.get("abi", {}).get("inputs", [])
+    abi_output = partition.get("abi", {}).get("outputs", [])
+    if len(abi_inputs) != 2 or len(abi_output) != 1:
+        raise UnsupportedAcceleratorContract("patch partition ABI arity changed")
+    for entry, value, name in zip(abi_inputs, matmul.inputs, ("A0", "W")):
+        if (entry.get("name") != name or entry.get("capture_type") != str(value.type)
+                or entry.get("device_dtype") != "fp8_e4m3"):
+            raise UnsupportedAcceleratorContract(f"patch partition ABI input {name} changed")
+    expected_origins = [
+        {
+            "kind": "function_argument",
+            "argument_index": argument_indices[kernel],
+            "bridges": [
+                {"region_id": region_id, "op": "tensor.expand_shape",
+                 "execution": "host_preprocess"},
+                {"region_id": region_id, "op": "tensor.collapse_shape",
+                 "execution": "host_preprocess"},
+            ],
+        },
+        {
+            "kind": "function_argument",
+            "argument_index": argument_indices[image],
+            "bridges": [
+                {"region_id": region_id, "op": "tensor.expand_shape",
+                 "execution": "host_preprocess"},
+                {"region_id": region_id, "op": "tensor.collapse_shape",
+                 "execution": "host_preprocess"},
+                {"region_id": region_id, "op": "linalg.generic",
+                 "execution": "host_preprocess"},
+            ],
+        },
+    ]
+    if [entry.get("origin") for entry in abi_inputs] != expected_origins:
+        raise UnsupportedAcceleratorContract("patch preprocessing ABI origin changed")
+    if (abi_output[0].get("name") != "Y0"
+            or abi_output[0].get("capture_type") != str(matmul.results[0].type)
+            or abi_output[0].get("device_dtype") != "bf16"):
+        raise UnsupportedAcceleratorContract("patch partition ABI output changed")
+
+    image_record = contraction_ops[0]
+    affine_map = [
+        str(expr) for expr in list(image_record.indexing_maps)[0].data.results
+    ]
+    source_preprocessing = {
+        "schema": "atlas_patch_im2col_preprocess_v1",
+        "image_shape": list(image_shape),
+        "kernel_shape": list(kernel_shape),
+        "kernel_matrix": {"tensor": "A0", "shape": [m, k]},
+        "patch_matrix": {"tensor": "W", "shape": [k, n]},
+        "affine_map": affine_map,
+        "stride": [kernel_h, kernel_w],
+        "padding": [0, 0],
+        "dilation": [1, 1],
+    }
+    host_postprocessing = {
+        "schema": "atlas_patch_output_postprocess_v1",
+        "matrix_shape": [m, n],
+        "output_shape": list(output_shape),
+        "bias_shape": list(bias_shape),
+        "rule": "reshape channel-major matrix to NCHW and add per-channel f32 bias",
+    }
+
+    image_receipt = partition.get("image", {})
+    if (image_receipt.get("kernel_id") != partition.get("kernel_id")
+            or image_receipt.get("command_count") != 4
+            or not image_receipt.get("fits_imem")
+            or not 0 < int(image_receipt.get("instruction_words", 0))
+            <= int(image_receipt.get("imem_words", 0))):
+        raise UnsupportedAcceleratorContract("patch compiled image receipt is incomplete")
+    if (receipt.get("kernel_id") != partition.get("kernel_id")
+            or receipt.get("kind") != "matmul"
+            or receipt.get("geometry") != partition.get("geometry")
+            or receipt.get("bias_fused") is not False
+            or not receipt.get("fits_imem")):
+        raise UnsupportedAcceleratorContract("patch kernel library receipt differs from partition")
+    command_record = _validate_command_buffer(partition, command)
+    signature = {
+        "schema": "atlas_patch_im2col_capture_command_contract_v1",
+        "kind": "matmul",
+        "partition_id": partition["partition_id"],
+        "kernel_id": partition["kernel_id"],
+        "source_semantic": partition["source_semantic"],
+        "source_dtype": "f32",
+        "fqn": partition["fqn"],
+        "capture_regions": capture_regions,
+        "geometry": partition["geometry"],
+        "bias_fused": False,
+        "input_origins": [entry["origin"]["kind"] for entry in abi_inputs],
+        "capture_types": [entry["capture_type"] for entry in abi_inputs]
+        + [abi_output[0]["capture_type"]],
+        "device_dtypes": ["fp8_e4m3", "fp8_e4m3", "bf16"],
+        "source_preprocessing": source_preprocessing,
+        "host_postprocessing": host_postprocessing,
+        "command": command_record,
+        "image": {
+            "instruction_words": image_receipt["instruction_words"],
+            "imem_words": image_receipt["imem_words"],
+            "assembly_sha256": receipt["assembly_sha256"],
+            "interface_sha256": receipt["interface_sha256"],
+        },
+        "qualification_scope": (
+            "static source/preprocessing/ABI/command agreement only; not calibration, "
+            "encoded-image execution, physical partition qualification, or E2E"
+        ),
+    }
+    return AcceleratorContract(partition["partition_id"], signature)
+
+
 def _extract_batched_contract(
     partition: dict, operations: Mapping[str, tuple], command: dict, receipt: dict,
 ) -> AcceleratorContract:
@@ -537,6 +710,10 @@ class AcceleratorContractLane:
             if region_id:
                 grouped.setdefault(region_id, []).append(op)
         operations = {key: tuple(value) for key, value in grouped.items()}
+        host_programs = HostSemanticLane(workload).programs
+        argument_indices = {
+            argument: index for index, argument in enumerate(funcs[0].body.blocks[0].args)
+        }
         receipts = {
             row["kernel_id"]: row for row in partition_plan.get("kernel_library", [])
         }
@@ -552,10 +729,19 @@ class AcceleratorContractLane:
                     raise UnsupportedAcceleratorContract(
                         "partition lacks a saved command buffer or kernel receipt"
                     )
-                extractor = {
-                    "matmul": _extract_rank2_contract,
-                    "matmul_batched": _extract_batched_contract,
-                }.get(partition.get("kind"))
+                if partition.get("source_semantic") == "convolution_im2col_matmul":
+                    self.contracts[partition_id] = _extract_patch_im2col_contract(
+                        partition,
+                        command_buffers[kernel_id],
+                        receipts[kernel_id],
+                        host_programs,
+                        argument_indices,
+                    )
+                    continue
+                extractor = {"matmul": _extract_rank2_contract,
+                             "matmul_batched": _extract_batched_contract}.get(
+                    partition.get("kind")
+                )
                 if extractor is None:
                     raise UnsupportedAcceleratorContract(
                         "partition kind has no accelerator contract"
@@ -663,6 +849,70 @@ class AcceleratorContractLane:
             decoded["B"] = bias_domain
             record["bias_equation"] = "BF16_RNE(B / (sA * sW))"
         return {"preloads": preloads, "decoded": decoded, "record": record}
+
+    def materialize_source_inputs(
+        self, partition_id: str, values: Mapping[str, np.ndarray],
+    ) -> dict[str, np.ndarray]:
+        """Materialize a signed source preprocessing boundary into command tensors."""
+        if partition_id not in self.contracts:
+            raise UnsupportedAcceleratorContract(
+                self.rejections.get(partition_id, f"unknown partition {partition_id}")
+            )
+        signature = self.contracts[partition_id].signature
+        preprocess = signature.get("source_preprocessing")
+        if preprocess is None:
+            raise UnsupportedAcceleratorContract(
+                f"partition {partition_id} has no source preprocessing contract"
+            )
+        if set(values) != {"IMAGE", "KERNEL"}:
+            raise ValueError("patch preprocessing requires exactly IMAGE and KERNEL")
+        image = np.asarray(values["IMAGE"])
+        kernel = np.asarray(values["KERNEL"])
+        if (image.dtype != np.float32
+                or tuple(image.shape) != tuple(preprocess["image_shape"])
+                or kernel.dtype != np.float32
+                or tuple(kernel.shape) != tuple(preprocess["kernel_shape"])
+                or not np.all(np.isfinite(image)) or not np.all(np.isfinite(kernel))):
+            raise ValueError("patch source tensor shape/dtype/values differ from signed contract")
+        batch, channels, height, width = image.shape
+        _, _, kernel_h, kernel_w = kernel.shape
+        out_h, out_w = height // kernel_h, width // kernel_w
+        patches = image.reshape(
+            batch, channels, out_h, kernel_h, out_w, kernel_w
+        ).transpose(1, 3, 5, 0, 2, 4)
+        a = np.ascontiguousarray(kernel.reshape(preprocess["kernel_matrix"]["shape"]))
+        w = np.ascontiguousarray(patches.reshape(preprocess["patch_matrix"]["shape"]))
+        return {"A0": a, "W": w}
+
+    def materialize_source_output(
+        self, partition_id: str, matrix: np.ndarray, bias: np.ndarray,
+    ) -> np.ndarray:
+        """Apply the signed host reshape/bias tail after a patch device result."""
+        if partition_id not in self.contracts:
+            raise UnsupportedAcceleratorContract(
+                self.rejections.get(partition_id, f"unknown partition {partition_id}")
+            )
+        signature = self.contracts[partition_id].signature
+        postprocess = signature.get("host_postprocessing")
+        if postprocess is None:
+            raise UnsupportedAcceleratorContract(
+                f"partition {partition_id} has no source output postprocessing contract"
+            )
+        matrix = np.asarray(matrix)
+        bias = np.asarray(bias)
+        if (matrix.dtype != np.float32
+                or tuple(matrix.shape) != tuple(postprocess["matrix_shape"])
+                or bias.dtype != np.float32
+                or tuple(bias.shape) != tuple(postprocess["bias_shape"])
+                or not np.all(np.isfinite(matrix)) or not np.all(np.isfinite(bias))):
+            raise ValueError("patch output matrix/bias differs from signed contract")
+        _, channels, out_h, out_w = postprocess["output_shape"]
+        result = matrix.reshape(channels, 1, out_h, out_w).reshape(
+            postprocess["output_shape"]
+        )
+        return np.ascontiguousarray(
+            np.asarray(result + bias.reshape(1, channels, 1, 1), dtype=np.float32)
+        )
 
     def publish_device_output(
         self, partition_id: str, device_bf16: np.ndarray, output_scale: float,
