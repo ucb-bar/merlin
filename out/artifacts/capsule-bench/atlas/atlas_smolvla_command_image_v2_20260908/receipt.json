@@ -2,7 +2,7 @@
   "baseline": "atlas_smolvla_compact_loops_v1_20260908 (committed 28/28 IMEM-fit package)",
   "capture_semantics_bridges": {
     "calibration_contract": "calibration_contract.json",
-    "claim_scope": "three real capture partitions, not whole-model execution",
+    "claim_scope": "four real capture partitions, not whole-model execution",
     "partitions": {
       "atlas_p0098": {
         "device_output": "capture_semantics_state_proj/device_output.bf16.bin",
@@ -10,6 +10,18 @@
         "fqn": "model.state_proj",
         "raw_gsim_receipt": "capture_semantics_state_proj/raw_gsim_receipt.json",
         "result": "capture_semantics_state_proj/result.json"
+      },
+      "atlas_p0102": {
+        "capture_boundary": "capture_semantics_text_layer0_attn_qk/capture_boundary.json",
+        "capture_regions": [
+          "matmul_101"
+        ],
+        "device_output": "capture_semantics_text_layer0_attn_qk/device_output.bf16.bin",
+        "dispatch_manifest": "capture_semantics_text_layer0_attn_qk/dispatch_manifest.json",
+        "fqn": "",
+        "qualified_frontier": "mul_32 (source matmul output times 0.125)",
+        "raw_gsim_receipt": "capture_semantics_text_layer0_attn_qk/raw_gsim_receipt.json",
+        "result": "capture_semantics_text_layer0_attn_qk/result.json"
       },
       "atlas_p0243": {
         "device_output": "capture_semantics_action_in_proj/device_output.bf16.bin",
@@ -32,7 +44,7 @@
       }
     },
     "preferred_50x720x32_blocker": "host-produced activation from dtype_cast_471 is not captured",
-    "qualified_partitions": 3,
+    "qualified_partitions": 4,
     "structural_partitions_total": 391
   },
   "compact_bias_fix": {
@@ -187,10 +199,10 @@
       "previous_bounded_host_regions_implemented": 22,
       "previous_missing_host_semantics": 2408,
       "proven_metadata_aliases": 1675,
-      "qualified_accelerator_partitions": 3,
+      "qualified_accelerator_partitions": 4,
       "qualified_layout_bridges": 2033,
       "semantic_host_required_regions": 2430,
-      "static_command_contract_partitions_qualified": 390,
+      "static_command_contract_partitions_qualified": 391,
       "strided_broadcast_bridges": 246,
       "structural_accelerator_partitions": 391
     },
@@ -209,13 +221,13 @@
       "missing_host_semantics": 0,
       "missing_host_semantics_by_semantic": {},
       "missing_physical_event_runtime": 1,
-      "unqualified_accelerator_command_contracts": 1,
-      "unqualified_accelerator_partitions": 388,
+      "unqualified_accelerator_command_contracts": 0,
+      "unqualified_accelerator_partitions": 387,
       "unrealized_layout_bridges": 0
     },
     "full_schedule": {
       "path": "whole_capture_plan/hybrid_schedule.json",
-      "sha256": "d70d61f26de5b778a95ce05efcf5042223c4405007a47a6e5cb8118b1a1f6790"
+      "sha256": "9afc046f83e0d39bfced087dd678c2c62394bf98f1eefc391435861c1e2e2e0d"
     },
     "implementation": "submission/mlir_oot/hybrid_runtime.py",
     "runnable_e2e": false,
@@ -244,7 +256,7 @@
   "schema": "atlas_smolvla_command_image_receipt_v3",
   "status": "representative_rtl_numeric",
   "validation": {
-    "backend_source_tree_sha256": "f326d8bd045eef1cc0177aae015efb9f39595f1d6abe541a12a6d9816a0db937",
+    "backend_source_tree_sha256": "84639f8690b586ba61a75904fa6d7aabc1ebb77167ad4af97eb3107a3829cbab",
     "first_concrete_partition": {
       "capture_regions": [
         "matmul_0",
@@ -258,7 +270,7 @@
     },
     "focused_tests": {
       "failed": 0,
-      "passed": 31
+      "passed": 32
     },
     "full_capture_partition_plan": {
       "accelerator_dependency_edges": 88,
@@ -308,7 +320,7 @@
         },
         "classes": [
           {
-            "contract_qualified": 0,
+            "contract_qualified": 1,
             "count": 1,
             "input_origins": [
               "function_argument",
@@ -1112,15 +1124,13 @@
           }
         ],
         "contract_qualified_by_kind": {
-          "matmul": 302,
+          "matmul": 303,
           "matmul_batched": 88
         },
-        "contract_qualified_partitions": 390,
-        "contract_unqualified_partitions": 1,
+        "contract_qualified_partitions": 391,
+        "contract_unqualified_partitions": 0,
         "exact_class_count": 31,
-        "rejections_by_reason": {
-          "rank-2 source requires capture-specific preprocessing outside the command": 1
-        },
+        "rejections_by_reason": {},
         "schema": "atlas_accelerator_contract_census_v1"
       },
       "accelerator_contract_numeric_witnesses": [
@@ -1149,7 +1159,7 @@
         {
           "bias_fused": false,
           "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
-          "class_partition_count": 17,
+          "class_partition_count": 18,
           "command_contract_sha256": "3011059b71a82403c25f6d117509dd7050f2bb8f03948c3e080d9b2670db2365",
           "conversion_preload_bytes": 138560,
           "geometry": {
@@ -1319,8 +1329,8 @@
           "host_to_device_quantize_bias": 77
         },
         "count": 1250,
-        "qualified": 12,
-        "semantics_qualified": 1247
+        "qualified": 15,
+        "semantics_qualified": 1250
       },
       "coverage": {
         "host_materialized_layout_bridges": 358,
@@ -1374,10 +1384,10 @@
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
         "proven_metadata_aliases": 1675,
-        "qualified_accelerator_partitions": 3,
+        "qualified_accelerator_partitions": 4,
         "qualified_layout_bridges": 2033,
         "semantic_host_required_regions": 2430,
-        "static_command_contract_partitions_qualified": 390,
+        "static_command_contract_partitions_qualified": 391,
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391
       },
@@ -1397,8 +1407,8 @@
         "missing_host_semantics": 0,
         "missing_host_semantics_by_semantic": {},
         "missing_physical_event_runtime": 1,
-        "unqualified_accelerator_command_contracts": 1,
-        "unqualified_accelerator_partitions": 388,
+        "unqualified_accelerator_command_contracts": 0,
+        "unqualified_accelerator_partitions": 387,
         "unrealized_layout_bridges": 0
       },
       "final_indexed_host_numeric_witnesses": [
@@ -1513,7 +1523,7 @@
       ],
       "full_schedule": {
         "path": "whole_capture_plan/hybrid_schedule.json",
-        "sha256": "d70d61f26de5b778a95ce05efcf5042223c4405007a47a6e5cb8118b1a1f6790"
+        "sha256": "9afc046f83e0d39bfced087dd678c2c62394bf98f1eefc391435861c1e2e2e0d"
       },
       "generic_host_chain": {
         "claim": "host semantic execution only; no device execution and not whole-model E2E",
@@ -6223,6 +6233,60 @@
             "rmse": 0.021716563031077385
           }
         },
+        "atlas_p0102": {
+          "acceptance": {
+            "passed": true,
+            "thresholds": {
+              "cosine_min": 0.995,
+              "max_abs_error": 0.125,
+              "max_relative_denominator_floor": 0.001,
+              "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+            }
+          },
+          "capture_regions": [
+            "matmul_101"
+          ],
+          "cycles": 8700444,
+          "device_output": {
+            "dtype": "bf16",
+            "path": "capture_semantics_text_layer0_attn_qk/device_output.bf16.bin",
+            "raw_sha256": "64e653018d064449654bd7424819e8fe8c0e9c16bb81bb1f01fac762ef0be948",
+            "shape": [
+              15,
+              113,
+              113
+            ]
+          },
+          "fqn": "",
+          "quantized_domain_reference_comparison": {
+            "cosine_similarity": 0.999998152256012,
+            "max_abs_error": 0.006253480911254883,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 1.242398977279663,
+            "mean_abs_error": 0.0005357164773158729,
+            "rmse": 0.0007629130268469453
+          },
+          "raw_gsim_receipt": {
+            "assertion_clean": true,
+            "cycles": 8700444,
+            "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+            "final_pc_available": false,
+            "halt_reason": -1,
+            "halted": true,
+            "path": "capture_semantics_text_layer0_attn_qk/raw_gsim_receipt.json",
+            "spec_sha256": "e9e042c4cf4308f67edd751334c71220aaddbc0828f9772a8af65cb577183255",
+            "stderr_observation": "empty",
+            "stdout_sha256": "4efaf3c66330eb4345c9452ac38b240566358e7c395e41d07a2ae0074585e801"
+          },
+          "source_f32_comparison": {
+            "cosine_similarity": 0.9992777705192566,
+            "max_abs_error": 0.10321509838104248,
+            "max_relative_denominator_floor": 0.001,
+            "max_relative_error": 48.0943603515625,
+            "mean_abs_error": 0.011187801137566566,
+            "rmse": 0.014218457974493504
+          }
+        },
         "atlas_p0243": {
           "acceptance": {
             "passed": true,
@@ -6357,7 +6421,7 @@
         "partition_id": "atlas_p0390",
         "reason": "requires the unresolved preceding host prefix; no captured source activation is bound"
       },
-      "qualified_partitions": 3,
+      "qualified_partitions": 4,
       "structural_partitions_total": 391
     },
     "recovery_status": "representative_rtl_numeric",
@@ -6433,7 +6497,7 @@
       }
     },
     "rtl_numeric_smolvla_coverage": {
-      "capture_semantics_physical_occurrences": 3,
+      "capture_semantics_physical_occurrences": 4,
       "cases": {
         "real_action_in_proj_50_32_720": {
           "cycles": 573715,
@@ -6461,6 +6525,19 @@
           "source_cosine_similarity": 0.9990334510803223,
           "source_max_abs_error": 0.06637021899223328
         },
+        "real_text_layer0_attn_qk_15_113_64_113": {
+          "cycles": 8700444,
+          "instruction_words": 30986,
+          "qualified_frontier": "mul_32 (source matmul output times 0.125)",
+          "shape": [
+            15,
+            113,
+            64,
+            113
+          ],
+          "source_cosine_similarity": 0.9992777705192566,
+          "source_max_abs_error": 0.10321509838104248
+        },
         "smolvla_state_proj_1_32_960": {
           "cycles": 154458,
           "instruction_words": 1509,
@@ -6483,9 +6560,9 @@
           ]
         }
       },
-      "outputs_checked": 74560,
+      "outputs_checked": 266095,
       "physical_contraction_occurrences_total": 391,
-      "unique_contraction_shapes": 3,
+      "unique_contraction_shapes": 4,
       "unique_contraction_shapes_total": 28
     },
     "schema": "atlas_smolvla_command_image_validation_v3",

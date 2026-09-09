@@ -153,7 +153,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "previous_bounded_host_regions_implemented": 22,
         "previous_missing_host_semantics": 2408,
         "proven_metadata_aliases": 1675,
-        "qualified_accelerator_partitions": 3,
+        "qualified_accelerator_partitions": 4,
         "qualified_layout_bridges": 2033,
         "semantic_host_required_regions": 2430,
         "static_command_contract_partitions_qualified": 391,
@@ -164,7 +164,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
     assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {}
     assert schedule["fail_closed"]["missing_physical_event_runtime"] == 1
     assert schedule["fail_closed"]["unqualified_accelerator_command_contracts"] == 0
-    assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
+    assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 387
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 0
     assert schedule["conversion_boundaries"] == {
         "by_conversion": {
@@ -174,7 +174,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
             "host_to_device_quantize_bias": 77,
         },
         "count": 1250,
-        "qualified": 12,
+        "qualified": 15,
         "semantics_qualified": 1250,
     }
     assert len(schedule["events"]) == 6104
@@ -266,12 +266,12 @@ def test_all_real_contraction_contracts_qualify_without_promoting_physical_execu
         row for row in schedule["events"] if row["kind"] == "accelerator_partition"
     ]
     assert sum(row["command_contract_qualified"] for row in accelerator_events) == 391
-    assert sum(row["executable"] for row in accelerator_events) == 3
+    assert sum(row["executable"] for row in accelerator_events) == 4
     conversion_events = [
         row for row in schedule["events"] if row["kind"] == "conversion_boundary"
     ]
     assert sum(row["conversion_semantics_qualified"] for row in conversion_events) == 1250
-    assert sum(row["executable"] for row in conversion_events) == 12
+    assert sum(row["executable"] for row in conversion_events) == 15
 
 
 def test_rank2_device_domain_execution_and_conversion_are_independently_exact(

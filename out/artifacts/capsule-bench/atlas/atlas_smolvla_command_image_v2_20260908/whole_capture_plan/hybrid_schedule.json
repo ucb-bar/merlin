@@ -6,7 +6,7 @@
     },
     "classes": [
       {
-        "contract_qualified": 0,
+        "contract_qualified": 1,
         "count": 1,
         "input_origins": [
           "function_argument",
@@ -810,15 +810,13 @@
       }
     ],
     "contract_qualified_by_kind": {
-      "matmul": 302,
+      "matmul": 303,
       "matmul_batched": 88
     },
-    "contract_qualified_partitions": 390,
-    "contract_unqualified_partitions": 1,
+    "contract_qualified_partitions": 391,
+    "contract_unqualified_partitions": 0,
     "exact_class_count": 31,
-    "rejections_by_reason": {
-      "rank-2 source requires capture-specific preprocessing outside the command": 1
-    },
+    "rejections_by_reason": {},
     "schema": "atlas_accelerator_contract_census_v1"
   },
   "accelerator_contract_numeric_witnesses": [
@@ -847,7 +845,7 @@
     {
       "bias_fused": false,
       "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
-      "class_partition_count": 17,
+      "class_partition_count": 18,
       "command_contract_sha256": "3011059b71a82403c25f6d117509dd7050f2bb8f03948c3e080d9b2670db2365",
       "conversion_preload_bytes": 138560,
       "geometry": {
@@ -1024,8 +1022,8 @@
       "host_to_device_quantize_bias": 77
     },
     "count": 1250,
-    "qualified": 12,
-    "semantics_qualified": 1247
+    "qualified": 15,
+    "semantics_qualified": 1250
   },
   "coverage": {
     "host_materialized_layout_bridges": 358,
@@ -1079,10 +1077,10 @@
     "previous_bounded_host_regions_implemented": 22,
     "previous_missing_host_semantics": 2408,
     "proven_metadata_aliases": 1675,
-    "qualified_accelerator_partitions": 3,
+    "qualified_accelerator_partitions": 4,
     "qualified_layout_bridges": 2033,
     "semantic_host_required_regions": 2430,
-    "static_command_contract_partitions_qualified": 390,
+    "static_command_contract_partitions_qualified": 391,
     "strided_broadcast_bridges": 246,
     "structural_accelerator_partitions": 391
   },
@@ -4265,7 +4263,7 @@
       "capture_op_index": 12,
       "capture_type": "tensor<768x768xf32>",
       "conversion": "host_to_device_quantize",
-      "conversion_semantics_qualified": false,
+      "conversion_semantics_qualified": true,
       "device_bytes": 589824,
       "device_dtype": "fp8_e4m3",
       "direction": "to_device",
@@ -4290,14 +4288,14 @@
         "kind": "function_argument"
       },
       "partition_id": "atlas_p0000",
-      "status": "missing_conversion_contract",
+      "status": "conversion_semantics_qualified_pending_physical_partition",
       "tensor": "A0"
     },
     {
       "capture_op_index": 12,
       "capture_type": "tensor<768x1024xf32>",
       "conversion": "host_to_device_quantize",
-      "conversion_semantics_qualified": false,
+      "conversion_semantics_qualified": true,
       "device_bytes": 786432,
       "device_dtype": "fp8_e4m3",
       "direction": "to_device",
@@ -4327,7 +4325,7 @@
         "kind": "function_argument"
       },
       "partition_id": "atlas_p0000",
-      "status": "missing_conversion_contract",
+      "status": "conversion_semantics_qualified_pending_physical_partition",
       "tensor": "W"
     },
     {
@@ -4335,20 +4333,20 @@
       "capture_regions": [
         "conv_0"
       ],
-      "command_contract_qualified": false,
-      "command_contract_rejection": "rank-2 source requires capture-specific preprocessing outside the command",
+      "command_contract_qualified": true,
+      "command_contract_sha256": "b6c014a2c43246fb2b60e010df60cdf15476c37715ab14bd1173bbe10a8b26bf",
       "event_index": 5,
       "executable": false,
       "kernel_id": "matmul_768_768_1024",
       "kind": "accelerator_partition",
       "partition_id": "atlas_p0000",
-      "status": "structural_only_unqualified"
+      "status": "static_command_contract_qualified_pending_capture_numeric"
     },
     {
       "capture_op_index": 12,
       "capture_type": "tensor<768x1024xf32>",
       "conversion": "device_to_host_dequantize",
-      "conversion_semantics_qualified": false,
+      "conversion_semantics_qualified": true,
       "device_bytes": 1572864,
       "device_dtype": "bf16",
       "direction": "to_host",
@@ -4356,7 +4354,7 @@
       "executable": false,
       "kind": "conversion_boundary",
       "partition_id": "atlas_p0000",
-      "status": "missing_conversion_contract",
+      "status": "conversion_semantics_qualified_pending_physical_partition",
       "tensor": "Y0"
     },
     {
@@ -22695,7 +22693,7 @@
       "device_dtype": "fp8_e4m3",
       "direction": "to_device",
       "event_index": 1081,
-      "executable": false,
+      "executable": true,
       "input_index": 0,
       "kind": "conversion_boundary",
       "origin": {
@@ -22722,7 +22720,7 @@
         "semantic": "dtype_cast"
       },
       "partition_id": "atlas_p0102",
-      "status": "conversion_semantics_qualified_pending_physical_partition",
+      "status": "qualified",
       "tensor": "A0"
     },
     {
@@ -22734,7 +22732,7 @@
       "device_dtype": "fp8_e4m3",
       "direction": "to_device",
       "event_index": 1082,
-      "executable": false,
+      "executable": true,
       "input_index": 1,
       "kind": "conversion_boundary",
       "origin": {
@@ -22765,7 +22763,7 @@
         "semantic": "dtype_cast"
       },
       "partition_id": "atlas_p0102",
-      "status": "conversion_semantics_qualified_pending_physical_partition",
+      "status": "qualified",
       "tensor": "W"
     },
     {
@@ -22776,11 +22774,11 @@
       "command_contract_qualified": true,
       "command_contract_sha256": "b69dd3ea6cfade3b9b1e4bfac5f111b8613d63549c91aebd520d43d0678159b4",
       "event_index": 1083,
-      "executable": false,
+      "executable": true,
       "kernel_id": "matmul_batched_15_113_64_113",
       "kind": "accelerator_partition",
       "partition_id": "atlas_p0102",
-      "status": "static_command_contract_qualified_pending_capture_numeric"
+      "status": "qualified_capture_semantics"
     },
     {
       "capture_op_index": 3057,
@@ -22791,10 +22789,10 @@
       "device_dtype": "bf16",
       "direction": "to_host",
       "event_index": 1084,
-      "executable": false,
+      "executable": true,
       "kind": "conversion_boundary",
       "partition_id": "atlas_p0102",
-      "status": "conversion_semantics_qualified_pending_physical_partition",
+      "status": "qualified",
       "tensor": "Y0"
     },
     {
@@ -93732,8 +93730,8 @@
     "missing_host_semantics": 0,
     "missing_host_semantics_by_semantic": {},
     "missing_physical_event_runtime": 1,
-    "unqualified_accelerator_command_contracts": 1,
-    "unqualified_accelerator_partitions": 388,
+    "unqualified_accelerator_command_contracts": 0,
+    "unqualified_accelerator_partitions": 387,
     "unqualified_partition_ids": [
       "atlas_p0000",
       "atlas_p0001",
@@ -93836,7 +93834,6 @@
       "atlas_p0099",
       "atlas_p0100",
       "atlas_p0101",
-      "atlas_p0102",
       "atlas_p0103",
       "atlas_p0104",
       "atlas_p0105",

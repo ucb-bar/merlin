@@ -114,7 +114,7 @@ accelerator boundaries prevent a host dependency. This is fresh host numeric
 evidence only.
 
 Host semantic and layout-bridge coverage are now complete, but the hybrid
-schedule remains explicitly `e2e_blocked_fail_closed`: 388 accelerator
+schedule remains explicitly `e2e_blocked_fail_closed`: 387 accelerator
 partitions and the physical event/DMA runtime remain unresolved. See
 `HYBRID_RUNTIME_REPORT.md` and
 `whole_capture_plan/hybrid_schedule_summary.json`. No E2E or performance claim
@@ -122,23 +122,27 @@ is added.
 
 The accelerator side is now split into 31 exact kernel/source/origin classes.
 Static source, ABI, allocation, command-chain, and image-receipt agreement is
-proven for 390/391 partitions: 208 BF16 no-bias rank-2 matmuls, 17 F32 no-bias
+proven for 391/391 partitions: 208 BF16 no-bias rank-2 matmuls, 18 F32 no-bias
 rank-2 matmuls, 77 F32 bias-fused rank-2 matmuls, 24 BF16 batched matmuls, and
-64 F32 batched matmuls. Their 1,247/1,250 conversion boundaries have concrete
+64 F32 batched matmuls. Their 1,250/1,250 conversion boundaries have concrete
 FP8/BF16 host conversion semantics, including all 88 direct device
 requantizations and scaled BF16 output publication. Five real-shape software
 witnesses match independent oracles. These events remain physically
 non-executable unless their capture-bound RTL receipt exists, so physical
-coverage is unchanged at 3/391 and 12/1,250.
+coverage is 4/391 and 15/1,250.
 
 The batched command defect is repaired fail-closed: each buffer now records
 `RES_PACK W -> W_resident`, consumes `W_resident` in `BATCHED_MATMUL`, and
 evicts the handle. Mutating the consumer back to raw `W` or deleting the evict
 is rejected. Fresh assertion-enabled GSIM preserves the exact
 `15x50x64x113` result at 4,114,764 cycles with 0/84,750 mismatches; this is a
-shape-level control, not physical capture qualification. The sole remaining
-static rejection is the patch convolution whose im2col preprocessing is
-outside its image.
+shape-level control, not physical capture qualification. The patch convolution
+now has an exact fail-closed source contract for NCHW-to-im2col materialization,
+kernel reshape, matrix ABI, NCHW result reshape, and per-channel bias. Altering
+its affine stride or ABI origin chain is rejected. Its full `768x768x1024`
+command was assertion-clean through a bounded 1,000,000-cycle GSIM run but did
+not halt at 20,000,000 cycles, so it receives no numeric or physical promotion.
+The retained cap receipt is under `patch_im2col_gsim_probe_v1/`.
 
 The deterministic full-capture planner identifies 391 structural contraction
 partitions, 28 kernel variants, 88 direct accelerator dependencies, and 303
@@ -150,10 +154,20 @@ not executable f32-capture coverage: every partition still requires calibrated
 f32-to-FP8 input/weight conversion and BF16-to-f32 output conversion, so the
 base planner manifest explicitly reports zero capture-semantics-executable
 partitions because that snapshot describes the structural emitter alone.  The
-bounded calibrated bridges subsequently qualify exactly **3/391** real capture
-partitions: `atlas_p0098`, `model.state_proj` (`matmul_97` + `add_99`), and
-`atlas_p0243`, `model.action_in_proj` (`matmul_242` + `add_197`), followed by
+bounded calibrated bridges subsequently qualify exactly **4/391** real capture
+partitions: `atlas_p0098`, `model.state_proj` (`matmul_97` + `add_99`);
+`atlas_p0102`, the first text-layer attention QK contraction (`matmul_101`);
+`atlas_p0243`, `model.action_in_proj` (`matmul_242` + `add_197`); and
 `atlas_p0244`, `model.action_time_mlp_in` (`matmul_243` + `add_199`).
+
+For `atlas_p0102`, the publication boundary includes its sole immediate graph
+frontier, the captured multiply by 0.125. The exact `15x113x64x113` operands
+run on assertion-enabled GSIM in 8,700,444 cycles. The result passes the fixed
+source gate with 0.103215 max absolute error and 0.999278 cosine similarity;
+the independent quantized-domain comparison has 0.006253 max absolute error
+and 0.999998 cosine similarity. Raw-`W`, missing-evict, and perturbed-source
+controls fail closed. This qualifies one physical partition, not the later
+mask/softmax chain or whole-model execution.
 
 For the state-projection partition the bridge loads the original `state` input and
 `model.state_proj.{weight,bias}` tensors, applies the recorded weight transpose,
@@ -242,11 +256,14 @@ perturbation fails the fixed gate. The parallel
 `capture_semantics_action_in_proj/` and
 `capture_semantics_action_time_mlp_in/` directories retain equivalent
 no-golden raw simulator evidence, independently recomputed references, and
-separate negative controls. This is approximate FP8 qualification of three
-partitions, not source bit-exactness or whole-model execution.
+separate negative controls. Together with the batched QK result, this is
+approximate FP8 qualification of four partitions, not source bit-exactness or
+whole-model execution.
 
-RTL numeric coverage is currently 3/28 unique contraction shapes; real
-capture-semantic coverage is exactly 3/391 physical contraction instances,
+RTL numeric coverage is currently 4/28 unique capture-bound contraction shapes;
+this counts distinct kernel IDs among the four directly qualified physical
+partitions and excludes non-transitive shape-only controls. Real
+capture-semantic coverage is exactly 4/391 physical contraction instances,
 plus the small dependency/ABI controls above. The new state-projection case
 caught and fixed a real defect: compact FP8 matmul had
 silently omitted `bias_add`; a first fix used `VREDSUM` as a broadcast and
@@ -276,8 +293,8 @@ further 299 vector-semantic regions have dtypes, ranks, or extents outside the
 existing emitter, making the current effective host-required total 2,430.
 
 One concrete partition is retained under `partitions/first_addmm_matmul_0`.
-It fuses capture regions `matmul_0` and `add_3` (the first target-compatible
-physical contraction after the unsupported patch convolution), names all three
+It fuses capture regions `matmul_0` and `add_3` (the first bias-fused rank-2
+physical contraction after the patch convolution), names all three
 inputs and its output at the host/device boundary, folds the bias into commit,
 and compiles to 8,037 words: 24.5% of the 32,768-word IMEM. This proves a real
 partition can be selected and emitted from the full-capture inventory.  It is
@@ -287,9 +304,9 @@ remain required.
 The 28 unique contraction programs do not fit one resident image. A real
 end-to-end SmolVLA result still requires:
 
-1. capture-specific calibration and numeric qualification for the remaining 388
-   accelerator partitions and their 1,238 physically unqualified conversion
-   events; the static conversion contracts now cover 1,247/1,250 boundaries;
+1. capture-specific calibration and numeric qualification for the remaining 387
+   accelerator partitions and their 1,235 physically unqualified conversion
+   events; the static conversion contracts now cover 1,250/1,250 boundaries;
 2. a physical runtime for the already ordered 6,104 host, bridge, conversion,
    and device events, including binding the interval-planned device arena;
 3. one fresh full-input execution and source-model output comparison.

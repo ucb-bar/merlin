@@ -90,22 +90,22 @@ the old 22-region scoped baseline; it is not hidden or double-counted.
 
 The schedule covers all 391 structural accelerator partitions, with explicit
 host-to-device quantization, device-to-host dequantization, and 88
-device-to-device requantization boundaries. Only the three previously qualified
-partitions are executable, so 388 partitions remain blocked on capture-specific
+device-to-device requantization boundaries. Four capture partitions are now
+executable, so 387 partitions remain blocked on capture-specific
 calibration/numeric qualification. There are 1,250 conversion events in total;
-only the 12 around qualified partitions are marked executable.
+only the 15 around qualified partitions are marked executable.
 
 The new accelerator-contract census separates 31 exact classes by kernel,
 source semantic, and input-origin topology. A fail-closed static lane now proves
 source operation, ABI, command dependency chain, allocation, and compiled-image
-receipt agreement for 390/391 partitions: 302 rank-2 matmuls and all 88 batched
+receipt agreement for 391/391 partitions: 303 rank-2 matmuls and all 88 batched
 matmuls. The batched split is 24 BF16 and 64 F32 contracts. The corresponding
-1,247 of 1,250 conversion boundaries have implemented f32/BF16-to-FP8 input
+1,250 of 1,250 conversion boundaries have implemented f32/BF16-to-FP8 input
 conversion, BF16 quant-domain bias conversion, device requantization, and scaled
 BF16 output publication semantics. This is a static command contract and
 executable host conversion implementation; it does not promote physical
-partition execution. Thus the physical counts stay at 3/391 partitions and
-12/1,250 conversion events.
+partition execution. Physical coverage is 4/391 partitions and 15/1,250
+conversion events.
 
 The former 88-command rejection is repaired at its source. Batched command
 buffers now declare `RES_PACK W -> W_resident`, execute `BATCHED_MATMUL` from
@@ -116,9 +116,21 @@ chain. Raw-`W` and missing-evict negative controls fail closed. Five fresh
 real-shape software witnesses cover rank-2 and batched BF16/F32 classes. The
 assertion-enabled GSIM control for exact shape `15x50x64x113` remains bit-exact
 at 4,114,764 cycles with 0/84,750 mismatches. It is shape-level evidence and
-does not promote any physical occurrence. The only static rejection now is the
-patch-embedding contraction whose im2col preprocessing remains outside its
-command image.
+does not promote any physical occurrence. The patch-embedding contraction now
+has an exact source contract for NCHW-to-im2col materialization, kernel reshape,
+matrix ABI, output reshape, and per-channel bias. Affine-stride and ABI-origin
+negative controls fail closed. Its exact `768x768x1024` command remained
+assertion-clean through a bounded 1,000,000-cycle GSIM run but did not halt by
+20,000,000 cycles, so it receives no numeric or physical promotion.
+
+The newly qualified physical batched partition is `atlas_p0102`, the first
+text-layer attention QK contraction. Its exact `15x113x64x113` captured
+operands complete on assertion-enabled GSIM in 8,700,444 cycles. Its sole
+immediate graph frontier, multiplication by 0.125, is included in the source
+gate: max absolute error is 0.103215 and cosine similarity is 0.999278. The
+independent quantized-domain comparison has 0.006253 max absolute error and
+0.999998 cosine similarity. Raw-`W`, missing-evict, and source-perturbation
+controls reject. This promotes one partition, not its later mask/softmax chain.
 
 An inclusive-lifetime, 32-byte-aligned first-fit activation allocator assigns
 all 391 partition outputs. Its deterministic symbolic arena peaks at 29,884,416
@@ -155,28 +167,28 @@ device or whole-model execution.
 
 Host semantic and layout-bridge coverage are now complete: all 2,033 bridge
 candidates are qualified, including 358 real host materializations. The
-remaining exact blockers are 388 unqualified accelerator partitions, one static
-command contracts, and the absent physical event/DMA runtime. Full schedule and compact summary are in
+remaining exact blockers are 387 unqualified accelerator partitions and the
+absent physical event/DMA runtime. Full schedule and compact summary are in
 `whole_capture_plan/hybrid_schedule.json` and
 `whole_capture_plan/hybrid_schedule_summary.json`.
 
 ## Prioritized enablement ladder
 
-1. Include the patch convolution's exact im2col preprocessing in its partition
-   boundary. It is the sole remaining static command-contract rejection; the
-   repaired 88 batched contracts do not by themselves promote physical execution.
-2. Continue accelerator numeric qualification across the 28 emitted kernel
+1. Continue accelerator numeric qualification across the 28 emitted kernel
    variants. Fresh batch evidence now compiles all 28/28 variants and maps them
-   onto all 391 occurrences. RTL numerics tested four variants: three rank-2
-   shapes and batched `15x50x64x113` all pass. Thus 24 variants are numerically
-   untested, none of the four tested variants is failing, and only three
-   physical capture partitions have direct qualification, and 388 remain
-   unqualified. Variant-level RTL testing can amortize kernel proof, but all 388
+   onto all 391 occurrences. Direct capture-bound RTL numerics qualify four
+   distinct kernel variants: three rank-2 variants and batched
+   `15x113x64x113`. The separate
+   batched `15x50x64x113` result is a passing shape-only control and is not
+   transitive to a capture occurrence. Thus 24 variants lack direct
+   capture-bound qualification, none of the four qualified variants is failing,
+   and 387 physical partitions remain unqualified. Variant-level RTL testing
+   can amortize kernel proof, but all 387
    occurrences still need real weight binding and an activation calibration
-   record. The schedule currently has 1,238 unqualified conversions: 688
+   record. The schedule currently has 1,235 unqualified conversions: 686
    host-to-device activations/weights, 74 bias quantizations, 88 device
-   requantizations, and 388 device-to-host dequantizations.
-3. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
+   requantizations, and 387 device-to-host dequantizations.
+2. Turn the symbolic schedule into a runtime: execute all 6,104 ordered events,
    materialize host/device conversions, invoke the qualified host bridge lane,
    launch split command images, propagate failures, and bind the 391 interval
    allocations. The proven allocator reuses 387 allocations and has a
@@ -188,8 +200,8 @@ command contracts, and the absent physical event/DMA runtime. Full schedule and 
 
 The host-semantics and unrealized-layout gates are now zero. The first honest
 E2E becomes possible only when all remaining gates are zero at the same time:
-one static command contract, 388 unqualified physical partitions (and their
-1,238 physically unqualified conversion events), and the absent physical
+387 unqualified physical partitions (and their 1,235 physically unqualified
+conversion events), and the absent physical
 event/DMA runtime. At that point one fresh full input must
 traverse the entire schedule and be compared with the source-model output.
 Kernel-variant coverage alone, structural 391-partition coverage, or replaying
