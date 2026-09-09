@@ -675,3 +675,30 @@ class TestTheRealTinyLlamaPlanIsPastTheMedanyWindow:
 
     def test_the_const_blob_alone_is_over_a_gibibyte(self):
         assert self._plan().const_bytes > (1 << 30)
+
+    def test_placing_the_blob_FAR_brings_it_back_inside_the_window(self):
+        """The far-blob build is the answer to this finding, so the span must model it.
+
+        `far_blob_link_flags` gives the constant blob its own load segment at an absolute address
+        and the harness reaches it through a compile-time literal, never a relocation -- so those
+        bytes are not within PC-relative reach and must not be summed into the medany span. Summing
+        them anyway reported FAULT for the one build shape designed to pass, which is a check
+        rejecting its own remedy.
+        """
+        from merlin.liveness.preconditions import medany_span
+        plan = self._plan()
+        extra = 48_976_384 + 2 * 1024 * 1024
+        near = plan.projected_image_bytes(additional_bytes=extra)
+        far = plan.projected_image_bytes(additional_bytes=extra, const_is_far=True)
+        assert far == near - plan.const_bytes
+        assert far < (1 << 31), "the far build must be inside the window or it is no remedy"
+        severities = [f.severity.name for f in
+                      medany_span(uses_medany=True, image_span_bytes=far)]
+        # Still over half the window, so it WARNs -- a bigger blob or a further symbol would push
+        # it out. That is a real caution and is deliberately not silenced.
+        assert "FAULT" not in severities
+
+    def test_a_far_blob_does_not_shrink_the_mutable_arena(self):
+        """Only the CONST blob moves. The arena stays PC-relative, so it stays in the span."""
+        plan = self._plan()
+        assert plan.projected_image_bytes(const_is_far=True) == plan.mutable_bytes

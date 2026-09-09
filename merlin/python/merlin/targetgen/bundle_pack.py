@@ -181,7 +181,8 @@ class PackPlan:
                 f"for; a short pointer list shifts every later argument")
         return tuple(by_name[name] for name in self.abi_order)
 
-    def projected_image_bytes(self, *, additional_bytes: int = 0) -> int:
+    def projected_image_bytes(self, *, additional_bytes: int = 0,
+                              const_is_far: bool = False) -> int:
         """Virtual bytes a linked image of this plan would span, before it is linked.
 
         WHY BEFORE. Under a PC-relative code model an image larger than the model's reach does not
@@ -192,13 +193,23 @@ class PackPlan:
 
         ``additional_bytes`` is what the plan cannot know: code, read-only data the plan does not
         lay out, and any static arena the compiler added. Passed in rather than estimated, because a
-        guessed allowance would decide the verdict near the boundary -- and tiny_llama sits 0.24 GiB
-        past a 2 GiB window, which no allowance changes, while a model just inside it would be
-        decided by the guess.
+        guessed allowance would decide the verdict near the boundary, while a model just inside the
+        window would be decided by the guess.
+
+        ``const_is_far`` EXCLUDES the constant blob, because the far-blob build does not place it
+        within PC-relative reach at all: :func:`bundle_harness.far_blob_link_flags` gives it its own
+        load segment at an absolute address and the harness reaches it through a compile-time
+        literal (:func:`bundle_harness.pointer_expression` with ``const_is_far=True``), never
+        through a relocation. Summing it anyway is what made tiny_llama look unbuildable: 1.21 GiB
+        of weights plus a 1.00 GiB arena projects 2.26 GiB and FAULTS the +/-2 GiB window, while the
+        same plan built far spans ~1.05 GiB and is comfortably inside it. The distinction is the
+        whole reason the far-blob path exists, so the span has to know about it -- otherwise the
+        check rejects precisely the builds that were designed to pass it.
         """
         if additional_bytes < 0:
             raise BundlePackError("additional_bytes cannot be negative")
-        return int(self.const_bytes) + int(self.mutable_bytes) + int(additional_bytes)
+        reachable = 0 if const_is_far else int(self.const_bytes)
+        return reachable + int(self.mutable_bytes) + int(additional_bytes)
 
     def digest(self) -> str:
         return hashlib.sha256(json.dumps(self.to_dict(), sort_keys=True,
