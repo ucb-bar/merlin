@@ -257,17 +257,20 @@ def _emit_input(arr: str, arg: TensorArg, blobs: dict[str, bytes]) -> list[str]:
     return [f"  /* {arr}: {arg.rows}x{arg.cols} linked from a blob, read in place */"]
 
 
-def _emit_output(arr: str, out: TensorArg, statics: list[str]) -> list[str]:
+def _emit_output(
+    arr: str, out: TensorArg, statics: list[str], *, force_static: bool = False,
+) -> list[str]:
     """Reserve one OUTPUT buffer. Large ones move off the stack into ``.bss``.
 
     A big output is the same stack hazard as a big input: ``volatile uint32_t x[N]`` with N in the
     millions is tens of MB of stack. A file-scope ``static`` lives in ``.bss`` instead and costs the
     same HI20/LO12 pair as a blob."""
     n = out.rows * out.cols
-    if n < _BLOB_MIN_ELEMS:
+    if n < _BLOB_MIN_ELEMS and not force_static:
         return [f"  volatile uint32_t {arr}[{n}];"]   # stack (SP-relative -> no reloc)
     statics.append(f"static volatile uint32_t {arr}[{n}];")
-    return [f"  /* {arr}: {out.rows}x{out.cols} in .bss, too large for the stack */"]
+    reason = "evaluator-visible result" if force_static else "too large for the stack"
+    return [f"  /* {arr}: {out.rows}x{out.cols} in .bss, {reason} */"]
 
 
 def _render_helpers(model) -> str:
@@ -1099,6 +1102,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                                compact_policy: dict[str, Any] | None = None,
                                compact_symbol_tag: str | None = None,
                                compact_result_page: bool = False,
+                               host_dump_outputs: bool = False,
                                launch: dict[str, Any] | None = None,
                                resource_claims: dict[str, Any] | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
@@ -1109,8 +1113,10 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     for operands past :data:`_BLOB_MIN_ELEMS`, which are linked in as blobs and read in place, since the
     element-wise form is not buildable at model scale. Returns a :class:`Harness`: the source, plus the
     blobs the caller must assemble into the link."""
-    if result_page and compact_expected is not None:
-        raise ValueError("result_page and compact_expected are mutually exclusive")
+    modes = sum((bool(result_page), compact_expected is not None, bool(host_dump_outputs)))
+    if modes > 1:
+        raise ValueError(
+            "result_page, compact_expected, and host_dump_outputs are mutually exclusive")
     if compact_result_page and compact_expected is None:
         raise ValueError("compact_result_page requires compact_expected")
     ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
@@ -1131,7 +1137,10 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
             inner += _emit_output(arr, o, statics)
             result_arrays.append((arr, result_specs[index]))
         else:
-            inner += _emit_output(arr, o, statics)
+            # Host dumping needs a stable ELF symbol even for a one-word result.
+            # It deliberately embeds no expected values and performs no device-side
+            # comparison; the evaluator reads this buffer after successful exit.
+            inner += _emit_output(arr, o, statics, force_static=host_dump_outputs)
         call_ptrs.append(f"(void*){arr}")
 
     compact_decls: list[str] = []
@@ -1168,7 +1177,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     body += inner
     body.append(f"  {call_symbol}({', '.join(call_ptrs)});")
     for o in out_args:
-        if result_page or compact_expected is not None:
+        if result_page or compact_expected is not None or host_dump_outputs:
             continue
         arr = f"_out_{o.name}"
         body.append(f'  _ps("OUT {o.name} {o.rows} {o.cols}");')
@@ -1191,7 +1200,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     return Harness(source="\n".join(body) + "\n", blobs=blobs,
                    results=(result_specs if (result_page or compact_result_page) else
                             [{"name": o.name, "elements": o.rows * o.cols, "dtype": o.dtype}
-                             for o in out_args] if compact_expected is not None else None))
+                             for o in out_args]
+                            if (compact_expected is not None or host_dump_outputs) else None))
 
 
 def _validated_external_kernel_launch(
@@ -1513,7 +1523,8 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                           compact_expected: dict[str, Any] | None = None,
                           compact_policy: dict[str, Any] | None = None,
                           compact_symbol_tag: str | None = None,
-                          compact_result_page: bool = False) -> Harness | None:
+                          compact_result_page: bool = False,
+                          host_dump_outputs: bool = False) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1530,6 +1541,7 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                                       compact_policy=compact_policy,
                                       compact_symbol_tag=compact_symbol_tag,
                                       compact_result_page=compact_result_page,
+                                      host_dump_outputs=host_dump_outputs,
                                       launch=(cb.get("kernel_abi") or {}).get("launch"),
                                       resource_claims=cb.get("resources"))
 

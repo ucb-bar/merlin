@@ -50,23 +50,31 @@ def result_specs(outputs: list[Any]) -> list[dict[str, Any]]:
             for out in outputs]
 
 
-def symbol_addresses(elf: str | Path, names: tuple[str, ...]) -> dict[str, int]:
-    """Resolve named ELF symbols structurally with the host ``readelf``."""
+def symbol_layouts(elf: str | Path, names: tuple[str, ...]) -> dict[str, dict[str, int]]:
+    """Resolve the address and byte size of named ELF symbols with host ``readelf``."""
     readelf = shutil.which("readelf")
     if readelf is None:
-        raise RuntimeError("readelf is required to resolve the declared result page")
+        raise RuntimeError("readelf is required to resolve declared result symbols")
     text = subprocess.run([readelf, "-Ws", str(elf)], check=True, capture_output=True,
                           text=True).stdout
     wanted = set(names)
-    found: dict[str, int] = {}
+    found: dict[str, dict[str, int]] = {}
     for line in text.splitlines():
         fields = line.split()
         if len(fields) >= 8 and fields[-1] in wanted:
-            found[fields[-1]] = int(fields[1], 16)
+            name = fields[-1]
+            if name in found:
+                raise RuntimeError(f"ELF repeats declared result symbol {name!r}")
+            found[name] = {"address": int(fields[1], 16), "size": int(fields[2], 0)}
     missing = wanted - set(found)
     if missing:
         raise RuntimeError(f"ELF lacks declared result symbol(s): {sorted(missing)}")
     return found
+
+
+def symbol_addresses(elf: str | Path, names: tuple[str, ...]) -> dict[str, int]:
+    """Resolve named ELF symbol addresses structurally with the host ``readelf``."""
+    return {name: record["address"] for name, record in symbol_layouts(elf, names).items()}
 
 
 def manifest_from_elf(elf: str | Path, outputs: list[Any], *, soc_offset: int) -> dict[str, Any]:

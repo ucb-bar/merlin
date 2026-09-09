@@ -14,8 +14,11 @@ This module imports nothing from the frozen Gemmini ``capsule_runner``; it is a 
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import struct
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable
@@ -160,6 +163,91 @@ def _compact_numeric_from_console(console: str, *, expected_elements: int) -> di
     }
 
 
+def _cyclotron_host_dump_plan(
+    elf: str | Path, outputs: list[Any], workdir: str | Path,
+) -> tuple[tuple[int, int, Path], dict[str, Any]]:
+    """Seal one evaluator-owned output range without embedding an answer in the ELF.
+
+    Cyclotron currently exposes one contiguous GMEM dump per invocation, so this
+    transport deliberately supports exactly one output. The ordinary capsule
+    grader still performs the declared comparison over every element of it.
+    """
+    from . import muon_result_page as _rp
+
+    if len(outputs) != 1:
+        raise muon.MuonUnavailable(
+            "Cyclotron evaluator-owned GMEM readback currently requires exactly one output")
+    out = outputs[0]
+    if out.dtype not in ("f32", "i32"):
+        raise muon.MuonUnavailable(
+            f"Cyclotron evaluator-owned GMEM readback does not support dtype {out.dtype!r}")
+    elements = int(out.rows) * int(out.cols)
+    byte_length = elements * 4
+    symbol = f"_out_{out.name}"
+    try:
+        layout = _rp.symbol_layouts(elf, (symbol,))[symbol]
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        raise muon.MuonUnavailable(
+            f"could not bind Cyclotron output dump to ELF symbol {symbol!r}: {exc}") from exc
+    address = int(layout["address"])
+    symbol_size = int(layout["size"])
+    if symbol_size != byte_length:
+        raise muon.MuonUnavailable(
+            f"ELF output symbol {symbol!r} is {symbol_size} bytes, expected {byte_length}")
+    if address < 0 or address + byte_length > (1 << 32):
+        raise muon.MuonUnavailable(
+            f"ELF output symbol {symbol!r} is outside Cyclotron's 32-bit GMEM range")
+
+    elf_path = Path(elf).resolve()
+    dump_path = Path(workdir).resolve() / "cyclotron.output.bin"
+    digest = hashlib.sha256(elf_path.read_bytes()).hexdigest()
+    manifest = {
+        "schema": "merlin.cyclotron-host-gmem-output.v1",
+        "elf_sha256": digest,
+        "transport": "evaluator_owned_gmem_dump",
+        "output": {
+            "name": out.name,
+            "dtype": out.dtype,
+            "rows": int(out.rows),
+            "cols": int(out.cols),
+            "elements": elements,
+            "symbol": symbol,
+            "address": address,
+            "byte_length": byte_length,
+            "symbol_size": symbol_size,
+            "dump_file": dump_path.name,
+        },
+    }
+    (Path(workdir) / "cyclotron.host_dump.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return (address, byte_length, dump_path), manifest
+
+
+def _cyclotron_host_dump_outputs(
+    console: str, dump_path: Path, manifest: dict[str, Any],
+) -> dict[str, list]:
+    """Decode a complete post-exit dump; malformed transport evidence fails closed."""
+    if [line.strip() for line in console.splitlines()].count("DONE") != 1:
+        raise muon.MuonError(
+            "Cyclotron host readback requires exactly one device DONE completion marker")
+    spec = manifest["output"]
+    expected_bytes = int(spec["byte_length"])
+    try:
+        raw = dump_path.read_bytes()
+    except OSError as exc:
+        raise muon.MuonUnavailable(
+            "Cyclotron completed but its evaluator-owned output dump is unavailable") from exc
+    if len(raw) != expected_bytes:
+        raise muon.MuonUnavailable(
+            "Cyclotron evaluator-owned output dump has the wrong size: "
+            f"expected {expected_bytes} bytes, got {len(raw)}")
+    elements = int(spec["elements"])
+    fmt = "f" if spec["dtype"] == "f32" else "i"
+    values = list(struct.unpack(f"<{elements}{fmt}", raw))
+    cols = int(spec["cols"])
+    return {str(spec["name"]): [values[i:i + cols] for i in range(0, elements, cols)]}
+
+
 def _adapter(simulator: str) -> Callable:
     def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
         if not muon.available(simulator):
@@ -177,18 +265,16 @@ def _adapter(simulator: str) -> Callable:
         target = cb.get("target", "radiance")
         expected = cb.get("_oracle_expected_outputs")
         numeric_policy = cb.get("_oracle_numeric_policy")
-        # The compact comparator and expected bounds share the submitted
-        # kernel's address space.  A post-compile nonce prevents direct symbol
-        # references, but cannot make one address space a cryptographic
-        # boundary against memory scanning.  It is therefore explicit opt-in
-        # for our frozen/non-adversarial derived evaluation, never general
-        # agentic anti-cheat evidence.
+        # Large Cyclotron outputs use evaluator-owned post-exit GMEM readback:
+        # no expected values or tolerance bounds enter the device ELF. This is
+        # still explicit opt-in for the frozen/non-adversarial derived cohort;
+        # it is a faster result transport, not a broader anti-cheat claim.
         compact_opt_in = os.environ.get(
             "MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "").strip().lower() in (
                 "1", "true", "yes", "on")
-        compact_numeric = (compact_opt_in and simulator == "cyclotron"
-                           and isinstance(expected, dict) and bool(expected)
-                           and muon.is_mlir_artifact(kernel_src))
+        host_dump_numeric = (compact_opt_in and simulator == "cyclotron"
+                             and isinstance(expected, dict) and bool(expected)
+                             and muon.is_mlir_artifact(kernel_src))
         # A block-scaled MX capsule is graded on the HARNESS's reference MX kernel, whatever the artifact.
         #
         # This branch used to exist only inside program_from_cb, i.e. only on the inline-SOURCE path. An
@@ -218,6 +304,10 @@ def _adapter(simulator: str) -> Callable:
         # was matching the wrong formats in both directions.
         _mxprog = None
         native_mx = _mxabi.is_native_mx_cb(cb)
+        if native_mx or cb.get("mx_operands"):
+            # These paths own full programs rather than the external-pointer
+            # harness whose named output buffer the dump ABI binds.
+            host_dump_numeric = False
         if native_mx:
             # The native compiler program is the subject under test.  Validate its ABI binding before
             # even considering the legacy golden-backed substitution below; mixed provenance is an error.
@@ -241,11 +331,19 @@ def _adapter(simulator: str) -> Callable:
             # this path is fork-free by construction (never clang-muon), so the toolchain stamp is "fork-free".
             elf, toolchain = muon.compile_mlir_forkfree(
                 kernel_src, cb, workdir, target=target,
-                compact_expected=expected if compact_numeric else None,
-                compact_policy=numeric_policy if compact_numeric else None), "fork-free"
+                host_dump_outputs=host_dump_numeric), "fork-free"
         else:
             program = _mh.program_from_cb(cb, kernel_src, muon._model_for(target)) or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
+        dump_spec = None
+        dump_manifest = None
+        if host_dump_numeric:
+            operands = _mh.args_from_cb(cb)
+            if operands is None:
+                raise muon.MuonUnavailable(
+                    "could not derive declared outputs for Cyclotron evaluator-owned readback")
+            _in_args, out_args = operands
+            dump_spec, dump_manifest = _cyclotron_host_dump_plan(elf, out_args, workdir)
         t1 = time.perf_counter()
         engine_binding = None
         engine_binding_path = Path(workdir) / "cyclotron_engine_binding.json"
@@ -257,7 +355,8 @@ def _adapter(simulator: str) -> Callable:
             from merlin.targetgen.evaluation_cohort import cyclotron_l2_engine_binding
             engine_binding = cyclotron_l2_engine_binding(str(target))
         console, cycles, summary = muon.run_elf(
-            elf, simulator=simulator, timeout=timeout, target=target)
+            elf, simulator=simulator, timeout=timeout, target=target,
+            gmem_dump=dump_spec)
         if simulator == "cyclotron":
             after_binding = cyclotron_l2_engine_binding(str(target))
             if after_binding != engine_binding:
@@ -267,12 +366,12 @@ def _adapter(simulator: str) -> Callable:
                 json.dumps(engine_binding, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         t2 = time.perf_counter()
         completion_only = False
-        compact_verdict = (_compact_numeric_from_console(
-            console,
-            expected_elements=sum(len(_mh._flat_values(value)) for value in expected.values()),
-        ) if compact_numeric else None)
         try:
-            outputs, raw = ({}, "") if compact_verdict is not None else muon.parse_output(console, cycles)
+            if dump_spec is not None and dump_manifest is not None:
+                outputs = _cyclotron_host_dump_outputs(console, dump_spec[2], dump_manifest)
+                raw = {"cycles": cycles} if cycles is not None else {}
+            else:
+                outputs, raw = muon.parse_output(console, cycles)
         except muon.MuonError:
             # The Verilator RTL harness runs the kernel to completion (``run_elf`` only returns here
             # once it reached the RTL "finished execution" marker) but does not surface the kernel's
@@ -296,10 +395,9 @@ def _adapter(simulator: str) -> Callable:
         }
         if completion_only:
             result["completion_only"] = True
-        if compact_verdict is not None:
-            result["numeric_verdict"] = {
-                **compact_verdict,
-                "policy": dict(numeric_policy or {}),
+        if dump_manifest is not None:
+            result["host_gmem_dump"] = {
+                **dump_manifest,
                 "trust_scope": "frozen_non_adversarial_derived_evaluation_only",
             }
         return result

@@ -824,7 +824,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                           result_page: bool = False,
                           compact_expected: dict | None = None,
                           compact_policy: dict | None = None,
-                          compact_result_page: bool = False) -> Path:
+                          compact_result_page: bool = False,
+                          host_dump_outputs: bool = False) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
     COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
     gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
@@ -858,13 +859,20 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
     # the exact legacy key when result_page=False.
     _kernel_cb = {key: value for key, value in cb.items()
                   if not str(key).startswith("_oracle_")}
-    if result_page and compact_expected is not None:
-        raise MuonError("result_page and compact_expected are mutually exclusive")
+    modes = sum((bool(result_page), compact_expected is not None, bool(host_dump_outputs)))
+    if modes > 1:
+        raise MuonError(
+            "result_page, compact_expected, and host_dump_outputs are mutually exclusive")
     if compact_result_page and compact_expected is None:
         raise MuonError("compact_result_page requires compact_expected")
     _cache_inputs = {"mlir": lowered_mlir_text, "cb": _kernel_cb, "num_warps": num_warps}
     if result_page:
         _cache_inputs["result_page"] = True
+    if host_dump_outputs:
+        # This mode changes only the output buffer's linkage and completion
+        # protocol. Expected values and comparison policy remain evaluator-side
+        # and therefore never enter the artifact identity.
+        _cache_inputs["host_dump_outputs"] = True
     if compact_expected is not None:
         # Unlike the GSIM result page, Cyclotron has no independent Rocket
         # carrier.  Its trusted Muon harness performs the comparison, so the
@@ -902,6 +910,7 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         cb, kernel_symbol=kernel_symbol, model=model, result_page=result_page,
         compact_expected=compact_expected, compact_policy=compact_policy,
         compact_result_page=compact_result_page,
+        host_dump_outputs=host_dump_outputs,
         # Generated only after the submitted MLIR has been lowered and its
         # object compiled above.  A kernel that named the old predictable
         # expected symbol therefore retains an unresolved reference.
@@ -1116,6 +1125,7 @@ def _cyclotron_summary_cycles(summary: dict | None) -> int | None:
 
 def _run_cyclotron(
     elf: Path, timeout: int, *, target: str = "radiance",
+    gmem_dump: tuple[int, int, Path] | None = None,
 ) -> tuple[str, int | None, dict | None]:
     """Run cyclotron --timing on the ELF; return (console, cycles, summary_json|None).
 
@@ -1132,6 +1142,27 @@ def _run_cyclotron(
             pass
     env = dict(os.environ)
     env["RUST_LOG"] = "error"
+    # Never inherit a caller-shell dump request: that would permit an unrelated
+    # run to overwrite an arbitrary path. Dumps are evaluator-selected and
+    # confined to the ELF's exact work directory.
+    env.pop("CYCLOTRON_DUMP_GMEM", None)
+    dump_path: Path | None = None
+    dump_length: int | None = None
+    if gmem_dump is not None:
+        if not isinstance(gmem_dump, tuple) or len(gmem_dump) != 3:
+            raise MuonError("Cyclotron GMEM dump must be an (address, byte_length, path) tuple")
+        address, dump_length, raw_path = gmem_dump
+        if (not isinstance(address, int) or isinstance(address, bool) or address < 0
+                or not isinstance(dump_length, int) or isinstance(dump_length, bool)
+                or dump_length <= 0 or address + dump_length > (1 << 32)):
+            raise MuonError("Cyclotron GMEM dump range must be a non-empty 32-bit byte range")
+        dump_path = Path(raw_path).resolve(strict=False)
+        if dump_path.parent != work.resolve():
+            raise MuonError("Cyclotron GMEM dump path must be directly inside the ELF work directory")
+        if dump_path.exists() and dump_path.is_dir():
+            raise MuonError("Cyclotron GMEM dump path names a directory")
+        dump_path.unlink(missing_ok=True)
+        env["CYCLOTRON_DUMP_GMEM"] = f"{address:x}:{dump_length}:{dump_path}"
     # Activate cyclotron's functional MX-Gemmini co-model (cluster.rs gates it on this var being set).
     # Without it the accelerator MMIO block is a pure timing stub and a kernel driving the MX PE reads
     # back zeros. It is inert for any kernel that never touches the Gemmini MMIO window, so setting it
@@ -1172,6 +1203,16 @@ def _run_cyclotron(
                 "execution was bounded but numerical correctness is unknown "
                 "(upstream reports cycle-cap exhaustion as `Error: 0`)")
         raise MuonError(f"cyclotron exited {proc.returncode}:\n{console[-2000:]}")
+    if dump_path is not None:
+        try:
+            actual_dump_length = dump_path.stat().st_size
+        except OSError as exc:
+            raise MuonUnavailable(
+                "cyclotron completed but did not produce the evaluator-requested GMEM dump") from exc
+        if actual_dump_length != dump_length:
+            raise MuonUnavailable(
+                "cyclotron produced a truncated or oversized GMEM dump: "
+                f"expected {dump_length} bytes, got {actual_dump_length}")
     cycles = _cycles_from_console(console)
     if summary is None:
         summary = {}
@@ -1483,7 +1524,9 @@ def _read_tail(path: Path, n: int = 4000) -> str:
 
 
 def run_elf(elf: str | Path, simulator: str = "cyclotron",
-            timeout: int = 600, *, target: str = "radiance") -> tuple[str, int | None, dict | None]:
+            timeout: int = 600, *, target: str = "radiance",
+            gmem_dump: tuple[int, int, Path] | None = None,
+            ) -> tuple[str, int | None, dict | None]:
     """Run the ELF on the chosen oracle; return (console, cycles, summary_json|None)."""
     # Resolve to an ABSOLUTE path up front: every sim below runs with ``cwd`` set to a workdir, so a
     # caller-supplied RELATIVE elf/runs-root (e.g. ``out/runs/...``) would otherwise resolve against the
@@ -1491,7 +1534,9 @@ def run_elf(elf: str | Path, simulator: str = "cyclotron",
     # identically to an absolute one — one less thing to get right on a fresh clone / other machine.
     elf = Path(elf).resolve()
     if simulator == "cyclotron":
-        return _run_cyclotron(elf, timeout, target=target)
+        return _run_cyclotron(elf, timeout, target=target, gmem_dump=gmem_dump)
+    if gmem_dump is not None:
+        raise MuonError("evaluator-owned GMEM dumps are supported only by Cyclotron")
     if simulator == "vcs":
         console, cycles = _run_vcs(elf, timeout)
         return console, cycles, None
