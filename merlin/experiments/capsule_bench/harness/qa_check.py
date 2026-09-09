@@ -576,6 +576,17 @@ def run(submission: str, capsules_root: str, runs_root: Path, labels: set[str],
             "first_failure_planes": score.get("first_failure_planes", {}),
             "per_capsule": per_capsule,
             "n_declined": score.get("n_declined", 0),
+            # WHAT LEFT THE DENOMINATOR, BY NAME. `n_capsules` counts only the rows actually MEASURED,
+            # so a deferred/screened/budget-exhausted row silently shrinks it -- and it shrinks exactly
+            # where the arm did worst, which makes two arms' ratios non-comparable. Measured on the
+            # g3arm batch: arms 1-3 cleared the whole-model gate so M2_microvit_gemmini and
+            # SY_micro_model RAN, FAILED and stayed in a denominator of 97, while arm 4 fell below the
+            # gate and those same two rows left its denominator, giving 95 -- so 75/95 read against
+            # 93/97 understated the gap. Carrying the names here lets the aggregator intersect cohorts
+            # instead of re-deriving them from `per_capsule`.
+            "n_not_measured": score.get("n_not_measured", 0),
+            "not_measured": score.get("not_measured"),
+            "not_measured_status": score.get("not_measured_status"),
             "note": ("This is a QA pass/fail signal only. It contains NO reference output values — there is no answer key. "
                      "Fix failures by capsule + failure_plane + trace_violations; never hardcode outputs."
                      + (f" {score['n_declined']} capsule(s) were DECLINED by your backend: it emitted no "
