@@ -1,4 +1,18 @@
 % Status figure; diagnostic numbers, not the final certification table.
+% Centralized slide overview. Regenerate with: python figures/gen_k1_centralized_overview.py
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/k1_centralized_overview.pdf}
+  \caption{Centralized SpaceMiT K1 performance overview with one aligned row per model in every
+  panel. Warm latency and within-row peer ratios compare Merlin against ExecuTorch for the INT8
+  rows and against the same-graph XNNPACK GEMM swap for the FP32 VLA rows. Operator attribution
+  and one-to-eight-core scaling retain the same seven-row layout and explicitly mark measurements
+  that are not yet available. Cross-run, timeout-bound, and profiler-qualified results remain
+  visibly distinguished rather than being presented as certified peers.}
+  \label{fig:k1-centralized-overview}
+\end{figure*}
+
+% Status figure; diagnostic numbers, not the final certification table.
 \begin{figure*}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{figures/k1_executorch_status.pdf}
@@ -33,6 +47,36 @@
   across all 15 raw iterations are 131.1/49.5 ms. Merlin remains 2.52$\times$ and 3.23$\times$ slower
   than ExecuTorch at one and eight cores, respectively.}
   \label{fig:k1-executorch-status}
+\end{figure*}
+
+% Current-best Merlin warm latency and per-op attribution for VLA workloads.
+% Regenerate with: python figures/gen_k1_vla_profile_comparison.py
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/k1_vla_profile_comparison.pdf}
+  \caption{Current-best Merlin warm inference, XNNPACK-kernel swap, and per-operation attribution on the single-core
+  SpaceMiT K1. All results use three independent launches with two untimed warmups and five timed
+  iterations and pass a full-output golden gate. OpenVLA and RDT2 pass the profiler perturbation
+  gate; BitVLA's asterisked mix is diagnostic because its 2.135\% perturbation narrowly
+  exceeds the 1.9\% allowance. These are deterministic reduced-depth architecture captures with
+  generated parameters, so they characterize compiler/codegen behavior rather than pretrained
+  task quality.}
+  \label{fig:k1-vla-profile-comparison}
+\end{figure*}
+
+% Cross-model single-core INT8 diagnostic. Missing qd8 hybrid cells are explicit.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/k1_model_runtime_comparison.pdf}
+  \caption{Single-core warm-inference comparison on the SpaceMiT K1. Absolute latency is shown on
+  a log scale at left and normalized to ExecuTorch at right. LSTMNetVIT and TinyLLaMA use the
+  current identity-matched diagnostic cells; SmallLLaMA\textsuperscript{\dag} combines the recorded 5.186 ms Merlin
+  W8A8 search winner with a 1.881 ms ExecuTorch qd8 warm slope; SmolVLA's hatched Merlin bar is a
+  lower bound because it exceeded the 120 s deadline. Red crosses are intentionally not bars: a
+  Merlin-runtime plus XNNPACK qd8 backend has not been validated, so no W8A8 hybrid performance is
+  claimed. \textsuperscript{\dag}The SmallLLaMA pair is cross-run. SmolVLA is timeout- and
+  reference-qualified. These are diagnostic results rather than a paired certification set.}
+  \label{fig:k1-model-runtime-comparison}
 \end{figure*}
 
 % Single-column (`figure`, \columnwidth) -- every other block here spans two columns.

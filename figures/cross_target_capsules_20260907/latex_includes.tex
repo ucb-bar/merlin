@@ -1,0 +1,63 @@
+% Generated figure include snippets. Captions carry the narrative; figures contain only labels.
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/cross_target_capsules_20260907/fig1_campaign_overview.pdf}
+  \caption{Latest campaign snapshot. Coverage is normalized but raw passed/graded counts are shown.
+  Agent span is split into think/generate and tool/wait time. Token composition is reconstructed from
+  response-level rollout snapshots using the same method for all three campaigns.}
+  \label{fig:cross-target-campaign-overview}
+\end{figure*}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/cross_target_capsules_20260907/fig4_campaign_progress.pdf}
+  \caption{Pass fraction at each completed grade, with time normalized to each campaign's first
+  grade. Corpus changes between grades can alter both numerator and denominator.}
+  \label{fig:cross-target-progress}
+\end{figure}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/cross_target_capsules_20260907/fig6_tool_token_profile.pdf}
+  \caption{Operational telemetry: Bash/Edit calls started, logged tool transport volume, and output-token
+  throughput. The throughput denominator is client-observed response turnaround and is not a
+  provider-side decode-rate or time-to-first-token measurement. At the snapshot, 2 Gemmini, 10 Atlas,
+  and 2 Radiance calls were unterminated.}
+  \label{fig:cross-target-tool-token-profile}
+\end{figure*}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/cross_target_capsules_20260907/fig7_tier_cost.pdf}
+  \caption{Tier cost and evidence provenance. Circles are medians and diamonds are 95th percentiles;
+  timed records include successful and failed attempts. L3 pass counts distinguish evidence executed
+  in the selected grade from carried evidence and are not equivalent to overall capsule passes.}
+  \label{fig:cross-target-tier-cost}
+\end{figure*}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{figures/cross_target_capsules_20260907/fig2_capsule_taxonomy.pdf}
+  \caption{Capsule composition and latest pass fraction by semantic family. Cell labels give passed
+  over graded capsules, exposing the substantial corpus imbalance across targets.}
+  \label{fig:cross-target-taxonomy}
+\end{figure}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/cross_target_capsules_20260907/fig3_shape_runtime.pdf}
+  \caption{Observed L2 adapter cost by inferred shape regime and declared input size. Times include
+  simulator, oracle wait, host load, and adapter overhead; they measure campaign cost rather than
+  hardware latency. The selected grades contain 82 timed Gemmini, 51 timed Atlas, and 29 timed
+  Radiance L2 records.}
+  \label{fig:cross-target-shape-runtime}
+\end{figure*}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/cross_target_capsules_20260907/fig5_matched_cohorts.pdf}
+  \caption{Observational comparison restricted to coarse semantic-family by shape-regime strata present in
+  all three corpora. No exact capsule names are shared across all targets, so this is not a causal
+  compiler ablation; a controlled follow-up requires a shared manifest and tier protocol.}
+  \label{fig:cross-target-matched-cohorts}
+\end{figure*}
