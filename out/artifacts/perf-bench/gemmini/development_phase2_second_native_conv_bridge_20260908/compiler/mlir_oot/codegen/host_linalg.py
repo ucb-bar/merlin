@@ -46,6 +46,16 @@ def is_int(ety: str) -> bool:
 #: Straight-line budget: past this the lowering declines rather than emitting an artifact
 #: nobody can assemble (the kernel is single-block, so nothing can be rolled into a loop).
 HOST_LINALG_ELEMENT_BUDGET = 400_000
+#: Ops that yield a VIEW of their operand's elements, or repeat one value, rather than evaluating
+#: per element. They emit no instruction, so they cost nothing against a straight-line element
+#: budget. Kept beside the budget because the handlers for these (`_reshape`,
+#: `_t_linalg_transpose`, `_t_tensor_empty`, `_t_tensor_splat`) and :func:`estimate_cost` must
+#: agree: an op charged here but free there refuses models it could compile, and the reverse
+#: admits a program the emitter cannot finish.
+_LAYOUT_ONLY_OPS: frozenset[str] = frozenset({
+    "linalg.transpose", "tensor.expand_shape", "tensor.collapse_shape", "tensor.reshape",
+    "tensor.empty", "tensor.splat",
+})
 
 
 def attr_of(op, key: str):
@@ -115,6 +125,80 @@ class TensorVal:
         return self.elems[flat]
 
 
+class _TransposedElems:
+    """A layout-only view over another tensor's elements, mapping indices arithmetically.
+
+    `linalg.transpose` emits NO instruction: every element it "produces" is an SSA value the source
+    already holds, and the op is a pure index permutation. Materialising a fresh list per such op
+    costs one Python object per element, which is why a 32000x2048 weight transpose accounted for
+    65,536,000 elements against a 400,000 budget. Storing the permuted index list would cost the
+    same, so the mapping is recomputed per access: O(rank) arithmetic, O(1) memory.
+    """
+
+    __slots__ = ("_src", "_out_shape", "_perm", "_src_strides", "_len")
+
+    def __init__(self, src, out_shape, perm):
+        self._src = src
+        self._out_shape = tuple(out_shape)
+        self._perm = list(perm)
+        src_shape = [0] * len(self._perm)
+        for d, p in enumerate(self._perm):
+            src_shape[p] = self._out_shape[d]
+        self._src_strides = _strides(tuple(src_shape))
+        total = 1
+        for b in self._out_shape:
+            total *= b
+        self._len = total
+
+    def __len__(self) -> int:
+        return self._len
+
+    def __getitem__(self, flat: int):
+        if flat < 0:
+            flat += self._len
+        if not 0 <= flat < self._len:
+            raise IndexError(flat)
+        src_flat = 0
+        for d in range(len(self._out_shape) - 1, -1, -1):
+            extent = self._out_shape[d]
+            src_flat += (flat % extent) * self._src_strides[self._perm[d]]
+            flat //= extent
+        return self._src[src_flat]
+
+    def __iter__(self):
+        for flat in range(self._len):
+            yield self[flat]
+
+
+class _RepeatedElems:
+    """`n` positions all holding ONE value: an uninitialised destination, or a splat.
+
+    `tensor.empty` and `tensor.splat` evaluate exactly one SSA value and repeat it, so the lists
+    they replace left the emitted program unchanged while charging `n` -- 1,074,512,730 against a
+    400,000 budget on a 22-layer model.
+    """
+
+    __slots__ = ("_value", "_len")
+
+    def __init__(self, value, length: int):
+        self._value = value
+        self._len = int(length)
+
+    def __len__(self) -> int:
+        return self._len
+
+    def __getitem__(self, flat: int):
+        if flat < 0:
+            flat += self._len
+        if not 0 <= flat < self._len:
+            raise IndexError(flat)
+        return self._value
+
+    def __iter__(self):
+        for _ in range(self._len):
+            yield self._value
+
+
 def _iter_space(bounds: list[int]):
     if not bounds:
         yield ()
@@ -141,8 +225,13 @@ def estimate_cost(ops) -> int:
     """
     total = 0
     for op in ops:
+        if op.name in _LAYOUT_ONLY_OPS:
+            continue
+        # Charge what the op WRITES, not the widest tensor it touches: reading a large constant
+        # weight costs the reader nothing per element of that weight. Charging operands made a
+        # generic that writes 256,000 elements cost 65,536,000, a 256x overcharge.
         widest = 0
-        for value in list(op.results) + list(op.operands):
+        for value in op.results:
             ty = value.type
             if not isinstance(ty, TensorType):
                 continue
@@ -479,8 +568,9 @@ class HostLinalg:
         n = 1
         for d in shape:
             n *= d
-        self._charge(n)
-        self.vals[op.results[0]] = TensorVal(shape, [self.zero(ety)] * n, ety)
+        # One zero is evaluated, not n; see _RepeatedElems.
+        self._charge(1)
+        self.vals[op.results[0]] = TensorVal(shape, _RepeatedElems(self.zero(ety), n), ety)
 
     def _t_tensor_splat(self, op: Operation) -> None:
         ty = op.results[0].type
@@ -489,13 +579,16 @@ class HostLinalg:
         n = 1
         for d in shape:
             n *= d
-        self._charge(n)
-        self.vals[op.results[0]] = TensorVal(shape, [self.get(op.operands[0])] * n, ety)
+        # A splat evaluates its one operand and repeats it; see _RepeatedElems.
+        self._charge(1)
+        self.vals[op.results[0]] = TensorVal(shape, _RepeatedElems(self.get(op.operands[0]), n), ety)
 
     def _reshape(self, op: Operation) -> None:
         src = self.get(op.operands[0])
         ty = op.results[0].type
-        self.vals[op.results[0]] = TensorVal(tensor_shape(ty), list(src.elems),
+        # Expand/collapse/reshape only relabel extents; in row-major flat order the element
+        # sequence is IDENTICAL, so it is shared rather than copied.
+        self.vals[op.results[0]] = TensorVal(tensor_shape(ty), src.elems,
                                              elem_name(ty.get_element_type()))
 
     _t_tensor_expand_shape = _reshape
@@ -562,15 +655,10 @@ class HostLinalg:
         perm = self._static(op, "permutation")
         ty = op.results[0].type
         out_shape = tensor_shape(ty)
-        self._charge(len(src.elems))
-        elems: list[SSAValue] = []
-        for idx in _iter_space(list(out_shape)):
-            src_idx = [0] * len(perm)
-            for d, p in enumerate(perm):
-                src_idx[p] = idx[d]
-            elems.append(src.at(tuple(src_idx)))
-        self.vals[op.results[0]] = TensorVal(out_shape, elems,
-                                             elem_name(ty.get_element_type()))
+        # No _charge: a permutation evaluates nothing.
+        self.vals[op.results[0]] = TensorVal(
+            out_shape, _TransposedElems(src.elems, out_shape, list(perm)),
+            elem_name(ty.get_element_type()))
 
     def _t_linalg_broadcast(self, op: Operation) -> None:
         src = self.get(op.operands[0])
