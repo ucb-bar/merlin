@@ -611,7 +611,17 @@ what the verdict showed, and the next hypothesis; do not undo a change that impr
 and checks the required instruction coverage per capsule (it decodes your emitted artifact into an
 instruction trace). You cannot run the oracle; a QA gate writes a redacted `qa/verdict.json` per
 capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`, `mismatch_count`,
-`tiers` (L0–L3), and `all_pass` — with NO golden/expected values.
+`tiers` (L0–L3), `emitted_cost`, and `all_pass` — with NO golden/expected values.
+
+**`emitted_cost` is what YOUR program costs to run, and it is the cheapest lever you have.**
+`dram_movements` counts the movement operations your lowering emits (basis: the decoded instruction
+trace), next to the scratchpad/accumulator rows you touched and their capacities. Compare it ACROSS
+your own capsules in the same verdict: a lowering that moves a whole tile per operation and one that
+moves a few bytes per operation differ by orders of magnitude here, and the expensive one is a defect
+in your loop structure, not a property of the capsule. Measured on a real run: the capsules that
+exhausted the cycle-accurate budget emitted 18,624 and 20,592 movements where the median capsule
+emitted 10 — so a capsule that times out at the cert tier is usually telling you to move data
+per-tile instead of per-element. Fix the movement count and the tier becomes affordable.
 
 **`qa/verdict.json` is refreshed WHILE YOU WORK, and it does not exist when you start.** Grading runs
 on its own schedule in the background, so a single check at the beginning tells you nothing: the file

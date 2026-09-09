@@ -248,8 +248,58 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "failure_tier": (lambda v: v if isinstance(v, str) and len(v) <= 4 and v[:1] == "L"
                              and v[1:].isdigit() else None)(fail.get("tier")),
             "failure_detail": _redact_detail(fail.get("detail")),
+            # The cost of the agent's OWN emitted program, available before the cert tier runs. See
+            # _emitted_cost: an opaque L3 failure with a null plane was the only feedback on a lowering
+            # that moved 2,000x the median capsule's DRAM traffic.
+            "emitted_cost": _emitted_cost(cr),
         }
     return out
+
+
+def _emitted_cost(capsule_result: Path) -> dict | None:
+    """What the SUBMISSION's own emitted program costs to execute — the pre-oracle signal the agent
+    never saw.
+
+    MEASURED on the g3arm gemmini batch: the six capsules that failed the cert tier were the six
+    heaviest DRAM movers in the corpus, the top two at 20,592 and 18,624 movement operations against a
+    median of 10 across the other 84. `SY_geometry_squareish_gemm` moved 540,672 bytes in 18,624
+    operations -- 29 bytes each, where one 16x16 int8 tile is 256 -- so its lowering moves data
+    per-element instead of per-tile. The elaborated-RTL engine then spent its whole 900 s budget
+    simulating that traffic and was killed, and the agent's verdict said only
+    `tiers: {L3: fail}` with `failure_plane: null` and `failure_detail: null`. The same capsule
+    certifies in 0.022 s when lowered tile-wise, so this was never simulator cost: it was a lowering
+    defect the harness had already measured, written to disk beside the result, and discarded.
+
+    REDACTION-SAFE by construction. Every field is either a statistic of the agent's OWN emitted
+    program (movement count, scratchpad rows touched, whether it closes with a fence) or a hardware
+    CAPACITY the arm is already granted through the ISA facts and capability manifest. No corpus
+    values, no goldens, no expected outputs. `bytes_per_movement` is the interpretable ratio and is
+    derived from two numbers already on the row.
+    """
+    peaks = {}
+    lrep = capsule_result.parent / "generated" / "liveness_report.json"
+    if lrep.is_file():
+        try:
+            peaks = (json.loads(lrep.read_text()) or {}).get("resource_peaks") or {}
+        except Exception:  # noqa: BLE001 -- an advisory screen must never break verdict production
+            peaks = {}
+    if not isinstance(peaks, dict) or not peaks:
+        return None
+    keep = ("dram_movements", "dram_unmapped", "dram_unknown_provenance",
+            "scratchpad_rows_touched", "scratchpad_rows_capacity",
+            "accumulator_max_row", "accumulator_rows_capacity", "closes_with_fence")
+    out = {k: peaks[k] for k in keep if isinstance(peaks.get(k), (int, float, bool))}
+    if not out:
+        return None
+    # DELIBERATELY NOT a bytes-per-movement ratio. `movement_volume` is declared by the compiler's
+    # command buffer (`basis: compiler_command_buffer`) while `dram_movements` is counted from the
+    # decoded instruction trace, so dividing one by the other crosses two measurement bases: it
+    # produced 0.3 "bytes per movement" for GC7_conv2d_pad_i8, which is not a physical quantity. The
+    # movement COUNT is single-basis and already separates the populations -- 18,624 and 20,592 for the
+    # two capsules that exhausted the cert budget against a median of 10 -- so it is reported alone,
+    # with its basis named.
+    out["movements_basis"] = "decoded_instruction_trace"
+    return out or None
 
 
 def _execution_digest_from_result(capsule_result: Path) -> str | None:
