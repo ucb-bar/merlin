@@ -273,13 +273,48 @@ def stage_hidden_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str
 
 
 # ------------------------------------------------------------------------------------ the record
+def descriptor_task_scope(te, repo: Path, *, sandbox: str = "bwrap") -> dict:
+    """The sealed task scope, derived the SAME way the live harness derives it.
+
+    This mirrors ``run_baseline_qa_loop._task_runtime_scope``: the counts come from the descriptor's
+    graded/hidden roots, the public/dev label filter and the formal cohort exclusions -- never from
+    the run's own score files.  Deriving it from the grade would make the gate's
+    ``task_scope_public_mismatch`` predicate unfalsifiable by construction, which is the
+    "check that cannot fail" shape this repo has paid for repeatedly.  A re-freeze that reproduces a
+    smaller historical cohort therefore MISMATCHES today's descriptor on purpose, and the campaign
+    gate reports that as a waivable deviation rather than silently agreeing with itself.
+    """
+    from merlin.targetgen.capsule_common import discover_capsules
+
+    contract = repo / "merlin" / "contract"
+    public = discover_capsules(te.graded_roots(), labels={"public", "dev"}, contract=contract)
+    excluded = set(te.effective_exclusions(cap.get("name") for cap in public))
+    public = [cap for cap in public if cap.get("name") not in excluded]
+    hidden = discover_capsules(te.hidden_roots(), labels={"hidden"}, contract=contract)
+    if not public:
+        raise RefreezeError(
+            f"{te.target}: descriptor-derived public/dev task scope is empty; refusing to write a "
+            "vacuous completion target")
+    return {
+        "target": te.target,
+        "required_public_dev_capsules": len(public),
+        "held_out_capsules": len(hidden),
+        "sandbox": sandbox,
+        "scope_source": "TargetExperiment.graded_roots + labels public,dev + formal cohort policy",
+    }
+
+
 def build_environment(source_env: Mapping, *, new_run_id: str, snapshot_record: Mapping,
-                      host_lane: Mapping, refreeze: Mapping) -> dict:
+                      host_lane: Mapping, refreeze: Mapping,
+                      task_scope: Mapping) -> dict:
     env = dict(source_env)
     env["run_id"] = new_run_id
     env["bundle_input_snapshot"] = dict(snapshot_record)
     env["model_host_lane_snapshot"] = dict(host_lane)
     env["refreeze"] = dict(refreeze)
+    # The gate requires a sealed task scope; runs predating the field carry none, and it is derived
+    # here rather than copied so it cannot be back-filled from the grade it is checked against.
+    env["task_scope"] = dict(task_scope)
     return env
 
 
@@ -542,8 +577,12 @@ def main(argv: list[str] | None = None) -> int:
                     "carried beside it unchanged.",
         },
     }
+    task_scope = descriptor_task_scope(te, repo)
+    print(f"[refreeze] task scope (descriptor-derived): "
+          f"{task_scope['required_public_dev_capsules']} public/dev, "
+          f"{task_scope['held_out_capsules']} held out", flush=True)
     env = build_environment(source_env, new_run_id=a.new_run_id, snapshot_record=snapshot,
-                            host_lane=host_lane, refreeze=refreeze)
+                            host_lane=host_lane, refreeze=refreeze, task_scope=task_scope)
     (run_dir / "environment.yaml").write_text(yaml.safe_dump(env, sort_keys=False), encoding="utf-8")
 
     if a.skip_grade:
