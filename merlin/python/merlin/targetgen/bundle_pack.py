@@ -227,6 +227,15 @@ def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...],
     in, and re-ordering here would produce a layout the kernel does not agree with. A read argument
     appearing after a write one is refused, because the const/mutable split is what makes one blob
     read-only.
+
+    ``readwrite`` groups with the WRITES. It is a real third class this target emits -- SmolVLA's
+    ``Y1`` is the prefix KV-cache, whose input side (``arg809``) the emitter drops and folds into the
+    output, so one buffer is both -- and it is first-class in ``runtime/commandbuffer``,
+    ``runtime/storage_binding`` and ``runtime/compact_binding``. It cannot go in the const blob
+    because it is written; it also cannot be treated as a fresh output, because it is READ on entry
+    and therefore needs seed bytes. :func:`plan` refuses an in-place carry it cannot seed by name
+    rather than laying one out, because the failure is a binary that reads uninitialized memory and
+    reports plausible numbers.
     """
     rows = kernel_abi.get("args")
     if not isinstance(rows, Sequence) or isinstance(rows, (str, bytes)) or not rows:
@@ -241,11 +250,11 @@ def read_only_prefix(kernel_abi: Mapping[str, Any]) -> tuple[tuple[ArgRef, ...],
         access = str(row.get("access") or "")
         if not isinstance(tensor, str) or not tensor:
             raise BundlePackError(f"kernel ABI argument {position} declares no tensor name")
-        if access not in ("read", "write"):
+        if access not in ("read", "write", "readwrite"):
             raise BundlePackError(
-                f"kernel ABI argument {tensor!r} declares access {access!r}; only 'read' and "
-                f"'write' decide which blob a tensor belongs in, and guessing would put a weight in "
-                f"the mutable arena or an output in read-only memory")
+                f"kernel ABI argument {tensor!r} declares access {access!r}; only 'read', 'write' "
+                f"and 'readwrite' decide which blob a tensor belongs in, and guessing would put a "
+                f"weight in the mutable arena or an output in read-only memory")
         index = parse_arg_index(tensor)
         ref = ArgRef(tensor=tensor, index=-1 if index is None else index, access=access)
         if access == "read":
@@ -418,6 +427,24 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 write_hit = next((r for r in write if r.index == state.input_arg), None)
                 if write_hit is not None:
                     continue  # already a write argument; nothing to reclassify
+                # An IN-PLACE carry: the emitter dropped this state's input argument and folded the
+                # carry into its output, which it then declares `readwrite`. The contract DOES
+                # describe the program -- so say that, rather than blaming the contract -- but the
+                # seed has no argument to be packed from, and an unseeded carry is a buffer read
+                # before it is written.
+                in_place = (write[state.output_index]
+                            if 0 <= state.output_index < len(write) else None)
+                if in_place is not None and in_place.access == "readwrite":
+                    raise BundlePackError(
+                        f"session state {state.name!r} is carried IN PLACE: its declared input_arg "
+                        f"{state.input_arg} is absent from the kernel ABI and its output "
+                        f"{in_place.tensor!r} is declared 'readwrite', so one buffer is both ends of "
+                        f"the carry. That buffer is READ on entry, and this plan has no argument to "
+                        f"pack its seed from, so laying it out would leave the first step reading "
+                        f"uninitialized memory. Seed it from the capture's inputs.npz entry for "
+                        f"this state (mapped by input_order.json) before packing, re-encoding to "
+                        f"the declared dtype -- the stage's session_inputs.npz is EMPTY and the "
+                        f"capture stores this state at a wider dtype than the ABI declares")
                 raise BundlePackError(
                     f"session state {state.name!r} declares input_arg {state.input_arg}, which is "
                     f"not a read argument of this kernel ABI; the contract does not describe this "

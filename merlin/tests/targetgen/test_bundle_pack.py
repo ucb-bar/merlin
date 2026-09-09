@@ -187,6 +187,64 @@ class TestWhatItRefuses:
             BP.plan(buf, row_pitch_elements=16)
 
 
+class TestReadwriteIsAThirdAccessClassNotAnError:
+    """`readwrite` is what this target emits for a carry it folds into one buffer.
+
+    Measured on BOTH SmolVLA exports: access {read: 811, write: 604, readwrite: 1}, arg809 absent,
+    `Y1` (the prefix KV-cache) readwrite. `bundle_pack` was the only module rejecting it -- it is
+    first-class in runtime/commandbuffer, runtime/storage_binding and runtime/compact_binding.
+    """
+
+    def test_a_readwrite_argument_groups_with_the_writes(self):
+        """It is WRITTEN, so it can never live in the read-only blob."""
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        plan = BP.plan(buf, row_pitch_elements=16)
+        assert [row.tensor for row in plan.const] == ["arg0"]
+        assert [row.tensor for row in plan.mutable] == ["Y0"]
+
+    def test_a_readwrite_argument_still_closes_the_read_only_prefix(self):
+        """A read after it is as much an interleaving as a read after a plain write."""
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite"), _arg("arg1")],
+                      {"arg0": _t([16]), "Y0": _t([16]), "arg1": _t([16])})
+        with pytest.raises(BundlePackError, match="appears after a write argument"):
+            BP.plan(buf, row_pitch_elements=16)
+
+    def test_an_unseedable_in_place_carry_is_refused_by_NAME(self):
+        """The seed has no argument to come from, and an unseeded carry reads uninitialized memory.
+
+        The old message blamed the contract ("does not describe this program"), which sent the
+        reader to the wrong file: the contract is right and the ABI folded the carry.
+        """
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="kv", input_arg=809, output_index=0)
+        with pytest.raises(BundlePackError, match="carried IN PLACE"):
+            BP.plan(buf, row_pitch_elements=16, session_states=[state])
+
+    def test_the_refusal_names_uninitialized_memory_and_where_the_seed_lives(self):
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="kv", input_arg=809, output_index=0)
+        with pytest.raises(BundlePackError) as caught:
+            BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        message = str(caught.value)
+        assert "uninitialized memory" in message
+        # inputs.npz, NOT session_inputs.npz: the stage ships the latter EMPTY (0 arrays), and the
+        # seed is inputs.npz's entry for the state, mapped by input_order.json.
+        assert "inputs.npz" in message and "input_order.json" in message
+        assert "session_inputs.npz is EMPTY" in message
+
+    def test_a_still_unexplained_input_arg_keeps_blaming_the_contract(self):
+        """Only a readwrite OUTPUT makes it an in-place carry; anything else is a contract mismatch,
+        and the two must not collapse into one message."""
+        buf = _buffer([_arg("arg0"), _arg("Y0", "write")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="kv", input_arg=809, output_index=0)
+        with pytest.raises(BundlePackError, match="does not describe this program"):
+            BP.plan(buf, row_pitch_elements=16, session_states=[state])
+
+
 class TestItReproducesTheShippedResNetBundleExactly:
     """THE ACCEPTANCE TEST. That bundle ran correctly on FireSim, so any deviation is this
     planner being wrong rather than better.
