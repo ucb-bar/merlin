@@ -615,10 +615,18 @@ capsule — `status`, `failure_plane`, `trace_violations`, `numeric_status`, `mi
 
 **`qa/verdict.json` is refreshed WHILE YOU WORK, and it does not exist when you start.** Grading runs
 on its own schedule in the background, so a single check at the beginning tells you nothing: the file
-appears only after the first grade lands. Re-read it periodically — after each substantive change, and
-whenever you are choosing what to work on next — and fix by `failure_plane` + `trace_violations`.
-Its content is the only feedback you get; an early "not found" is a timing artifact, not an answer.
-Iterate until `all_pass: true`.
+appears only after the first grade lands. Read it after each substantive change and fix by
+`failure_plane` + `trace_violations`. Its content is the only feedback you get; an early "not found"
+is a timing artifact, not an answer. Iterate until `all_pass: true`.
+
+**WAIT, DO NOT POLL.** `python await_verdict.py` BLOCKS until the next grade lands and prints one JSON
+object (`--timeout <s>` to give up, `--since-ns <ns>` to wait for a grade newer than a stamp you
+hold). Every look costs you a whole turn, so a `sleep`/`stat`/`pgrep`/`tail -f` loop around
+`qa/verdict.json` spends your budget asking whether something finished: measured on one run, 118 of
+786 tool calls were poll loops — 56 minutes of wall clock and roughly 18M tokens — while a sibling run
+that used the blocking wait spent none. For the same reason do not launch a long job in the
+background and babysit it: `python agent_selfcheck.py` returns when the broker answers, and
+`python simjob.py wait` blocks until a submitted simulation job lands. Let those block.
 
 Useful self-checks you CAN run locally (no oracle needed): build your tool, run the 4 entrypoints on
 each `capsule.interface.mlir`, and confirm the emitted `command_buffer.json` validates against the
@@ -806,8 +814,17 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
          "   them (even trivially / with empty output) so `agent_selfcheck` can invoke your package and the",
          "   grader reaches the capsules. A round that ends WITHOUT a valid manifest scores 0 no matter how",
          "   much compiler you built — make the package structurally gradeable EARLY, THEN iterate on real",
-         "   codegen. If you run low on time, a graded-but-imperfect package beats an ungradeable one."]
-    n = 5
+         "   codegen. If you run low on time, a graded-but-imperfect package beats an ungradeable one.",
+         # CADENCE, stated for every arm. The runs that converged fastest spent ~a third of their tool
+         # calls in exactly this loop (compile + self-check + read verdict); the run that plateaued spent
+         # 17% of its calls there and 15% of them in `sleep` poll loops instead. Both facts came out of
+         # the rollouts, not the score, so state the loop rather than hope it is inferred.
+         "5. CLOSE THE LOOP on every edit: change `submission/` -> build -> `agent_selfcheck.py` on the",
+         "   changed capsule -> read `qa/verdict.json`. Blocking waits exist for the slow steps: "
+         "`python await_verdict.py` for the next grade, `python simjob.py wait` for a simulation job.",
+         "   Never spend a turn asking whether something finished — a `sleep`/`stat`/`pgrep` loop around",
+         "   a file or a PID burns your budget without advancing the compiler."]
+    n = 6
     if has_cpp and not has_xdsl:                                # arm-2
         L.append(f"{n}. Scaffold the package with the granted C++ OOT generators "
                  "(`targetgen/generate/{mlir_scaffold,llvm_plan,target_repo}`), not ad-hoc hand files.")
@@ -885,7 +902,8 @@ def _enforced_workflow(arm: str, endpoint_kind: str, granted_tools, target: str,
                  "   - `from generate import mlir_scaffold; mlir_scaffold.generate(<dialect plan>)` — "
                  "scaffold the dialect/pass skeleton from the derived plan instead of hand-writing it "
                  "(`llvm_plan.generate` / `target_repo.generate_skeleton` count too).\n"
-                 "   - read the `rtl_checks` block of `qa/verdict.json` each round — that is where this "
+                 "   - read the `rtl_checks` block of `qa/verdict.json` whenever a new grade lands "
+                 "(wait for one with `python await_verdict.py`, never a poll loop) — that is where this "
                  "arm's RTL feedback on YOUR lowering arrives; fix what it reports.")
         n += 1
     return "\n".join(L) + "\n\n"
