@@ -240,6 +240,11 @@ def _shell_tokens(command: str) -> list[str]:
 
 _SHELL_CONTROLS = {";", "&&", "||", "|", "&", ">", ">>", "<", "<<"}
 
+#: Executables that WRITE. One source of truth: the composed-command path and the simple-command
+#: path must agree on what counts as mutating, or the discovery boundary moves depending on how the
+#: agent happened to spell an equivalent command.
+_MUTATING_EXECUTABLES = {"cp", "mv", "install", "mkdir", "touch", "rm", "tee", "truncate", "patch"}
+
 
 def _executable(tokens: list[str]) -> tuple[str, list[str]] | None:
     """Return (basename, argv) for an uncomposed command, allowing env assignments and timeout."""
@@ -285,6 +290,34 @@ def _simple_commands(tokens: list[str]) -> list[list[str]]:
         else:
             out[-1].append(tok)
     return [seg for seg in out if seg]
+
+
+def _resolved_commands(command: str) -> list[tuple[str, list[str]]]:
+    """``(basename, argv)`` for EVERY simple command in a possibly-composed shell string.
+
+    ``_executable`` returns None the moment it sees a shell control operator, so a single redirect
+    (``... check-bijection atlas > /tmp/b.json``) or two steps joined by a newline made the whole
+    call yield no evidence. ``_python_fragments`` already decomposes instead of rejecting, for the
+    Python-API spelling of the same work; the SCRIPT spelling kept the all-or-nothing rule, so the
+    identical honest command was credited one way and refused the other.
+
+    Anti-forgery is unchanged: each segment is still resolved structurally, so ``echo
+    'cca_contract.py check-bijection'`` resolves to ``echo`` and yields nothing.
+    """
+    out: list[tuple[str, list[str]]] = []
+    # A NEWLINE IS A COMMAND SEPARATOR and shlex drops it, so a heredoc body merges every command
+    # that follows it into one segment whose "executable" is the heredoc delimiter. Measured on the
+    # atlas arm-4 run of 2026-09-07: three real `action_catalog.py escalation-ladder` invocations
+    # ended up inside a segment resolving to `PY`, and the ladder index stayed None. Tokenising per
+    # physical line keeps each real command its own; a line that cannot tokenise yields nothing.
+    for line in _unwrap_shell(command).splitlines():
+        if not line.strip():
+            continue
+        for segment in _simple_commands(_shell_tokens(line)):
+            resolved = _executable(segment)
+            if resolved is not None:
+                out.append(resolved)
+    return out
 
 
 def _python_fragments(call: ToolCall) -> tuple[str, ...]:
@@ -465,12 +498,13 @@ def _cca_evidence(call: ToolCall, *, script: str, subcommand: str, api: str) -> 
     # and the mandated CCA call goes uncredited -- which then makes arm4_discovery_before_submission
     # _mutation unsatisfiable, because two of its five discovery indices are None. Third place the
     # same wrapper blindness had to be fixed.
-    command = _unwrap_shell(str(call.input.get("command") or call.input.get("cmd") or ""))
-    resolved = _executable(_shell_tokens(command))
-    if resolved is None or resolved[0] not in {"python", "python3"}:
-        return False
-    argv = resolved[1]
-    return len(argv) >= 2 and Path(argv[0]).name == script and argv[1] == subcommand
+    command = str(call.input.get("command") or call.input.get("cmd") or "")
+    for exe, argv in _resolved_commands(command):
+        if exe not in {"python", "python3"}:
+            continue
+        if len(argv) >= 2 and Path(argv[0]).name == script and argv[1] == subcommand:
+            return True
+    return False
 
 
 def _submission_mutation(call: ToolCall) -> bool:
@@ -494,10 +528,19 @@ def _submission_mutation(call: ToolCall) -> bool:
         return True
     resolved = _executable(tokens)
     if resolved is None:
-        # A composed command touching submission cannot be proved read-only, so it is the boundary.
-        return True
+        # COMPOSED, NOT NECESSARILY WRITING. Treating every composition as the boundary made
+        # `pwd && rg --files -g 'submission/**' | sort` -- a pure listing, and typically an agent's
+        # FIRST call -- the first "mutation", which puts the boundary at index 0 and makes
+        # arm4_discovery_before_submission_mutation unsatisfiable no matter what the agent then does
+        # (measured, atlas arm-4 2026-09-07). Resolve each simple command instead: the boundary is a
+        # segment that actually runs a mutating tool. A segment that cannot be resolved at all is
+        # still treated as the boundary, so nothing unprovable is waved through.
+        segments = _resolved_commands(str(call.input.get("command") or call.input.get("cmd") or ""))
+        if not segments:
+            return True
+        return any(exe in _MUTATING_EXECUTABLES for exe, _ in segments)
     exe, _ = resolved
-    if exe in {"cp", "mv", "install", "mkdir", "touch", "rm", "tee", "truncate", "patch"}:
+    if exe in _MUTATING_EXECUTABLES:
         return True
     if exe == "sed" and "-i" in tokens:
         return True
@@ -536,10 +579,10 @@ def _rtl_checks_read(calls: list[ToolCall]) -> bool:
         # UNWRAP FIRST. Codex issues every command as `/bin/bash -lc "<real command>"`, so reading the
         # outer argv sees `bash` and never the `jq`/`cat` that did the readback -- the same blindness
         # that hid this arm's discovery evidence, surviving in a second place.
-        resolved = _executable(_shell_tokens(_unwrap_shell(command))) if command else None
-        shell_read = resolved is not None and resolved[0] in {
-            "cat", "jq", "grep", "rg", "head", "tail", "sed", "awk", "python", "python3",
-        }
+        readers = {"cat", "jq", "grep", "rg", "head", "tail", "sed", "awk", "python", "python3"}
+        resolved = next((r for r in _resolved_commands(command) if r[0] in readers), None) \
+            if command else None
+        shell_read = resolved is not None
         if not direct_read and not shell_read:
             continue
         if shell_read and resolved[0] in {"python", "python3"}:
