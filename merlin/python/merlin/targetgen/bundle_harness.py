@@ -244,7 +244,21 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
         f"int merlin_argmax = 0;",
         f"for (int i = 0; i < {n}; ++i) {{",
         "  const double got = (double)merlin_out[i];",
-        "  if (!(got == got)) { ++merlin_nonfinite; continue; }",
+        # Non-finite is detected from the BIT PATTERN, never from a float comparison. The harness
+        # is compiled with -ffast-math (see harness_build_recipe), which implies
+        # -ffinite-math-only: the compiler may then assume no NaN exists, folds `got == got` to
+        # `true`, and DELETES the guard. Measured 2026-09-09 on a small_llama ELF whose every
+        # element was 0x7fc00000 -- the gate reported `bad=0 nonfinite=0` and would have passed on
+        # the tolerance criteria alone, because every comparison against NaN is false so `diff`
+        # is NaN and `NaN > tol` never counts either. An integer test survives every float flag.
+        "  unsigned long long merlin_bits = 0;",
+        "  for (unsigned b = 0; b < sizeof(merlin_out[0]); ++b) {",
+        "    merlin_bits |= (unsigned long long)"
+        "((const unsigned char *)&merlin_out[i])[b] << (8u * b);",
+        "  }",
+        "  const unsigned long long merlin_expmask ="
+        " (sizeof(merlin_out[0]) == 4) ? 0x7f800000ULL : 0x7ff0000000000000ULL;",
+        "  if ((merlin_bits & merlin_expmask) == merlin_expmask) { ++merlin_nonfinite; continue; }",
         "  if (merlin_out[i] > merlin_out[merlin_argmax]) merlin_argmax = i;",
     ]
     if gate.comparison in ("exact_elementwise", "tolerance_and_topk", "trajectory"):
