@@ -1,51 +1,42 @@
 {
   "arm_order": [
     "baseline",
+    "cpp_merlininfra",
     "merlin",
     "merlin_rtlchecks"
   ],
   "cond_order": [
     "kernels",
-    "no-kernels"
+    "no-kernels",
+    "kernel-library"
   ],
   "cells": {
     "baseline|kernels": {
-      "n_runs": 4,
-      "n_valid": 1,
-      "run_ids": [
-        "20260724T164149Z_e2e_smoke_seed000",
-        "gem_smoke_bwrap_3",
-        "rb_gemrecreate1",
-        "rb_smoke_live"
-      ],
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
       "metrics": {
         "cost_usd": {
-          "mean": 168.541,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            168.541
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "cost",
           "unit": "$"
         },
         "wall_s": {
-          "mean": 476.5426166666667,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            476.5426166666667
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "active wall",
           "unit": "min"
         },
         "n_rounds": {
-          "mean": 6.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            6
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "rounds",
           "unit": "rounds"
         },
@@ -58,32 +49,26 @@
           "unit": "/25"
         },
         "think_pct": {
-          "mean": 95.5,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            95.5
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "think+gen share",
           "unit": "%"
         },
         "sims_skipped": {
-          "mean": 0.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            0
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "CIRCT sims skipped",
           "unit": "#"
         },
         "sims_run": {
-          "mean": 0.0,
-          "std": 0.0,
-          "n": 1,
-          "values": [
-            0
-          ],
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
           "label": "sims actually run",
           "unit": "#"
         }
@@ -152,12 +137,262 @@
         }
       }
     },
-    "merlin|kernels": {
-      "n_runs": 1,
+    "baseline|kernel-library": {
+      "n_runs": 0,
       "n_valid": 0,
-      "run_ids": [
-        "merlin_gemrecreate1"
-      ],
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|kernels": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|no-kernels": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "cpp_merlininfra|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "merlin|kernels": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
       "metrics": {
         "cost_usd": {
           "mean": null,
@@ -280,26 +515,73 @@
         }
       }
     },
-    "merlin_rtlchecks|kernels": {
-      "n_runs": 15,
+    "merlin|kernel-library": {
+      "n_runs": 0,
       "n_valid": 0,
-      "run_ids": [
-        "bedrock_dbg_haiku1",
-        "bedrock_fixcheck",
-        "bedrock_haiku_manifestfix",
-        "bedrock_longrun_gemmini",
-        "bedrock_opus_gemmini",
-        "bedrock_opusorch_gemmini",
-        "bedrock_sonnet1",
-        "bedrock_sonnet2",
-        "bedrock_sonnet3",
-        "bedrock_sonnet_fixed",
-        "bedrock_toolval_gemmini",
-        "merlincirct_gemglm5locfix1",
-        "merlincirct_gemopencode5",
-        "merlincirct_gemopencode8",
-        "merlincirct_gemrecreate1"
-      ],
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
+    },
+    "merlin_rtlchecks|kernels": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
       "metrics": {
         "cost_usd": {
           "mean": null,
@@ -421,6 +703,69 @@
           "unit": "#"
         }
       }
+    },
+    "merlin_rtlchecks|kernel-library": {
+      "n_runs": 0,
+      "n_valid": 0,
+      "run_ids": [],
+      "metrics": {
+        "cost_usd": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "cost",
+          "unit": "$"
+        },
+        "wall_s": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "active wall",
+          "unit": "min"
+        },
+        "n_rounds": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "rounds",
+          "unit": "rounds"
+        },
+        "passed": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "capsules passed",
+          "unit": "/25"
+        },
+        "think_pct": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "think+gen share",
+          "unit": "%"
+        },
+        "sims_skipped": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "CIRCT sims skipped",
+          "unit": "#"
+        },
+        "sims_run": {
+          "mean": null,
+          "std": null,
+          "n": 0,
+          "values": [],
+          "label": "sims actually run",
+          "unit": "#"
+        }
+      }
     }
   },
   "metrics": [
@@ -432,5 +777,5 @@
     "sims_skipped",
     "sims_run"
   ],
-  "tag_filter": null
+  "tag_filter": "g3arm_20260908"
 }

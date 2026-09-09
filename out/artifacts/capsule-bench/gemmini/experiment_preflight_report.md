@@ -13,8 +13,9 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 - [x] input-bundle tree hashes reproduce + bundle_lock.yaml written
 - [x] token usage captured on a REAL agent event stream (not synthetic)
 - [x] numeric oracle runnable for a gradeable run ('gemmini': chipyard spike oracle available (loop tier))
-- [x] our codegen backend emits a runnable kernel (production command-buffer codegen compiled and ran a 16x16 kernel bit-exact on Verilator RTL)
+- [x] our codegen backend emits a runnable kernel (production command-buffer codegen compiled and ran a 16x16 kernel bit-exact on gsim RTL)
 - [x] known-good program grades bit-exact end-to-end through the oracle (n/a (not an external_backend program-oracle target))
+- [x] descriptor-declared capability probes are operation-grounded and behaviorally verified (n/a (no capability probes declared))
 - [x] bareMetalC corroboration table with golden hashes; conv externally-deferred noted
 - [x] VCS/FireSim remain unavailable, never counted as pass
 
@@ -27,6 +28,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 |---|---|---|---|
 | cpp_merlininfra_hwbringup_nokernel_v0 | 0 | 0 | YES |
 | cpp_merlininfra_hwbringup_v0 | 0 | 0 | YES |
+| cpp_merlininfra_public_v0 | 0 | 0 | YES |
 | grader_private_v0 | 0 | 0 | YES |
 | merlin_assisted_eqsat_hwbringup_nokernel_v0 | 0 | 0 | YES |
 | merlin_assisted_eqsat_hwbringup_v0 | 0 | 0 | YES |
@@ -38,6 +40,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 | merlin_assisted_rtlchecks_hwbringup_v0 | 0 | 0 | YES |
 | merlin_assisted_rtlchecks_public_v0 | 0 | 0 | YES |
 | merlin_assisted_rtlchecks_realistic_v0 | 0 | 0 | YES |
+| merlin_assisted_verify_public_v0 | 0 | 0 | YES |
 | raw_baseline_hwbringup_nokernel_v0 | 0 | 0 | YES |
 | raw_baseline_hwbringup_v0 | 0 | 0 | YES |
 | raw_baseline_public_v0 | 0 | 0 | YES |
@@ -50,7 +53,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 | case | functional_pass | integrity | fails_closed |
 |---|---|---|---|
 | import_merlin_injected | 0 | FAIL[integrity]: integrity violation in CANARY_import.py: contains 'merlin.runtime.reference' (a non-exempt package must not read the reference/oracle) | True |
-| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_dahzt9d6/pkg | True |
+| missing_manifest | 0 | FAIL[contract]: no manifest.yaml in package /scratch/agustin/tmp/negfix_jr0txixn/pkg | True |
 
 ### trace_check / numeric / cb-schema (the gates the grader composes)
 
@@ -68,12 +71,13 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 
 ## C. Freeze enforcement
 
-- tamper detected: **True** (c1a041ddad729972 → 2497036c9abdf756); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
+- tamper detected: **True** (60ae2544d493ebf8 → 3d561b91cb9c3471); the hidden phase re-hashes the submission and refuses to grade if it changed after freeze.
 
 ## D. Input-bundle hash reproducibility
 
 - cpp_merlininfra_hwbringup_nokernel_v0: reproducible=True (15 tree paths; bundle_lock.yaml written)
 - cpp_merlininfra_hwbringup_v0: reproducible=True (15 tree paths; bundle_lock.yaml written)
+- cpp_merlininfra_public_v0: reproducible=True (15 tree paths; bundle_lock.yaml written)
 - grader_private_v0: reproducible=True (0 tree paths; bundle_lock.yaml written)
 - merlin_assisted_eqsat_hwbringup_nokernel_v0: reproducible=True (36 tree paths; bundle_lock.yaml written)
 - merlin_assisted_eqsat_hwbringup_v0: reproducible=True (36 tree paths; bundle_lock.yaml written)
@@ -85,6 +89,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 - merlin_assisted_rtlchecks_hwbringup_v0: reproducible=True (36 tree paths; bundle_lock.yaml written)
 - merlin_assisted_rtlchecks_public_v0: reproducible=True (36 tree paths; bundle_lock.yaml written)
 - merlin_assisted_rtlchecks_realistic_v0: reproducible=True (36 tree paths; bundle_lock.yaml written)
+- merlin_assisted_verify_public_v0: reproducible=True (38 tree paths; bundle_lock.yaml written)
 - raw_baseline_hwbringup_nokernel_v0: reproducible=True (12 tree paths; bundle_lock.yaml written)
 - raw_baseline_hwbringup_v0: reproducible=True (12 tree paths; bundle_lock.yaml written)
 - raw_baseline_public_v0: reproducible=True (12 tree paths; bundle_lock.yaml written)
@@ -92,7 +97,7 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 
 ## E. Real token/cost capture
 
-- tested on a real `claude --output-format stream-json`: available=True, tokens_total=253726, cost=$None, unique_messages=None (dedup verified).
+- tested on a real `claude --output-format stream-json`: available=True, tokens_total=6414277, cost=$None, unique_messages=None (dedup verified).
 
 ## F. bareMetalC corroboration (exact anchors)
 
@@ -104,10 +109,16 @@ Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assiste
 | ref_matmul_relu | A5_relu_epilogue | relu epilogue | canonical library (tiled_matmul_auto) | d2d0f22f411af42e | match | match |
 | ref_acc_scale_i8 | A4_acc_scale_i8 | acc_scale (f32) + saturating i8 readout | canonical library (tiled_matmul_auto) | 6b7bcd10acbe6df8 | match | match |
 
+## G. Descriptor-declared capability probes
+
+| capability | adapter | fixture | supported operations | reason |
+|---|---|---|---|---|
+| — | — | — | — | no capability probes declared |
+
 - **conv2d is NOT externally corroborated** against bareMetalC (spike ISS skips conv); conv passes our compiler + RTL path only. Kept in a separate category, not claimed as bareMetalC-corroborated.
 - **relu anchor caveat:** deterministic inputs are non-negative (0..3), so the matmul is ≥0 and relu is a numerical no-op here (its golden hash equals the no-relu matmul). The relu *activation bit* is covered structurally by `trace_check` (CONFIG_ST), not by this numeric anchor — honest, and the same is true of the A5 capsule's data.
 
-## G. Scope reminders (unchanged, honest)
+## H. Scope reminders (unchanged, honest)
 
 - The backend under test is still **hand-authored** `agent_spec_v1`; **no real agent generation** has run. This pre-flight validates the harness, not a generated result.
 - VCS/FireSim remain **unavailable** and are never counted as pass.

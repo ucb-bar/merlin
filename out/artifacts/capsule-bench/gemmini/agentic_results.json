@@ -2,239 +2,605 @@
   "arms": {
     "baseline": [
       {
-        "run_id": "dry_0002",
+        "run_id": "20260724T164149Z_e2e_smoke_seed000",
         "valid": false,
         "converged": false,
-        "wall_s": 0.005,
-        "cost_usd": 0.1718,
-        "tokens_total": 20950,
-        "tokens_input": 5000,
-        "tokens_cached": 15000,
-        "tokens_output": 950,
-        "tool_calls": 2,
-        "thinking_blocks": 1,
-        "n_rounds": 0,
-        "rounds": [],
-        "public_pass": null,
-        "hidden_pass": null,
-        "fullsuite": null
-      },
-      {
-        "run_id": "rb_pilot_0001",
-        "valid": false,
-        "converged": false,
-        "wall_s": 2645.199,
-        "cost_usd": 24.3505,
-        "tokens_total": 11114773,
-        "tokens_input": 445727,
-        "tokens_cached": 10667049,
-        "tokens_output": 1997,
-        "tool_calls": 134,
-        "thinking_blocks": 96,
-        "n_rounds": 5,
-        "rounds": [
-          {
-            "round": 0,
-            "n_passed": 0,
-            "tool_calls": 38,
-            "all_pass": false
-          },
-          {
-            "round": 1,
-            "n_passed": 0,
-            "tool_calls": 28,
-            "all_pass": false
-          },
-          {
-            "round": 2,
-            "n_passed": 0,
-            "tool_calls": 34,
-            "all_pass": false
-          },
-          {
-            "round": 3,
-            "n_passed": 0,
-            "tool_calls": 34,
-            "all_pass": false
-          },
-          {
-            "round": 4,
-            "n_passed": 0,
-            "tool_calls": 0,
-            "all_pass": false
-          }
-        ],
-        "public_pass": null,
-        "hidden_pass": null,
-        "fullsuite": null
-      },
-      {
-        "run_id": "rb_pilot_0002",
-        "valid": true,
-        "converged": true,
-        "wall_s": 2475.014,
-        "cost_usd": 19.1746,
-        "tokens_total": 8977359,
-        "tokens_input": 328589,
-        "tokens_cached": 8646690,
-        "tokens_output": 2080,
-        "tool_calls": 106,
-        "thinking_blocks": 64,
-        "n_rounds": 3,
-        "rounds": [
-          {
-            "round": 0,
-            "n_passed": 0,
-            "tool_calls": 41,
-            "all_pass": false
-          },
-          {
-            "round": 1,
-            "n_passed": 0,
-            "tool_calls": 29,
-            "all_pass": false
-          },
-          {
-            "round": 2,
-            "n_passed": 4,
-            "tool_calls": 36,
-            "all_pass": true
-          }
-        ],
-        "public_pass": null,
-        "hidden_pass": null,
-        "fullsuite": {
-          "all": {
-            "passed": 19,
-            "total": 25
-          },
-          "public": {
-            "passed": 16,
-            "total": 20
-          },
-          "hidden": {
-            "passed": 3,
-            "total": 5
-          },
-          "first_failure_planes": {
-            "command_buffer_schema": 2,
-            "parse": 3,
-            "trace_check": 1
-          },
-          "language": "python"
-        }
-      },
-      {
-        "run_id": "rb_pilot_cpp_01",
-        "valid": true,
-        "converged": true,
-        "wall_s": 5639.071,
-        "cost_usd": 46.9808,
-        "tokens_total": 23679058,
-        "tokens_input": 657397,
-        "tokens_cached": 23017105,
-        "tokens_output": 4556,
-        "tool_calls": 225,
-        "thinking_blocks": 143,
+        "wall_s": 1928.591,
+        "cost_usd": 21.0014,
+        "tokens_total": 10416934,
+        "tokens_input": 301015,
+        "tokens_cached": 10113409,
+        "tokens_output": 2510,
+        "tool_calls": 144,
+        "thinking_blocks": 97,
         "n_rounds": 4,
         "rounds": [
           {
             "round": 0,
             "n_passed": 0,
-            "tool_calls": 96,
+            "tool_calls": 45,
             "all_pass": false
           },
           {
             "round": 1,
             "n_passed": 0,
-            "tool_calls": 39,
+            "tool_calls": 52,
             "all_pass": false
           },
           {
             "round": 2,
             "n_passed": 0,
-            "tool_calls": 46,
+            "tool_calls": 45,
             "all_pass": false
           },
           {
             "round": 3,
-            "n_passed": 4,
-            "tool_calls": 36,
-            "all_pass": true
+            "n_passed": 0,
+            "tool_calls": 2,
+            "all_pass": false
           }
         ],
         "public_pass": null,
         "hidden_pass": null,
-        "fullsuite": {
-          "all": {
-            "passed": 18,
-            "total": 25
-          },
-          "public": {
-            "passed": 15,
-            "total": 20
-          },
-          "hidden": {
-            "passed": 3,
-            "total": 5
-          },
-          "first_failure_planes": {
-            "parse": 5,
-            "trace_check": 1,
-            "spike": 1
-          },
-          "language": "cpp"
-        }
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 3,
+        "l3_source": "verdict_round_03.json"
       },
       {
-        "run_id": "rb_pilot_rep_01",
-        "valid": true,
-        "converged": true,
-        "wall_s": 2977.692,
-        "cost_usd": 18.1395,
-        "tokens_total": 7900180,
-        "tokens_input": 363327,
-        "tokens_cached": 7535056,
-        "tokens_output": 1797,
-        "tool_calls": 87,
-        "thinking_blocks": 51,
-        "n_rounds": 2,
+        "run_id": "gem_smoke_bwrap_3",
+        "valid": false,
+        "converged": false,
+        "wall_s": 902.159,
+        "cost_usd": 15.9588,
+        "tokens_total": 8192962,
+        "tokens_input": 203226,
+        "tokens_cached": 7987499,
+        "tokens_output": 2237,
+        "tool_calls": 108,
+        "thinking_blocks": 69,
+        "n_rounds": 1,
         "rounds": [
           {
             "round": 0,
             "n_passed": 0,
-            "tool_calls": 56,
+            "tool_calls": 108,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "rb_g3arm_20260908",
+        "valid": false,
+        "converged": false,
+        "wall_s": 8545.354,
+        "cost_usd": null,
+        "tokens_total": null,
+        "tokens_input": null,
+        "tokens_cached": null,
+        "tokens_output": null,
+        "tool_calls": 34,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 93,
+            "tool_calls": 34,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 87,
+        "l2_only": 6,
+        "gate_passed": 93,
+        "n_capsules": 97,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "rb_gemrecreate1",
+        "valid": true,
+        "converged": true,
+        "wall_s": 28592.557,
+        "cost_usd": 168.541,
+        "tokens_total": 92876593,
+        "tokens_input": 1642380,
+        "tokens_cached": 91221980,
+        "tokens_output": 12233,
+        "tool_calls": 590,
+        "thinking_blocks": 387,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 17,
+            "tool_calls": 118,
             "all_pass": false
           },
           {
             "round": 1,
-            "n_passed": 4,
-            "tool_calls": 25,
+            "n_passed": 19,
+            "tool_calls": 95,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 19,
+            "tool_calls": 122,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 19,
+            "tool_calls": 103,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 19,
+            "tool_calls": 96,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 20,
+            "tool_calls": 49,
             "all_pass": true
           }
         ],
         "public_pass": null,
         "hidden_pass": null,
-        "fullsuite": null
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 20,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_90.json"
       },
       {
-        "run_id": "rb_pilot_rep_02",
+        "run_id": "rb_gemsg1",
         "valid": false,
         "converged": false,
-        "wall_s": 334.287,
-        "cost_usd": 3.1187,
-        "tokens_total": 1048771,
-        "tokens_input": 90306,
-        "tokens_cached": 958140,
-        "tokens_output": 325,
-        "tool_calls": 19,
-        "thinking_blocks": 13,
-        "n_rounds": 8,
+        "wall_s": 44206.065,
+        "cost_usd": null,
+        "tokens_total": 275829172,
+        "tokens_input": 5299552,
+        "tokens_cached": 269785344,
+        "tokens_output": 744276,
+        "tool_calls": 1444,
+        "thinking_blocks": 0,
+        "n_rounds": 20,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 17,
+            "tool_calls": 355,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 17,
+            "tool_calls": 101,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 17,
+            "tool_calls": 153,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 17,
+            "tool_calls": 70,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 17,
+            "tool_calls": 64,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 17,
+            "tool_calls": 69,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 17,
+            "tool_calls": 96,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 17,
+            "tool_calls": 56,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 17,
+            "tool_calls": 94,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 17,
+            "tool_calls": 53,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 17,
+            "tool_calls": 23,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 17,
+            "tool_calls": 42,
+            "all_pass": false
+          },
+          {
+            "round": 12,
+            "n_passed": 17,
+            "tool_calls": 28,
+            "all_pass": false
+          },
+          {
+            "round": 13,
+            "n_passed": 17,
+            "tool_calls": 52,
+            "all_pass": false
+          },
+          {
+            "round": 14,
+            "n_passed": 17,
+            "tool_calls": 17,
+            "all_pass": false
+          },
+          {
+            "round": 15,
+            "n_passed": 17,
+            "tool_calls": 34,
+            "all_pass": false
+          },
+          {
+            "round": 16,
+            "n_passed": 17,
+            "tool_calls": 33,
+            "all_pass": false
+          },
+          {
+            "round": 17,
+            "n_passed": 17,
+            "tool_calls": 26,
+            "all_pass": false
+          },
+          {
+            "round": 18,
+            "n_passed": 17,
+            "tool_calls": 37,
+            "all_pass": false
+          },
+          {
+            "round": 19,
+            "n_passed": 17,
+            "tool_calls": 41,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 17,
+        "l2_only": 0,
+        "gate_passed": 17,
+        "n_capsules": 23,
+        "l3_source": "verdict_round_19.json"
+      },
+      {
+        "run_id": "rb_smoke_live",
+        "valid": false,
+        "converged": false,
+        "wall_s": 420.971,
+        "cost_usd": 5.5251,
+        "tokens_total": 2729987,
+        "tokens_input": 77394,
+        "tokens_cached": 2651294,
+        "tokens_output": 1299,
+        "tool_calls": 49,
+        "thinking_blocks": 31,
+        "n_rounds": 1,
         "rounds": [
           {
             "round": 0,
             "n_passed": 0,
-            "tool_calls": 19,
+            "tool_calls": 49,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      }
+    ],
+    "cpp_merlininfra": [
+      {
+        "run_id": "rbinfra_g3arm_20260908",
+        "valid": false,
+        "converged": false,
+        "wall_s": 8312.321,
+        "cost_usd": null,
+        "tokens_total": null,
+        "tokens_input": null,
+        "tokens_cached": null,
+        "tokens_output": null,
+        "tool_calls": 24,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 93,
+            "tool_calls": 24,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 87,
+        "l2_only": 6,
+        "gate_passed": 93,
+        "n_capsules": 97,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "rbinfra_gemrecreate1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 9395.774,
+        "cost_usd": 124.2419,
+        "tokens_total": 71614331,
+        "tokens_input": 935224,
+        "tokens_cached": 70669711,
+        "tokens_output": 9396,
+        "tool_calls": 399,
+        "thinking_blocks": 254,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 19,
+            "tool_calls": 154,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 19,
+            "tool_calls": 149,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 19,
+            "tool_calls": 28,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 19,
+            "tool_calls": 42,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 19,
+            "tool_calls": 18,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 19,
+            "tool_calls": 8,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 19,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      }
+    ],
+    "merlin": [
+      {
+        "run_id": "merlin_gemrecreate1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 18414.983,
+        "cost_usd": 94.5353,
+        "tokens_total": 50642704,
+        "tokens_input": 1053113,
+        "tokens_cached": 49584049,
+        "tokens_output": 5542,
+        "tool_calls": 331,
+        "thinking_blocks": 251,
+        "n_rounds": 5,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 17,
+            "tool_calls": 108,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 19,
+            "tool_calls": 88,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 19,
+            "tool_calls": 35,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 19,
+            "tool_calls": 70,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 19,
+            "tool_calls": 30,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 19,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_04.json"
+      }
+    ],
+    "merlin_rtlchecks": [
+      {
+        "run_id": "bedrock_dbg_haiku1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 388.576,
+        "cost_usd": 0.4307,
+        "tokens_total": 4131999,
+        "tokens_input": 108595,
+        "tokens_cached": 4023236,
+        "tokens_output": 168,
+        "tool_calls": 81,
+        "thinking_blocks": 1,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 81,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "bedrock_fixcheck",
+        "valid": false,
+        "converged": false,
+        "wall_s": 504.034,
+        "cost_usd": 0.6893,
+        "tokens_total": 7253417,
+        "tokens_input": 114819,
+        "tokens_cached": 7137739,
+        "tokens_output": 859,
+        "tool_calls": 106,
+        "thinking_blocks": 1,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 106,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "bedrock_haiku_manifestfix",
+        "valid": false,
+        "converged": false,
+        "wall_s": 600.615,
+        "cost_usd": 1.1025,
+        "tokens_total": 7631225,
+        "tokens_input": 177234,
+        "tokens_cached": 7453072,
+        "tokens_output": 919,
+        "tool_calls": 136,
+        "thinking_blocks": 1,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 136,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "bedrock_longrun_gemmini",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2366.171,
+        "cost_usd": 1.0258,
+        "tokens_total": 54627,
+        "tokens_input": 54600,
+        "tokens_cached": 0,
+        "tokens_output": 27,
+        "tool_calls": 4,
+        "thinking_blocks": 2,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 2,
             "all_pass": false
           },
           {
@@ -278,17 +644,46 @@
             "n_passed": 0,
             "tool_calls": 0,
             "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 2,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
           }
         ],
         "public_pass": null,
         "hidden_pass": null,
-        "fullsuite": null
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
       },
       {
-        "run_id": "rb_pilot_rep_03",
+        "run_id": "bedrock_opus_gemmini",
         "valid": false,
         "converged": false,
-        "wall_s": 11.416,
+        "wall_s": 379.18,
         "cost_usd": 0.0,
         "tokens_total": 0,
         "tokens_input": 0,
@@ -296,7 +691,1843 @@
         "tokens_output": 0,
         "tool_calls": 0,
         "thinking_blocks": 0,
-        "n_rounds": 8,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "bedrock_opusorch_gemmini",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2007.959,
+        "cost_usd": 28.7923,
+        "tokens_total": 16076756,
+        "tokens_input": 294482,
+        "tokens_cached": 15780425,
+        "tokens_output": 1849,
+        "tool_calls": 231,
+        "thinking_blocks": 8,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 105,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 126,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "bedrock_sonnet1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 604.29,
+        "cost_usd": 1.6418,
+        "tokens_total": 3855365,
+        "tokens_input": 138573,
+        "tokens_cached": 3716308,
+        "tokens_output": 484,
+        "tool_calls": 50,
+        "thinking_blocks": 4,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 50,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "bedrock_sonnet2",
+        "valid": false,
+        "converged": false,
+        "wall_s": 1807.605,
+        "cost_usd": 3.457,
+        "tokens_total": 8505274,
+        "tokens_input": 257870,
+        "tokens_cached": 8246324,
+        "tokens_output": 1080,
+        "tool_calls": 117,
+        "thinking_blocks": 16,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 54,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 63,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "bedrock_sonnet3",
+        "valid": false,
+        "converged": false,
+        "wall_s": 3005.783,
+        "cost_usd": 5.5538,
+        "tokens_total": 11133637,
+        "tokens_input": 628402,
+        "tokens_cached": 10502046,
+        "tokens_output": 3189,
+        "tool_calls": 250,
+        "thinking_blocks": 17,
+        "n_rounds": 3,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 61,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 119,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 70,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_02.json"
+      },
+      {
+        "run_id": "bedrock_sonnet_fixed",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2009.098,
+        "cost_usd": 5.4836,
+        "tokens_total": 14127380,
+        "tokens_input": 351597,
+        "tokens_cached": 13773572,
+        "tokens_output": 2211,
+        "tool_calls": 247,
+        "thinking_blocks": 19,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 155,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 92,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "bedrock_toolval_gemmini",
+        "valid": false,
+        "converged": false,
+        "wall_s": 1478.745,
+        "cost_usd": 10.4497,
+        "tokens_total": 5272625,
+        "tokens_input": 145076,
+        "tokens_cached": 5127027,
+        "tokens_output": 522,
+        "tool_calls": 70,
+        "thinking_blocks": 3,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 68,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 2,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "merlincirct_ctl_nemo_diag",
+        "valid": false,
+        "converged": false,
+        "wall_s": 6575.397,
+        "cost_usd": 1.5291,
+        "tokens_total": 10073599,
+        "tokens_input": 10037491,
+        "tokens_cached": 0,
+        "tokens_output": 36108,
+        "tool_calls": 489,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 25,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 116,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 91,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 34,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 10,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 14,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 6,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 8,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 69,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 2,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 92,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 22,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_ctl_opus_claude",
+        "valid": false,
+        "converged": false,
+        "wall_s": 4268.341,
+        "cost_usd": 15.5839,
+        "tokens_total": 16028011,
+        "tokens_input": 464409,
+        "tokens_cached": 15360392,
+        "tokens_output": 203210,
+        "tool_calls": 188,
+        "thinking_blocks": 35,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 15,
+            "tool_calls": 186,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 15,
+            "tool_calls": 2,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 15,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "merlincirct_g4p1_biasabi_20260906",
+        "valid": false,
+        "converged": false,
+        "wall_s": 20630.349,
+        "cost_usd": null,
+        "tokens_total": 130817335,
+        "tokens_input": 2044570,
+        "tokens_cached": 128494592,
+        "tokens_output": 278173,
+        "tool_calls": 617,
+        "thinking_blocks": null,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 92,
+            "tool_calls": 530,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 86,
+        "l2_only": 6,
+        "gate_passed": 92,
+        "n_capsules": 96,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_codex",
+        "valid": true,
+        "converged": true,
+        "wall_s": 1468.844,
+        "cost_usd": null,
+        "tokens_total": 6591224,
+        "tokens_input": 229542,
+        "tokens_cached": 6317568,
+        "tokens_output": 44114,
+        "tool_calls": 45,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 20,
+            "tool_calls": 45,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 20,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_90.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_codex2",
+        "valid": true,
+        "converged": true,
+        "wall_s": 1633.903,
+        "cost_usd": null,
+        "tokens_total": 10125955,
+        "tokens_input": 364039,
+        "tokens_cached": 9711616,
+        "tokens_output": 50300,
+        "tool_calls": 78,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 20,
+            "tool_calls": 78,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 20,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_90.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_codex2_refreeze_20260902",
+        "valid": true,
+        "converged": true,
+        "wall_s": 1633.903,
+        "cost_usd": null,
+        "tokens_total": 10125955,
+        "tokens_input": 364039,
+        "tokens_cached": 9711616,
+        "tokens_output": 50300,
+        "tool_calls": 78,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 20,
+            "tool_calls": 78,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 20,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_90.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_codex3",
+        "valid": true,
+        "converged": true,
+        "wall_s": 1474.78,
+        "cost_usd": null,
+        "tokens_total": 9931055,
+        "tokens_input": 234043,
+        "tokens_cached": 9654784,
+        "tokens_output": 42228,
+        "tool_calls": 67,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 20,
+            "tool_calls": 67,
+            "all_pass": true
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 20,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_90.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_glm5",
+        "valid": false,
+        "converged": false,
+        "wall_s": 26461.659,
+        "cost_usd": 28.1852,
+        "tokens_total": 46441832,
+        "tokens_input": 46241786,
+        "tokens_cached": 0,
+        "tokens_output": 200046,
+        "tool_calls": 599,
+        "thinking_blocks": 0,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 88,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 153,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 146,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 124,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 88,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_nemotron",
+        "valid": false,
+        "converged": false,
+        "wall_s": 3823.932,
+        "cost_usd": 2.8315,
+        "tokens_total": 18506132,
+        "tokens_input": 18394973,
+        "tokens_cached": 0,
+        "tokens_output": 111159,
+        "tool_calls": 507,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 40,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 59,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 99,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 44,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 8,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 53,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 7,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 13,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 4,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 133,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 35,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 12,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4_nemotron3",
+        "valid": false,
+        "converged": false,
+        "wall_s": 1410.977,
+        "cost_usd": 1.0564,
+        "tokens_total": 6881721,
+        "tokens_input": 6833502,
+        "tokens_cached": 0,
+        "tokens_output": 48219,
+        "tool_calls": 279,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 69,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 20,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 37,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 17,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 27,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 24,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 27,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 17,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 11,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 25,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 5,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_gemarm4v2_nemo",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2126.015,
+        "cost_usd": 2.3231,
+        "tokens_total": 15023557,
+        "tokens_input": 14884424,
+        "tokens_cached": 0,
+        "tokens_output": 139133,
+        "tool_calls": 342,
+        "thinking_blocks": 0,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 45,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 38,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 50,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 116,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 93,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      },
+      {
+        "run_id": "merlincirct_gemglm5locfix1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 12232.941,
+        "cost_usd": 45.7896,
+        "tokens_total": 75411385,
+        "tokens_input": 75072165,
+        "tokens_cached": 0,
+        "tokens_output": 339220,
+        "tool_calls": 1170,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 119,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 97,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 1,
+            "tool_calls": 81,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 1,
+            "tool_calls": 116,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 6,
+            "tool_calls": 66,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 6,
+            "tool_calls": 81,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 13,
+            "tool_calls": 109,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 13,
+            "tool_calls": 99,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 13,
+            "tool_calls": 137,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 14,
+            "tool_calls": 134,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 14,
+            "tool_calls": 61,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 15,
+            "tool_calls": 70,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 15,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_gemopencode5",
+        "valid": false,
+        "converged": false,
+        "wall_s": 5339.635,
+        "cost_usd": 15.3782,
+        "tokens_total": 25301847,
+        "tokens_input": 25178653,
+        "tokens_cached": 0,
+        "tokens_output": 123194,
+        "tool_calls": 503,
+        "thinking_blocks": 0,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 107,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 111,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 52,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 77,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 63,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 93,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      },
+      {
+        "run_id": "merlincirct_gemopencode8",
+        "valid": false,
+        "converged": false,
+        "wall_s": 6594.192,
+        "cost_usd": 20.5432,
+        "tokens_total": 33868263,
+        "tokens_input": 33729345,
+        "tokens_cached": 0,
+        "tokens_output": 138918,
+        "tool_calls": 604,
+        "thinking_blocks": 0,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 173,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 74,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 95,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 89,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 65,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 108,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      },
+      {
+        "run_id": "merlincirct_gemrecreate1",
+        "valid": false,
+        "converged": false,
+        "wall_s": 14350.166,
+        "cost_usd": 112.1591,
+        "tokens_total": 62555137,
+        "tokens_input": 1025929,
+        "tokens_cached": 61520609,
+        "tokens_output": 8599,
+        "tool_calls": 406,
+        "thinking_blocks": 268,
+        "n_rounds": 5,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 17,
+            "tool_calls": 113,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 19,
+            "tool_calls": 103,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 19,
+            "tool_calls": 112,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 19,
+            "tool_calls": 18,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 19,
+            "tool_calls": 60,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 19,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_04.json"
+      },
+      {
+        "run_id": "merlincirct_hxm2_glm_opencode",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2788.071,
+        "cost_usd": 8.4653,
+        "tokens_total": 13980515,
+        "tokens_input": 13932422,
+        "tokens_cached": 0,
+        "tokens_output": 48093,
+        "tool_calls": 164,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 164,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "merlincirct_hxm3_nemo_opencode",
+        "valid": false,
+        "converged": false,
+        "wall_s": 7046.42,
+        "cost_usd": 8.2512,
+        "tokens_total": 54130844,
+        "tokens_input": 53867779,
+        "tokens_cached": 0,
+        "tokens_output": 263065,
+        "tool_calls": 995,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 10,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 95,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 143,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 19,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 8,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 136,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 175,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 14,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 120,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 35,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 1,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 239,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_hxm4_glm_codex",
+        "valid": false,
+        "converged": false,
+        "wall_s": 19220.634,
+        "cost_usd": 37.014,
+        "tokens_total": 36594473,
+        "tokens_input": 36403771,
+        "tokens_cached": 0,
+        "tokens_output": 190702,
+        "tool_calls": 646,
+        "thinking_blocks": 0,
+        "n_rounds": 5,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 62,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 132,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 102,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 218,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 132,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_04.json"
+      },
+      {
+        "run_id": "merlincirct_hxm4_nemo_codex",
+        "valid": false,
+        "converged": false,
+        "wall_s": 8617.279,
+        "cost_usd": 1.6219,
+        "tokens_total": 10646673,
+        "tokens_input": 10596800,
+        "tokens_cached": 0,
+        "tokens_output": 49873,
+        "tool_calls": 707,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 6,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 32,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 16,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 20,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 11,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 24,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 153,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 80,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 27,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 123,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 215,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_glm_claude",
+        "valid": false,
+        "converged": false,
+        "wall_s": 11943.081,
+        "cost_usd": 4.6064,
+        "tokens_total": 7608394,
+        "tokens_input": 7582556,
+        "tokens_cached": 0,
+        "tokens_output": 25838,
+        "tool_calls": 695,
+        "thinking_blocks": 0,
+        "n_rounds": 6,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 183,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 104,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 87,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 92,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 121,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 108,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_05.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_glm_codex",
+        "valid": false,
+        "converged": false,
+        "wall_s": 4497.02,
+        "cost_usd": null,
+        "tokens_total": 5915482,
+        "tokens_input": 5858153,
+        "tokens_cached": 0,
+        "tokens_output": 57329,
+        "tool_calls": 182,
+        "thinking_blocks": 0,
+        "n_rounds": 2,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 107,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 75,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_01.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_glm_opencode",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2393.951,
+        "cost_usd": 5.1662,
+        "tokens_total": 8482122,
+        "tokens_input": 8434063,
+        "tokens_cached": 0,
+        "tokens_output": 48059,
+        "tool_calls": 154,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 154,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_nemo_claude2",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2142.065,
+        "cost_usd": 0.0771,
+        "tokens_total": 511638,
+        "tokens_input": 510909,
+        "tokens_cached": 0,
+        "tokens_output": 729,
+        "tool_calls": 299,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 50,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 81,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 2,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 32,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 6,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 50,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 1,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 20,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 26,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 15,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 1,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 15,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_nemo_codex",
+        "valid": false,
+        "converged": false,
+        "wall_s": 6275.974,
+        "cost_usd": null,
+        "tokens_total": 12625405,
+        "tokens_input": 12544720,
+        "tokens_cached": 0,
+        "tokens_output": 80685,
+        "tool_calls": 584,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 42,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 53,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 12,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 9,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 136,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 43,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 23,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 16,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 79,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 70,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 22,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 79,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_nemo_opencode",
+        "valid": false,
+        "converged": false,
+        "wall_s": 4492.929,
+        "cost_usd": 3.922,
+        "tokens_total": 25415099,
+        "tokens_input": 25195650,
+        "tokens_cached": 0,
+        "tokens_output": 219449,
+        "tool_calls": 625,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 112,
+            "all_pass": false
+          },
+          {
+            "round": 1,
+            "n_passed": 0,
+            "tool_calls": 16,
+            "all_pass": false
+          },
+          {
+            "round": 2,
+            "n_passed": 0,
+            "tool_calls": 35,
+            "all_pass": false
+          },
+          {
+            "round": 3,
+            "n_passed": 0,
+            "tool_calls": 39,
+            "all_pass": false
+          },
+          {
+            "round": 4,
+            "n_passed": 0,
+            "tool_calls": 115,
+            "all_pass": false
+          },
+          {
+            "round": 5,
+            "n_passed": 0,
+            "tool_calls": 16,
+            "all_pass": false
+          },
+          {
+            "round": 6,
+            "n_passed": 0,
+            "tool_calls": 61,
+            "all_pass": false
+          },
+          {
+            "round": 7,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 21,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 55,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 113,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 42,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_11.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_opus_oc5",
+        "valid": false,
+        "converged": false,
+        "wall_s": 3120.35,
+        "cost_usd": 51.741,
+        "tokens_total": 23282969,
+        "tokens_input": 272596,
+        "tokens_cached": 22845545,
+        "tokens_output": 164828,
+        "tool_calls": 196,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 196,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
+      },
+      {
+        "run_id": "merlincirct_hxm_sol_opencode",
+        "valid": false,
+        "converged": false,
+        "wall_s": 48.517,
+        "cost_usd": 0.0,
+        "tokens_total": 0,
+        "tokens_input": 0,
+        "tokens_cached": 0,
+        "tokens_output": 0,
+        "tool_calls": 0,
+        "thinking_blocks": 0,
+        "n_rounds": 12,
         "rounds": [
           {
             "round": 0,
@@ -345,55 +2576,142 @@
             "n_passed": 0,
             "tool_calls": 0,
             "all_pass": false
+          },
+          {
+            "round": 8,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 9,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 10,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
+          },
+          {
+            "round": 11,
+            "n_passed": 0,
+            "tool_calls": 0,
+            "all_pass": false
           }
         ],
         "public_pass": null,
         "hidden_pass": null,
-        "fullsuite": null
-      }
-    ],
-    "merlin": [
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
       {
-        "run_id": "pilot_merlin_0001",
-        "valid": true,
-        "converged": true,
-        "wall_s": 2783.269,
-        "cost_usd": 16.6637,
-        "tokens_total": 6901059,
-        "tokens_input": 367029,
-        "tokens_cached": 6532507,
-        "tokens_output": 1523,
-        "tool_calls": 85,
-        "thinking_blocks": 49,
-        "n_rounds": 2,
+        "run_id": "merlincirct_smokeglm",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2400.922,
+        "cost_usd": null,
+        "tokens_total": null,
+        "tokens_input": null,
+        "tokens_cached": null,
+        "tokens_output": null,
+        "tool_calls": 0,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
         "rounds": [
           {
             "round": 0,
             "n_passed": 0,
-            "tool_calls": 43,
+            "tool_calls": 0,
             "all_pass": false
-          },
-          {
-            "round": 1,
-            "n_passed": 4,
-            "tool_calls": 35,
-            "all_pass": true
           }
         ],
         "public_pass": null,
         "hidden_pass": null,
-        "fullsuite": null
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "merlincirct_smokenemo",
+        "valid": false,
+        "converged": false,
+        "wall_s": 556.725,
+        "cost_usd": 0.7869,
+        "tokens_total": 5146408,
+        "tokens_input": 5116563,
+        "tokens_cached": 0,
+        "tokens_output": 29845,
+        "tool_calls": 123,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 123,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": null,
+        "l2_only": null,
+        "gate_passed": null,
+        "n_capsules": null,
+        "l3_source": null
+      },
+      {
+        "run_id": "merlincirct_smokenemo2",
+        "valid": false,
+        "converged": false,
+        "wall_s": 2421.778,
+        "cost_usd": 3.1443,
+        "tokens_total": 20489151,
+        "tokens_input": 20347293,
+        "tokens_cached": 0,
+        "tokens_output": 141858,
+        "tool_calls": 376,
+        "thinking_blocks": 0,
+        "n_rounds": 1,
+        "rounds": [
+          {
+            "round": 0,
+            "n_passed": 0,
+            "tool_calls": 376,
+            "all_pass": false
+          }
+        ],
+        "public_pass": null,
+        "hidden_pass": null,
+        "fullsuite": null,
+        "rtl_clean": 0,
+        "l2_only": 0,
+        "gate_passed": 0,
+        "n_capsules": 20,
+        "l3_source": "verdict_round_00.json"
       }
-    ],
-    "merlin_rtlchecks": []
+    ]
   },
   "n_valid": {
-    "baseline": 3,
-    "merlin": 1,
-    "merlin_rtlchecks": 0
+    "baseline": 1,
+    "cpp_merlininfra": 0,
+    "merlin": 0,
+    "merlin_rtlchecks": 4
   },
   "arm_order": [
     "baseline",
+    "cpp_merlininfra",
     "merlin",
     "merlin_rtlchecks"
   ],
@@ -401,45 +2719,37 @@
     "class_coverage": {
       "attention": {
         "n": 5,
-        "rb_pilot_cpp_01": 5,
-        "rb_pilot_0002": 5
+        "rb_abc4": 5
       },
       "conv": {
         "n": 3,
-        "rb_pilot_cpp_01": 0,
-        "rb_pilot_0002": 0
+        "rb_abc4": 3
       },
       "matmul": {
         "n": 7,
-        "rb_pilot_cpp_01": 5,
-        "rb_pilot_0002": 6
+        "rb_abc4": 7
       },
       "matmul+acc_scale": {
         "n": 3,
-        "rb_pilot_cpp_01": 3,
-        "rb_pilot_0002": 3
+        "rb_abc4": 3
       },
       "matmul+relu": {
         "n": 3,
-        "rb_pilot_cpp_01": 3,
-        "rb_pilot_0002": 3
+        "rb_abc4": 3
       },
       "mlp": {
         "n": 2,
-        "rb_pilot_cpp_01": 2,
-        "rb_pilot_0002": 2
+        "rb_abc4": 2
       },
       "movement": {
         "n": 2,
-        "rb_pilot_cpp_01": 0,
-        "rb_pilot_0002": 0
+        "rb_abc4": 2
       }
     },
     "n_capsules": 25,
     "backends": [
-      "rb_pilot_cpp_01",
-      "rb_pilot_0002"
+      "rb_abc4"
     ]
   },
-  "caveat": "3-arm A/B/C. valid converged runs: baseline=3, merlin=1, merlin_rtlchecks=0. full-suite completeness present where full_suite_audit has been run."
+  "caveat": "3-arm A/B/C. valid converged runs: baseline=1, cpp_merlininfra=0, merlin=0, merlin_rtlchecks=4. full-suite completeness present where full_suite_audit has been run."
 }
