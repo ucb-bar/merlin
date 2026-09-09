@@ -1,0 +1,20 @@
+{
+ "schema": "merlin_whole_model_firesim_measurement_v1",
+ "model": "smolvla_flow_denoise",
+ "datapath": "w8a8",
+ "queue_job_id": 610,
+ "workload": "merlin-smolvla-flowdenoise-d27439fee438a284",
+ "hw_config": "resnet50_merlin_warm_measured_full_gemmini_u250_pinned",
+ "deploy_quintuplet": "xilinx_alveo_u250-firesim-FireSim-FireSimGemminiRocketConfig-BaseXilinxAlveoU250Config",
+ "measured_cycles": 33085199302,
+ "gate_passed": true,
+ "profile_markers": [
+  "MERLIN_INVOCATIONS warmup=1 measured=1",
+  "MERLIN_PROFILE warmup begin",
+  "MERLIN_PROFILE warmup end rc=0",
+  "MERLIN_PROFILE measured begin",
+  "MERLIN_PROFILE measured end rc=0"
+ ],
+ "counter_partition_present": false,
+ "note": "cycles are on FireSimGemminiRocketConfig, the same design as the ~1.3e9 resnet50 runs, so the figures are comparable. The harness prints a METRIC only when validation passes, so this is a gated measurement. The value dump after the METRIC was cut short by an operator cancel to release the FPGA; the metric and gate verdict precede it."
+}
