@@ -679,6 +679,60 @@ def guidance_for_report(report: WholeModelReport,
     }
 
 
+def _host_dynamic_total(host_activity: Mapping[str, Any]) -> int:
+    """Host-lane dynamic operations, summed over families."""
+    families = host_activity.get("dynamic_operations")
+    if not isinstance(families, Mapping):
+        return 0
+    return sum(value for value in families.values()
+               if isinstance(value, int) and not isinstance(value, bool))
+
+
+def _host_tasks_by_cost(host_activity: Mapping[str, Any], *, limit: int = 5) -> list[dict[str, Any]]:
+    """Host tasks ranked by DYNAMIC OPERATIONS, with the family that dominates each.
+
+    The pre-existing ranking is `top_tasks_by_scalar_memory_payload` -- ordered by BYTES. Bytes say
+    how much data a task touched, never how much work it did: a task holding 4.0% of the host
+    lane's operations appears in that list with 3,200 bytes while another with 12.5% carries 25,216,
+    so the byte order and the cost order are different orders. An optimizer needs the cost one.
+    """
+    tasks = host_activity.get("tasks")
+    if not isinstance(tasks, list):
+        return []
+    whole = _host_dynamic_total(host_activity)
+    rows: list[tuple[int, dict[str, Any]]] = []
+    for index, task in enumerate(tasks):
+        if not isinstance(task, Mapping):
+            continue
+        families = {name: value for name, value in (task.get("dynamic_operations") or {}).items()
+                    if isinstance(value, int) and not isinstance(value, bool)}
+        total = sum(families.values())
+        if not total:
+            continue
+        dominant = max(families.items(), key=lambda item: (item[1], item[0]))
+        regions = [str(name) for name in (task.get("source_regions") or [])]
+        rows.append((total, {
+            "task_index": index,
+            "dynamic_operations": total,
+            "share_of_host_dynamic_operations": round(total / whole, 6) if whole else None,
+            "dominant_family": dominant[0],
+            "dominant_family_operations": dominant[1],
+            "source_regions": regions[:12],
+            "source_region_count": len(regions),
+        }))
+    rows.sort(key=lambda item: -item[0])
+    return [row for _, row in rows[:limit]]
+
+
+def _host_hotspot_share(host_activity: Mapping[str, Any]) -> float | None:
+    """Share of the host lane held by its single largest task, or ``None`` when unmeasurable."""
+    ranked = _host_tasks_by_cost(host_activity, limit=1)
+    if not ranked:
+        return None
+    share = ranked[0].get("share_of_host_dynamic_operations")
+    return float(share) if isinstance(share, (int, float)) else None
+
+
 def guidance_for_emission_analysis(
         analysis: Mapping[str, Any],
         inventory: PackageOptimizationInventory) -> dict[str, Any]:
@@ -701,7 +755,9 @@ def guidance_for_emission_analysis(
 
     def add(kind: str, detail: str, effects: Sequence[str], *,
             evidence: Mapping[str, Any] | None = None, priority: int,
-            cca_axes: Sequence[str] | None = None) -> None:
+            cca_axes: Sequence[str] | None = None,
+            magnitude_share: float | None = None,
+            magnitude_basis: str | None = None) -> None:
         findings.append({
             "kind": kind,
             "detail": detail,
@@ -710,6 +766,19 @@ def guidance_for_emission_analysis(
                                         else _FINDING_AXES.get(kind, ())),
             "evidence": dict(evidence or {}),
             "priority": priority,
+            # HOW BIG, when the analysis can say. Findings used to be ordered by priority class and
+            # then ALPHABETICALLY BY KIND, so among equals the first letter of a finding's name
+            # decided what an agent worked on first. Measured on a real brief: the host hotspot
+            # holding 45.7% of the host lane -- 549,695 of 1,202,745 dynamic operations, on a lane
+            # that is >=93% of the measured window -- ranked SIXTH, below a synchronization finding
+            # whose whole evidence was `{"baseline": 3, "candidate": 23}`. Twenty units outranked
+            # half a million because "a" precedes "h".
+            "magnitude_share": (round(float(magnitude_share), 6)
+                                if isinstance(magnitude_share, (int, float))
+                                and not isinstance(magnitude_share, bool) else None),
+            # Shares from different denominators are NOT comparable, so the basis travels with the
+            # number and the ordering only ever compares within one kind's own class.
+            "magnitude_basis": magnitude_basis,
         })
 
     if candidate.get("status") == "declined":
@@ -783,8 +852,17 @@ def guidance_for_emission_analysis(
                       "load_payload_bytes": host_activity.get("load_payload_bytes"),
                       "store_payload_bytes": host_activity.get("store_payload_bytes"),
                       "scope": "pre-optimization LLVM scalar payload, not DRAM or CPU cycles; "
-                               "static allocation payload is not stack-frame size or live-memory peak"},
-            priority=1)
+                               "static allocation payload is not stack-frame size or live-memory peak",
+                      "cost_ranked_tasks": _host_tasks_by_cost(host_activity)},
+            # Class 0, alongside the regressions, and carrying a MEASURED share so it orders ahead
+            # of them: this is the only finding in the brief that says how much of the dominant
+            # lane it accounts for, and the host lane is >=93% of the measured window on the one
+            # run with a counter partition. It sat at priority 1 -- behind every regression -- so
+            # the agent's ranked work list opened with deltas of tens of units while half the host
+            # lane went unmentioned until rank six.
+            priority=0,
+            magnitude_share=_host_hotspot_share(host_activity),
+            magnitude_basis="largest host task's share of host-lane dynamic operations")
 
     baseline_macs, candidate_macs = baseline.get("macs"), candidate.get("macs")
     if (isinstance(baseline_macs, (int, float)) and not isinstance(baseline_macs, bool)
@@ -941,9 +1019,19 @@ def guidance_for_emission_analysis(
             ("residency", "movement", "synchronization", "encoding", "issue"),
             evidence={"introduced_findings": list(introduced)}, priority=0)
 
+    def _order(row: Mapping[str, Any]) -> tuple[int, int, float, str]:
+        """Priority class, then SIZE, then name -- the name only as a last resort tie-break.
+
+        A finding whose size the analysis could measure is ordered ahead of one it could not,
+        because "we know this is 45.7% of the lane" is strictly better guidance than "this exists".
+        """
+        share = row.get("magnitude_share")
+        sized = isinstance(share, (int, float)) and not isinstance(share, bool)
+        return (int(row["priority"]), 0 if sized else 1,
+                -float(share) if sized else 0.0, str(row["kind"]))
+
     ranked: list[dict[str, Any]] = []
-    for rank, finding in enumerate(sorted(
-            findings, key=lambda row: (int(row["priority"]), str(row["kind"]))), start=1):
+    for rank, finding in enumerate(sorted(findings, key=_order), start=1):
         required = set(finding["required_effects"])
         required_axes = set(finding["required_cca_axes"])
         axis_matches = [surface for surface in inventory.surfaces
