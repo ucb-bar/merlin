@@ -310,3 +310,49 @@ def test_a_named_float_datapath_is_not_read_as_a_width_of_its_digits():
     assert _datapath_bits(facts, "input") == 8
     assert _datapath_bits(facts, "accumulator") == 16
     assert _datapath_bits(facts, "absent") is None
+
+
+def test_an_accumulator_destined_mvin_is_not_a_scratchpad_overflow():
+    """The regression that produced 313 `stall` verdicts on correctly lowered programs.
+
+    An MVIN's `spad_addr` carries high CONTROL bits when the destination is the accumulator. The
+    accumulator budget masks them (`a & ~mask`); this loop used the address raw, so the destination
+    read as scratchpad row 0x80000010 == 2147483664 and tripped `scratchpad-overflow` with a fix_hint
+    telling the author to tile smaller. Measured on a real report: `scratchpad_max_row: 2147483664`,
+    `scratchpad_rows_touched: 16`, verdict `stall`.
+    """
+    acc_bit = 0x80000000            # inside the derived acc_ctrl_mask 0xE0000000
+    tr = _trace([
+        _ins(0, "FENCE", funct=1),
+        _ins(1, "MVIN", funct=2, spad_addr=acc_bit | 16, rows=16,
+             dram={"kind": "argbase", "arg_index": 0, "offset": 0}),
+        _ins(2, "FENCE", funct=1),
+    ])
+    findings, peaks = simulate(tr, _facts())
+    assert not [f for f in findings if f.rule == "scratchpad-overflow"], \
+        "an accumulator destination must not be counted against the scratchpad"
+    assert peaks["scratchpad_max_row"] == 0, "it must not enter the scratchpad footprint at all"
+    # ... and it must land in the budget it actually consumes, not in neither.
+    assert peaks["accumulator_max_row"] == 16
+
+
+def test_a_real_scratchpad_overflow_still_fires_with_the_mask_present():
+    """Not vacuous: masking must not disarm the check for a genuine plain-row overflow."""
+    tr = _trace([
+        _ins(0, "MVIN", funct=2, spad_addr=4090, rows=16, dram={"kind": "argbase", "arg_index": 0}),
+    ])
+    findings, peaks = simulate(tr, _facts(scratchpad_rows=64))
+    over = [f for f in findings if f.rule == "scratchpad-overflow"]
+    assert over and over[0].severity == Severity.STALL
+    assert peaks["scratchpad_max_row"] == 4106
+
+
+def test_an_uninterpretable_high_address_is_unknown_not_a_stall():
+    """No mask derivable: an out-of-range address could be either, so fail closed as UNKNOWN."""
+    tr = _trace([
+        _ins(0, "MVIN", funct=2, spad_addr=0x80000010, rows=16, dram={"kind": "argbase"}),
+    ])
+    findings, _ = simulate(tr, _facts(acc_ctrl_mask=None))
+    unk = [f for f in findings if f.rule == "scratchpad-address-uninterpretable"]
+    assert unk and unk[0].severity == Severity.UNKNOWN
+    assert not [f for f in findings if f.rule == "scratchpad-overflow"]

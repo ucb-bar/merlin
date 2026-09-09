@@ -54,9 +54,25 @@ def simulate(
     classes = [i.get("class") for i in ins]
 
     # ---- 1. scratchpad footprint / back-pressure (dynamic occupancy) --------------------------------
+    # AN MVIN DESTINATION IS NOT ALWAYS A SCRATCHPAD ROW. The same `spad_addr` field carries the high
+    # control bits that say the destination is the ACCUMULATOR, and the accumulator budget below already
+    # masks them off (`a & ~mask`) while this loop used the address raw. So an accumulator-destined MVIN
+    # was read as scratchpad row 0x80000010 == 2147483664 and reported as
+    #   "resident scratchpad footprint reaches row 2147483664 but the target has only 16384 rows"
+    # -- a STALL verdict, with a fix_hint telling the author to tile smaller, for a correctly lowered
+    # program. MEASURED across 3446 reports on disk: 229 scratchpad-overflow findings and 313 `stall`
+    # verdicts, most of them this shape. It also under-counted the accumulator, because that budget
+    # collects only MVOUT `acc_addr` and PRELOAD `c_addr`.
+    #
+    # Which bit means what is NOT assumed: the only thing used is the DERIVED mask. Any address with a
+    # control bit set is not a plain row, so it is folded into the accumulator side (masked) instead,
+    # and a row that cannot be interpreted at all is reported UNKNOWN rather than silently counted.
     cap = facts.scratchpad_rows
+    _spad_mask = facts.acc_ctrl_mask
     live: set[int] = set()
     max_top = 0
+    mvin_acc_rows: list[int] = []
+    _uninterpretable = 0
     for i in ins:
         if i.get("class") != "MVIN":
             continue
@@ -64,9 +80,23 @@ def simulate(
         base = dec.get("spad_addr")
         if not isinstance(base, int):
             continue
+        if _spad_mask is None:
+            if base > (cap or 0):
+                _uninterpretable += 1
+                continue
+        elif base & _spad_mask:
+            mvin_acc_rows.append(base & ~_spad_mask)
+            continue
         top = base + _rows(dec)
         max_top = max(max_top, top)
         live.update(range(base, top))
+    if _uninterpretable:
+        findings.append(Finding(
+            "scratchpad-address-uninterpretable", Severity.UNKNOWN,
+            f"{_uninterpretable} MVIN destination(s) carry high bits above the {cap}-row scratchpad and "
+            "the address control-bit mask is not derivable — cannot tell an accumulator destination "
+            "from an out-of-range row, so the resident footprint is not bounded here",
+            derived_from=facts.provenance))
     peaks["scratchpad_rows_touched"] = len(live)
     peaks["scratchpad_max_row"] = max_top
     peaks["scratchpad_rows_capacity"] = cap
@@ -100,6 +130,9 @@ def simulate(
             a = dec.get(key)
             if isinstance(a, int):
                 acc_addrs.append(a)
+    # Accumulator-destined MVINs, already masked above. They belong in THIS budget, not the
+    # scratchpad's, and were previously in neither.
+    acc_addrs.extend(mvin_acc_rows)
     if acc_addrs:
         if acc_cap is None or mask is None:
             peaks["accumulator_rows_capacity"] = acc_cap
