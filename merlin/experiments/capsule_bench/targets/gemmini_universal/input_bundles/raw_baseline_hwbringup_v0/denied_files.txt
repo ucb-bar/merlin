@@ -1,0 +1,4 @@
+merlin/
+merlin/contract/capsules/hidden/
+experiments/capsule_bench/targets/gemmini_universal/input_bundles/grader_private_v0/
+experiments/capsule_bench/targets/gemmini_universal/runs/

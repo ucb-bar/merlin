@@ -1,0 +1,1 @@
+../../../../../gemmini/contracts/harness_curated/gemmini-rocc-tests/include/gemmini_counter.h

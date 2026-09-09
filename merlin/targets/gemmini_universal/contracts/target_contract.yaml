@@ -1,0 +1,344 @@
+# gemmini_universal target contract -- Jack's "Universal" ResNet-50 Gemmini, Alveo U250 / FireSim.
+#
+# A SEPARATE DEVICE FROM `gemmini`, NOT A VARIANT OF IT. Same generator, same 16x16 int8 mesh, same
+# 256 KiB scratchpad and 64 KiB accumulator -- and four parameter values that each REMOVE programs the
+# `gemmini` target executes:
+#
+#   * the spatial array is WEIGHT-STATIONARY ONLY (`dataflow = Dataflow.WS`). Derived, not declared:
+#     in the elaborated FIRRTL, PE's output-stationary branch is gated by a literal
+#     `and(UInt<1>(0h0), eq(dataflow,0))` and its propagate registers are SInt<8> rather than
+#     accumulator-wide, so no OS program is expressible by this netlist.
+#   * there is NO FULL-WIDTH ACCUMULATOR READOUT (`acc_read_full_width = false`). Derived from the
+#     store path: this elaboration's StreamWriter carries `data : UInt<128>` (DIM x int8) where the
+#     pinned `gemmini` revision's carries `data : UInt<512>` (DIM x int32). The mvout DMA on this
+#     device physically cannot move an int32 accumulator row. See `readout` below -- this is the fact
+#     that reshapes the graded corpus.
+#   * the execute stage can neither read the accumulator nor write the scratchpad
+#     (`ex_read_from_acc = false`, `ex_write_to_spad = false`).
+#   * the D operand is hardcoded to GARBAGE_ADDR (`hardcode_d_to_garbage_addr = true`).
+#
+# NOTHING HERE IS SHARED WITH `merlin/targets/gemmini/`. This contract is a sibling, never an override:
+# a verdict measured on one device is not a verdict about the other, and the two must not be mixed.
+#
+# WHAT IS DERIVED AND WHAT IS DECLARED. Mesh geometry, scratchpad/accumulator capacities, datapath
+# dtypes, the legal funct set and the store-DMA width are all RTL FACTS and are NOT re-declared here --
+# consumers read them from `contracts/rtl_facts/facts.json`. This contract carries only (a) intent and
+# (b) the ABI encoding surface facts cannot ground -- and for THIS target one of those, the RoCC custom
+# slot, turned out to be derivable after all and is recorded with its evidence rather than reviewed.
+name: gemmini_universal
+version: 0.1
+family: tensor_resident
+
+# NO `plugin.backend`, DELIBERATELY, and this is a statement rather than an omission. `gemmini`'s
+# contract points at its own `backend/` package, which self-registers the name "gemmini". This target
+# has no in-tree reference backend: writing one is the WORK UNDER TEST (an arm authors its own
+# out-of-tree MLIR backend against this device), and symlinking gemmini's would be worse than nothing --
+# that package's codegen was written against a device WITH full-width accumulator readout, so it would
+# emit mvouts this hardware cannot service while claiming to be this target's reference. Recorded in
+# `gaps` below, because "no backend" and "a backend that is wrong for this device" must not read alike.
+
+endpoint_kind: inline_asm_insn
+runner:
+  suite: gemmini-universal-capsule-bench
+  dtype: i8xi8_i32
+  # A TIER IS A FIDELITY, NOT A SIMULATOR -- same reading as `gemmini`. L2 is the functional model, L3
+  # is "the elaborated design ran it" (vcs/gsim/verilator resolved by rtl_engine_policy), L4 is FPGA.
+  #
+  # !! L2 IS NOT A FAITHFUL ORACLE FOR THIS DEVICE'S READOUT RESTRICTION. Measured in the extension's
+  # own source (spike_qualification/extension/gemmini.cc): the full-width accumulator read is
+  # implemented unconditionally off the address bit (`bool const full = (sp_addr >> 29) & 0x1;` at
+  # :222, `sizeof_output = full ? sizeof(acc_t) : sizeof(elem_t)` at :265) and is NOT gated on
+  # `ACC_READ_FULL_WIDTH`. MEASURED, not inferred: a hand-written full-width int32 mvout for capsule
+  # A2_single_tile_matmul returns bit-exact int32 and reports errors=0 on this very extension
+  # (out/artifacts/capsule-bench/gemmini_universal/l2_oracle_smoke_20260909T092925Z_328c2e2/, case 2).
+  # So a program that mvouts an int32 accumulator row PASSES Spike and cannot be built by this RTL.
+  # Anything that must witness the readout width has to reach L3. This is why the int32-output rows
+  # leave the graded denominator instead of being graded at L2 and believed.
+  tier_sim: {L2: spike, L3: elaborated_rtl, L4: firesim}
+  sim_via: chipyard
+  # THE L2 ORACLE FOR THIS DEVICE, declared because it is not the one `spike_path()`/`libgemmini_dir()`
+  # resolve by default. Those resolve $MERLIN_CHIPYARD/.conda-env/riscv-tools/{bin/spike,lib/libgemmini.so}
+  # -- the extension built for the OTHER gemmini. Running this target's programs on that model would put
+  # a gemmini verdict on a gemmini_universal submission, which is the whole failure this target exists to
+  # avoid, so the extension is named here with its digest rather than inherited from an env var.
+  #
+  # ⚠️ NOT YET READ BY ANY CODE. `merlin/targets/gemmini/backend/gemmini.py:run_elf` builds the spike
+  # argv from `libgemmini_dir()`, which has no env override and is not target-parameterized, and that
+  # file is out of scope for this change (two live gemmini runs import it). So this block is a
+  # DECLARATION plus a verified digest; the L2 smoke below was run by invoking spike directly. A caller
+  # that wires this up must pass --extlib explicitly. Recorded in `gaps`.
+  spike_extension:
+    # `spike --extlib=<so> --extension=gemmini <elf>`
+    extension_name: gemmini
+    extlib: /scratch/jack/experiments/universal_resnet50_gemmini_20260906/spike_qualification/extension/libgemmini.so
+    sha256: f3de40ced95c6697e5b27acf938803c4a961d811ab0fa04000f992cb45a2b124
+    read_only: true
+    built_from_abi: >-
+      the extension directory's own gemmini_params.h is BYTE-IDENTICAL to this target's committed ABI
+      header (both d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5), so the functional
+      model and a kernel compiled against contracts/abi/ agree on DIM / ACC_ROWS / BANK_ROWS / elem_t.
+    smoke: >-
+      MEASURED 2026-09-09 and it PASSES. Capsule A4_acc_scale_i8 (one of the 28 graded rows) compiled
+      against this ABI through the curated gemmini-rocc-tests harness and run on this extension is
+      bit-exact against the capsule's own golden, errors=0. Recorded with its console, sources and ELF
+      digests at out/artifacts/capsule-bench/gemmini_universal/l2_oracle_smoke_20260909T092925Z_328c2e2/.
+
+# The ABI encoding surface. `addr_len` is read out of THIS device's own attested header;
+# `rocc_custom_slot` is DERIVED from THIS elaboration and independently corroborated by that header.
+encoding:
+  # From the attested `contracts/abi/gemmini_params.h` (sha256 d6db18f8...), `#define ADDR_LEN 32` at
+  # line 9. Recorded as an ABI fact with a digest behind it, not as a reviewed constant.
+  addr_len: 32
+  # DERIVED, 2026-09-09, from the elaboration itself -- not from `OpcodeSet.custom3` in the Scala, which
+  # is a declaration. In
+  #   /scratch/jack/chipyard/sims/verilator/generated-src/
+  #     chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/
+  #     chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig.fir
+  # module `RoccCommandRouter` (declared at :483955) contains EXACTLY ONE opcode comparison:
+  #   :484012  node cmdReadys_me = eq(UInt<7>(0h7b), cmd_q.io.deq.bits.inst.opcode)
+  # 0x7b is the RISC-V standard encoding of custom-3, so the slot is 3. Uniqueness was checked, not
+  # assumed: one `RoccCommandRouter` module, one instance (`inst cmdRouter` at :507151), one
+  # `cmdReadys_me` node in the whole 84 MB file -- so there is no second accelerator and no second slot
+  # this could be confused with. Independently corroborated by the attested header's own
+  # `#define XCUSTOM_ACC 3` (line 7), a different artifact from a different tool.
+  #
+  # This closes the `custom_opcode: UNKNOWN` recorded in
+  # out/artifacts/cache/rtl_introspect/gemmini_universal/derived_facts_partial.json, whose stated reason
+  # was "derived from the target contract's encoding.rocc_custom_slot, and this candidate target has no
+  # contract". It has one now, and the value in it is derived rather than copied from gemmini's.
+  rocc_custom_slot: 3
+  # RTL funct CODE -> the compiler's shared op class. CODES are RTL-derived (see
+  # facts.json interfaces.funct_decode_table.legal_funct); the MVIN/MVOUT/... vocabulary is the shared
+  # human-owned one. Every name here is `#define k_<NAME> <code>` in the ISA macro header, so
+  # circt_introspect.crosscheck_semantic_class_names can check it.
+  #
+  # 26 (CONFIG_SCALE_MEM) IS DELIBERATELY ABSENT from this block even though it IS in this device's
+  # legal_funct and is NOT in the pinned gemmini revision's -- it is the one decode this configuration
+  # adds. The reason is mechanical, not editorial: the shared ISA macro header spells it
+  # `#define CONFIG_SCALE_MEM 26`, with no `k_` prefix, so it is not cross-checkable in this block and
+  # declaring it here would put an unverifiable name beside eleven verifiable ones. The code itself is
+  # recorded where it belongs, in `facts.json`, with `names_from_scala` as its evidence.
+  semantic_class:
+    0: CONFIG
+    1: MVIN2
+    2: MVIN
+    3: MVOUT
+    4: COMPUTE_PRELOADED
+    5: COMPUTE_ACCUMULATE
+    6: PRELOAD
+    7: FLUSH
+    8: LOOP_WS
+    15: LOOP_CONV
+  # CONFIG (funct 0) refined by rs1[1:0]. Names header-derived, codes the decoder's own fan-out.
+  config_subtype: {0: CONFIG_EX, 1: CONFIG_LD, 2: CONFIG_ST}
+
+status: prototype
+features: [systolic_array, resident_packed_tensor, accumulator_commit, command_buffer, metrics]
+
+runtime:
+  backends: [spike_gemmini, verilator]
+  default_backend: baremetal
+  # The elaborated configuration this target IS. Both chipyard Universal configs
+  # (`UniversalResNet50GemminiRocketConfig` and `...LoopFixed...`) expand to the IDENTICAL Config chain
+  # -- byte for byte the same four fragments -- so the "LoopFixed" name promises a difference its
+  # definition does not contain (recorded as a gap on `gemmini_universal_chipyard`). This target names
+  # the plain one, which is the elaboration the pinned artifacts are of.
+  rtl_sim_config: UniversalResNet50GemminiRocketConfig
+
+# THE READOUT CONTRACT -- the block that has no counterpart in gemmini's contract, because on gemmini
+# there is nothing to say. Declared here because the RTL-facts SCHEMA has no field for it: neither the
+# v1 nor the 2.0 fact set carries dataflow, accumulator readout width, execute-stage sources or
+# D-address hardcoding, so the four facts that make this a different device are absent from the schema,
+# not merely unextracted (recorded as a gap on `gemmini_universal_rtl`). Every value below is DERIVED
+# and carries the artifact it was derived from; none is a declaration of intent.
+readout:
+  acc_read_full_width: false
+  store_dma_bits: 128
+  # What can actually leave the device. int8 is the mvout element type after the accumulator scale is
+  # applied and the value is clipped to elem_t; int32 has no path off-chip at all.
+  offchip_dtypes: [int8]
+  derived_from:
+    - >-
+      StreamWriter `io.req.bits.data : UInt<128>` in
+      `gemmini_universal_verilator_firrtl` (= DIM x int8). The pinned gemmini revision's is UInt<512>
+      (= DIM x int32).
+    - >-
+      Scratchpad.scala `writer_data_width = if (acc_read_full_width) acc_w else spad_w` -- the absence
+      lives here, one level out from AccumulatorMem, whose read request still carries a `full : UInt<1>`
+      field and therefore cannot witness it. Two obvious places to look say the opposite; this is the
+      place that is right.
+    - >-
+      the attested ABI header defines `ACC_READ_SMALL_WIDTH` and does NOT define
+      `ACC_READ_FULL_WIDTH` (contracts/abi/abi.yaml, one-line diff against merlin's gemmini header).
+    - >-
+      the frozen config contract's `execution_restrictions.accumulator_read_full_width: false` and
+      `expected_generated_header.ACC_READ_FULL_WIDTH: absent`.
+  consequence: >-
+    A region whose GRADED OUTPUT TENSOR is int32 cannot be committed by this device. This is a hardware
+    capability boundary, and it is the reason this target's graded cohort is much smaller than
+    gemmini's -- see grading.capability_exclude_capsules in
+    merlin/experiments/capsule_bench/targets/gemmini_universal/target_experiment.yaml.
+  # ⚠️ NOT CONSUMED BY THE ELIGIBILITY ENGINE. `merlin.targetgen.eligibility` decides eligibility from
+  # OPERAND dtypes only (coverage_report._capsule_region reads inputs[] by role); there is no output- or
+  # readout-dtype axis in the capability model. So this block is READ BY HUMANS AND BY THIS TARGET'S
+  # DESCRIPTOR, and `readiness_check`'s independent recomputation of the capability-exclusion set cannot
+  # see it. Recorded as a gap rather than left to be discovered by a disagreeing gate.
+  enforced_by_eligibility: false
+
+# Datatype -> compute-unit -> op capability. The int8 mesh is IDENTICAL to gemmini's (16x16, i8 x i8
+# accumulating in i32) and the operand-side capability is therefore the same; the difference is entirely
+# on the way OUT, which `readout` above carries.
+compute_units:
+  - name: systolic_mesh
+    kind: systolic
+    dtypes: [int8]
+    ops: [matmul]
+    scaling: per_channel
+    requant: {ref: gemmini.accumulator_scale}
+    semantic_capabilities:
+      # ranks 2/3/4 for the same reasons as gemmini: rank 4 is the im2col conv path (this device's
+      # legal_funct carries LOOP_CONV_WS 15 and LOOP_CONV_WS_CONFIG_1..6, 16-21), rank 3 is the batched
+      # contraction lowered as a loop of independent (M,N,K) slices.
+      - {family: contraction, dtypes: [int8], ranks: [2, 3, 4]}
+      # Epilogue-only: per-channel scale + requant apply on the way out of the accumulator, so an
+      # elementwise map exists ONLY fused behind a contraction.
+      - {family: elementwise_map, dtypes: [int8], composed_with: [contraction]}
+      - {family: movement, dtypes: [int8]}
+      # Max pooling on the readout/store path. DERIVED from this elaboration, not inherited: the
+      # pooling build gate is `and(UInt<1>(0h1), _pooling_is_enabled_T)` in this config's FIRRTL, and
+      # the frozen config contract's `features.max_pool: true` agrees.
+      - {family: reduction, dtypes: [int8], composed_with: [contraction, movement]}
+
+capabilities: {}
+
+# Which substrate may produce which number.
+measurement:
+  cycles_from: spike
+  # The U250 FireSim bitstream is the only wall-time substrate this device has. NOT `k1` (gemmini's
+  # answer): there is no silicon for this configuration, and pointing at a RISC-V board merlin happens
+  # to own would attribute a wall time to hardware this design was never on.
+  wall_from: firesim
+  cycles_tier: functional
+  wall_tier: fpga
+  speed_of_light: mesh_macs_per_cycle
+  citable_tier: rtl
+  notes:
+    - "No wall-time measurement has been taken on this device from merlin. `wall_from` names the only
+       substrate that COULD produce one (the timing-met U250 bitstream the frozen config records); it is
+       a declaration of authority, not a claim that a number exists."
+    - "L2 (spike) cycles are functional. They are also NOT a witness for this device's readout width --
+       the extension implements the full-width accumulator read unconditionally. See runner.tier_sim."
+
+memory_model:
+  resident: true
+  accumulators: true
+
+prototype_scope:
+  workload: repeated_rhs_matmul
+  conformance_level: C0
+  epilogue: acc_scale_requant
+  # int8, NOT i32 -- and this single field is the difference between this target and gemmini. gemmini's
+  # contract declares `output_dtype: i32` because its mvout can move a full-width accumulator row.
+  output_dtype: i8
+
+oracle_ladder:
+  level_0: {name: merlin_reference_and_command_buffer_sim, derived_from_rtl: false}
+  level_1: {name: spike_gemmini_universal_functional, derived_from_rtl: false}
+  level_2: {name: gemmini_universal_verilator_rtl, derived_from_rtl: true}
+  level_3: {name: firesim_u250, derived_from_rtl: true}
+
+compiler_obligations:
+  - must_prove_rhs_immutable_for_residency
+  - must_tile_to_mesh_shape
+  - must_commit_accumulator_before_reuse
+  - must_respect_scratchpad_capacity
+  # THIS DEVICE'S OWN FOUR, one per removed parameter. Each is a program class the `gemmini` target
+  # admits and this one does not, so each is an obligation a backend written for gemmini would violate
+  # silently.
+  - must_not_request_full_width_accumulator_readout
+  - must_use_weight_stationary_dataflow_only
+  - must_not_read_accumulator_or_write_scratchpad_from_execute_stage
+  - must_not_supply_a_live_d_operand
+
+hardware_promises:
+  - weight_stationary_resident_array
+  - widening_integer_accumulate
+  - narrow_scaled_accumulator_readout
+  - cycle_counter
+
+runtime_promises:
+  - command_buffer
+  - metrics
+
+certification:
+  status: uncertified
+
+confidence: medium
+requires_human_review: true
+
+notes: >-
+  Contract for the Universal ResNet-50 Gemmini as a SEPARATE capsule-bench target. Mesh geometry,
+  capacities, datapath dtypes and the legal funct set are RTL facts read from
+  contracts/rtl_facts/facts.json, promoted from the hand-driven extraction cached at
+  out/artifacts/cache/rtl_introspect/gemmini_universal/. The ABI is the build's own elaborated
+  gemmini_params.h, carried and digested at contracts/abi/. NOTHING in this target reads or writes
+  merlin/targets/gemmini/.
+
+# How a runner-owned harness calls into this target's kernel. These are conventions of the
+# gemmini-rocc-tests bare-metal environment, which this device shares with `gemmini` -- the same
+# entry/fence symbols and the same testutils header. Declared (not derived) and identical to gemmini's
+# by CONVENTION, not by inheritance: nothing here reads gemmini's contract.
+harness_abi:
+  entry_symbol: gemmini_kernel
+  fence_symbol: gemmini_fence
+  includes:
+    - include/gemmini_testutils.h
+  cycle_window_metric: cycle_window_gemmini_region
+
+# Registry pins this target's results depend on.
+hardware_pins:
+  - gemmini_universal_rtl
+  - gemmini_universal_chipyard
+
+unmaterializable_families:
+  elementwise_map: >-
+    same as gemmini: an elementwise capsule is authored through the PyTorch/linalg source with a
+    host-eager golden and capsule_golden._recompute_golden has no elementwise op, so it cannot be graded
+    on an exact-integer datapath. Needs a merlin_iface elementwise mnemonic + a recompute entry.
+
+# OPEN GAPS -- what this contract does NOT ground. Recorded here because a target whose gaps live only
+# in a session transcript acquires them again.
+gaps:
+  - >-
+    NO REFERENCE BACKEND. `plugin.backend` is absent (see the note at the top). Nothing in-tree compiles
+    for this device, so the L0/L1 reference rungs of `oracle_ladder` are DECLARED and unbuilt.
+  - >-
+    `readout` is not enforced by the eligibility engine (`readout.enforced_by_eligibility: false`), so
+    the int32-readout capability boundary is honoured by this target's DESCRIPTOR and not by the
+    capability predicate `readiness_check` independently recomputes. The two will disagree until the
+    capability model grows an output/readout dtype axis.
+  - >-
+    `verify` cannot read either pinned checkout's REVISION from this account -- git refuses another
+    user's repository -- so both pins report revision UNDETERMINABLE while their CONTENT digests all
+    match. A result citing this target must cite the digests, never the sha alone.
+  - >-
+    THE DECLARED L2 EXTENSION IS NOT WIRED INTO ANY CODE PATH. `runner.spike_extension` names it and
+    digests it, and the smoke was run by invoking `spike --extlib=... --extension=gemmini` directly. The
+    only in-tree spike caller (`merlin/targets/gemmini/backend/gemmini.py:run_elf`) resolves the OTHER
+    gemmini's extension from `libgemmini_dir()`, which has no env override and is not
+    target-parameterized. Until a caller reads this declaration, an L2 grade routed through that backend
+    would run this target's programs on the WRONG functional model.
+  - >-
+    L3 HAS NEVER BEEN RUN FOR THIS TARGET. A linked Verilator simulator for this elaboration exists and
+    is digested (0069d381...), and nothing in merlin has ever invoked it. Since L2 is provably blind to
+    the readout width (above), the readout claim rests on the elaborated FIRRTL and the ABI header read
+    directly -- NOT on a failing simulation.
+  - >-
+    A REBUILD of the Verilator simulator from this tree is not currently possible: the elaboration's
+    generated-collateral directory is mode 0770 and owned by another user, so its Verilog is unreadable
+    from here. The .fir and the already-linked simulator are readable.
+  - >-
+    The two register bundles this configuration CHANGED (ConfigExRs1, MvoutRs2) are not among the two
+    `extract_register_bundle_layouts` parses, so the fact bundle is blind to the encoding delta. A
+    program that reaches for `uselut`, the MX format fields, or `mx_chunk_id` is encoding against an
+    unextracted layout.

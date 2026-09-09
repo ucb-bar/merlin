@@ -206,6 +206,27 @@ errata:
         needs someone to establish whether any gemmini decoder implements funct 25; until then
         nothing may derive from either reading.
       upstream: null
+  gemmini_universal:
+    funct=25:
+      declared: '25'
+      hardware: 'absent from the decoder'
+      authoritative: unresolved
+      sources_against_spec: [rtl_vs_shipped_headers]
+      sources_for_spec: []
+      rationale: >-
+        The same instruction as the gemmini / mx_gemmini entries, but this is an INDEPENDENT
+        observation on a DIFFERENT elaboration -- the UniversalResNet50GemminiRocketConfig harness,
+        whose ReservationStation fan-out was extracted separately (31 comparisons -> 27 legal codes)
+        while this tree's own GemminiISA.scala names LOOP_WS_CONFIG_SPAD_C = 25.U. The extraction is
+        demonstrably not blind to codes this tree adds: funct 26 (CONFIG_SCALE_MEM), which exists in
+        this tree and not in the pinned gemmini revision, IS in the decoded set. That makes the
+        absence of 25 more pointed here than it is on gemmini. It is nonetheless left UNRESOLVED for
+        the same reason: absence from one decoder's fan-out does not prove the machine lacks the
+        instruction, there is no alternative encoding to correct TO, and nothing here derives from
+        either reading. Resolving it needs someone to establish whether any decoder in this
+        configuration implements funct 25; if the gemmini entry is ever resolved, this one must be
+        re-examined rather than resolved with it, because the elaborations differ.
+      upstream: null
   mx_gemmini:
     funct=25:
       declared: '25'

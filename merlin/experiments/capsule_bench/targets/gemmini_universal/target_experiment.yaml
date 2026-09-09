@@ -1,0 +1,383 @@
+# Declarative per-target experiment SETUP for `gemmini_universal` -- Jack's "Universal" ResNet-50
+# Gemmini on Alveo U250 / FireSim, as a SEPARATE capsule-bench target running as a PARALLEL TRACK.
+#
+# THIS IS NOT A VARIANT OF `gemmini` AND MUST NEVER BE MIXED WITH IT. Same generator, same 16x16 int8
+# mesh, same capacities -- and four parameter values that each remove programs `gemmini` executes. The
+# one that reshapes this experiment is the accumulator readout: this device's store DMA is 128 bits
+# (DIM x int8) where the pinned gemmini revision's is 512 (DIM x int32), so THE MVOUT PATH CANNOT MOVE
+# AN INT32 ACCUMULATOR ROW. Everything unusual about the cohort below follows from that one fact.
+#
+# Nothing here reads or writes anything under merlin/targets/gemmini/ or
+# merlin/experiments/capsule_bench/targets/gemmini{,_g3arm97}/ except through the SHARED, genuinely
+# target-independent files symlinked in `contracts/` and `scripts/` -- enumerated in
+# WHAT IS SHARED below.
+target: gemmini_universal
+
+rtl:
+  via: mlc            # RTL facts are DERIVED; the committed pin is
+                      # merlin/targets/gemmini_universal/contracts/rtl_facts/facts.json
+
+# ---------------------------------------------------------------------------------------------------
+# WHAT IS SHARED WITH `gemmini`, AND WHY EACH SHARE IS SAFE. Symlinks, so the two cannot drift silently.
+#
+#   scripts/                        -> ../../harness            THE SHARED HARNESS. Target-independent
+#                                                               by construction (every other target
+#                                                               symlinks the same dir).
+#   contracts/irdl_oot_skeleton     -> gemmini's                An IRDL demo + a CMakeLists. Contains no
+#                                                               target fact.
+#   contracts/hwbringup_gemmini_universal_v0/isa_include/
+#       gemmini_params.h            REAL FILE, sha256 d6db18f8...  THIS DEVICE'S ATTESTED ABI. The one
+#                                                               header that MUST NOT be shared: merlin's
+#                                                               gemmini copy defines ACC_READ_FULL_WIDTH
+#                                                               and this device has no such port.
+#       gemmini.h + 12 others       -> gemmini's                The ISA MACRO surface. Shared, and this
+#                                                               is the one share that is a JUDGEMENT
+#                                                               rather than a fact -- see the gap note
+#                                                               in contracts/abi/abi.yaml. merlin's
+#                                                               gemmini.h is a superset that ALSO
+#                                                               contains the MX / CONFIG_SCALE_MEM
+#                                                               surface THIS RTL implements and the
+#                                                               pinned gemmini revision does not, so it
+#                                                               is closer to this device than to
+#                                                               gemmini's. It is still not an attested
+#                                                               artifact of this build.
+#       rtl/                        -> /scratch/jack/chipyard/generators/gemmini/src/main/scala
+#                                                               THIS device's Chisel, read-only, in
+#                                                               another user's tree. Same
+#                                                               absolute-symlink-to-a-checkout
+#                                                               convention gemmini's own rtl/ uses.
+#       example_kernel/             -> gemmini's                Four bareMetalC examples. int8 matmul /
+#                                                               mvin_mvout / conv / padded -- none asks
+#                                                               for a full-width accumulator read.
+#   contracts/harness_curated/gemmini-rocc-tests/
+#       include/gemmini_params.h    REAL FILE, sha256 d6db18f8...  As above, and load-bearing: THIS is
+#                                                               the header the compiled kernel includes.
+#                                                               A params.h skew here is the documented
+#                                                               all-zeros failure mode.
+#       include/* (15 others), rocc-software/, riscv-tests/
+#                                   -> gemmini's                crt / linker script / syscalls /
+#                                                               riscv_test.h / xcustom.h. Host bring-up,
+#                                                               not accelerator facts.
+#
+# NOT shared: target_experiment.yaml, the target contract, the RTL facts, the ABI header, the input
+# bundles. Everything that can carry a hardware claim is this target's own.
+# ---------------------------------------------------------------------------------------------------
+
+hardware_spec:
+  # DECLARED, so `readiness_check` section J can prove the contract the tooling reads is the contract
+  # this descriptor names.
+  target_contract: merlin/targets/gemmini_universal/contracts/target_contract.yaml
+  # THE HEADER GRANTS POINT AT THE SIBLING `contracts/isa_include/`, NOT AT THE COPY INSIDE THE
+  # HWBRINGUP SET, and that is a sandbox-mechanics requirement rather than a preference. `bwrap`'s
+  # grant assembler mounts a FILE grant at `realpath(parent)/name` and first `--dir`s that parent
+  # (merlin/python/merlin/targetgen/sandbox/bwrap.py, "Binding a FILE needs its parent DIRECTORY to
+  # exist inside the box"). If that parent sits inside another grant's read-only bind, bwrap cannot
+  # create the mountpoint and the WHOLE SANDBOX dies before the agent runs a turn -- measured here as
+  # `bwrap: Can't create file at .../isa_include/gemmini.h: No such file or directory` on all 15
+  # bundles. gemmini escapes it by accident: its `isa_include` is a symlink to a vendor checkout on
+  # /scratch2, which policy tmpfs-masks, so the resolved parent is creatable.
+  #
+  # So this target puts the include VIEW in a real directory that no other grant binds
+  # (`contracts/isa_include/`), and `hwbringup_gemmini_universal_v0/isa_include` is a symlink to it --
+  # so the agent still reads `<hwbringup>/isa_include/gemmini.h` exactly as on gemmini, while the
+  # mountpoint bwrap has to create lives outside every read-only bind. Verified by probing the real
+  # assembled sandbox for all 15 bundles: 0 invisible grants, 0 leaked denials, and inside the box
+  # gemmini_params.h shows ACC_READ_SMALL_WIDTH present and ACC_READ_FULL_WIDTH absent.
+  isa_headers:
+    - experiments/capsule_bench/targets/gemmini_universal/contracts/isa_include/gemmini.h
+    - experiments/capsule_bench/targets/gemmini_universal/contracts/isa_include/gemmini_params.h
+  hwbringup_set: experiments/capsule_bench/targets/gemmini_universal/contracts/hwbringup_gemmini_universal_v0
+  curated_harness: contracts/harness_curated/gemmini-rocc-tests
+
+# The same shared corpus `gemmini` grades against. Sharing the SOURCE POOL is the point of a parallel
+# track -- the two targets are compared on the same capsules -- and the cohort that is actually GRADED
+# diverges sharply below, because this device cannot execute most of it.
+capsule_corpus: merlin/contract/capsules/isa
+
+grading:
+  # =================================================================================================
+  # THE COHORT, SEALED HONESTLY. Measured 2026-09-09 against the live shared pool.
+  #
+  #   source pool            114
+  #   capability-excluded     81   = 11 bf16-operand rows + 70 int32-OUTPUT rows
+  #   resource-excluded        5   (unchanged from gemmini: full-size capstones, all `kind: model`)
+  #   ------------------------------
+  #   GRADED                  28
+  #
+  #   114 == 28 + 81 + 5. `load_target_experiment` enforces that arithmetic.
+  #
+  # THE 70 INT32-OUTPUT ROWS. This device has no path by which an int32 tensor leaves the accelerator:
+  # the store DMA is 128 bits (StreamWriter `data : UInt<128>` = DIM x int8, against UInt<512> on the
+  # pinned gemmini revision), `acc_read_full_width = false`, and the attested ABI header defines
+  # ACC_READ_SMALL_WIDTH with ACC_READ_FULL_WIDTH ABSENT. The narrow readout applies the accumulator
+  # scale and clips to elem_t. So a capsule whose graded output tensor is int32 is asking for a commit
+  # this hardware cannot perform. 59 of the 70 demand the L3 cert tier.
+  #
+  # Corroborated OUTSIDE merlin, on this same device: Jack's own Voyager run failed Spike with
+  # "Accumulator row 1808 exceeded the target's 1024 rows" and
+  # "requests full-width accumulator reads even though the frozen target disables them".
+  #
+  # AND THE L2 ORACLE CANNOT CATCH IT, which is why these rows must leave the denominator rather than be
+  # graded and believed. The Spike extension for this device implements the full-width accumulator read
+  # UNCONDITIONALLY off the address bit -- spike_qualification/extension/gemmini.cc:222
+  # `bool const full = (sp_addr >> 29) & 0x1;` and :265
+  # `sizeof_output = full ? sizeof(acc_t) : sizeof(elem_t)`, neither gated on ACC_READ_FULL_WIDTH.
+  #
+  # MEASURED 2026-09-09, not inferred from that source read: a hand-written full-width int32 mvout for
+  # A2_single_tile_matmul -- one of the 70 -- compiled against this device's own attested ABI and run on
+  # its own Spike extension returns bit-exact int32 with errors=0. Console + sources + ELF digests at
+  # out/artifacts/capsule-bench/gemmini_universal/l2_oracle_smoke_20260909T092925Z_328c2e2/.
+  # So leaving these rows in would manufacture L2 passes on a plane the hardware does not have, and only
+  # L3 could contradict them -- and L3 has never been run for this target.
+  #
+  # ⚠️ THE OVER-EXCLUSION AUDIT, RECORDED RATHER THAN ASSUMED. Excluding 70 rows is the mirror image of
+  # the GN0 defect (an unwinnable row left in a denominator), so the 70 were each checked against their
+  # own golden instead of being taken as a class. Measured max|golden| per row:
+  #
+  #   36 rows  OVERFLOW int8 (max|golden| in 128..37863). PROVABLY unwinnable: no
+  #            readout this device has can carry the value, at any accumulator scale.
+  #   33 rows  FIT int8 (max|golden| <= 127). NOT provably unwinnable: with acc_scale = 1.0 the narrow
+  #            readout is an exact signed pass-through for values in [-128, 127], so a bit-exact int32
+  #            answer is reachable via a narrow mvout plus a host-side widen. Excluding these is a
+  #            CONSERVATIVE call, not a proof, and it is the honest reading of "the device has no int32
+  #            readout" rather than "these particular fixed stimuli happen to stay small".
+  #    1 row   UNDETERMINABLE: B1s_linear_relu_signed_i8 has no golden.yaml on disk at all, so its
+  #            values cannot be checked here. Excluded with the class rather than singled out.
+  #
+  # If a future run wants the narrower, provable boundary, it is the 36 OVERFLOW rows plus the 1
+  # undeterminable row -- graded would then be 61 rather than 28. That is a policy decision about
+  # whether a host-side widen behind a narrow mvout counts as satisfying an int32-output capsule; it is
+  # NOT a different reading of the hardware. Both readings are recorded here so neither is silent.
+  #
+  # ⚠️ READINESS WILL REPORT `extra_hardware` FOR THESE 70, AND THAT IS A REAL OPEN BLOCKER, NOT NOISE.
+  # `readiness_check.test_graded_path_is_the_declared_one` independently recomputes the capability
+  # exclusion set with `capsule_runner._split_ineligible`, which decides ineligibility from OPERAND
+  # dtypes only (`coverage_report._capsule_region` reads inputs[] by role). There is no output- or
+  # readout-dtype axis in the capability model, so the recompute reproduces exactly the 11 bf16 rows and
+  # nothing else, and the 70 read as declared-but-not-proven. Closing it needs one of:
+  #   (a) a readout/output dtype axis in `merlin.targetgen.eligibility` that this target's contract
+  #       `readout:` block feeds -- the derive-first fix, and the one that makes the gate prove the list;
+  #   (b) `grading.search_cohort.include_capsules` with the 28 names, the field built for pinning a
+  #       denominator that is not a capability or resource claim (the `gemmini_g3arm97` precedent).
+  #       Readiness skips the capability equality check entirely when a search cohort is declared.
+  # (a) was NOT done here on purpose: it edits `capsule_runner`, which two live runs import on every
+  # grade interval. The exclusion is declared under the heading that describes it truthfully and the
+  # gate disagreement is reported instead of being routed around.
+  # =================================================================================================
+  expected_cohort:
+    source_capsules: 114
+    admitted_capsules: 28
+  # Hidden cohort, cardinalities only (names stay unpublished). Measured on the same two boundaries:
+  # 15 sealed sources, 1 bf16-operand row, 10 int32-output rows, 4 admitted.
+  hidden_capability_admission:
+    source_capsules: 15
+    admitted_capsules: 4
+  capability_exclude_capsules:
+    # --- (i) 11 rows whose OPERAND dtype no declared capability holds. Identical to gemmini's list, and
+    #     recomputed independently against THIS target's contract (`_split_ineligible(op_source,
+    #     "gemmini_universal")` returns exactly these 11). This half of the list the readiness gate proves.
+    - GC1_depthwise_bf16_pt
+    - GC2_maxpool_bf16_pt
+    - GC3_avgpool_bf16_pt
+    - GC4_global_avg_bf16_pt
+    - GC5_fused_matmul_bias_bf16_pt
+    - GC6_bias_add_bf16_pt
+    - GF1_softmax_bf16_pt
+    - GF2_attn_full_bf16_pt
+    - GF3_geglu_bf16_pt
+    - GF4_add_bf16_pt
+    - GF5_gelu_bf16_pt
+    # --- (ii) 70 rows whose graded OUTPUT tensor is int32, which this device cannot commit. Grouped by
+    #     the audit above so the evidence for each is readable, with max|golden| in the comment.
+    #
+    #     (ii-a) 36 PROVABLY unwinnable -- max|golden| exceeds int8 at any accumulator scale:
+    - B3_conv2d_im2col_i8
+    - B4_conv2d_relu_i8
+    - C0_mlp_linear1
+    - C1_mlp_activation_linear2
+    - C2_attention_q_projection
+    - C3_attention_k_projection
+    - C4_attention_v_projection
+    - GC0_conv2d_i8
+    - GC7_conv2d_pad_i8
+    - GM0_deep_k_fits_single_i8
+    - GM1_deep_k_spills_i8
+    - GS0_matmul_spec
+    - SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2
+    - SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+    - SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2
+    - SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+    - SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+    - SY_conv_k3x3_s2x2_d1x1_pad1x1
+    - SY_conv_k4x4_s4x4_d1x1_padUNKNOWN
+    - SY_conv_k5x5_s1x1_d1x1_padUNKNOWN
+    - SY_conv_k7x7_s1x1_d1x1_padUNKNOWN
+    - SY_conv_k7x7_s4x4_d1x1_pad3x3
+    - SY_conv_k8x8_s8x8_d1x1_padUNKNOWN
+    - SY_geometry_odd_tail_heavy
+    - SY_geometry_projection_like
+    - SY_geometry_squareish_gemm
+    - SY_kdepth_fits_double
+    - SY_kdepth_fits_single
+    - SY_kdepth_spills
+    - SY_regime_spills
+    #     (ii-b) 33 CONSERVATIVELY excluded -- max|golden| fits int8, so a narrow readout at
+    #            acc_scale = 1.0 plus a host-side widen could reproduce them bit-exactly:
+    - A0_config_smoke
+    - A2_single_tile_matmul
+    - A3_k_accumulation
+    - A5_relu_epilogue
+    - A6_resident_reuse
+    - A7_edge_padding
+    - B1_linear_relu_i8
+    - C5_attention_qk_matmul
+    - C6_attention_pv_matmul
+    - C7_attention_qk_i8
+    - FT00_movement_tail_15x15
+    - FT01_movement_tail_17x15
+    - GB0_batched_matmul_i8
+    - GC8_conv2d_stride2_i8
+    - SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+    - SY_contraction_i8_aligned
+    - SY_contraction_i8_partial
+    - SY_contraction_i8_sub_tile
+    - SY_conv_k3x3_s1x1_d1x1_pad1x1
+    - SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+    - SY_conv_k3x3_s1x1_d1x1_padUNKNOWN
+    - SY_elementwise_map_i8_aligned
+    - SY_elementwise_map_i8_partial
+    - SY_elementwise_map_i8_sub_tile
+    - SY_epilogue_bias_add
+    - SY_epilogue_relu
+    - SY_movement_i8_aligned
+    - SY_movement_i8_partial
+    - SY_movement_i8_sub_tile
+    - SY_rank_contraction_batched
+    - SY_regime_fits_double
+    - SY_regime_fits_single
+    #     (ii-c) 1 UNDETERMINABLE -- no golden.yaml on disk, so int8-representability is unknown here:
+    - B1s_linear_relu_signed_i8
+  resource_bound:
+    # UNCHANGED from gemmini, and unchanged for gemmini's reasons: every one of these is eligible on the
+    # frozen contract and priced out of the cycle-accurate tier, every one is `kind: model` (which
+    # readiness independently requires of a resource exclusion), and none of them is an int32-output row,
+    # so there is no overlap with the capability list above.
+    policy: representative_l3_capstones_v1
+    exclude_capsules:
+    - GX0_interop_rvv_lane
+    - M0_small_llama_gemmini
+    - M1_lstmnetvit_gemmini
+    - SY_model_resnet50
+    - SY_model_tiny_llama
+    # The three model capstones that ARE graded. All three declare `numeric_policy.dtype: f32` at the
+    # model level (their INTERIOR is int8 on the mesh), so none of them is an int32-output row and none
+    # is excluded. M2 stays the global objective.
+    required_admitted_models:
+      - M2_microvit_gemmini
+      - M3_host_island_seam_gemmini
+      - SY_micro_model
+
+# WHAT THE 28 ACTUALLY ARE, because "28 graded" is not a description of coverage and this cohort is
+# unusually shaped. Counted from the same enumeration:
+#   16 accelerator-positive int8-OUTPUT rows -- A1_mvin_mvout, A4_acc_scale_i8, B0/B2 quantized linear,
+#      FE00/FE01 fused epilogue tails, GP0/GP1/GP2 matmul+maxpool, SY_epilogue_{acc_scale,maxpool,requant},
+#      SY_reduction_i8_{aligned,partial,sub_tile}. These are the rows that exercise this device's actual
+#      readout: scale, requant, clip to int8, mvout.
+#    9 host-lane / host-only NEGATIVE rows (SY_host_lane_*, SY_host_only_normalization, GN0) -- they
+#      declare `forbid: [on_mesh]` and prove the compiler does NOT accelerate what the device cannot
+#      hold. `_split_ineligible` keeps them deliberately; the absent datapath is their premise.
+#    3 model capstones (M2, M3, SY_micro_model).
+# So the accelerator-positive cohort is 16 rows. That is small, and it is the honest consequence of a
+# corpus authored for a device with a full-width accumulator readout being run against one without.
+# It is NOT a reason to widen the denominator with rows the hardware cannot commit.
+
+answer_surfaces:
+  # Named under artifacts/targets/<target>/. This target has no prior backends at all -- nothing has
+  # ever been built for it -- so this list is empty ON PURPOSE rather than copied from gemmini's. Copying
+  # gemmini's four names would deny four paths that do not exist while leaving nothing actually hidden.
+  prior_backends: []
+
+performance:
+  global_objective_capsule: M2_microvit_gemmini
+
+toolchain:
+  sim_via: chipyard
+
+host:
+  # Rocket_Huge, single core, rv64gc_zicntr, NO RVV -- from the frozen config contract's `soc` block.
+  # NOT chipyard_kodiak (gemmini's answer): that board declares vector harts, and this SoC's own
+  # contract says `rvv: false`. Declaring a vector host here would let work be placed on a lane this
+  # device does not have.
+  board: chipyard_riscv64
+
+workload_spec:
+  # The model this configuration was BUILT for (the config is named for it) plus tiny_llama, kept so the
+  # generalization roster is comparable with gemmini's.
+  models: [resnet50, tiny_llama]
+  applications:
+    - smolvla_fp32_consistent
+    - smolvla_int8_consistent
+    - smolvla_denoise_step_fp32_app
+    - lstmnetvit_fp8_consistent
+    - lstmnetvit_int8_consistent
+    - lstmnetvit_int8_w8a8_consistent
+  cert_budget_s: 300
+  precision_preference: [int8]
+  max_synthesized_capsules: 160
+
+# NO `host_lane` BLOCK, AND THIS IS A HARDWARE FACT RATHER THAN AN OMISSION.
+#
+# gemmini's descriptor pins an RVV host-lane package (out/artifacts/targets/rvv/
+# impr_tuned_wholemodel_vf_int8) against a chipyard_kodiak host with vector harts. THIS SoC has no
+# vector unit: its own frozen contract declares `soc.rvv: false` on a single `Rocket_Huge` core at
+# rv64gc_zicntr. Pinning gemmini's package here would hand the experiment a vector lane the silicon does
+# not contain and would price every host fallback against arithmetic this host cannot execute -- the
+# "result attributed to the wrong device" failure, one level down.
+#
+# The honest alternative is not available either: `HostLane.provenance` is a CLOSED vocabulary
+# (`published` | `in_tree_minted`) and both require a `package` path, and no scalar int8 host-lane
+# package is minted in this tree. There is nothing truthful to point at, so the block is absent and the
+# consequence is named in `gaps` below rather than papered over with gemmini's package or an invented
+# provenance value.
+#
+# ⚠️ ONE REAL CONSEQUENCE, stated because it is easy to miss: `generate_bundles._host_lane_grants` is the
+# ONLY source of the `merlin/python/merlin/llvmlower/` DENIAL, so this target's generated bundles will
+# NOT deny the host compiler. On gemmini that denial is what stops a submission from winning by
+# rewriting the CPU backend. Whoever launches this track must decide whether that denial is needed here
+# (this cohort has 9 host-lane rows) and, if so, close it before launch -- either by minting a scalar
+# host-lane package and declaring it, or by adding a target-independent seam for the denial. It is NOT
+# closed by this change.
+
+# OPEN GAPS on this descriptor -- what a launch would be launching WITHOUT.
+gaps:
+  - >-
+    `readiness_check` will report the 70 int32-output rows as `extra_hardware` (declared capability
+    exclusions its own recompute cannot prove), because the capability model has no readout-dtype axis.
+    See the long note under `grading` for the two ways to close it. This is the single blocking gate
+    disagreement.
+  - >-
+    NO host lane is declared (see the block above). Two consequences: any capsule that falls back to the
+    host is unpriced, so the 9 host-lane negative rows in the graded cohort have no frozen lane to be
+    measured against; and the generated bundles carry NO `merlin/python/merlin/llvmlower/` denial,
+    because `_host_lane_grants` is its only source. On gemmini that denial is what stops a submission
+    from winning by rewriting the CPU backend.
+  - >-
+    No reference backend exists for this target (`plugin.backend` is absent from its contract), so the
+    L0/L1 reference rungs are declared and unbuilt, and `answer_surfaces.prior_backends` is empty
+    because nothing has ever been built.
+  - >-
+    `gemmini.h` is SHARED with gemmini rather than regenerated from this parameter set. Its macro
+    surface is a superset of this RTL's legal funct set (only 25, LOOP_WS_CONFIG_SPAD_C, is header-only
+    here), so the header does not stop a program reaching for a decode this device lacks.
+  - >-
+    The L3 engine has never been exercised for this target from merlin. A linked Verilator simulator for
+    this elaboration exists and is digested (0069d381...), but nothing in merlin has ever invoked it,
+    and a REBUILD is impossible from this account (the elaboration's generated-collateral directory is
+    mode 0770 and owned by another user).
