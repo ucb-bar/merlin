@@ -430,6 +430,9 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
     # Resolve each declared carry against the ABI before laying anything out, so a contract that
     # does not describe THIS program is refused rather than half-applied.
     carried_by_tensor: dict[str, dict[str, Any]] = {}
+    #: One entry per state carried IN PLACE: the synthesised const seed, the state, and the
+    #: readwrite argument that is both ends of its carry.
+    in_place_seeds: list[tuple[ArgRef, SessionState, ArgRef]] = []
     if session_states:
         read_by_index = {ref.index: ref for ref in read if ref.index >= 0}
         for state in session_states:
@@ -446,16 +449,34 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 in_place = (write[state.output_index]
                             if 0 <= state.output_index < len(write) else None)
                 if in_place is not None and in_place.access == "readwrite":
-                    raise BundlePackError(
-                        f"session state {state.name!r} is carried IN PLACE: its declared input_arg "
-                        f"{state.input_arg} is absent from the kernel ABI and its output "
-                        f"{in_place.tensor!r} is declared 'readwrite', so one buffer is both ends of "
-                        f"the carry. That buffer is READ on entry, and this plan has no argument to "
-                        f"pack its seed from, so laying it out would leave the first step reading "
-                        f"uninitialized memory. Seed it from the capture's inputs.npz entry for "
-                        f"this state (mapped by input_order.json) before packing, re-encoding to "
-                        f"the declared dtype -- the stage's session_inputs.npz is EMPTY and the "
-                        f"capture stores this state at a wider dtype than the ABI declares")
+                    # AN IN-PLACE CARRY. The emitter dropped this state's input argument and folded
+                    # the carry into its output, which it declares `readwrite`: one buffer is both
+                    # ends. SmolVLA's prefix KV-cache is this shape -- arg809 is absent from the ABI
+                    # and Y1 is the sole readwrite argument.
+                    #
+                    # It still needs a seed, because the buffer is READ on entry and the session
+                    # overwrites it every step (and a warm invocation overwrites it before the
+                    # measured one). There is no ABI argument to pack that seed from, so the row is
+                    # SYNTHESISED: sized from the output tensor, and carrying the state's declared
+                    # input_arg as its index so the weight manifest still resolves it -- the
+                    # manifest entry for that index is the state itself
+                    # (`{"kind": "input", "name": "prefix_kv_cache"}`), which is exactly what
+                    # capture_source needs to find its bytes.
+                    dst_t = tensors.get(in_place.tensor)
+                    if not isinstance(dst_t, Mapping):
+                        raise BundlePackError(
+                            f"session state {state.name!r} carries {in_place.tensor!r} in place but "
+                            f"that tensor is absent from the tensor table, so its seed cannot be "
+                            f"sized")
+                    seed_name = f"__seed_{state.name}"
+                    if seed_name in tensors:
+                        raise BundlePackError(
+                            f"the tensor table already contains {seed_name!r}; the synthesised seed "
+                            f"would shadow it")
+                    tensors = {**tensors, seed_name: dict(dst_t)}
+                    in_place_seeds.append((ArgRef(tensor=seed_name, index=state.input_arg,
+                                                  access="read"), state, in_place))
+                    continue
                 raise BundlePackError(
                     f"session state {state.name!r} declares input_arg {state.input_arg}, which is "
                     f"not a read argument of this kernel ABI; the contract does not describe this "
@@ -522,7 +543,11 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 f"({extra[:8]}); they are not packed")
 
     carried_working: list[ArgRef] = [ref for ref in read if ref.tensor in carried_by_tensor]
-    for group, refs in (("const", read), ("mutable", (*write, *carried_working))):
+    # A synthesised in-place seed is a CONST row that nothing points at; its working copy is the
+    # readwrite argument, already in the mutable group under its own name.
+    seed_refs: tuple[ArgRef, ...] = tuple(ref for ref, _state, _dst in in_place_seeds)
+    seed_names = {ref.tensor for ref in seed_refs}
+    for group, refs in (("const", (*read, *seed_refs)), ("mutable", (*write, *carried_working))):
         cursor = 0
         rows: list[PackedTensor] = []
         for ref in refs:
@@ -545,7 +570,9 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
             entry = (weight_manifest.get(str(ref.index)) or {}) if weight_manifest else {}
             # A carried state's const row is the SEED -- nothing points at it; its working copy
             # lives in the mutable blob and takes the ABI pointer.
-            role = "seed" if (group == "const" and ref.tensor in carried_by_tensor) else "argument"
+            role = ("seed" if (group == "const"
+                               and (ref.tensor in carried_by_tensor or ref.tensor in seed_names))
+                    else "argument")
             rows.append(PackedTensor(
                 tensor=ref.tensor, index=ref.index, storage=group, offset=cursor,
                 logical_bytes=logical, physical_bytes=physical, dtype=dtype, shape=shape,
@@ -571,7 +598,7 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                 f"write argument; grading one of them would read whichever tensor is at that "
                 f"offset instead")
         out.output_bindings = named
-    if carried_by_tensor:
+    if carried_by_tensor or in_place_seeds:
         seeds = {t.tensor: t for t in out.const if t.role == "seed"}
         working = {t.tensor: t for t in out.mutable if t.tensor in carried_by_tensor}
         produced = {t.tensor: t for t in out.mutable if t.role == "argument"}
@@ -582,12 +609,36 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
                              "working_offset": working[name].offset,
                              "output_offset": produced[row["output_tensor"]].offset,
                              "bytes": working[name].physical_bytes})
+        for seed_ref, state, destination in in_place_seeds:
+            # IN PLACE: the working copy and the output are ONE buffer, so working_offset and
+            # output_offset are deliberately the same address. A reader comparing them is how the
+            # in-place case is told apart from an ordinary carry, so `in_place` says it outright
+            # rather than leaving that inference to be made correctly every time.
+            live = produced.get(destination.tensor)
+            if live is None:
+                raise BundlePackError(
+                    f"session state {state.name!r} carries {destination.tensor!r} in place but that "
+                    f"argument is not laid out as a mutable output")
+            rows_out.append({
+                "state": state.name, "input_arg": state.input_arg,
+                "output_index": state.output_index, "seed_tensor": seed_ref.tensor,
+                "output_tensor": destination.tensor, "dtype": live.dtype,
+                "shape": list(live.shape), "in_place": True,
+                "seed_offset": seeds[seed_ref.tensor].offset,
+                "working_offset": live.offset, "output_offset": live.offset,
+                "bytes": live.physical_bytes})
         out.carried = tuple(sorted(rows_out, key=lambda r: r["input_arg"]))
         out.notes.append(
             f"{len(out.carried)} carried session state(s) moved OUT of the read-only blob: their "
             f"ABI pointers target mutable working copies and the const blob keeps a seed of each, "
             f"because the session writes the state back every step and the warm invocation of a "
             f"warm-then-measure profile would otherwise leave the measured one a different program")
+        if in_place_seeds:
+            out.notes.append(
+                f"{len(in_place_seeds)} of those carries is/are IN PLACE: the emitter dropped the "
+                f"state's input argument and folded the carry into a 'readwrite' output, so one "
+                f"buffer is both ends and its seed is a synthesised const row nothing points at. "
+                f"working_offset == output_offset for those rows, by construction")
 
     by_rule: dict[str, int] = {}
     for row in (*out.const, *out.mutable):

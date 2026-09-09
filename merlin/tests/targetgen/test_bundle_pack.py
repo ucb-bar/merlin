@@ -210,30 +210,67 @@ class TestReadwriteIsAThirdAccessClassNotAnError:
         with pytest.raises(BundlePackError, match="appears after a write argument"):
             BP.plan(buf, row_pitch_elements=16)
 
-    def test_an_unseedable_in_place_carry_is_refused_by_NAME(self):
-        """The seed has no argument to come from, and an unseeded carry reads uninitialized memory.
+    def test_an_in_place_carry_is_SEEDED_rather_than_refused(self):
+        """This refused by name until 2026-09-09, which was right only while nothing seeded it.
 
-        The old message blamed the contract ("does not describe this program"), which sent the
-        reader to the wrong file: the contract is right and the ABI folded the carry.
+        The refusal said the plan had no argument to pack the seed from. It does: the state's
+        declared input_arg still has a weight-manifest entry -- SmolVLA's arg809 is
+        `{"kind": "input", "name": "prefix_kv_cache"}` -- so the seed is synthesised at that index
+        and capture_source resolves it, re-encoding f32 to the declared bf16.
         """
         buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
                       {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
-        with pytest.raises(BundlePackError, match="carried IN PLACE"):
-            BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        assert [row["state"] for row in plan.carried] == ["kv"]
+        assert any("IN PLACE" in note for note in plan.notes)
 
-    def test_the_refusal_names_uninitialized_memory_and_where_the_seed_lives(self):
+    def test_an_in_place_carry_gets_a_SYNTHESISED_const_seed(self):
+        """The buffer is read on entry, so it needs initial bytes even with no input argument.
+
+        The seed row carries the state's declared input_arg as its index, which is what lets the
+        weight manifest still resolve it: the entry at that index is the state itself, e.g.
+        SmolVLA's `{"kind": "input", "name": "prefix_kv_cache"}`.
+        """
         buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
                       {"arg0": _t([16]), "Y0": _t([16])})
         state = BP.SessionState(name="kv", input_arg=809, output_index=0)
-        with pytest.raises(BundlePackError) as caught:
-            BP.plan(buf, row_pitch_elements=16, session_states=[state])
-        message = str(caught.value)
-        assert "uninitialized memory" in message
-        # inputs.npz, NOT session_inputs.npz: the stage ships the latter EMPTY (0 arrays), and the
-        # seed is inputs.npz's entry for the state, mapped by input_order.json.
-        assert "inputs.npz" in message and "input_order.json" in message
-        assert "session_inputs.npz is EMPTY" in message
+        plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        seeds = [row for row in plan.const if row.role == "seed"]
+        assert [row.tensor for row in seeds] == ["__seed_kv"]
+        assert seeds[0].index == 809, "the seed must keep the state's index or the manifest misses"
+        assert (seeds[0].dtype, seeds[0].shape) == ("i8", (16,))
+
+    def test_the_in_place_row_says_so_and_aliases_its_own_output(self):
+        """working_offset == output_offset is the in-place case; it is declared, not left to infer."""
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="kv", input_arg=809, output_index=0)
+        plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        (row,) = plan.carried
+        assert row["in_place"] is True
+        assert row["working_offset"] == row["output_offset"]
+        assert row["seed_tensor"] == "__seed_kv"
+        assert row["output_tensor"] == "Y0"
+
+    def test_an_ordinary_carry_is_NOT_marked_in_place(self):
+        """Both kinds can appear in one plan, so the flag has to distinguish them."""
+        buf = _buffer([_arg("arg0"), _arg("arg1"), _arg("Y0", "write")],
+                      {"arg0": _t([16]), "arg1": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="s", input_arg=1, output_index=0)
+        plan = BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        (row,) = plan.carried
+        assert not row.get("in_place")
+        assert row["working_offset"] != row["output_offset"]
+
+    def test_the_synthesised_seed_is_charged_to_the_const_blob(self):
+        """It occupies real bytes; a plan that forgot them would overrun the blob it wrote."""
+        buf = _buffer([_arg("arg0"), _arg("Y0", "readwrite")],
+                      {"arg0": _t([16]), "Y0": _t([16])})
+        state = BP.SessionState(name="kv", input_arg=809, output_index=0)
+        without = BP.plan(buf, row_pitch_elements=16)
+        with_seed = BP.plan(buf, row_pitch_elements=16, session_states=[state])
+        assert with_seed.const_bytes > without.const_bytes
 
     def test_a_still_unexplained_input_arg_keeps_blaming_the_contract(self):
         """Only a readwrite OUTPUT makes it an in-place carry; anything else is a contract mismatch,
