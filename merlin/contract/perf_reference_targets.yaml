@@ -1,0 +1,103 @@
+# WHERE WE ARE TRYING TO GET TO, stated as measured hardware facts.
+#
+# Not documentation: this is the reference an optimization loop is scored against. Without it the
+# only in-loop signal is "make this number smaller", which has no destination -- measured, an
+# authoring campaign optimizing one collapsed scalar landed on -2 host operations (+0.000% of the
+# estimated window) while the program it was optimizing sat two thirds away from a number the same
+# compiler family had already reached by hand.
+#
+# Every `measured` field is a value a named run PRODUCED. Nothing here is a goal someone hoped for,
+# and nothing is derived from another entry. `emitted_structure` is what the program that achieved
+# the number LOOKED like -- so a candidate can be compared to it statically, without a simulator.
+#
+# ⚠️ CYCLES ARE NOT COMPARABLE ACROSS DESIGNS. The same capsule reads 510 cycles on one design and
+# 317 on another. A candidate may only be compared against a reference whose `design` it was built
+# for; comparing across `design` values is a category error, not a conservative approximation.
+version: 1
+
+references:
+
+  resnet50_w8a8_firesim_q535:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    status: achieved
+    how: >-
+      Reached by HAND optimization, not by an authoring loop. That is precisely why it is the
+      reference: the compiler family can demonstrably emit a program that runs this fast, so the
+      gap to it is an optimization gap and not a hardware ceiling.
+    capsules:
+      - SY_model_resnet50
+    provenance:
+      firesim_queue_job: 535
+      bundle: >-
+        out/artifacts/perf-bench/gemmini/resnet50_merlin_phase2_affine_im2col_spans_w8a8_warm_measured_firesim_candidate_20260908
+      input_mlir_sha256_prefix: "76c2617109666165"
+    measured:
+      whole_model_cycles: 1316619699
+      host_share_lower_bound: 0.93
+      cycles_per_host_operation_anchor: 2.601
+    emitted_structure:
+      commands: 109
+      opcodes:
+        RES_PACK: 54
+        CONV2D: 53
+        MATMUL_RESIDENT: 1
+        COMMIT: 1
+      mesh_regions: 54
+      host_lane_regions: 119
+      weight_prepack_recipes: 54
+      kernel_abi_args: 393
+    caveats:
+      - >-
+        `cycles_per_host_operation_anchor` is a whole-window average, so it prices every host
+        operation family identically. It does not, and a revision that trades integer operations
+        for floating-point ones can reduce the operation count while increasing cycles.
+
+  resnet50_w8a8_firesim_q545:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    status: achieved
+    how: >-
+      A sibling hand-optimized point, kept because it is the ONLY resnet50 run carrying an
+      accelerator-occupancy breakdown -- which is what establishes that the host lane, not the
+      mesh, owns the window.
+    provenance:
+      firesim_queue_job: 545
+    measured:
+      whole_model_cycles: 1383906735
+      accelerator_busy_cycles: 58659625
+      accelerator_busy_fraction: 0.0424
+      achieved_macs_per_cycle: 2.955
+      peak_macs_per_cycle: 256
+      cycles_per_host_operation_anchor: 2.789
+    caveats:
+      - >-
+        1.15% of arithmetic peak. The mesh is not the bottleneck and making it faster cannot reach
+        the reference above; >=93% of the window is host-lane work.
+
+  resnet50_w8a8_firesim_job530:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    status: superseded
+    how: >-
+      Kept as the REGRESSION floor. It shares one command buffer with q535 -- byte-identical
+      commands -- and still ran 29% slower, which localises the entire spread to host-lane codegen
+      rather than to command selection.
+    provenance:
+      firesim_queue_job: 530
+    measured:
+      whole_model_cycles: 1704064223
+
+  smolvla_flow_denoise_w8a8:
+    model: smolvla_flow_denoise
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    status: achieved
+    how: The only other whole model with a gated whole-model cycle count on this design.
+    capsules:
+      - SY_model_smolvla_flow_denoise
+    measured:
+      whole_model_cycles: 33085199302
