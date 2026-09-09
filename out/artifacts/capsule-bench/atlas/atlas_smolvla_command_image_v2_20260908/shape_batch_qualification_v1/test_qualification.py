@@ -19,8 +19,8 @@ def test_saved_qualification_is_complete_and_fail_closed() -> None:
     assert result["counts"]["unique_shapes_rtl_numeric_qualified"] == 4
     assert result["counts"]["unique_shapes_rtl_numeric_unqualified"] == 0
     assert result["counts"]["rtl_negative_controls_passed"] == 1
-    assert result["counts"]["physical_partitions_qualified"] == 3
-    assert result["counts"]["physical_partitions_unqualified"] == 388
+    assert result["counts"]["physical_partitions_qualified"] == 4
+    assert result["counts"]["physical_partitions_unqualified"] == 387
 
 
 def test_shape_numeric_receipt_cannot_promote_a_physical_occurrence() -> None:

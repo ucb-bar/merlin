@@ -1,0 +1,132 @@
+{
+  "abi": {
+    "inputs": [
+      {
+        "capture_bytes": 433920,
+        "capture_type": "tensor<15x113x64xf32>",
+        "device_bytes": 108480,
+        "device_dtype": "fp8_e4m3",
+        "name": "A0",
+        "origin": {
+          "bridges": [
+            {
+              "op": "tensor.expand_shape",
+              "region_id": "view_286"
+            },
+            {
+              "op": "tensor.collapse_shape",
+              "region_id": "view_286"
+            },
+            {
+              "op": "linalg.generic",
+              "region_id": "expand_53"
+            },
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            }
+          ],
+          "kind": "host_region",
+          "region_id": "dtype_cast_8",
+          "semantic": "dtype_cast"
+        }
+      },
+      {
+        "capture_bytes": 433920,
+        "capture_type": "tensor<15x64x113xf32>",
+        "device_bytes": 108480,
+        "device_dtype": "fp8_e4m3",
+        "name": "W",
+        "origin": {
+          "bridges": [
+            {
+              "op": "tensor.expand_shape",
+              "region_id": "view_287"
+            },
+            {
+              "op": "tensor.collapse_shape",
+              "region_id": "view_287"
+            },
+            {
+              "op": "linalg.generic",
+              "region_id": "expand_54"
+            },
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            },
+            {
+              "op": "linalg.transpose",
+              "region_id": null
+            }
+          ],
+          "kind": "host_region",
+          "region_id": "dtype_cast_9",
+          "semantic": "dtype_cast"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "capture_bytes": 766140,
+        "capture_type": "tensor<15x113x113xf32>",
+        "consumers": [
+          {
+            "op": "tensor.collapse_shape",
+            "op_index": 3058,
+            "region_id": "view_288",
+            "semantic": "view"
+          }
+        ],
+        "device_bytes": 383070,
+        "device_dtype": "bf16",
+        "frontier_consumers": [
+          {
+            "kind": "host_region",
+            "op": "linalg.generic",
+            "op_index": 3063,
+            "region_id": "mul_32",
+            "semantic": "mul"
+          }
+        ],
+        "name": "Y0"
+      }
+    ]
+  },
+  "calibration_contract": "calibration_contract.json",
+  "capture_regions": [
+    "matmul_101"
+  ],
+  "claim": "host/device skeleton for one partition; no whole-model dispatch claim",
+  "events": [
+    {
+      "capture_op_index": 3057,
+      "phase": "bind_capture_inputs"
+    },
+    {
+      "capture_op_index": 3057,
+      "phase": "quantize_A0_W"
+    },
+    {
+      "capture_op_index": 3057,
+      "phase": "launch_device_image"
+    },
+    {
+      "capture_op_index": 3057,
+      "phase": "dequantize_and_publish_Y0"
+    },
+    {
+      "capture_op_index": 3063,
+      "phase": "release_Y0_after_frontier"
+    }
+  ],
+  "fqn": "",
+  "kernel_id": "matmul_batched_15_113_64_113",
+  "lifetime": {
+    "definition_op_index": 3057,
+    "last_frontier_use_op_index": 3063
+  },
+  "partition_id": "atlas_p0102",
+  "qualified_capture_semantics": true,
+  "schema": "atlas_single_partition_dispatch_v1"
+}

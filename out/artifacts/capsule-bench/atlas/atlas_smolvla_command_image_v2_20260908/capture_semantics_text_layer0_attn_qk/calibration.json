@@ -1,0 +1,100 @@
+{
+  "contract": {
+    "bias": {
+      "device_equation": "qB = BF16_RNE(B / (sA * sW))",
+      "placement": "device_epilogue_before_output_dequantization"
+    },
+    "inputs": {
+      "activation_equation": "qA = E4M3FN_RNE(A / sA)",
+      "scale_equation": "sX = max(abs(X)) / 448; sX = 1 only for an all-zero tensor",
+      "scope": "symmetric_per_tensor",
+      "weight_equation": "qW = E4M3FN_RNE(W / sW)"
+    },
+    "output": {
+      "host_equation": "Y_f32 = f32(Y_bf16_device) * (sA * sW)",
+      "source_reference": "Y_ref = matmul_f32(A, W) + B"
+    },
+    "quant_format": {
+      "max_finite": 448.0,
+      "name": "OCP_E4M3FN",
+      "rounding": "round_to_nearest_ties_to_even"
+    },
+    "schema": "atlas_capture_calibration_contract_v1",
+    "tolerance": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "measurements": {
+    "activation": {
+      "code_cap": 16.0,
+      "codes_sha256": "a0ebcec7eb20c5b7ac4f87384474735215d5f01cc7e6620a967200867fe0a4cd",
+      "max_abs": 2.765625,
+      "max_abs_reconstruction_error": 0.0859375,
+      "mean_abs_reconstruction_error": 0.011070122011005878,
+      "name": "A0",
+      "saturated_elements": 0,
+      "scale": 0.1728515625,
+      "scale_hex": "0x1.6200000000000p-3",
+      "shape": [
+        15,
+        113,
+        64
+      ],
+      "zero_elements": 26
+    },
+    "output_scale": 0.027176856994628906,
+    "output_scale_hex": "0x1.bd44000000000p-6",
+    "source_frontier_scale": 0.125,
+    "source_frontier_scale_hex": "0x1.0000000000000p-3",
+    "weight": {
+      "code_cap": 16.0,
+      "codes_sha256": "60d380085e886466ba48486e3a26250d6125bc5844367684c0d65c7f729f8f7b",
+      "max_abs": 2.515625,
+      "max_abs_reconstruction_error": 0.078125,
+      "mean_abs_reconstruction_error": 0.011036177165806293,
+      "name": "W",
+      "saturated_elements": 0,
+      "scale": 0.1572265625,
+      "scale_hex": "0x1.4200000000000p-3",
+      "shape": [
+        15,
+        64,
+        113
+      ],
+      "zero_elements": 21
+    }
+  },
+  "partition_id": "atlas_p0102",
+  "schema": "atlas_capture_partition_calibration_v1",
+  "source_tensors": {
+    "complete_graph_output_bit_exact": true,
+    "complete_graph_output_sha256": "bf13d53beee5b1354158a5545b0518dc03a71edf757e30c1fad2279778997f57",
+    "frontier": {
+      "fold": "Y_frontier = Y_source * 0.125",
+      "fx_node": "mul_22",
+      "kind": "torch.ops.aten.mul.Tensor",
+      "partition_plan_op_index": 3063,
+      "partition_plan_region": "mul_32",
+      "scalar": 0.125,
+      "scalar_hex": "0x1.0000000000000p-3",
+      "sole_immediate_consumer": true
+    },
+    "independent_oracle": {
+      "consumes_gsim_output": false,
+      "derived_from_rtl": false,
+      "frontier_max_abs_error": 2.384185791015625e-07,
+      "frontier_max_abs_limit": 2.5e-07,
+      "implementation": "numpy.matmul(dtype=float32)",
+      "source_matmul_max_abs_error": 1.9073486328125e-06,
+      "source_matmul_max_abs_limit": 2e-06
+    },
+    "kind": "capture_equivalent_exported_program_boundary",
+    "operand_bundle": "capture_semantics_text_layer0_attn_qk/capture_operands.npz",
+    "operand_bundle_sha256": "7d5730d7de32852eab3d511785a3f18124c5dffff2baab1843b77aadd0e7f746",
+    "receipt": "capture_semantics_text_layer0_attn_qk/capture_boundary.json",
+    "receipt_sha256": "e92d3bf50fe76787c1e2bf3ae57a66ccfee7c6e2207e5bcb41a3fb3d79a67f8e"
+  }
+}

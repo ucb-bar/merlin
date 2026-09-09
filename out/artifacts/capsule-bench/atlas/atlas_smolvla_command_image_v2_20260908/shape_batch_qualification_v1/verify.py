@@ -186,13 +186,15 @@ def verify() -> dict:
         "compile_qualified_partitions": 391,
         "shape_rtl_numeric_tested_partitions": 11,
         "shape_rtl_numeric_qualified_partitions": 11,
-        "physical_partitions_qualified": 3,
-        "physical_partitions_unqualified": 388,
+        "physical_partitions_qualified": 4,
+        "physical_partitions_unqualified": 387,
     }
     if counts != expected_counts:
         errors.append(f"partition counts changed: {counts!r}")
     qualified = [row for row in rows if row.get("physical_partition_qualified")]
-    if {row["partition_id"] for row in qualified} != {"atlas_p0098", "atlas_p0243", "atlas_p0244"}:
+    if {row["partition_id"] for row in qualified} != {
+        "atlas_p0098", "atlas_p0102", "atlas_p0243", "atlas_p0244"
+    }:
         errors.append("physical qualification set changed")
     for row in rows:
         if row.get("physical_partition_qualified") and not row.get("physical_qualification_source"):
@@ -240,8 +242,8 @@ def verify() -> dict:
         "rtl_negative_controls_passed": 1,
         "shape_rtl_numeric_tested_partitions": 11,
         "shape_rtl_numeric_qualified_partitions": 11,
-        "physical_partitions_qualified": 3,
-        "physical_partitions_unqualified": 388,
+        "physical_partitions_qualified": 4,
+        "physical_partitions_unqualified": 387,
     }.items():
         if summary_counts.get(key) != wanted:
             errors.append(f"summary count drift: {key}={summary_counts.get(key)!r}")

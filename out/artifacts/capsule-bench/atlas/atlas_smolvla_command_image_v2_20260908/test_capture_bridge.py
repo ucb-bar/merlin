@@ -32,6 +32,7 @@ from mlir_oot.capture_bridge import (  # noqa: E402
 )
 from run_capture_partition import (  # noqa: E402
     PARTITIONS,
+    _bridge_batched_inputs,
     _load_capture_values,
     _tiled_interface,
 )
@@ -278,6 +279,97 @@ def test_saved_real_capture_qualification_is_scoped_and_passes_fixed_tolerance()
     assert not passes_tolerance(
         comparison(perturbed, source_reference, floor), contract["tolerance"]
     )
+
+
+def test_real_batched_attention_capture_qualifies_exact_scaled_frontier() -> None:
+    out = ROOT / "capture_semantics_text_layer0_attn_qk"
+    result = load(out / "result.json")
+    calibration = load(out / "calibration.json")
+    boundary = load(out / "capture_boundary.json")
+    dispatch = load(out / "dispatch_manifest.json")
+    contract = load(ROOT / "calibration_contract.json")
+    partition = partition_by_id("atlas_p0102")
+    capture = REPO / "out/artifacts/recaptures/smolvla_fp32_consistent"
+    activation, weight, bias, source, reference = _load_capture_values(
+        partition, capture, PARTITIONS["text_layer0_attn_qk"]
+    )
+    assert bias is None
+
+    bundle = ROOT / boundary["operands"]["path"]
+    assert hashlib.sha256(bundle.read_bytes()).hexdigest() == (
+        boundary["operands"]["archive_sha256"]
+    )
+    with np.load(bundle, allow_pickle=False) as archive:
+        assert set(archive.files) == {"A0", "W", "Y_source", "Y_frontier"}
+        source_matmul = np.ascontiguousarray(archive["Y_source"], dtype=np.float32)
+        source_frontier = np.ascontiguousarray(archive["Y_frontier"], dtype=np.float32)
+    independent_source = np.matmul(activation, weight, dtype=np.float32)
+    independent_frontier = independent_source * np.float32(0.125)
+    assert float(np.max(np.abs(independent_source - source_matmul))) <= 2.0e-6
+    assert float(np.max(np.abs(independent_frontier - source_frontier))) <= 2.5e-7
+    assert np.array_equal(source_frontier, source_matmul * np.float32(0.125))
+    assert np.array_equal(reference, source_frontier)
+    assert boundary["source_frontier"] == source["frontier"]
+    assert boundary["source_frontier"]["fx_node"] == "mul_22"
+    assert boundary["source_frontier"]["partition_plan_region"] == "mul_32"
+    assert boundary["binding"]["complete_graph_output_bit_exact"] is True
+    assert boundary["binding"]["complete_graph_output_sha256"] == (
+        boundary["binding"]["capture_golden_sha256"]
+    )
+
+    bridged = _bridge_batched_inputs(
+        activation, weight, partition["geometry"], code_cap=16.0
+    )
+    raw_output = (ROOT / result["device_output"]["path"]).read_bytes()
+    device_output = (
+        np.frombuffer(raw_output, dtype="<u2").astype(np.uint32) << 16
+    ).view(np.float32).reshape(15, 113, 113)
+    output_scale = np.float32(bridged["record"]["output_scale"])
+    actual = device_output * output_scale * np.float32(0.125)
+    quantized_reference = np.matmul(
+        bridged["decoded"]["A0"], bridged["decoded"]["W"], dtype=np.float32
+    ) * output_scale * np.float32(0.125)
+    floor = float(contract["tolerance"]["max_relative_denominator_floor"])
+    source_metrics = comparison(actual, source_frontier, floor)
+    quantized_metrics = comparison(actual, quantized_reference, floor)
+    assert source_metrics == result["source_f32_comparison"]
+    assert quantized_metrics == result["quantized_domain_reference_comparison"]
+    assert passes_tolerance(source_metrics, contract["tolerance"])
+    assert source_metrics["max_abs_error"] < 0.104
+    assert source_metrics["cosine_similarity"] > 0.9992
+    assert quantized_metrics["max_abs_error"] < 0.0063
+
+    raw_receipt = load(ROOT / result["raw_gsim_receipt"])
+    raw_spec = load(ROOT / raw_receipt["spec"])
+    raw_stdout = (ROOT / raw_receipt["stdout"]).read_text(encoding="utf-8")
+    raw_page = json.loads(raw_stdout.strip().splitlines()[-1])
+    assert "golden" not in raw_spec and "expected" not in raw_spec
+    assert raw_receipt["assertion_clean"] is True
+    assert raw_receipt["halted"] is True
+    assert raw_receipt["cycles"] == raw_page["cycles"] == result["cycles"] == 8700444
+    assert raw_output == bytes.fromhex(raw_page["outputs"][0])
+    assert raw_receipt["raw_output_sha256"] == sha256_bytes(raw_output)
+    assert raw_receipt["kernel_binary_sha256"] == sha256_bytes(
+        np.asarray(raw_spec["words"], dtype="<u4").tobytes()
+    )
+    assert result["image"]["instruction_words"] == 30986
+    assert result["image"]["compiler"].endswith("backend_fixed/mlir_oot/atlas-opt")
+    assert result["capture_semantics_executable_partitions"] == 4
+    assert result["acceptance"] == {"passed": True, "thresholds": contract["tolerance"]}
+    assert result["raw_partition_output_diagnostic"]["acceptance_boundary"] is False
+    assert result["raw_partition_output_diagnostic"]["comparison"]["max_abs_error"] > 0.82
+    assert result["negative_controls"]["raw_weight_consumer"]["status"] == (
+        "rejected_fail_closed"
+    )
+    assert result["negative_controls"]["missing_resident_evict"]["status"] == (
+        "rejected_fail_closed"
+    )
+    assert result["negative_controls"]["perturbed_source_reference"]["status"] == (
+        "rejected_by_fixed_numeric_gate"
+    )
+    assert dispatch["qualified_capture_semantics"] is True
+    assert calibration["source_tensors"] == source
+    assert "whole-model numeric correctness" in result["not_claimed"]
 
 
 def test_action_in_projection_binds_real_noise_and_independently_passes() -> None:

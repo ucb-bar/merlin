@@ -1,0 +1,29 @@
+{
+  "address_mapping": "physical_byte_index = device_address & (capacity_bytes - 1)",
+  "alias_free": true,
+  "allocated_span_bytes": 600030,
+  "allocation_count": 3,
+  "allocations": [
+    {
+      "base": 2415919104,
+      "bytes": 108480,
+      "end": 2416027584,
+      "name": "A0"
+    },
+    {
+      "base": 2416027584,
+      "bytes": 108480,
+      "end": 2416136064,
+      "name": "W"
+    },
+    {
+      "base": 2416136064,
+      "bytes": 383070,
+      "end": 2416519134,
+      "name": "Y0"
+    }
+  ],
+  "capacity_bytes": 1048576,
+  "headroom_bytes": 448546,
+  "schema": "atlas_gsim_dram_window_preflight_v1"
+}

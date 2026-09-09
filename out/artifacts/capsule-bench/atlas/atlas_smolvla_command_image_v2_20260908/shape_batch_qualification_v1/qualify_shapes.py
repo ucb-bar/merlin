@@ -89,6 +89,7 @@ EXPECTED_ASSEMBLY_CHANGES = {
 # occurrence.  Shape tests below are never consulted by this table.
 DIRECT_CAPTURE_RESULTS = (
     "capture_semantics_state_proj/result.json",
+    "capture_semantics_text_layer0_attn_qk/result.json",
     "capture_semantics_action_in_proj/result.json",
     "capture_semantics_action_time_mlp_in/result.json",
 )
@@ -880,8 +881,8 @@ def main() -> int:
         counts["unique_shapes_compile_qualified"] == counts["unique_shapes_total"]
         and counts["unique_shapes_rtl_numeric_qualified"] == len(NUMERIC_CASES)
         and counts["rtl_negative_controls_passed"] == 1
-        and counts["physical_partitions_qualified"] == 3
-        and counts["physical_partitions_unqualified"] == 388
+        and counts["physical_partitions_qualified"] == 4
+        and counts["physical_partitions_unqualified"] == 387
     ) else 1
 
 

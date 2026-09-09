@@ -1,0 +1,126 @@
+{
+  "binding": {
+    "application": "out/artifacts/applications/atlas/smolvla_denoise_step.pt2",
+    "application_sha256": "238950518a25fe6fb8e824b2ca92154b3a0d23c3fee5673a8f42a3e30a1462e8",
+    "capture_golden_sha256": "bf13d53beee5b1354158a5545b0518dc03a71edf757e30c1fad2279778997f57",
+    "capture_inputs": "out/artifacts/recaptures/smolvla_fp32_consistent/inputs.npz",
+    "capture_inputs_sha256": "a75ac59c27ecc0abe5a5c6157a1202736f662834c92739a34af4a8354d448942",
+    "capture_model": "out/artifacts/recaptures/smolvla_fp32_consistent/model.mlir",
+    "capture_model_sha256": "27256e2414be16eb0f783a547e79102c9b31afad76cbfd13c2f4b421ec7d8e4c",
+    "capture_weights": "out/artifacts/recaptures/smolvla_fp32_consistent/weights.safetensors",
+    "capture_weights_sha256": "136067fce0cf1454fe758d1863598570e764012aa9c9c6e4b4b7afe2ed8e5a6a",
+    "complete_graph_output_bit_exact": true,
+    "complete_graph_output_sha256": "bf13d53beee5b1354158a5545b0518dc03a71edf757e30c1fad2279778997f57",
+    "input_order": {
+      "img": 0,
+      "img_mask": 1,
+      "lang_masks": 3,
+      "lang_tokens": 2,
+      "noise": 5,
+      "state": 4
+    },
+    "state_tensor_count": 500
+  },
+  "capture_regions": [
+    "matmul_101"
+  ],
+  "claim": "exact p0102 operands/result tapped from the capture-equivalent ATen graph after strict capture state/input binding and a bit-exact complete-graph golden check",
+  "geometry": {
+    "B": 15,
+    "K": 64,
+    "M": 113,
+    "N": 113
+  },
+  "independent_oracle": {
+    "consumes_gsim_output": false,
+    "derived_from_rtl": false,
+    "frontier_max_abs_error": 2.384185791015625e-07,
+    "frontier_max_abs_limit": 2.5e-07,
+    "implementation": "numpy.matmul(dtype=float32)",
+    "source_matmul_max_abs_error": 1.9073486328125e-06,
+    "source_matmul_max_abs_limit": 2e-06
+  },
+  "not_claimed": [
+    "Atlas execution",
+    "whole-model Atlas correctness",
+    "whole-model Atlas performance"
+  ],
+  "operands": {
+    "A0": {
+      "dtype": "f32",
+      "raw_sha256": "8a7d26e24e01a1e160cc820b8332f6ed93652048cfbdeb9597c9f85c7019b634",
+      "shape": [
+        15,
+        113,
+        64
+      ]
+    },
+    "W": {
+      "dtype": "f32",
+      "raw_sha256": "b2b5a1780d273faf5c29909f354331b5695ce4a095b0997683b09710576f9dfb",
+      "shape": [
+        15,
+        64,
+        113
+      ]
+    },
+    "Y_frontier": {
+      "dtype": "f32",
+      "raw_sha256": "373c47bafbfe8e77dbc473d21a8b28ea3fce2278fc3037ecbf38f379324afa09",
+      "shape": [
+        15,
+        113,
+        113
+      ]
+    },
+    "Y_source": {
+      "dtype": "f32",
+      "raw_sha256": "45f7743957c44f799359fd22adb96f873edf92e1ace681c794f475930f9ba132",
+      "shape": [
+        15,
+        113,
+        113
+      ]
+    },
+    "archive_sha256": "7d5730d7de32852eab3d511785a3f18124c5dffff2baab1843b77aadd0e7f746",
+    "path": "capture_semantics_text_layer0_attn_qk/capture_operands.npz"
+  },
+  "partition_id": "atlas_p0102",
+  "schema": "atlas_real_capture_batched_boundary_v1",
+  "source_frontier": {
+    "fold": "Y_frontier = Y_source * 0.125",
+    "fx_node": "mul_22",
+    "kind": "torch.ops.aten.mul.Tensor",
+    "partition_plan_op_index": 3063,
+    "partition_plan_region": "mul_32",
+    "scalar": 0.125,
+    "scalar_hex": "0x1.0000000000000p-3",
+    "sole_immediate_consumer": true
+  },
+  "source_operator": {
+    "exact_shape_occurrence": 0,
+    "exact_shape_occurrence_count": 16,
+    "fx_node": "matmul",
+    "input_shapes_with_export_batch": [
+      [
+        1,
+        15,
+        113,
+        64
+      ],
+      [
+        1,
+        15,
+        64,
+        113
+      ]
+    ],
+    "kind": "torch.ops.aten.matmul.default",
+    "output_shape_with_export_batch": [
+      1,
+      15,
+      113,
+      113
+    ]
+  }
+}

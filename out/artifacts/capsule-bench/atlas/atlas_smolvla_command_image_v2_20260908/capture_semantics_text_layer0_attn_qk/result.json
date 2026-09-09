@@ -1,0 +1,166 @@
+{
+  "acceptance": {
+    "passed": true,
+    "thresholds": {
+      "cosine_min": 0.995,
+      "max_abs_error": 0.125,
+      "max_relative_denominator_floor": 0.001,
+      "source": "fixed engineering acceptance threshold in calibration_contract.json; not inferred from GSIM output"
+    }
+  },
+  "candidate_outcome": "qualified",
+  "capture_regions": [
+    "matmul_101"
+  ],
+  "capture_semantics_executable_partitions": 4,
+  "claim": "one real SmolVLA text_layer0_attn_qk partition qualified on elaborated RTL",
+  "cycles": 8700444,
+  "device_output": {
+    "dtype": "bf16",
+    "path": "capture_semantics_text_layer0_attn_qk/device_output.bf16.bin",
+    "raw_sha256": "64e653018d064449654bd7424819e8fe8c0e9c16bb81bb1f01fac762ef0be948",
+    "shape": [
+      15,
+      113,
+      113
+    ]
+  },
+  "engine": {
+    "derived_from_rtl": true,
+    "engine": "gsim",
+    "fidelity": "elaborated_rtl",
+    "kind": "atlas-gsim-rtl",
+    "provenance": {
+      "adoption_record": {
+        "name": "provenance.json",
+        "sha256": "63c90b3d526fc35a58d979c418613ce1c430bbafdf8d1467e95f012dfcdc96d3"
+      },
+      "binaries": {
+        "atlas_gsim_sim": "f065bf759afa0e49c988a9232909bd1f427d586079834d4f33f53852607c083c",
+        "atlas_gsim_sim_assert": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",
+        "atlas_gsim_sim_big": "35d4a03784008f8072e50ef7b0adc8fa66ed84d58843f835857d876a7e2f8c57",
+        "atlas_steploop": "6e2e9b104e12d590ea32e6d35d89ea28b142aa6d63068b39c934a3b3795337d1"
+      },
+      "engine": "gsim",
+      "wrapper": "gsim_run.py"
+    }
+  },
+  "fqn": "",
+  "image": {
+    "command_buffer": "capture_semantics_text_layer0_attn_qk/gsim_run/command_buffer.json",
+    "command_buffer_sha256_without_preloads": "91140fd98de52b69fc0190dd662a9aaf59dff29d76f4694c96dbc022e54b453c",
+    "command_contract": {
+      "allocated_span_bytes": 600030,
+      "command_sequence": [
+        "RES_PACK",
+        "BATCHED_MATMUL",
+        "EVICT"
+      ],
+      "resident_weight_handle": "W_resident",
+      "resident_weight_source": "W",
+      "tensor_bases": {
+        "A0": 2415919104,
+        "W": 2416027584,
+        "Y0": 2416136064
+      }
+    },
+    "compile_receipt": "shape_batch_qualification_v1/evidence/receipts/compile/matmul_batched_15_113_64_113.json",
+    "compile_receipt_sha256": "18dcab76148c8ebd370f81400dc68d4c4001024e9a40610be6c16669ee15dea7",
+    "compiler": "shape_batch_qualification_v1/backend_fixed/mlir_oot/atlas-opt",
+    "compiler_sha256": "c0306634c4965b9a339bc970d1597ed65319412038bfed56cbee879217a073d8",
+    "instruction_words": 30986,
+    "interface": "capture_semantics_text_layer0_attn_qk/gsim_run/interface.mlir",
+    "interface_sha256": "dd289faefca4eeb31e51eac533c8b770e0cf970dd33353fa605078b6b843049d",
+    "kernel": "capture_semantics_text_layer0_attn_qk/gsim_run/kernel.S",
+    "kernel_uncompressed_sha256": "045b20f8abc6a9722fd909bca9c35c503adb8bd94af24080445007146ef4a3e7",
+    "kind": "fresh_exact_interface_fixed_backend_image"
+  },
+  "negative_controls": {
+    "missing_resident_evict": {
+      "reason": "batched command dependency chain changed",
+      "status": "rejected_fail_closed"
+    },
+    "perturbed_source_reference": {
+      "comparison": {
+        "cosine_similarity": 0.9992485046386719,
+        "max_abs_error": 1.2532519102096558,
+        "max_relative_denominator_floor": 0.001,
+        "max_relative_error": 48.0943603515625,
+        "mean_abs_error": 0.011194326914846897,
+        "rmse": 0.014503957703709602
+      },
+      "perturbation": 1.25,
+      "perturbed_element": 0,
+      "status": "rejected_by_fixed_numeric_gate"
+    },
+    "raw_weight_consumer": {
+      "reason": "batched command dependency chain changed",
+      "status": "rejected_fail_closed"
+    }
+  },
+  "not_claimed": [
+    "whole-model dispatch",
+    "whole-model numeric correctness",
+    "source bit-exactness",
+    "whole-model performance"
+  ],
+  "partition_id": "atlas_p0102",
+  "qualified_boundary": {
+    "accelerator_partition": "atlas_p0102",
+    "claim": "physical p0102 contraction and BF16 publication through its exact sole captured scalar consumer; no later mask, softmax, or graph execution",
+    "immediate_host_frontier": {
+      "fold": "Y_frontier = Y_source * 0.125",
+      "fx_node": "mul_22",
+      "kind": "torch.ops.aten.mul.Tensor",
+      "partition_plan_op_index": 3063,
+      "partition_plan_region": "mul_32",
+      "scalar": 0.125,
+      "scalar_hex": "0x1.0000000000000p-3",
+      "sole_immediate_consumer": true
+    },
+    "source_contraction": [
+      "matmul_101"
+    ]
+  },
+  "quantized_domain_reference_comparison": {
+    "cosine_similarity": 0.999998152256012,
+    "max_abs_error": 0.006253480911254883,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 1.242398977279663,
+    "mean_abs_error": 0.0005357164773158729,
+    "rmse": 0.0007629130268469453
+  },
+  "raw_gsim_receipt": "capture_semantics_text_layer0_attn_qk/raw_gsim_receipt.json",
+  "raw_partition_output_diagnostic": {
+    "acceptance_boundary": false,
+    "comparison": {
+      "cosine_similarity": 0.9992777705192566,
+      "max_abs_error": 0.8257207870483398,
+      "max_relative_denominator_floor": 0.001,
+      "max_relative_error": 381.04669189453125,
+      "mean_abs_error": 0.08950240910053253,
+      "rmse": 0.11374766379594803
+    },
+    "reason": "the captured graph's sole immediate consumer scales this value by 0.125; the qualified publication boundary is the recorded mul_32 frontier"
+  },
+  "reference_oracles": {
+    "quantized_domain": "NumPy float32 batched matmul over independently decoded E4M3 operands; does not consume GSIM output",
+    "source": "capture-equivalent PyTorch FX mul_22 output, independently checked as NumPy float32 matmul(A0, W) * 0.125 after complete-graph bit-exact binding"
+  },
+  "scale_equation": {
+    "activation": "qA = E4M3FN_RNE(A / sA)",
+    "bias": "not_applicable_for_unbiased_batched_matmul",
+    "output": "Y_frontier_f32 = f32(Y_bf16_device) * (sA * sW) * 0.125",
+    "weight": "qW_i = E4M3FN_RNE(W[:,n0:n1] / sW_i)"
+  },
+  "schema": "atlas_real_capture_partition_qualification_v1",
+  "source_f32_comparison": {
+    "cosine_similarity": 0.9992777705192566,
+    "max_abs_error": 0.10321509838104248,
+    "max_relative_denominator_floor": 0.001,
+    "max_relative_error": 48.0943603515625,
+    "mean_abs_error": 0.011187801137566566,
+    "rmse": 0.014218457974493504
+  },
+  "structural_partitions_total": 391
+}

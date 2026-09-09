@@ -3,8 +3,8 @@
   "counts": {
     "capture_partitions_total": 391,
     "compile_qualified_partitions": 391,
-    "physical_partitions_qualified": 3,
-    "physical_partitions_unqualified": 388,
+    "physical_partitions_qualified": 4,
+    "physical_partitions_unqualified": 387,
     "shape_rtl_numeric_qualified_partitions": 11,
     "shape_rtl_numeric_tested_partitions": 11
   },
@@ -1621,9 +1621,9 @@
       "fqn": "",
       "kernel_id": "matmul_batched_15_113_64_113",
       "partition_id": "atlas_p0102",
-      "physical_partition_qualified": false,
-      "physical_qualification_source": null,
-      "physical_unqualified_reason": "no passing direct capture-bound RTL numeric receipt; shape evidence is non-transitive",
+      "physical_partition_qualified": true,
+      "physical_qualification_source": "capture_semantics_text_layer0_attn_qk/result.json",
+      "physical_unqualified_reason": null,
       "shape_rtl_numeric_qualified": false,
       "shape_rtl_numeric_receipt": null
     },
