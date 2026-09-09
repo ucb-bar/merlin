@@ -1,0 +1,59 @@
+{
+  "schema": "global_phase2_four_model_structural_baseline_v1",
+  "candidate_tree_sha256": "f8992bc35be76e805dc8dce9bfe5864167d50f0276da685306a2fb7d9dddfa36",
+  "timing_claim": "none",
+  "models": {
+    "resnet50_w8a8": {
+      "compile_status": "passed",
+      "compile_wall_seconds": 39.45,
+      "source_operations": 1240,
+      "tasks": 105,
+      "accelerator_tasks": 54,
+      "residual_host_operations": 974,
+      "semantic_convolution_regions": 53,
+      "planned_conversions": 89,
+      "source_ir_conversion_bytes": 53130988,
+      "unattributed_boundaries": 71,
+      "quantization_candidate_chains": 4,
+      "quantization_selected_chains": 0,
+      "potential_materialization_bytes_eliminated": 42549248
+    },
+    "tinyllama": {
+      "compile_status": "passed_with_explicit_dynamic_weight_contract",
+      "compile_wall_seconds": 3.41,
+      "source_operations": 823,
+      "tasks": 31,
+      "accelerator_tasks": 15,
+      "residual_host_operations": 763,
+      "physical_layout_status": "not_applicable_no_ranked_activation"
+    },
+    "lstmnetvit_w8a8": {
+      "compile_status": "coverage_insufficient_timeout",
+      "compile_timeout_seconds": 60,
+      "semantic_convolution_regions": 11,
+      "physically_planned_convolution_regions": 11,
+      "planned_conversions": 23,
+      "source_ir_conversion_bytes": 2611424,
+      "unattributed_boundaries": 70,
+      "unknown_boundaries": 26,
+      "unsafe_view_boundaries": 29
+    },
+    "smolvla_denoise_step_w8a8": {
+      "compile_status": "coverage_insufficient_timeout",
+      "compile_timeout_seconds": 60,
+      "top_level_operations": 11911,
+      "physical_layout_status": "not_applicable_no_convolution_regions"
+    }
+  },
+  "claim_boundary": {
+    "structural_bytes_are_measured_dma": false,
+    "full_model_cycles_measured": false,
+    "speedup_proven": false
+  },
+  "evidence": {
+    "integrated_receipt": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_integrated_macro_v1_20260908/validation/integrated_receipt.json",
+    "resnet50_physical_layout": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_integrated_macro_v1_20260908/validation/physical_layout/resnet50_report.json",
+    "lstmnetvit_physical_layout": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_integrated_macro_v1_20260908/validation/physical_layout/lstmnetvit_report.json",
+    "resnet50_command_buffer": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_integrated_macro_v1_20260908/validation/resnet50/command_buffer.json"
+  }
+}

@@ -1,0 +1,3 @@
+Phase-2 launch is intentionally disarmed for the machine-move checkpoint.
+Remove this file only after restoring and verifying the pinned ignored artifacts,
+reclaiming swap below the recorded 2 GiB ceiling, and deliberately choosing to launch.

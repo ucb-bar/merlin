@@ -1,0 +1,46 @@
+{
+  "schema": "phase2_host_analytical_calibration_adapter_v1",
+  "target_descriptor": {
+    "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+    "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+  },
+  "counter_harvest": {
+    "runs_root": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908",
+    "declared_engines": [
+      "gsim",
+      "spike_gemmini_functional",
+      "verilator"
+    ],
+    "counter_header": {
+      "path": "/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/include/gemmini_counter.h",
+      "sha256": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669"
+    },
+    "resource_kinds": {
+      "EX": "compute",
+      "LD": "movement",
+      "ST": "movement"
+    },
+    "partition_proof": {
+      "artifact": {
+        "path": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+        "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f"
+      },
+      "module": "Gemmini",
+      "counter_module": "CounterController"
+    }
+  },
+  "movement_series": {
+    "runs_root": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908",
+    "engine": "gsim",
+    "package_path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0",
+    "package_receipt": {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/SHA256SUMS",
+      "sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2"
+    }
+  },
+  "accelerator_compute_roles": [
+    "compute"
+  ],
+  "risk_score": 0.5,
+  "feature_calibration_receipts": []
+}

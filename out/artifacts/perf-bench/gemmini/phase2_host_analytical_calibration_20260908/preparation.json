@@ -1,0 +1,1158 @@
+{
+  "adapter_sha256": "7752b6977ef4c5462cae6a6dd100b5c920410e7c5dc6b3ee07417d4a58dc6236",
+  "adapter_source": "exact_file_bytes",
+  "calibration": null,
+  "counter_evidence": {
+    "composition": {
+      "eta": 0.9198767334360555,
+      "operator": "partial"
+    },
+    "counter_header_sha256": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669",
+    "harvest": {
+      "n_runs": 20,
+      "n_trusted": 10,
+      "refusals": [
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 16096 cycles against a 52-cycle window (309.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 6976 cycles against a 27-cycle window (258.4x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 26904 cycles against a 65-cycle window (413.9x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 26904 cycles against a 65-cycle window (413.9x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 13904 cycles against a 50-cycle window (278.1x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 751149 cycles against a 1174-cycle window (639.8x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        },
+        {
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "reason": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 37-cycle window (236.8x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading"
+        }
+      ],
+      "runs": [
+        {
+          "charged_cycles": 167,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 70,
+            "MAIN_LD_CYCLES": 39,
+            "MAIN_LD_EX_CYCLES": 15,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 306,
+          "trusted": true,
+          "workload": "A0_config_smoke"
+        },
+        {
+          "charged_cycles": 16096,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 3190,
+            "MAIN_LD_CYCLES": 2739,
+            "MAIN_LD_EX_CYCLES": 1452,
+            "MAIN_LD_ST_CYCLES": 2934,
+            "MAIN_LD_ST_EX_CYCLES": 1872,
+            "MAIN_ST_CYCLES": 2520,
+            "MAIN_ST_EX_CYCLES": 1389
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 16096 cycles against a 52-cycle window (309.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 52,
+          "trusted": false,
+          "workload": "A0_config_smoke"
+        },
+        {
+          "charged_cycles": 56,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 0,
+            "MAIN_LD_CYCLES": 37,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 19,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 122,
+          "trusted": true,
+          "workload": "A1_mvin_mvout"
+        },
+        {
+          "charged_cycles": 6976,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 1474,
+            "MAIN_LD_CYCLES": 1277,
+            "MAIN_LD_EX_CYCLES": 518,
+            "MAIN_LD_ST_CYCLES": 797,
+            "MAIN_LD_ST_EX_CYCLES": 952,
+            "MAIN_ST_CYCLES": 1341,
+            "MAIN_ST_EX_CYCLES": 617
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 6976 cycles against a 27-cycle window (258.4x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 27,
+          "trusted": false,
+          "workload": "A1_mvin_mvout"
+        },
+        {
+          "charged_cycles": 218,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 83,
+            "MAIN_LD_CYCLES": 39,
+            "MAIN_LD_EX_CYCLES": 52,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 44,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 366,
+          "trusted": true,
+          "workload": "A3_k_accumulation"
+        },
+        {
+          "charged_cycles": 26904,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 4744,
+            "MAIN_LD_CYCLES": 4358,
+            "MAIN_LD_EX_CYCLES": 3282,
+            "MAIN_LD_ST_CYCLES": 4156,
+            "MAIN_LD_ST_EX_CYCLES": 3793,
+            "MAIN_ST_CYCLES": 3962,
+            "MAIN_ST_EX_CYCLES": 2609
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 26904 cycles against a 65-cycle window (413.9x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 65,
+          "trusted": false,
+          "workload": "A3_k_accumulation"
+        },
+        {
+          "charged_cycles": 218,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 83,
+            "MAIN_LD_CYCLES": 39,
+            "MAIN_LD_EX_CYCLES": 52,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 44,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 366,
+          "trusted": true,
+          "workload": "B1_linear_relu_i8"
+        },
+        {
+          "charged_cycles": 26904,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 4744,
+            "MAIN_LD_CYCLES": 4358,
+            "MAIN_LD_EX_CYCLES": 3282,
+            "MAIN_LD_ST_CYCLES": 4156,
+            "MAIN_LD_ST_EX_CYCLES": 3793,
+            "MAIN_ST_CYCLES": 3962,
+            "MAIN_ST_EX_CYCLES": 2609
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 26904 cycles against a 65-cycle window (413.9x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 65,
+          "trusted": false,
+          "workload": "B1_linear_relu_i8"
+        },
+        {
+          "charged_cycles": 76,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 1,
+            "MAIN_LD_CYCLES": 36,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 39,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 216,
+          "trusted": true,
+          "workload": "FT00_movement_tail_15x15"
+        },
+        {
+          "charged_cycles": 8760,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 1860,
+            "MAIN_LD_CYCLES": 1594,
+            "MAIN_LD_EX_CYCLES": 634,
+            "MAIN_LD_ST_CYCLES": 1273,
+            "MAIN_LD_ST_EX_CYCLES": 1017,
+            "MAIN_ST_CYCLES": 1476,
+            "MAIN_ST_EX_CYCLES": 906
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 38,
+          "trusted": false,
+          "workload": "FT00_movement_tail_15x15"
+        },
+        {
+          "charged_cycles": 86,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 1,
+            "MAIN_LD_CYCLES": 38,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 47,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 204,
+          "trusted": true,
+          "workload": "FT01_movement_tail_17x15"
+        },
+        {
+          "charged_cycles": 13904,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 2718,
+            "MAIN_LD_CYCLES": 2234,
+            "MAIN_LD_EX_CYCLES": 1006,
+            "MAIN_LD_ST_CYCLES": 2586,
+            "MAIN_LD_ST_EX_CYCLES": 1775,
+            "MAIN_ST_CYCLES": 2333,
+            "MAIN_ST_EX_CYCLES": 1252
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 13904 cycles against a 50-cycle window (278.1x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 50,
+          "trusted": false,
+          "workload": "FT01_movement_tail_17x15"
+        },
+        {
+          "charged_cycles": 3611,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 19,
+            "MAIN_LD_CYCLES": 700,
+            "MAIN_LD_EX_CYCLES": 2826,
+            "MAIN_LD_ST_CYCLES": 16,
+            "MAIN_LD_ST_EX_CYCLES": 13,
+            "MAIN_ST_CYCLES": 10,
+            "MAIN_ST_EX_CYCLES": 27
+          },
+          "refusal": "",
+          "total_cycles": 3803,
+          "trusted": true,
+          "workload": "GC0_conv2d_i8"
+        },
+        {
+          "charged_cycles": 751149,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 108739,
+            "MAIN_LD_CYCLES": 107825,
+            "MAIN_LD_EX_CYCLES": 107027,
+            "MAIN_LD_ST_CYCLES": 111955,
+            "MAIN_LD_ST_EX_CYCLES": 107453,
+            "MAIN_ST_CYCLES": 104216,
+            "MAIN_ST_EX_CYCLES": 103934
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 751149 cycles against a 1174-cycle window (639.8x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 1174,
+          "trusted": false,
+          "workload": "GC0_conv2d_i8"
+        },
+        {
+          "charged_cycles": 81,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 1,
+            "MAIN_LD_CYCLES": 37,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 222,
+          "trusted": true,
+          "workload": "SY_movement_i8_aligned"
+        },
+        {
+          "charged_cycles": 8760,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 1860,
+            "MAIN_LD_CYCLES": 1594,
+            "MAIN_LD_EX_CYCLES": 634,
+            "MAIN_LD_ST_CYCLES": 1273,
+            "MAIN_LD_ST_EX_CYCLES": 1017,
+            "MAIN_ST_CYCLES": 1476,
+            "MAIN_ST_EX_CYCLES": 906
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 38,
+          "trusted": false,
+          "workload": "SY_movement_i8_aligned"
+        },
+        {
+          "charged_cycles": 81,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 1,
+            "MAIN_LD_CYCLES": 37,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 43,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 221,
+          "trusted": true,
+          "workload": "SY_movement_i8_partial"
+        },
+        {
+          "charged_cycles": 8760,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 1860,
+            "MAIN_LD_CYCLES": 1594,
+            "MAIN_LD_EX_CYCLES": 634,
+            "MAIN_LD_ST_CYCLES": 1273,
+            "MAIN_LD_ST_EX_CYCLES": 1017,
+            "MAIN_ST_CYCLES": 1476,
+            "MAIN_ST_EX_CYCLES": 906
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 38-cycle window (230.5x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 38,
+          "trusted": false,
+          "workload": "SY_movement_i8_partial"
+        },
+        {
+          "charged_cycles": 29,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/rtl_gsim_console.log",
+          "engine": "gsim",
+          "readings": {
+            "MAIN_EX_CYCLES": 1,
+            "MAIN_LD_CYCLES": 23,
+            "MAIN_LD_EX_CYCLES": 0,
+            "MAIN_LD_ST_CYCLES": 0,
+            "MAIN_LD_ST_EX_CYCLES": 0,
+            "MAIN_ST_CYCLES": 5,
+            "MAIN_ST_EX_CYCLES": 0
+          },
+          "refusal": "",
+          "total_cycles": 148,
+          "trusted": true,
+          "workload": "SY_movement_i8_sub_tile"
+        },
+        {
+          "charged_cycles": 8760,
+          "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/spike_gemmini_functional_console.log",
+          "engine": "spike_gemmini_functional",
+          "readings": {
+            "MAIN_EX_CYCLES": 1860,
+            "MAIN_LD_CYCLES": 1594,
+            "MAIN_LD_EX_CYCLES": 634,
+            "MAIN_LD_ST_CYCLES": 1273,
+            "MAIN_LD_ST_EX_CYCLES": 1017,
+            "MAIN_ST_CYCLES": 1476,
+            "MAIN_ST_EX_CYCLES": 906
+          },
+          "refusal": "engine 'spike_gemmini_functional' is not declared in counter_trust.yaml, so whether its accelerator counters carry real values is UNKNOWN; refusing to report them; the readings charge 8760 cycles against a 37-cycle window (236.8x): a partition cannot exceed its own window, so this is fabricated, wrapped, or two windows mixed into one reading",
+          "total_cycles": 37,
+          "trusted": false,
+          "workload": "SY_movement_i8_sub_tile"
+        }
+      ],
+      "schema": "merlin_counter_harvest_v1"
+    },
+    "partition_artifact_sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+    "receipt_sha256": "9c736e1769f106a88dd2ebb20172362cb8f5c091cb9ca738ba198c1022beee2b",
+    "schema": "phase2_trusted_counter_preparation_v1",
+    "status": "derived",
+    "validated_runs": [
+      {
+        "charged_cycles": 167,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/rtl_gsim_console.log",
+        "console_sha256": "94b5dcfecf521cf258440e1dd8d859ed6e5327891d43afa264f7ae76a041eb6c",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 15,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 70,
+          "MAIN_LD_CYCLES": 39,
+          "MAIN_LD_EX_CYCLES": 15,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 43,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 306,
+        "trusted": true,
+        "workload": "A0_config_smoke"
+      },
+      {
+        "charged_cycles": 56,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/rtl_gsim_console.log",
+        "console_sha256": "5d36f5cac6013480cd222827036c9f7bd736e2c786419652cb016372edcfc105",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 0,
+          "MAIN_LD_CYCLES": 37,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 19,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 122,
+        "trusted": true,
+        "workload": "A1_mvin_mvout"
+      },
+      {
+        "charged_cycles": 218,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/rtl_gsim_console.log",
+        "console_sha256": "6fc1f0c1e62e192f1adccae13622eaa47700480fe0597362e80a16bf0c664c16",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 52,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 83,
+          "MAIN_LD_CYCLES": 39,
+          "MAIN_LD_EX_CYCLES": 52,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 44,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 366,
+        "trusted": true,
+        "workload": "A3_k_accumulation"
+      },
+      {
+        "charged_cycles": 218,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/rtl_gsim_console.log",
+        "console_sha256": "81b8b8ed698ac60d845c502f3577b8ec48ff1bdb3e32b3309b520775f17b5b4a",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 52,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 83,
+          "MAIN_LD_CYCLES": 39,
+          "MAIN_LD_EX_CYCLES": 52,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 44,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 366,
+        "trusted": true,
+        "workload": "B1_linear_relu_i8"
+      },
+      {
+        "charged_cycles": 76,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/rtl_gsim_console.log",
+        "console_sha256": "6d10a2e11b1bbaa0e17e63b8a275ae9f51a1fc3659520d47a8f3394612073a4b",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 1,
+          "MAIN_LD_CYCLES": 36,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 39,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 216,
+        "trusted": true,
+        "workload": "FT00_movement_tail_15x15"
+      },
+      {
+        "charged_cycles": 86,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/rtl_gsim_console.log",
+        "console_sha256": "8d27d9872b0a7519e6d5210abcd3b9a2611c0f1d6fee6773bc0e872b32d25cba",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 1,
+          "MAIN_LD_CYCLES": 38,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 47,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 204,
+        "trusted": true,
+        "workload": "FT01_movement_tail_17x15"
+      },
+      {
+        "charged_cycles": 3611,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/rtl_gsim_console.log",
+        "console_sha256": "20224fba48ce171fb45ed55e414c3b83eff1a4d2c69a48f554209676e94081c9",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 2866,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 19,
+          "MAIN_LD_CYCLES": 700,
+          "MAIN_LD_EX_CYCLES": 2826,
+          "MAIN_LD_ST_CYCLES": 16,
+          "MAIN_LD_ST_EX_CYCLES": 13,
+          "MAIN_ST_CYCLES": 10,
+          "MAIN_ST_EX_CYCLES": 27
+        },
+        "refusal": "",
+        "total_cycles": 3803,
+        "trusted": true,
+        "workload": "GC0_conv2d_i8"
+      },
+      {
+        "charged_cycles": 81,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/rtl_gsim_console.log",
+        "console_sha256": "7b86e5bdba12eefcc0a8e7542c5536ac8254ede29565a3743c3e33ca5b57c8c4",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 1,
+          "MAIN_LD_CYCLES": 37,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 43,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 222,
+        "trusted": true,
+        "workload": "SY_movement_i8_aligned"
+      },
+      {
+        "charged_cycles": 81,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/rtl_gsim_console.log",
+        "console_sha256": "d74f0f7ffa4430234e34ee08462c115b31398c075c45379071fe6a5b4f94306f",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 1,
+          "MAIN_LD_CYCLES": 37,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 43,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 221,
+        "trusted": true,
+        "workload": "SY_movement_i8_partial"
+      },
+      {
+        "charged_cycles": 29,
+        "console": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/rtl_gsim_console.log",
+        "console_sha256": "914e52e4c45409dc28549e6d97ef8beff10b53bd35fbabe6f21e27b0d56dcd52",
+        "engine": "gsim",
+        "overlap_cycles_across_kinds": 0,
+        "partition_proof": {
+          "counter_fingerprint": "fa892b7d314967203e1be85593b752373af15a1c81ed546e89afcbc02b9b9e33",
+          "counter_module": "CounterController",
+          "engine_leaves": {
+            "EX": "%ex_controller.io_busy",
+            "LD": "%load_controller.io_busy",
+            "ST": "%store_controller.io_busy"
+          },
+          "events": {
+            "EX": "%13",
+            "EX+LD": "%16",
+            "EX+LD+ST": "%18",
+            "EX+ST": "%17",
+            "LD": "%10",
+            "LD+ST": "%15",
+            "ST": "%12"
+          },
+          "method": "circt_boolean_partition_v1",
+          "module": "Gemmini",
+          "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f",
+          "source": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+          "status": "proved"
+        },
+        "readings": {
+          "MAIN_EX_CYCLES": 1,
+          "MAIN_LD_CYCLES": 23,
+          "MAIN_LD_EX_CYCLES": 0,
+          "MAIN_LD_ST_CYCLES": 0,
+          "MAIN_LD_ST_EX_CYCLES": 0,
+          "MAIN_ST_CYCLES": 5,
+          "MAIN_ST_EX_CYCLES": 0
+        },
+        "refusal": "",
+        "total_cycles": 148,
+        "trusted": true,
+        "workload": "SY_movement_i8_sub_tile"
+      }
+    ],
+    "validation_refusals": []
+  },
+  "derived_receipt_sha256s": [
+    "9c736e1769f106a88dd2ebb20172362cb8f5c091cb9ca738ba198c1022beee2b",
+    "e6c5c50b3db6fedfce8175f3538f1f143cb59fc88bb0d3a2f564146de3103704"
+  ],
+  "evidence_files": [
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/SHA256SUMS",
+      "purpose": "compiler-package identity for movement series",
+      "sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2"
+    },
+    {
+      "path": "/scratch2/agustin/mvp-lhwir/modeling/runs/circt-arc/gemmini/outputs/Gemmini_core_hw.mlir",
+      "purpose": "counter partition proof artifact",
+      "sha256": "4dc2f2f9b78cc6235e4e7196247a735049d614ca31bd9d94df1e26f41c2ce22f"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+      "purpose": "exact target descriptor",
+      "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "94b5dcfecf521cf258440e1dd8d859ed6e5327891d43afa264f7ae76a041eb6c"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A0_config_smoke/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "70e7b15a028cc6ac7e2e92be4f249937d9d9fadf327f4802b1c683f62c1ab4a7"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "5d36f5cac6013480cd222827036c9f7bd736e2c786419652cb016372edcfc105"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "3b248b21b7ff13f38275e9967aa66895551b6841a031a240e9d2173d65d20aff"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "6fc1f0c1e62e192f1adccae13622eaa47700480fe0597362e80a16bf0c664c16"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/A3_k_accumulation/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "0293ff13b77fc7f5ace906dfe758b9256306bb1e9f91eafbe31f7d57163b086c"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "81b8b8ed698ac60d845c502f3577b8ec48ff1bdb3e32b3309b520775f17b5b4a"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/B1_linear_relu_i8/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "bf46de109b0c14765f8146c34c0e93b96c6b7bef3dedffebbd6eb16cadc14355"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "6d10a2e11b1bbaa0e17e63b8a275ae9f51a1fc3659520d47a8f3394612073a4b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "8edb1b41951ad32aee2c4e90f078f39cc900eedb146537db2d227d5901f9fe8b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "8d27d9872b0a7519e6d5210abcd3b9a2611c0f1d6fee6773bc0e872b32d25cba"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "ee3cd61a95610c8fed93265eedd82aa7afa8601c0a5eead8e22d774156149090"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "20224fba48ce171fb45ed55e414c3b83eff1a4d2c69a48f554209676e94081c9"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/GC0_conv2d_i8/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "ba063a47008d0f82617c9256ca1398cbd66bcf710dd737086fc9a49dddf70254"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "7b86e5bdba12eefcc0a8e7542c5536ac8254ede29565a3743c3e33ca5b57c8c4"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "82dab14ba061592b3bc4e828dcbeced03bb8856082bd2267cd5561cf4f2c56fe"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "d74f0f7ffa4430234e34ee08462c115b31398c075c45379071fe6a5b4f94306f"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "a5aac5e78c1267035ab09911b897bbc48346c8c8d6b0f1e026dc2845d6a9e503"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/rtl_gsim_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "914e52e4c45409dc28549e6d97ef8beff10b53bd35fbabe6f21e27b0d56dcd52"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/counter_partition_gsim_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/artifacts/spike_gemmini_functional_console.log",
+      "purpose": "harvested counter console",
+      "sha256": "0471571d63eeef8702443102b56aba897f54d77c0e321d3489047a605b78af3b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "f1365bb96f77ff5dd3256f077994932a9aa3aee7b5d8ff2bca72794e9e266f2e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "fbfb8dd8545d71bed810998d3b9049afa8819de221192b566dd2e66f6a77b340"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "16cca5ad4c379dee2ac1ad191069d7d54db074079be39abb0a6713e17eaa0d16"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "db16401f357e8e8cd4f6c37d450d06c8a553e6213fe94e971ed1283418aef221"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "6c16fb599b211844e0ff75363aa1add351fea7feca27f2a4aa5bbe89c6a08bc0"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/generated/command_buffer.json",
+      "purpose": "movement sample emitted command buffer",
+      "sha256": "48e9815d38724a82e913c50d97c44ad173a626febb9d2ef30bc87c1e7e95031b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/A1_mvin_mvout/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "e9a0d547236cc9bd60e1a5e6930d7ce0b19017bb1ace30f674074c8fe31924b9"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT00_movement_tail_15x15/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "1b806a85f3ba3f308bb0f15676202528a549f3eccf3c49f231dd6a552eecb783"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/FT01_movement_tail_17x15/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "0bee0bb8eef97961d743922c893447d029358f80250eb815e862d3105638ce5a"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_aligned/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "e5ada584cdc3f1ca1a6e4c6ed54e8b1e08a164def6f409c4faf0bbf74b09f17b"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_partial/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "d5ee05897ccbeeb81ec4c43f51724c56e135ea437fc254d5b6e228805a443d61"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/runs/gemmini/movement_balance_probe_20260908/runs/gemmini-capsule-bench/SY_movement_i8_sub_tile/capsule_result.json",
+      "purpose": "movement sample result",
+      "sha256": "2a0235f0d3112ca9b14cd0ae658774b5feb7a7188514568a80ad868ced672144"
+    },
+    {
+      "path": "/scratch2/agustin/chipyard/generators/gemmini/software/gemmini-rocc-tests/include/gemmini_counter.h",
+      "purpose": "target-declared counter header",
+      "sha256": "5826242287784b9a383d45fdcb6791f8a1651d9d320a1a5f011585a9885b5669"
+    }
+  ],
+  "execution": "host_evidence_join_only",
+  "feature_calibrations": [],
+  "full_model_simulation_performed": false,
+  "missing": [
+    {
+      "field": "features.compute",
+      "reason": "no content-addressed compute feature calibration was supplied; counter activity and movement slope do not establish this coefficient",
+      "severity": "missing"
+    },
+    {
+      "field": "features.movement",
+      "reason": "no content-addressed movement feature calibration was supplied; counter activity and movement slope do not establish this coefficient",
+      "severity": "missing"
+    },
+    {
+      "field": "features.encoding",
+      "reason": "no content-addressed encoding feature calibration was supplied; counter activity and movement slope do not establish this coefficient",
+      "severity": "missing"
+    }
+  ],
+  "movement_evidence": {
+    "fit": {
+      "base_latency_cycles": 128.50226736629278,
+      "domain_bytes": [
+        40,
+        1280
+      ],
+      "n_distinct_sizes": 6,
+      "n_samples": 6,
+      "notes": [
+        "exact rational least squares; the coefficients do not round on the way out",
+        "the fixed per-transfer cost is 128.5 cycles against a smallest measured transfer of 40 B, so the intercept dominates this domain and the slope is the MARGINAL rate over it -- not the bandwidth a large transfer achieves"
+      ],
+      "peak_bytes_per_cycle": 16.119345076433614,
+      "r_squared": 0.9929408549772246,
+      "reason": "",
+      "residual_cycles": [
+        0.735,
+        2.706,
+        -1.6,
+        -3.91,
+        3.053,
+        -0.984
+      ],
+      "ridge_licence": "the slope is a MARGINAL rate over the measured domain and, where the intercept dominates, a LOWER bound on what a large transfer can achieve -- so peak_compute divided by it is an UPPER bound on the ridge. An intensity above that bound is provably compute-bound; an intensity below it proves NOTHING and is not evidence of being memory-bound.",
+      "samples": [
+        {
+          "bytes_moved": 512,
+          "cycles": 161,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "A1_mvin_mvout"
+        },
+        {
+          "bytes_moved": 1125,
+          "cycles": 201,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "FT00_movement_tail_15x15"
+        },
+        {
+          "bytes_moved": 1275,
+          "cycles": 206,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "FT01_movement_tail_17x15"
+        },
+        {
+          "bytes_moved": 1280,
+          "cycles": 204,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "SY_movement_i8_aligned"
+        },
+        {
+          "bytes_moved": 1200,
+          "cycles": 206,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "SY_movement_i8_partial"
+        },
+        {
+          "bytes_moved": 40,
+          "cycles": 130,
+          "engine": "gsim",
+          "package": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+          "program": "SY_movement_i8_sub_tile"
+        }
+      ],
+      "schema": "merlin_movement_balance_v1",
+      "status": "derived"
+    },
+    "package_receipt_sha256": "c2650f3f6910310eb46c54902985e37c6026c4c7d6b7fe620a694c96e92d57a2",
+    "receipt_sha256": "e6c5c50b3db6fedfce8175f3538f1f143cb59fc88bb0d3a2f564146de3103704",
+    "refusals": [],
+    "schema": "phase2_controlled_movement_preparation_v1",
+    "status": "derived"
+  },
+  "receipt_sha256": "79abe4eb3faae1080c906de9a4afb5fdeaeff5a46e5e452d5ba600d2d8a799b0",
+  "refusals": [],
+  "schema": "phase2_host_analytical_calibration_preparation_v1",
+  "status": "incomplete",
+  "target_execution_performed": false,
+  "target_sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+}

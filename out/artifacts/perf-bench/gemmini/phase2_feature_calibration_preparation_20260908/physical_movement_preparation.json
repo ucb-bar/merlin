@@ -1,0 +1,40 @@
+{
+  "calibration": null,
+  "controlled_pairs": [],
+  "evidence_files": [
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_host_analytical_calibration_20260908/adapter.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "7752b6977ef4c5462cae6a6dd100b5c920410e7c5dc6b3ee07417d4a58dc6236"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_host_analytical_calibration_20260908/preparation.json",
+      "purpose": "candidate evidence without a controlled-point contract",
+      "sha256": "372259066b0791c2fc38a0c2917f52eac4bd96f85fc60f9e046b7e531f28fc4e"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+      "purpose": "exact target descriptor",
+      "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+    }
+  ],
+  "execution": "host_evidence_join_only",
+  "feature": null,
+  "full_model_execution_performed": false,
+  "missing": [
+    {
+      "field": "controlled_pairs",
+      "reason": "0 valid paired points cannot fit 2 parameters; at least two distinct points per fitted parameter are required",
+      "severity": "missing"
+    }
+  ],
+  "receipt_sha256": "58661ae5b87ced7ea1a0d27d6b0de99d52e511a25f39443a1a582afe52e2e365",
+  "refusals": [],
+  "request_sha256": "506427e2dd8689b7091d9695049bdcd0da2fbf19e210aae6e0125b574909503e",
+  "schema": "phase2_analytical_feature_calibration_preparation_v1",
+  "simulator_execution_performed": false,
+  "source_sha256": "506427e2dd8689b7091d9695049bdcd0da2fbf19e210aae6e0125b574909503e",
+  "status": "incomplete",
+  "target_execution_performed": false,
+  "target_sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+}

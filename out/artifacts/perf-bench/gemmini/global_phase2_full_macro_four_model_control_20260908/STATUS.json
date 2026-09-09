@@ -1,0 +1,100 @@
+{
+  "schema": "global_phase2_launch_control_status_v1",
+  "updated_at": "2026-09-08T19:46:19-07:00",
+  "status": "checkpoint_disarmed_for_machine_move",
+  "branch": "feat/target-generalization",
+  "launcher_commit": "53902661",
+  "candidate": {
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/development_phase2_integrated_macro_v1_20260908/compiler",
+    "tree_sha256": "f8992bc35be76e805dc8dce9bfe5864167d50f0276da685306a2fb7d9dddfa36"
+  },
+  "portfolio": [
+    "resnet50_w8a8_static_full_graph_prepared_v1",
+    "SY_model_tiny_llama",
+    "lstmnetvit_w8a8_full_graph_prepared_v1",
+    "smolvla_flow_denoise_w8a8_canonical_xdsl"
+  ],
+  "phase1": {
+    "action": "reuse_only_no_rerun",
+    "score": "92/96",
+    "run_id": "merlincirct_g4p1_biasabi_20260906",
+    "submission_sha256": "5063331978caec47293c45e64beaeb7a1c534a94fa0032c8a8d9a5228ff78aba"
+  },
+  "evaluation": {
+    "mode": "full_graph_compile_and_host_static_analysis",
+    "selection": "per_model_pareto_no_fabricated_cross_model_cycle_sum",
+    "full_model_simulation_during_search": false,
+    "firesim_or_l3_during_search": false,
+    "fast_analytical_provider": "integrated_with_exact_only_fail_closed_fallback",
+    "calibration": {
+      "status": "incomplete_exact_only_fallback",
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_host_analytical_calibration_20260908/preparation.json",
+      "receipt_sha256": "79abe4eb3faae1080c906de9a4afb5fdeaeff5a46e5e452d5ba600d2d8a799b0",
+      "missing": [
+        "features.compute",
+        "features.movement",
+        "features.encoding"
+      ],
+      "feature_preparation": {
+        "status": "incomplete_zero_controlled_pairs",
+        "tool_commit": "6e333a16",
+        "compute_receipt_sha256": "0efba1f98a25ea2a9d7c8d454476304e7daf32bce4b1694486f563828c739118",
+        "physical_movement_receipt_sha256": "58661ae5b87ced7ea1a0d27d6b0de99d52e511a25f39443a1a582afe52e2e365",
+        "required_compute_points": 2,
+        "required_physical_movement_points": 4
+      },
+      "encoding_evidence": {
+        "status": "verified_reduced_evidence_not_generalized_coefficient",
+        "tool_commit": "641ecd75",
+        "retained_transition_count": 1,
+        "retained_physical_bytes": 72,
+        "retained_receipt_sha256": "f66329dd1098f276759da0384cedc510cf011dbce3d2d57cb85592cb9ebbbda2"
+      },
+      "existing_evidence_audits": {
+        "compute": {
+          "status": "incomplete_no_admissible_controlled_points",
+          "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_compute_feature_existing_evidence_audit_20260908/preparation.json",
+          "file_sha256": "fb05de29c7ccb14dc0528fc270c58e56b471fc6e93af151daad9f98a4d98a079",
+          "receipt_sha256": "9d04dc68833a758ca1fafcc0d410dfd98929d9073cdc68301972c6a4240ccd84",
+          "admissible_points": 0
+        },
+        "physical_movement": {
+          "status": "refused_existing_series_inadmissible",
+          "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/movement_pair_contract_audit_20260908/audit_receipt.json",
+          "file_sha256": "10da3b26d53d3609a00c16be913a90ff6aa947e937e64b9538695775a946e194",
+          "receipt_sha256": "c8e74b9f35750b3290a562ff763705dea7fafd8ab77ffd38c55005db12595a24",
+          "admissible_points": 0,
+          "admissible_pairs": 0
+        }
+      }
+    }
+  },
+  "resource_policy": {
+    "portfolio_analysis_workers": 1,
+    "minimum_memory_available_gib": 48,
+    "maximum_swap_used_gib": 2,
+    "observed_memory_available_bytes": 90862714880,
+    "observed_swap_used_bytes": 8579981312,
+    "admitted": false,
+    "reason": "swap use exceeds the 2 GiB safe launch ceiling"
+  },
+  "planned_output": "out/artifacts/perf-bench/gemmini/global_phase2_full_macro_four_model_v2_20260908",
+  "superseded_output_attempt": {
+    "path": "out/artifacts/perf-bench/gemmini/global_phase2_full_macro_four_model_v1_20260908",
+    "status": "worker_failed_before_authoring",
+    "contents": ["host_resource_telemetry.json"],
+    "claim": "no Phase-2 round or performance result"
+  },
+  "pre_run_baseline": {
+    "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/global_phase2_full_macro_four_model_control_20260908/PRE_RUN_BASELINE.json",
+    "sha256": "9d9e23e31e4b93125080d1c9a519de7605b5bf88bc803a1bb75a2e8ffe07a8db"
+  },
+  "watcher": {
+    "status": "stopped_checkpoint_disarmed",
+    "pid": null,
+    "poll_seconds": 30,
+    "exec_session_id": null,
+    "action_on_admission": "none until an operator removes DISARMED and explicitly starts the watcher"
+  },
+  "next_action": "on the destination machine, restore required ignored artifacts, verify hashes, reclaim swap below 2 GiB, remove DISARMED deliberately, then explicitly start watch_and_launch_when_safe.sh"
+}

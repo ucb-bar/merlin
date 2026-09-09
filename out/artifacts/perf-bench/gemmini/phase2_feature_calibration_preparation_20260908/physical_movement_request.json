@@ -1,0 +1,41 @@
+{
+  "schema": "phase2_analytical_feature_calibration_request_v1",
+  "target_descriptor": {
+    "path": "/scratch/agustin/projects/oscar-merlin/merlin/targets/gemmini/contracts/target_contract.yaml",
+    "sha256": "a2794afcec0894b871ec41282c17f1832a338d9a2768a32198078f6b4064bf69"
+  },
+  "feature": {
+    "id": "issued-movement-instruction",
+    "kind": "movement",
+    "pointer": "/target_activity/issued/movement_instructions",
+    "evidence_pointer": "/quantities/emitted_feature",
+    "unit": "emitted_instruction",
+    "resource": "target-transfer",
+    "effects": ["movement"]
+  },
+  "measurements": [
+    {
+      "coefficient": "physical_bytes_per_unit",
+      "evidence_pointer": "/quantities/physical_bytes",
+      "unit": "byte",
+      "scope": "physical_target_interface"
+    },
+    {
+      "coefficient": "commands_per_unit",
+      "evidence_pointer": "/quantities/executed_commands",
+      "unit": "command",
+      "scope": "target_execution"
+    }
+  ],
+  "controlled_pairs": [],
+  "candidate_evidence_files": [
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_host_analytical_calibration_20260908/adapter.json",
+      "sha256": "7752b6977ef4c5462cae6a6dd100b5c920410e7c5dc6b3ee07417d4a58dc6236"
+    },
+    {
+      "path": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/phase2_host_analytical_calibration_20260908/preparation.json",
+      "sha256": "372259066b0791c2fc38a0c2917f52eac4bd96f85fc60f9e046b7e531f28fc4e"
+    }
+  ]
+}
