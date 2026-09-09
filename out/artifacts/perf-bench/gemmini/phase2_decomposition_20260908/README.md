@@ -1,5 +1,10 @@
 # Phase 2 decomposition — gemmini, 2026-09-08
 
+> **The three whole-model ELFs below are RETRACTED as binaries.** They were built from the
+> phase-2 ANALYSIS emission cache; the full path declines these models on a 400,000-element
+> straight-line budget (8,041x and 153,053x over). The toolchain findings -- arena, far blob,
+> JAL link order, console, tolerance -- stand. See `../phase2_analysis_20260908/README.md`.
+>
 > The campaign-level analysis — where the budget went, what each
 > instrument is licensed to conclude, and what none of it can decide — is at
 > `../phase2_analysis_20260908/README.md`. This file is the change-level view.
@@ -25,8 +30,8 @@ each blob was verified byte-for-byte against its capture, not merely sized.
 | **smolvla flow_denoise** | **505,790,424 B** | 1,163 | **99,897,984 → 496** | 505,299,072 B, **809/809 unpadded byte-exact** + 3 pitch-padded row-exact | 0.689 GiB near | 10-step trajectory, contract-derived, digest-verified, **tolerance derived** |
 | **tiny_llama** | **1,300,782,520 B** | 825 | **48,976,448 → 9,152** | 1,298,638,208 B, **358/358 unpadded byte-exact** + 1 pitch-padded | 1.028 GiB near **+ 1.209 GiB blob at 0x200000000** | per-token top-1 over 8 rows, execution-scoped |
 
-SmolVLA's is the first non-ResNet whole-model gemmini ELF in this tree; tiny_llama's is the first
-whose const blob could not be linked beside the code at all.
+The linking and layout work is sound as *toolchain* capability, and is not evidence that these
+models compile: the programs it linked were analysis artifacts.
 
 **tiny_llama's far blob, verified rather than assumed:** the linker placed it at exactly the address
 the harness compiled as a literal, there are **zero relocations against the blob symbol**, and

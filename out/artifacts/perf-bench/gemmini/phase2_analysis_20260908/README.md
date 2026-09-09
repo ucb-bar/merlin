@@ -229,11 +229,35 @@ belongs outside that driver**, which is affordable precisely because the instrum
 All three fleet binaries link. Each frame pair is `clang -fstack-usage` before and after the static
 arena; each blob was verified byte-for-byte against its capture rather than merely sized.
 
-| model | ELF | args | frame | const blob | layout | gate |
-|---|---:|---:|---:|---:|---|---|
-| resnet50 | shipped bundle (ran on FireSim) | 393 | 23,406,400 → **784** | 26,563,328 B, byte-identical to that bundle | 0.25 GiB near | all-1000-logit exact |
-| **smolvla flow_denoise** | **505,790,424 B** | 1,163 | 99,897,984 → **496** | 505,299,072 B, 809/809 unpadded byte-exact | 0.689 GiB near | 10-step trajectory, contract-derived, digest-verified, tolerance derived |
-| **tiny_llama** | **1,300,782,520 B** | 825 | 48,976,448 → **9,152** | 1,298,638,208 B, 358/358 unpadded byte-exact | 1.028 GiB near **+ 1.209 GiB blob at 0x200000000** | per-token top-1 over 8 rows, execution-scoped |
+> ## RETRACTED — the three ELFs were built from the wrong artifact
+>
+> They were built from the phase-2 **analysis** emission cache, whose receipt says
+> `entrypoints: ["emit_analysis_bundle"]` and `scope: "compiler emission only"`. Those buffers carry
+> a tensor table, a kernel ABI, commands and a lane plan -- everything a builder reads -- so they
+> build. They are not programs the compiler claims to emit.
+>
+> Run through the **full** path, the same models are **declined**, with a number:
+>
+> | model | straight-line element evaluations needed | budget | over by |
+> |---|---:|---:|---:|
+> | tiny_llama | 3,216,234,988 | 400,000 | **8,041x** |
+> | resnet50 | 61,221,254,894 | 400,000 | **153,053x** |
+>
+> Both emit `llvm.func @gemmini_kernel(...362 pointers...) { llvm.return }` with
+> `host_lane_program_emitted: False` and a stated `declined` reason. **The backend is honest**: its
+> host lane emits straight-line single-block code with no loops, so a whole model is thousands of
+> times past what it can express. There is no whole-model gemmini binary to have, and there was no
+> compiler defect -- the two "defects" reported earlier (a dropped KV-cache input; a collapsed
+> sequence dimension) were properties of an artifact that was never meant to execute.
+>
+> `bundle_harness` now refuses to render a harness for a buffer that does not positively declare
+> `host_lane_program_emitted: True` (commit 56056bdf), so this cannot recur.
+>
+> **What survives**, each being a property of the toolchain rather than of which buffer fed it: the
+> static-arena frame fix (all four emissions measured over the 65,536-byte budget, all four fit),
+> the far-blob layout, the +/-1 MiB JAL link-order limit, the console float-conversion fix, the
+> derived tolerance rule, per-token ranking, and `capture_source`. **What does not**: any claim
+> about a whole-model binary or its correctness gate.
 
 **How the third one was made possible**, since it had been recorded as blocked on compile wall-clock
 and on its golden: the wall-clock cause was the 48.9 MB frame the preflight rejected, and the golden
@@ -244,11 +268,17 @@ matches that literal exactly. Two further limits surfaced only at this size: `cr
 with a ±1 MiB JAL and this kernel's `.text` is 1,061,906 bytes on its own, so link order decides
 whether the image links; and the near region is 1.028 GiB, a **WARN** at over half the window.
 
-## The correctness verdicts, stated as they stand
+## The correctness verdicts, and what they were verdicts ABOUT
 
-SmolVLA's first graded run failed on a tolerance that was demonstrably impossible (Part II, finding
-3) and is being re-run against the derived one. tiny_llama's graded run **fails**: `bad=256000`, and
-all 8 token rows report the same argmax while the reference has 8 distinct ones. Its harness was
+Both graded runs failed, and both failures are real measurements of the artifacts that were built --
+they are simply not measurements of the compiler. SmolVLA: an exactly constant per-step delta of
+0.092030, a trajectory advancing 25x too little, `arg809` read 33 times by the export and zero times
+by the kernel. tiny_llama: `bad=256000` with all 8 token rows byte-identical, ~2,500x too small in
+magnitude yet 0.54-0.61 cosine against most reference rows. Every one of those is consistent with an
+analysis emission carrying no host-lane program: no program means no cross-attention consumer, which
+makes the KV-cache input dead, which is why it is unreferenced.
+
+The eliminations performed along the way were sound and remain useful -- the harness was
 ruled out first — all 825 pointers match the ABI order exactly, no mutable tensors overlap, and two
 independent references agree on the row structure — so the divergence is real and localized to the
 emitted program. A diagnostic dump run is decoding the values now. **The per-token ranking is what
