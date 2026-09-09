@@ -31,6 +31,7 @@ from merlin.targetgen.bundle_gate import CONSOLE_DUMP_CAP, CorrectnessGate
 from merlin.targetgen.bundle_pack import PackPlan
 
 __all__ = ["render_bundle_harness", "BundleHarnessError", "pointer_expression",
+           "emitted_entry_arity",
            "CONST_SYMBOL", "MUTABLE_SYMBOL", "TRAJECTORY_SYMBOL", "CONST_BASE_MACRO",
            "PC_RELATIVE_REACH_BYTES", "render_reseed", "render_session_loop",
            "render_freestanding_support", "unresolved_symbols", "FREESTANDING_SHIMS"]
@@ -715,9 +716,100 @@ def render_far_blob_assembly(*, blob_path: str, section: str = FAR_BLOB_SECTION)
 #: The parameter a command buffer sets to declare that its host-lane program was actually emitted.
 EMITTED_PROGRAM_KEY = "host_lane_program_emitted"
 
+# WHY THE BUFFER ALONE IS NOT ENOUGH, EITHER. `EMITTED_PROGRAM_KEY` is written on exactly one
+# lane: the PURE-HOST builder. A program whose regions split across the mesh and the host takes the
+# mixed lane, which emits its artifact and returns BEFORE that key is ever set -- so the key is
+# absent on the one route that produces a real accelerator program, and reading absence as failure
+# refuses the best emissions this backend can make.
+#
+# The buffer cannot be made to answer this. MEASURED: one model emitted three times through the
+# mixed lane -- once WITH an artifact request and twice without -- produced three command buffers
+# that hash identically (479,069 bytes, sha256 a5e0802c...). Whether an artifact was built is
+# simply not a fact the buffer records.
+#
+# So the artifact is the evidence, and the test is a DERIVED agreement rather than a self-report:
+# the emitted entry definition must take exactly as many parameters as the buffer's `kernel_abi`
+# declares arguments. An analysis emission has no artifact and still refuses; an artifact whose
+# entry disagrees with the ABI it claims to implement also refuses, which is the case that would
+# otherwise link plausible-looking arithmetic onto the wrong bytes.
 
-def is_executable_emission(command_buffer: Mapping[str, Any]) -> tuple[bool, str]:
-    """``(ok, why_not)`` -- whether this buffer declares itself an emitted, undeclined program."""
+#: Op name of a function definition in an emitted LLVM-dialect artifact, and the attribute holding
+#: its signature. Dialect spellings, not target facts.
+_ARTIFACT_FUNC_OP = '"llvm.func"'
+_ARTIFACT_SIGNATURE_ATTR = "function_type"
+
+
+def _matching(text: str, start: int, opener: str, closer: str) -> int:
+    """Index just past the ``closer`` matching the ``opener`` at ``start``, or ``-1``."""
+    depth = 0
+    for index in range(start, len(text)):
+        char = text[index]
+        if char == opener:
+            depth += 1
+        elif char == closer:
+            depth -= 1
+            if depth == 0:
+                return index
+    return -1
+
+
+def _top_level_parts(text: str) -> list[str]:
+    """``text`` split on commas that are not nested inside ``<>``, ``()`` or ``[]``."""
+    parts: list[str] = []
+    depth = 0
+    current: list[str] = []
+    for char in text:
+        if char in "<([":
+            depth += 1
+        elif char in ">)]":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def emitted_entry_arity(artifact_text: str) -> int | None:
+    """Parameter count of the artifact's entry definition, or ``None`` if it defines none.
+
+    Parsed structurally (balanced-delimiter scan over the printed signature), so a signature that
+    spells its parameter types differently still counts correctly.
+    """
+    if not isinstance(artifact_text, str):
+        return None
+    position = artifact_text.find(_ARTIFACT_FUNC_OP)
+    if position < 0:
+        return None
+    signature_at = artifact_text.find(_ARTIFACT_SIGNATURE_ATTR, position)
+    if signature_at < 0:
+        return None
+    angle_at = artifact_text.find("<", signature_at)
+    if angle_at < 0:
+        return None
+    angle_end = _matching(artifact_text, angle_at, "<", ">")
+    if angle_end < 0:
+        return None
+    signature = artifact_text[angle_at + 1:angle_end]
+    paren_at = signature.find("(")
+    if paren_at < 0:
+        return None
+    paren_end = _matching(signature, paren_at, "(", ")")
+    if paren_end < 0:
+        return None
+    return len(_top_level_parts(signature[paren_at + 1:paren_end]))
+
+
+def is_executable_emission(command_buffer: Mapping[str, Any],
+                           *, artifact_text: str | None = None) -> tuple[bool, str]:
+    """``(ok, why_not)`` -- whether this is an emitted, undeclined program.
+
+    Pass ``artifact_text`` (the emitted target artifact) for a mixed mesh+host program: its buffer
+    never carries :data:`EMITTED_PROGRAM_KEY`, so the artifact's entry arity is checked against the
+    declared ``kernel_abi`` instead.
+    """
     if not isinstance(command_buffer, Mapping):
         return False, "the command buffer is not a mapping"
     declined = command_buffer.get("declined")
@@ -734,18 +826,38 @@ def is_executable_emission(command_buffer: Mapping[str, Any]) -> tuple[bool, str
     if emitted is False:
         return False, (f"params.{EMITTED_PROGRAM_KEY} is False: the host-lane builder ran and "
                        f"declined to emit a program")
+    abi = command_buffer.get("kernel_abi")
+    declared = len(abi.get("args") or ()) if isinstance(abi, Mapping) else 0
+    if artifact_text is not None:
+        arity = emitted_entry_arity(artifact_text)
+        if arity is None:
+            return False, ("the emitted artifact defines no entry function, so nothing was "
+                           "actually built for this buffer's commands")
+        if not declared:
+            return False, ("the emitted artifact defines an entry taking "
+                           f"{arity} parameter(s), but the buffer declares no kernel_abi.args to "
+                           "check it against, so the two cannot be shown to agree")
+        if arity != declared:
+            return False, (
+                f"the emitted artifact's entry takes {arity} parameter(s) but the buffer's "
+                f"kernel_abi declares {declared} argument(s); linking these together would run "
+                f"correct arithmetic on the wrong bytes")
+        return True, ""
     return False, (
         f"params.{EMITTED_PROGRAM_KEY} is absent, so this buffer makes NO claim to be an emitted "
         f"program. An analysis emission looks exactly like this -- it carries a tensor table, a "
         f"kernel ABI, commands and a lane plan, so it builds -- and building one produces an ELF "
         f"that runs, reports plausible numbers, and answers a question nobody asked. If this IS an "
         f"analysis buffer, use it for placement and volume (offload, lane_cost, the roofline) and "
-        f"not for a binary")
+        f"not for a binary. If it IS a mixed mesh+host emission, pass artifact_text= so the "
+        f"artifact's entry arity can be checked against the {declared or 0} declared "
+        f"kernel_abi argument(s)")
 
 
-def require_executable_emission(command_buffer: Mapping[str, Any]) -> None:
-    """Raise unless the buffer declares itself an emitted, undeclined program."""
-    ok, why_not = is_executable_emission(command_buffer)
+def require_executable_emission(command_buffer: Mapping[str, Any],
+                                *, artifact_text: str | None = None) -> None:
+    """Raise unless this is an emitted, undeclined program."""
+    ok, why_not = is_executable_emission(command_buffer, artifact_text=artifact_text)
     if not ok:
         raise BundleHarnessError(
             "refusing to render a harness for a command buffer that is not an emitted program: "
