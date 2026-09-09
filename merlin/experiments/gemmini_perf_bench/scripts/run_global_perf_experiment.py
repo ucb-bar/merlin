@@ -3508,6 +3508,15 @@ class GlobalPerfExperiment:
             arm = (diag.get("arms") or {}).get("candidate") or {}
             movement = arm.get("movement") or {}
             plan = diag.get("verified_global_plan_emission") or {}
+            # The HOST lane, not just the command buffer. Every counter above is a
+            # command-buffer/contraction quantity, so a change that only moves host-lane work read as
+            # an exact `0` delta on every field -- and the host lane is where the overwhelming
+            # majority of a whole model's measured cycles are (>=93% on the one FireSim run with a
+            # counter partition). An authoring loop whose feedback cannot represent the effect of its
+            # own edits has no gradient to follow, which is exactly what was observed: real wins
+            # (-1 and -2 host allocations) reported `candidate_minus_previous` all zeros.
+            host = plan.get("host_activity") or {}
+            host_ops = host.get("static_operations") or {}
             return {
                 "command_buffer_macs": arm.get("macs") if arm.get("exact") is True else None,
                 "full_model_contraction_macs": ((diag.get("model_contraction_placement") or {})
@@ -3516,6 +3525,10 @@ class GlobalPerfExperiment:
                 if isinstance(movement.get("exact_bytes"), (int, float))
                 and not isinstance(movement.get("exact_bytes"), bool) else None,
                 "dispatches": plan.get("emitted_dispatches", plan.get("tasks")),
+                "host_load_payload_bytes": host.get("load_payload_bytes"),
+                "host_store_payload_bytes": host.get("store_payload_bytes"),
+                "host_static_allocation_payload_bytes": host.get("static_allocation_payload_bytes"),
+                "host_static_allocations": host_ops.get("allocation"),
             }
         left = counters(previous) if previous else {}
         right = counters(current)
@@ -4725,6 +4738,65 @@ class GlobalPerfExperiment:
         path = self._write(f"probe_{row['iteration']:04d}_{len(row['probe_receipts']):04d}.json", receipt)
         row["probe_receipts"].append({"path": str(path), "sha256": PAS._sha256_file(path)})
         return receipt
+
+    @staticmethod
+    def authored_host_cost(analysis: Mapping[str, Any] | None) -> tuple[int, int] | None:
+        """The host-lane payload an analyzed revision's emitted program moves, or None.
+
+        Ordered (bytes, allocations) so bytes decide and allocation count breaks ties. This is the
+        quantity an authoring round is actually able to move -- the command buffer is frequently
+        byte-identical across a real host-lane improvement -- so it is what "best" means here.
+        Returns None when the analysis did not emit a verified plan, which makes such a revision
+        ineligible rather than implicitly best.
+        """
+        if not analysis:
+            return None
+        plan = (analysis.get("diagnostics") or {}).get("verified_global_plan_emission") or {}
+        host = plan.get("host_activity") or {}
+        parts = [host.get("load_payload_bytes"), host.get("store_payload_bytes")]
+        if any(not isinstance(v, int) or isinstance(v, bool) for v in parts):
+            return None
+        allocations = (host.get("static_operations") or {}).get("allocation")
+        return (sum(parts), allocations if isinstance(allocations, int) else 0)
+
+    def best_authored_candidate(self) -> dict[str, Any] | None:
+        """The cheapest ready revision authored so far, as a sealable selection, or None.
+
+        A round used to seal whatever the agent's workspace held when its budget expired, i.e. the
+        LAST revision rather than the BEST one. Measured over two runs and five rounds that lost
+        every improvement the agent found: iterations that removed host allocations were never
+        sealed, four consecutive rounds sealed one neutral revision, and each round then resumed
+        from that neutral seal -- so wins could not accumulate. Selecting here makes an improvement
+        survive its own round.
+
+        Only revisions that are ready AND whose preserved snapshot still hashes to the bytes the
+        analysis was earned on are eligible; a snapshot that has drifted is skipped rather than
+        trusted. Ties keep the latest iteration, so an equal-cost later revision still wins and the
+        agent's most recent work is preferred when nothing improved.
+        """
+        ranked: list[tuple[tuple[int, int], int, dict[str, Any]]] = []
+        for row in self.iterations:
+            if (row.get("readiness") or {}).get("status") != "ready_for_probe_admission":
+                continue
+            cost = self.authored_host_cost(row.get("analysis"))
+            if cost is None:
+                continue
+            snapshot = row.get("submitted_snapshot")
+            if not snapshot or not Path(snapshot).is_dir():
+                continue
+            try:
+                if hash_tree(Path(snapshot))["sha256"] != row["candidate_sha256"]:
+                    continue
+            except (OSError, ValueError):
+                continue
+            ranked.append((cost, int(row["iteration"]), row))
+        if not ranked:
+            return None
+        cost, iteration, row = min(ranked, key=lambda item: (item[0], -item[1]))
+        return {"iteration": iteration, "candidate_sha256": row["candidate_sha256"],
+                "snapshot": str(Path(row["submitted_snapshot"]).resolve()),
+                "host_payload_bytes": cost[0], "host_static_allocations": cost[1],
+                "considered": len(ranked)}
 
     def seal(self, candidate: Path, *, name: str = "global_candidate") -> Path:
         """Seal verified global artifacts, independently of microbenchmark feedback/plateaus."""
@@ -5984,7 +6056,26 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
                 raise ValueError(
                     "round regressed previously verified portfolio members: " + ", ".join(lost))
             ready = row["readiness"]["status"] == "ready_for_probe_admission"
-            sealed = (experiment.seal(current, name=f"round_{index:04d}_candidate") if ready
+            # Seal the BEST authored revision of this campaign, not merely the last one the agent
+            # happened to leave in its workspace. The next round resumes from whatever is sealed, so
+            # sealing the last revision discards every improvement an agent found and then moved off
+            # -- observed on every round of two runs. `seal` resolves its row by CONTENT hash and
+            # copies that row's preserved snapshot, so handing it the winning snapshot seals exactly
+            # the bytes that earned the analysis.
+            selection = experiment.best_authored_candidate() if ready else None
+            seal_from = current
+            if selection is not None and selection["candidate_sha256"] != row["candidate_sha256"]:
+                seal_from = Path(selection["snapshot"])
+                experiment._write(f"round_{index:04d}_selection.json", {
+                    "schema": "global_round_candidate_selection_v1",
+                    "reason": "sealed the cheapest ready revision, not the final one",
+                    "selected": selection,
+                    "final_revision": {"iteration": row["iteration"],
+                                       "candidate_sha256": row["candidate_sha256"],
+                                       "host_cost": experiment.authored_host_cost(row.get("analysis"))},
+                    "cost_metric": "host-lane (load+store) payload bytes, then static allocations",
+                })
+            sealed = (experiment.seal(seal_from, name=f"round_{index:04d}_candidate") if ready
                       else experiment.checkpoint_authoring(
                           current, name=f"round_{index:04d}_authoring"))
             consumed = _consume_round_checkpoint(sealed)
