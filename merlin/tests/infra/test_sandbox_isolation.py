@@ -247,6 +247,50 @@ def test_post_snapshot_answer_file_is_not_mounted_inside_frozen_parent(tmp_path)
         BW.remove_bundle_snapshot(ws)
 
 
+def test_a_symlinked_toolchain_is_bound_at_its_REAL_path_too(tmp_path, monkeypatch):
+    """A snapshot checkout LINKS the external toolchain instead of copying it.
+
+    `perf_snapshot.create` symlinks `.venv` at the origin's, so `repo_root()` inside a source
+    worker names `<snapshot>/.venv` while the bytes live at `<origin>/.venv`. A tool referenced by
+    its real absolute path -- which the pinned submission's manifest argv does -- then resolves to
+    nothing inside the sandbox: measured `rc=127`, `.venv/bin/python3: No such file or directory`.
+    Binding the resolved location as well adds NO content (the same bytes are already mounted at
+    the link path) and is a strict no-op in a normal checkout, where nothing resolves elsewhere.
+    """
+    from merlin.targetgen.sandbox import toolchain as TC
+
+    origin = tmp_path / "origin"
+    (origin / ".venv" / "bin").mkdir(parents=True)
+    (origin / ".venv" / "bin" / "python3").write_text("#!/bin/sh\n", encoding="utf-8")
+    snapshot = tmp_path / "snap"
+    snapshot.mkdir()
+    (snapshot / ".venv").symlink_to(origin / ".venv")
+
+    descriptor = (repo_root()
+                  / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    monkeypatch.setattr(TC, "VENV", str(snapshot / ".venv"))
+    binds = TC.toolchain_binds(load_target_experiment(descriptor))
+    pairs = [(binds[i + 1], binds[i + 2]) for i, tok in enumerate(binds) if tok == "--ro-bind"]
+    linked = str(snapshot / ".venv")
+    real = str((origin / ".venv").resolve())
+    assert (linked, linked) in pairs, "the link path must still be bound"
+    assert (real, real) in pairs, "the REAL path must also be bound or an absolute argv misses it"
+
+
+def test_a_real_toolchain_path_is_bound_exactly_once(tmp_path, monkeypatch):
+    """The no-op half: with nothing symlinked, the resolved path IS the path, so no second bind."""
+    from merlin.targetgen.sandbox import toolchain as TC
+
+    real = tmp_path / "venv"
+    (real / "bin").mkdir(parents=True)
+    descriptor = (repo_root()
+                  / "merlin/experiments/capsule_bench/targets/gemmini/target_experiment.yaml")
+    monkeypatch.setattr(TC, "VENV", str(real))
+    binds = TC.toolchain_binds(load_target_experiment(descriptor))
+    pairs = [(binds[i + 1], binds[i + 2]) for i, tok in enumerate(binds) if tok == "--ro-bind"]
+    assert sum(1 for a, b in pairs if a == str(real)) == 1
+
+
 def test_pinned_submission_mount_defeats_chmod_and_byte_write(tmp_path, monkeypatch):
     """Same-UID mode changes cannot bypass the certification boundary inside bwrap."""
     ws = tmp_path / "run/workspace"

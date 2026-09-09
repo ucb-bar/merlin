@@ -132,6 +132,20 @@ def toolchain_binds(te: TargetExperiment) -> list[str]:
     harness = curated_harness_dir(te)
     for p in (*universal, *sim.bind_paths, *([harness] if harness else ())):
         if Path(p).exists():
+            # A snapshot checkout (perf_snapshot.create) does not COPY the external toolchain: it
+            # links `.venv`/`third_party` at the real host tool it borrows, so `repo_root()` inside a
+            # source worker yields `<snapshot>/.venv` while the bytes live at `<origin>/.venv`. Bind
+            # the resolved location as well, so a tool referenced by its real path resolves to the
+            # SAME bytes already mounted at the link path -- this adds no content to the sandbox, and
+            # the answer masks + `coverage_gap` still run afterwards over the assembled argv.
+            # Both destinations are created fresh by bwrap because `base_argv` tmpfs-masks all of
+            # `/scratch*` first, so neither is the on-host symlink at mount time. That masking is
+            # load-bearing, not incidental: bwrap CANNOT mount onto a symlink destination (it fails
+            # with "Unable to mount source on destination" even when the link target exists), so an
+            # unmasked snapshot path would refuse the whole sandbox rather than this one bind.
+            real = str(Path(p).resolve())
+            if real != p and Path(real).exists():
+                binds += ["--ro-bind", real, real]
             binds += ["--ro-bind", p, p]
     for v in NESTED_SESSION_VARS:
         binds += ["--unsetenv", v]
