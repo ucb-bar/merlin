@@ -16,6 +16,7 @@ from submission.mlir_oot.frontend import parse_verified
 from submission.mlir_oot.hybrid_runtime import allocate_intervals
 from submission.mlir_oot.host_semantics import HostSemanticLane, LayoutBridgeLane
 from submission.mlir_oot.accelerator_semantics import AcceleratorContractLane
+from submission.mlir_oot.cmdbuf import build_command_buffer
 
 
 ROOT = Path(__file__).resolve().parent
@@ -24,6 +25,24 @@ PLAN_ROOT = ROOT / "whole_capture_plan"
 
 def load(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_batched_command_consumes_and_evicts_resident_weight() -> None:
+    interface = PLAN_ROOT / "interfaces/matmul_batched_15_50_64_113.mlir"
+    command = build_command_buffer(parse_verified(interface.read_text(encoding="utf-8")))
+    assert command["commands"] == [
+        {
+            "opcode": "RES_PACK",
+            "operands": {"src": "W", "dst": "W_resident"},
+            "attributes": {"layout": "packed_rhs"},
+        },
+        {
+            "opcode": "BATCHED_MATMUL",
+            "operands": {"src": "A0", "dst": "Y0", "rhs": "W_resident"},
+            "attributes": {"name": "Y0", "batch": 15, "output_dtype": "bf16"},
+        },
+        {"opcode": "EVICT", "operands": {"handle": "W_resident"}},
+    ]
 
 
 @pytest.fixture(scope="module")
@@ -137,14 +156,14 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         "qualified_accelerator_partitions": 3,
         "qualified_layout_bridges": 2033,
         "semantic_host_required_regions": 2430,
-        "static_command_contract_partitions_qualified": 302,
+        "static_command_contract_partitions_qualified": 390,
         "strided_broadcast_bridges": 246,
         "structural_accelerator_partitions": 391,
     }
     assert schedule["fail_closed"]["missing_host_semantics"] == 0
     assert schedule["fail_closed"]["missing_host_semantics_by_semantic"] == {}
     assert schedule["fail_closed"]["missing_physical_event_runtime"] == 1
-    assert schedule["fail_closed"]["unqualified_accelerator_command_contracts"] == 89
+    assert schedule["fail_closed"]["unqualified_accelerator_command_contracts"] == 1
     assert schedule["fail_closed"]["unqualified_accelerator_partitions"] == 388
     assert schedule["fail_closed"]["unrealized_layout_bridges"] == 0
     assert schedule["conversion_boundaries"] == {
@@ -156,7 +175,7 @@ def test_saved_hybrid_schedule_is_complete_ordered_and_fail_closed() -> None:
         },
         "count": 1250,
         "qualified": 12,
-        "semantics_qualified": 947,
+        "semantics_qualified": 1247,
     }
     assert len(schedule["events"]) == 6104
     assert [row["event_index"] for row in schedule["events"]] == list(range(6104))
@@ -194,22 +213,24 @@ def test_accelerator_contract_census_and_numeric_witnesses_are_exact() -> None:
     census = schedule["accelerator_contract_census"]
     assert census["exact_class_count"] == 31
     assert census["by_kind"] == {"matmul": 303, "matmul_batched": 88}
-    assert census["contract_qualified_by_kind"] == {"matmul": 302}
-    assert census["contract_qualified_partitions"] == 302
-    assert census["contract_unqualified_partitions"] == 89
+    assert census["contract_qualified_by_kind"] == {
+        "matmul": 302, "matmul_batched": 88,
+    }
+    assert census["contract_qualified_partitions"] == 390
+    assert census["contract_unqualified_partitions"] == 1
     assert census["rejections_by_reason"] == {
-        "batched command consumes raw W after declaring an unused resident pack": 88,
         "rank-2 source requires capture-specific preprocessing outside the command": 1,
     }
     assert len(census["classes"]) == 31
     assert sum(row["count"] for row in census["classes"]) == 391
-    assert sum(row["contract_qualified"] for row in census["classes"]) == 302
+    assert sum(row["contract_qualified"] for row in census["classes"]) == 390
 
     witnesses = schedule["accelerator_contract_numeric_witnesses"]
     assert [row["label"] for row in witnesses] == [
         "rank2_bf16_no_bias", "rank2_f32_no_bias", "rank2_f32_bias",
+        "batched_bf16_no_bias", "batched_f32_no_bias",
     ]
-    assert sum(row["class_partition_count"] for row in witnesses) == 302
+    assert sum(row["class_partition_count"] for row in witnesses) == 390
     assert all(
         row["status"] == "fresh_device_domain_execution_matches_independent_oracle"
         and row["output_sha256"] == row["oracle_sha256"]
@@ -220,23 +241,25 @@ def test_accelerator_contract_census_and_numeric_witnesses_are_exact() -> None:
     )
 
 
-def test_all_real_rank2_contracts_qualify_without_promoting_physical_execution(
+def test_all_real_contraction_contracts_qualify_without_promoting_physical_execution(
     real_accelerator_lane: AcceleratorContractLane,
 ) -> None:
-    assert len(real_accelerator_lane.contracts) == 302
-    assert len(real_accelerator_lane.rejections) == 89
+    assert len(real_accelerator_lane.contracts) == 390
+    assert len(real_accelerator_lane.rejections) == 1
     assert Counter(
         contract.signature["source_dtype"]
         for contract in real_accelerator_lane.contracts.values()
-    ) == {"bf16": 208, "f32": 94}
+    ) == {"bf16": 232, "f32": 158}
     assert Counter(
         contract.signature["bias_fused"]
         for contract in real_accelerator_lane.contracts.values()
-    ) == {False: 225, True: 77}
+    ) == {False: 313, True: 77}
     assert all(
-        contract.signature["command"]["command_sequence"] == [
-            "RES_PACK", "MATMUL_RESIDENT", "COMMIT", "EVICT",
-        ]
+        contract.signature["command"]["command_sequence"] == (
+            ["RES_PACK", "BATCHED_MATMUL", "EVICT"]
+            if contract.signature["kind"] == "matmul_batched"
+            else ["RES_PACK", "MATMUL_RESIDENT", "COMMIT", "EVICT"]
+        )
         and "not calibration" in contract.signature["qualification_scope"]
         for contract in real_accelerator_lane.contracts.values()
     )
@@ -244,12 +267,12 @@ def test_all_real_rank2_contracts_qualify_without_promoting_physical_execution(
     accelerator_events = [
         row for row in schedule["events"] if row["kind"] == "accelerator_partition"
     ]
-    assert sum(row["command_contract_qualified"] for row in accelerator_events) == 302
+    assert sum(row["command_contract_qualified"] for row in accelerator_events) == 390
     assert sum(row["executable"] for row in accelerator_events) == 3
     conversion_events = [
         row for row in schedule["events"] if row["kind"] == "conversion_boundary"
     ]
-    assert sum(row["conversion_semantics_qualified"] for row in conversion_events) == 947
+    assert sum(row["conversion_semantics_qualified"] for row in conversion_events) == 1247
     assert sum(row["executable"] for row in conversion_events) == 12
 
 
@@ -321,20 +344,51 @@ def test_malformed_command_and_capture_binding_fail_closed(
     )
 
 
-def test_batched_and_patch_command_contracts_remain_explicitly_blocked(
-    real_accelerator_lane: AcceleratorContractLane,
+def test_batched_contracts_are_bound_and_patch_contract_remains_blocked(
+    real_workload, real_partition_plan, real_command_buffers,
 ) -> None:
-    assert real_accelerator_lane.rejections["atlas_p0000"] == (
+    lane = AcceleratorContractLane(
+        real_workload, real_partition_plan, real_command_buffers
+    )
+    assert lane.rejections["atlas_p0000"] == (
         "rank-2 source requires capture-specific preprocessing outside the command"
     )
     batched = [
-        reason for partition_id, reason in real_accelerator_lane.rejections.items()
-        if partition_id != "atlas_p0000"
+        contract for contract in lane.contracts.values()
+        if contract.signature["kind"] == "matmul_batched"
     ]
     assert len(batched) == 88
-    assert set(batched) == {
-        "batched command consumes raw W after declaring an unused resident pack"
+    assert all(
+        contract.signature["command"]["resident_weight_source"] == "W"
+        and contract.signature["command"]["resident_weight_handle"] == "W_resident"
+        for contract in batched
+    )
+
+    partition = next(
+        row for row in real_partition_plan["partitions"]
+        if row["kind"] == "matmul_batched"
+    )
+    receipt = next(
+        row for row in real_partition_plan["kernel_library"]
+        if row["kernel_id"] == partition["kernel_id"]
+    )
+    bounded_plan = {
+        "partitions": [copy.deepcopy(partition)],
+        "kernel_library": [copy.deepcopy(receipt)],
     }
+    for mutation in ("raw_rhs", "missing_evict"):
+        malformed = copy.deepcopy(real_command_buffers[partition["kernel_id"]])
+        if mutation == "raw_rhs":
+            malformed["commands"][1]["operands"]["rhs"] = "W"
+        else:
+            malformed["commands"].pop()
+        rejected = AcceleratorContractLane(
+            real_workload, bounded_plan, {partition["kernel_id"]: malformed}
+        )
+        assert rejected.contracts == {}
+        assert rejected.rejections[partition["partition_id"]] == (
+            "batched command dependency chain changed"
+        )
 
 
 def test_rank2_conversion_runtime_shape_and_dtype_fail_closed(
@@ -347,6 +401,52 @@ def test_rank2_conversion_runtime_shape_and_dtype_fail_closed(
                 "A0": np.zeros((1, 32), dtype=np.float64),
                 "W": np.zeros((32, 960), dtype=np.float32),
                 "B": np.zeros((960,), dtype=np.float32),
+            },
+        )
+
+
+def test_batched_device_domain_execution_and_conversion_are_exact(
+    real_accelerator_lane: AcceleratorContractLane,
+) -> None:
+    partition_id = "atlas_p0259"
+    signature = real_accelerator_lane.contracts[partition_id].signature
+    assert signature["kind"] == "matmul_batched"
+    batch, m, k, n = (
+        signature["geometry"][key] for key in ("B", "M", "K", "N")
+    )
+    batches = np.arange(batch, dtype=np.int64)[:, None]
+    rows = np.arange(m, dtype=np.int64)[None, :]
+    selected = (batches * 11 + rows * 7) % k
+    activation = np.zeros((batch, m, k), dtype=np.float32)
+    activation[batches, rows, selected] = np.float32(1)
+    depth = np.arange(k, dtype=np.int64)[None, :, None]
+    columns = np.arange(n, dtype=np.int64)[None, None, :]
+    weight = (((batches[:, :, None] * 5 + depth * 3 + columns) % 7) - 3).astype(
+        np.float32
+    )
+    actual = real_accelerator_lane.execute_device_domain(
+        partition_id, {"A0": activation, "W": weight}
+    )
+    expected_f32 = np.ascontiguousarray(weight[batches, selected], dtype=np.float32)
+    bits = expected_f32.view(np.uint32)
+    expected = (
+        bits + np.uint32(0x7FFF) + ((bits >> 16) & np.uint32(1))
+    ) & np.uint32(0xFFFF0000)
+    np.testing.assert_array_equal(actual, expected.view(np.float32))
+
+    converted = real_accelerator_lane.prepare_capture_inputs(
+        partition_id, {"A0": activation, "W": weight}
+    )
+    assert converted["record"]["schema"] == "atlas_batched_capture_conversion_v1"
+    assert len(converted["preloads"]["A0"]) == batch * m * k
+    assert len(converted["preloads"]["W"]) == batch * k * n
+
+    with pytest.raises(ValueError, match="capture A0/W shape or dtype differs"):
+        real_accelerator_lane.prepare_capture_inputs(
+            partition_id,
+            {
+                "A0": np.zeros((m, k), dtype=np.float32),
+                "W": weight,
             },
         )
 

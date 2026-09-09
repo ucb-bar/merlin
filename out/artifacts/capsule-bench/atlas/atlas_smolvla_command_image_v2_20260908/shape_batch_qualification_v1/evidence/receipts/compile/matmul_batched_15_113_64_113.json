@@ -4,7 +4,7 @@
   "baseline_assembly_sha256": "43135952f69fb0fd7f1c75175b7fcb6f9381fd4c7994d5ea5da78c79cf443c09",
   "bias_fused": false,
   "claim_scope": "shape compilation and static image validation only; not numeric or physical-partition qualification",
-  "command_buffer_sha256": "86fa0e0b430a88b68401112244ed983873fb3ed67103509963bfa8860879a4d1",
+  "command_buffer_sha256": "094870c19bfa329e100e765de5dcd9afeaf31d9f0f53fcb2bc5c494e19e11409",
   "compiler": "/scratch/agustin/projects/oscar-merlin/out/artifacts/capsule-bench/atlas/atlas_smolvla_command_image_v2_20260908/shape_batch_qualification_v1/backend_fixed/mlir_oot/atlas-opt",
   "compiler_sha256": "c0306634c4965b9a339bc970d1597ed65319412038bfed56cbee879217a073d8",
   "control_flow": {
@@ -12,7 +12,7 @@
     "branches": 21,
     "jumps": 13
   },
-  "elapsed_ns": 271039535,
+  "elapsed_ns": 269811141,
   "errors": [],
   "geometry": {
     "B": 15,

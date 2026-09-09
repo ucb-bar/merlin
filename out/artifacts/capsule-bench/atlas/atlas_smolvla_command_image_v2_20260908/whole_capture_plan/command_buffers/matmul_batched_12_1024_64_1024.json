@@ -50,12 +50,18 @@
       "operands": {
         "src": "A0",
         "dst": "Y0",
-        "rhs": "W"
+        "rhs": "W_resident"
       },
       "attributes": {
         "name": "Y0",
         "batch": 12,
         "output_dtype": "bf16"
+      }
+    },
+    {
+      "opcode": "EVICT",
+      "operands": {
+        "handle": "W_resident"
       }
     }
   ],

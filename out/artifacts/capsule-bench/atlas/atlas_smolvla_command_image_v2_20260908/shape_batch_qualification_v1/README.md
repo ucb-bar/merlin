@@ -5,7 +5,10 @@ modify or consume the live hybrid runtime as qualification authority.
 
 `backend_baseline/` and `backend_fixed/` are complete, isolated copies of the exact
 `mlir_oot` package (13 Python modules plus `atlas-opt`). Only the fixed copy's
-`codegen.py` differs. `qualify_shapes.py` freshly compiles all 28 distinct
+`codegen.py` differs. Both copies carry the command-only batched residency repair,
+so every batched command buffer is the three-command
+`RES_PACK -> BATCHED_MATMUL(resident) -> EVICT` chain while the paired machine-code
+negative control remains isolated to `codegen.py`. `qualify_shapes.py` freshly compiles all 28 distinct
 FP8-contraction interfaces in the 391-partition capture plan with that copy. Each
 compile receipt checks the source-interface hash, expected assembly-change scope,
 32-Kword IMEM bound, compact-loop control targets, pair-bank rules, and
@@ -58,7 +61,7 @@ python shape_batch_qualification_v1/test_qualification.py
 ```
 
 Saved outputs live under `evidence/`; `qualification.json` carries exact counts and
-nanosecond timings. The recorded run took 15,656,684,967 ns overall: 6,794,770,280
-ns in compile subprocesses, 7,041,374,392 ns in positive RTL probes, and
-1,389,933,293 ns in the negative control. `partition_receipt_map.json` exposes every
+nanosecond timings. The recorded run took 16,286,901,303 ns overall: 6,989,067,370
+ns in compile subprocesses, 7,487,073,562 ns in positive RTL probes, and
+1,380,136,075 ns in the negative control. `partition_receipt_map.json` exposes every
 physical mapping.

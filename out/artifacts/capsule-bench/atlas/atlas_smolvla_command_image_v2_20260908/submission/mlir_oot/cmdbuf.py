@@ -156,16 +156,20 @@ def build_command_buffer(workload):
                     "attributes": item.get("attrs", {}),
                 })
                 continue
+            resident_rhs = None
             if (kind in ("gemv_batched", "matmul_batched")
                     and tensors[item["inputs"][1]]["role"] == "weight"):
                 # Direct batched interfaces have no explicit resident_pack op,
-                # but a role=weight operand still needs a host-visible staging
-                # declaration.  The generated kernel reads the same source
-                # tensor directly; this command only makes its binding live.
+                # so synthesize the same complete dependency chain used by the
+                # explicit matmul grammar.  Codegen resolves the resident
+                # handle to its source tensor while staging each physical
+                # weight tile into the MXU; the command graph must retain that
+                # relationship rather than declaring an unused pack.
+                resident_rhs = item["inputs"][1] + "_resident"
                 commands.append({
                     "opcode": "RES_PACK",
                     "operands": {"src": item["inputs"][1],
-                                 "dst": item["inputs"][1] + "_resident"},
+                                 "dst": resident_rhs},
                     "attributes": {"layout": "packed_rhs"},
                 })
             opcode = {"add": "VECTOR_MAP", "silu": "VECTOR_MAP", "reduce_sum": "VREDUCE",
@@ -174,8 +178,12 @@ def build_command_buffer(workload):
                       "fused_matmul_bias": "K_CHAIN"}.get(kind, kind.upper())
             operands = {"src": item["inputs"][0], "dst": item["dst"]} if item.get("inputs") else {"dst": item["dst"]}
             if len(item.get("inputs", [])) > 1:
-                operands["rhs"] = item["inputs"][1]
+                operands["rhs"] = resident_rhs or item["inputs"][1]
             commands.append({"opcode": opcode, "operands": operands, "attributes": item.get("attrs", {})})
+            if resident_rhs is not None:
+                commands.append({
+                    "opcode": "EVICT", "operands": {"handle": resident_rhs}
+                })
     cb = {"abi_version": "0.1", "target": "atlas", "backend": "atlas-xdsl", "tensors": tensors, "commands": commands}
     if declined is not None:
         cb["commands"] = []

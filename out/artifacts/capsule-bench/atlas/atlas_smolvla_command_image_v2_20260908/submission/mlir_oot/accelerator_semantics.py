@@ -55,6 +55,19 @@ def _zero_initialized(value) -> bool:
     return raw is not None and float(raw) == 0.0
 
 
+def _zero_splat_initialized(value) -> bool:
+    splat = getattr(value, "owner", None)
+    if getattr(splat, "name", None) != "tensor.splat" or len(splat.operands) != 1:
+        return False
+    constant = getattr(splat.operands[0], "owner", None)
+    if getattr(constant, "name", None) != "arith.constant":
+        return False
+    raw = getattr(
+        getattr(constant.properties.get("value"), "value", None), "data", None
+    )
+    return raw is not None and float(raw) == 0.0
+
+
 def _validate_bias_epilogue(matmul, bias) -> None:
     if bias.name != "linalg.generic" or len(bias.inputs) != 2:
         raise UnsupportedAcceleratorContract("bias epilogue is not one binary generic")
@@ -169,6 +182,96 @@ def _validate_command_buffer(partition: dict, command: dict) -> dict:
     }
 
 
+def _expected_batched_command_buffer(geometry: dict) -> tuple[dict, list[dict], dict]:
+    batch, m, k, n = (
+        int(geometry[key]) for key in ("B", "M", "K", "N")
+    )
+    tensors = {
+        "A0": {
+            "shape": [batch, m, k], "dtype": "fp8_e4m3", "role": "input"
+        },
+        "W": {
+            "shape": [batch, k, n], "dtype": "fp8_e4m3", "role": "weight"
+        },
+        "Y0": {
+            "shape": [batch, m, n], "dtype": "bf16", "role": "output"
+        },
+    }
+    commands = [
+        {
+            "opcode": "RES_PACK",
+            "operands": {"src": "W", "dst": "W_resident"},
+            "attributes": {"layout": "packed_rhs"},
+        },
+        {
+            "opcode": "BATCHED_MATMUL",
+            "operands": {"src": "A0", "rhs": "W_resident", "dst": "Y0"},
+            "attributes": {
+                "name": "Y0", "batch": batch, "output_dtype": "bf16"
+            },
+        },
+        {"opcode": "EVICT", "operands": {"handle": "W_resident"}},
+    ]
+    kernel_abi = {
+        "kind": "whole_program",
+        "args": [
+            {"tensor": "A0", "access": "read"},
+            {"tensor": "W", "access": "read"},
+            {"tensor": "Y0", "access": "write"},
+        ],
+        "outputs": ["Y0"],
+    }
+    return tensors, commands, kernel_abi
+
+
+def _validate_batched_command_buffer(partition: dict, command: dict) -> dict:
+    if {key: command.get(key) for key in ("abi_version", "target", "backend")} != {
+        "abi_version": "0.1", "target": "atlas", "backend": "atlas-xdsl",
+    }:
+        raise UnsupportedAcceleratorContract("command buffer header changed")
+    expected_tensors, expected_commands, expected_abi = (
+        _expected_batched_command_buffer(partition["geometry"])
+    )
+    tensors = command.get("tensors")
+    if not isinstance(tensors, dict) or set(tensors) != set(expected_tensors):
+        raise UnsupportedAcceleratorContract(
+            "command tensor set differs from batched contract"
+        )
+    allocations = []
+    for name, expected in expected_tensors.items():
+        actual = tensors[name]
+        if {key: actual.get(key) for key in expected} != expected:
+            raise UnsupportedAcceleratorContract(
+                f"batched command tensor {name} signature changed"
+            )
+        base = actual.get("base")
+        if not isinstance(base, int) or base < 0 or base % 32:
+            raise UnsupportedAcceleratorContract(
+                f"batched command tensor {name} base is not 32-byte aligned"
+            )
+        size = math.prod(expected["shape"]) * _dtype_bytes(expected["dtype"])
+        allocations.append((base, base + size, name))
+    for left, right in zip(sorted(allocations), sorted(allocations)[1:]):
+        if left[1] > right[0]:
+            raise UnsupportedAcceleratorContract(
+                f"batched command allocations overlap: {left[2]} and {right[2]}"
+            )
+    if command.get("commands") != expected_commands:
+        raise UnsupportedAcceleratorContract(
+            "batched command dependency chain changed"
+        )
+    if command.get("kernel_abi") != expected_abi:
+        raise UnsupportedAcceleratorContract("batched command kernel ABI changed")
+    return {
+        "command_sequence": [row["opcode"] for row in expected_commands],
+        "resident_weight_source": "W",
+        "resident_weight_handle": "W_resident",
+        "tensor_bases": {name: tensors[name]["base"] for name in expected_tensors},
+        "allocated_span_bytes": max(end for _, end, _ in allocations)
+        - min(start for start, _, _ in allocations),
+    }
+
+
 @dataclass(frozen=True)
 class AcceleratorContract:
     partition_id: str
@@ -178,13 +281,6 @@ class AcceleratorContract:
 def _extract_rank2_contract(partition: dict, operations: Mapping[str, tuple], command: dict,
                             receipt: dict) -> AcceleratorContract:
     if partition.get("kind") != "matmul":
-        commands = command.get("commands", [])
-        if (len(commands) >= 2 and commands[0].get("opcode") == "RES_PACK"
-                and commands[1].get("opcode") == "BATCHED_MATMUL"
-                and commands[1].get("operands", {}).get("rhs") == "W"):
-            raise UnsupportedAcceleratorContract(
-                "batched command consumes raw W after declaring an unused resident pack"
-            )
         raise UnsupportedAcceleratorContract("only rank-2 command contracts are qualified")
     if partition.get("source_semantic") not in {"matmul", "addmm"}:
         raise UnsupportedAcceleratorContract(
@@ -258,6 +354,7 @@ def _extract_rank2_contract(partition: dict, operations: Mapping[str, tuple], co
     command_record = _validate_command_buffer(partition, command)
     signature = {
         "schema": "atlas_rank2_capture_command_contract_v1",
+        "kind": "matmul",
         "partition_id": partition["partition_id"],
         "kernel_id": partition["kernel_id"],
         "source_semantic": partition["source_semantic"],
@@ -270,6 +367,148 @@ def _extract_rank2_contract(partition: dict, operations: Mapping[str, tuple], co
         "capture_types": [entry["capture_type"] for entry in abi_inputs]
         + [abi_output[0]["capture_type"]],
         "device_dtypes": expected_device_dtypes + ["bf16"],
+        "command": command_record,
+        "image": {
+            "instruction_words": image["instruction_words"],
+            "imem_words": image["imem_words"],
+            "assembly_sha256": receipt["assembly_sha256"],
+            "interface_sha256": receipt["interface_sha256"],
+        },
+        "qualification_scope": (
+            "static source/ABI/command agreement only; not calibration, encoded-image "
+            "execution, physical partition qualification, or E2E"
+        ),
+    }
+    return AcceleratorContract(partition["partition_id"], signature)
+
+
+def _extract_batched_contract(
+    partition: dict, operations: Mapping[str, tuple], command: dict, receipt: dict,
+) -> AcceleratorContract:
+    if partition.get("kind") != "matmul_batched":
+        raise UnsupportedAcceleratorContract("partition is not a batched matmul")
+    if partition.get("source_semantic") != "batch_matmul":
+        raise UnsupportedAcceleratorContract("batched source semantic changed")
+    if partition.get("bias_fused"):
+        raise UnsupportedAcceleratorContract("batched bias epilogue is not qualified")
+    capture_regions = partition.get("capture_regions", [])
+    if len(capture_regions) != 1:
+        raise UnsupportedAcceleratorContract("batched capture region count changed")
+    contraction_ops = operations.get(capture_regions[0], ())
+    if tuple(op.name for op in contraction_ops) != (
+        "arith.constant", "tensor.splat", "linalg.generic"
+    ):
+        raise UnsupportedAcceleratorContract(
+            "batched source is not one isolated initialized contraction"
+        )
+    matmul = contraction_ops[-1]
+    if len(matmul.inputs) != 2 or len(matmul.outputs) != 1 or len(matmul.results) != 1:
+        raise UnsupportedAcceleratorContract("source batched matmul arity changed")
+    batch, m, k, n = (
+        int(partition["geometry"][key]) for key in ("B", "M", "K", "N")
+    )
+    values = (*matmul.inputs, matmul.results[0])
+    source_dtype = _tensor_dtype(matmul.inputs[0])
+    if ([_tensor_shape(value) for value in values]
+            != [(batch, m, k), (batch, k, n), (batch, m, n)]
+            or source_dtype not in {"f32", "bf16"}
+            or any(_tensor_dtype(value) != source_dtype for value in values)):
+        raise UnsupportedAcceleratorContract(
+            "source batched matmul shape or dtype changed"
+        )
+    if not _zero_splat_initialized(matmul.outputs[0]):
+        raise UnsupportedAcceleratorContract(
+            "source batched matmul accumulator is not proven zero"
+        )
+    maps = list(matmul.indexing_maps)
+    if len(maps) != 3:
+        raise UnsupportedAcceleratorContract("batched affine map arity changed")
+    map_records = [
+        _general_affine_map_signature(mapping, shape, 4)
+        for mapping, shape in zip(
+            maps, ((batch, m, k), (batch, k, n), (batch, m, n))
+        )
+    ]
+    expected_maps = [
+        [
+            {"kind": "dim", "position": 0, "extent": batch},
+            {"kind": "dim", "position": 1, "extent": m},
+            {"kind": "dim", "position": 3, "extent": k},
+        ],
+        [
+            {"kind": "dim", "position": 0, "extent": batch},
+            {"kind": "dim", "position": 3, "extent": k},
+            {"kind": "dim", "position": 2, "extent": n},
+        ],
+        [
+            {"kind": "dim", "position": 0, "extent": batch},
+            {"kind": "dim", "position": 1, "extent": m},
+            {"kind": "dim", "position": 2, "extent": n},
+        ],
+    ]
+    if map_records != expected_maps:
+        raise UnsupportedAcceleratorContract("batched affine maps changed")
+    iterators = [
+        getattr(item.data, "value", str(item.data)) for item in matmul.iterator_types
+    ]
+    if iterators != ["parallel", "parallel", "parallel", "reduction"]:
+        raise UnsupportedAcceleratorContract("batched iterator roles changed")
+    block = matmul.body.blocks[0]
+    body = list(block.ops)
+    if (len(block.args) != 3
+            or tuple(op.name for op in body)
+            != ("arith.mulf", "arith.addf", "linalg.yield")
+            or tuple(body[0].operands) != tuple(block.args[:2])
+            or tuple(body[1].operands) != (block.args[2], body[0].results[0])
+            or tuple(body[2].operands) != tuple(body[1].results)):
+        raise UnsupportedAcceleratorContract(
+            "batched scalar multiply-accumulate dataflow changed"
+        )
+    abi_inputs = partition.get("abi", {}).get("inputs", [])
+    abi_output = partition.get("abi", {}).get("outputs", [])
+    if len(abi_inputs) != 2 or len(abi_output) != 1:
+        raise UnsupportedAcceleratorContract("batched partition ABI arity changed")
+    for entry, value, name in zip(abi_inputs, matmul.inputs, ("A0", "W")):
+        if (entry.get("name") != name
+                or entry.get("capture_type") != str(value.type)
+                or entry.get("device_dtype") != "fp8_e4m3"):
+            raise UnsupportedAcceleratorContract(
+                f"batched partition ABI input {name} changed"
+            )
+    if (abi_output[0].get("name") != "Y0"
+            or abi_output[0].get("capture_type") != str(matmul.results[0].type)
+            or abi_output[0].get("device_dtype") != "bf16"):
+        raise UnsupportedAcceleratorContract("batched partition ABI output changed")
+    image = partition.get("image", {})
+    if (image.get("kernel_id") != partition.get("kernel_id")
+            or image.get("command_count") != 3 or not image.get("fits_imem")
+            or not 0 < int(image.get("instruction_words", 0))
+            <= int(image.get("imem_words", 0))):
+        raise UnsupportedAcceleratorContract("batched compiled image receipt is incomplete")
+    if (receipt.get("kernel_id") != partition.get("kernel_id")
+            or receipt.get("kind") != "matmul_batched"
+            or receipt.get("geometry") != partition.get("geometry")
+            or receipt.get("bias_fused") is not False
+            or not receipt.get("fits_imem")):
+        raise UnsupportedAcceleratorContract(
+            "batched kernel library receipt differs from partition"
+        )
+    command_record = _validate_batched_command_buffer(partition, command)
+    signature = {
+        "schema": "atlas_batched_capture_command_contract_v1",
+        "kind": "matmul_batched",
+        "partition_id": partition["partition_id"],
+        "kernel_id": partition["kernel_id"],
+        "source_semantic": partition["source_semantic"],
+        "source_dtype": source_dtype,
+        "fqn": partition["fqn"],
+        "capture_regions": capture_regions,
+        "geometry": partition["geometry"],
+        "bias_fused": False,
+        "input_origins": [entry["origin"]["kind"] for entry in abi_inputs],
+        "capture_types": [entry["capture_type"] for entry in abi_inputs]
+        + [abi_output[0]["capture_type"]],
+        "device_dtypes": ["fp8_e4m3", "fp8_e4m3", "bf16"],
         "command": command_record,
         "image": {
             "instruction_words": image["instruction_words"],
@@ -313,7 +552,15 @@ class AcceleratorContractLane:
                     raise UnsupportedAcceleratorContract(
                         "partition lacks a saved command buffer or kernel receipt"
                     )
-                self.contracts[partition_id] = _extract_rank2_contract(
+                extractor = {
+                    "matmul": _extract_rank2_contract,
+                    "matmul_batched": _extract_batched_contract,
+                }.get(partition.get("kind"))
+                if extractor is None:
+                    raise UnsupportedAcceleratorContract(
+                        "partition kind has no accelerator contract"
+                    )
+                self.contracts[partition_id] = extractor(
                     partition, operations, command_buffers[kernel_id], receipts[kernel_id]
                 )
             except UnsupportedAcceleratorContract as error:
@@ -333,10 +580,20 @@ class AcceleratorContractLane:
             )
         signature = self.contracts[partition_id].signature
         geometry = signature["geometry"]
-        expected = {
-            "A0": (geometry["M"], geometry["K"]),
-            "W": (geometry["K"], geometry["N"]),
-        }
+        if signature["kind"] == "matmul_batched":
+            expected = {
+                "A0": (
+                    geometry["B"], geometry["M"], geometry["K"]
+                ),
+                "W": (
+                    geometry["B"], geometry["K"], geometry["N"]
+                ),
+            }
+        else:
+            expected = {
+                "A0": (geometry["M"], geometry["K"]),
+                "W": (geometry["K"], geometry["N"]),
+            }
         if signature["bias_fused"]:
             expected["B"] = (geometry["N"],)
         arrays = {}
@@ -357,7 +614,7 @@ class AcceleratorContractLane:
     def prepare_capture_inputs(
         self, partition_id: str, values: Mapping[str, np.ndarray], *, code_cap: float = 448.0,
     ) -> dict:
-        """Implement the signed f32->FP8/BF16 conversion semantics for rank-2 inputs."""
+        """Implement the signed f32->FP8/BF16 capture conversion semantics."""
         if partition_id not in self.contracts:
             raise UnsupportedAcceleratorContract(
                 self.rejections.get(partition_id, f"unknown partition {partition_id}")
@@ -366,8 +623,14 @@ class AcceleratorContractLane:
         geometry = signature["geometry"]
         a = np.asarray(values.get("A0"))
         w = np.asarray(values.get("W"))
-        if (a.dtype != np.float32 or a.shape != (geometry["M"], geometry["K"])
-                or w.dtype != np.float32 or w.shape != (geometry["K"], geometry["N"])):
+        if signature["kind"] == "matmul_batched":
+            a_shape = (geometry["B"], geometry["M"], geometry["K"])
+            w_shape = (geometry["B"], geometry["K"], geometry["N"])
+        else:
+            a_shape = (geometry["M"], geometry["K"])
+            w_shape = (geometry["K"], geometry["N"])
+        if (a.dtype != np.float32 or a.shape != a_shape
+                or w.dtype != np.float32 or w.shape != w_shape):
             raise ValueError("capture A0/W shape or dtype differs from signed contract")
         if signature["source_dtype"] == "bf16":
             _, rounded_a = f32_to_bf16_rne(a)
@@ -380,7 +643,11 @@ class AcceleratorContractLane:
         preloads = {"A0": qa["codes"].tobytes(), "W": qw["codes"].tobytes()}
         decoded = {"A0": qa["decoded"], "W": qw["decoded"]}
         record = {
-            "schema": "atlas_rank2_capture_conversion_v1",
+            "schema": (
+                "atlas_batched_capture_conversion_v1"
+                if signature["kind"] == "matmul_batched"
+                else "atlas_rank2_capture_conversion_v1"
+            ),
             "partition_id": partition_id,
             "activation": qa["record"],
             "weight": qw["record"],
@@ -408,8 +675,11 @@ class AcceleratorContractLane:
         signature = self.contracts[partition_id].signature
         geometry = signature["geometry"]
         value = np.asarray(device_bf16)
+        output_shape = (geometry["M"], geometry["N"])
+        if signature["kind"] == "matmul_batched":
+            output_shape = (geometry["B"], *output_shape)
         if (value.dtype != np.float32
-                or value.shape != (geometry["M"], geometry["N"])
+                or value.shape != output_shape
                 or not np.all(np.isfinite(value))):
             raise ValueError("device BF16 output has wrong shape/dtype/values")
         _, rounded = f32_to_bf16_rne(value)

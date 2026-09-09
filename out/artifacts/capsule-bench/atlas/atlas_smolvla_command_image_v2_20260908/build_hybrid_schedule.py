@@ -531,36 +531,57 @@ def _independent_bf16_rne(value: np.ndarray) -> np.ndarray:
 def accelerator_contract_witnesses(
     workload, plan: dict, command_buffers: dict[str, dict],
 ) -> list[dict]:
-    """Exercise one real-shape contract per exact dtype/epilogue topology."""
+    """Exercise one real-shape contract per exact kind/dtype/epilogue topology."""
     lane = AcceleratorContractLane(workload, plan, command_buffers)
     classes = {}
     for contract in lane.contracts.values():
         signature = contract.signature
-        key = (signature["source_dtype"], signature["bias_fused"])
+        key = (
+            signature["kind"], signature["source_dtype"], signature["bias_fused"]
+        )
         classes.setdefault(key, []).append(contract)
     witnesses = []
-    for (source_dtype, bias_fused), contracts in sorted(classes.items()):
+    for (kind, source_dtype, bias_fused), contracts in sorted(classes.items()):
         contract = min(
             contracts,
             key=lambda row: (
-                row.signature["geometry"]["M"] * row.signature["geometry"]["N"],
+                row.signature["geometry"].get("B", 1)
+                * row.signature["geometry"]["M"]
+                * row.signature["geometry"]["N"],
                 row.signature["geometry"]["K"], row.partition_id,
             ),
         )
         geometry = contract.signature["geometry"]
         m, k, n = (geometry[key] for key in ("M", "K", "N"))
-        activation = np.zeros((m, k), dtype=np.float32)
-        selected = (np.arange(m, dtype=np.int64) * 17 + 3) % k
-        activation[np.arange(m), selected] = np.float32(1)
-        rows = np.arange(k, dtype=np.int64)[:, None]
-        columns = np.arange(n, dtype=np.int64)[None, :]
-        weight = (((rows * 3 + columns) % 5) - 2).astype(np.float32)
+        if kind == "matmul_batched":
+            batch = geometry["B"]
+            activation = np.zeros((batch, m, k), dtype=np.float32)
+            batches = np.arange(batch, dtype=np.int64)[:, None]
+            rows = np.arange(m, dtype=np.int64)[None, :]
+            selected = (batches * 11 + rows * 17 + 3) % k
+            activation[batches, rows, selected] = np.float32(1)
+            depth = np.arange(k, dtype=np.int64)[None, :, None]
+            columns = np.arange(n, dtype=np.int64)[None, None, :]
+            weight = (((batches[:, :, None] * 7 + depth * 3 + columns) % 5) - 2).astype(
+                np.float32
+            )
+            expected = weight[batches, selected]
+            expected_preload_bytes = batch * m * k + batch * k * n
+        else:
+            activation = np.zeros((m, k), dtype=np.float32)
+            selected = (np.arange(m, dtype=np.int64) * 17 + 3) % k
+            activation[np.arange(m), selected] = np.float32(1)
+            rows = np.arange(k, dtype=np.int64)[:, None]
+            columns = np.arange(n, dtype=np.int64)[None, :]
+            weight = (((rows * 3 + columns) % 5) - 2).astype(np.float32)
+            expected = weight[selected].copy()
+            expected_preload_bytes = m * k + k * n
         values = {"A0": activation, "W": weight}
-        expected = weight[selected].copy()
         if bias_fused:
             bias = ((np.arange(n, dtype=np.int64) % 3) - 1).astype(np.float32)
             values["B"] = bias
             expected = np.asarray(expected + bias, dtype=np.float32)
+            expected_preload_bytes += 2 * n
         actual = lane.execute_device_domain(contract.partition_id, dict(values))
         expected = _independent_bf16_rne(expected)
         if not np.array_equal(actual, expected):
@@ -568,7 +589,6 @@ def accelerator_contract_witnesses(
                 f"independent accelerator oracle failed for {contract.partition_id}"
             )
         converted = lane.prepare_capture_inputs(contract.partition_id, values)
-        expected_preload_bytes = m * k + k * n + (2 * n if bias_fused else 0)
         actual_preload_bytes = sum(len(raw) for raw in converted["preloads"].values())
         if actual_preload_bytes != expected_preload_bytes:
             raise ValueError(
@@ -588,8 +608,11 @@ def accelerator_contract_witnesses(
                 f"independent output conversion oracle failed for {contract.partition_id}"
             )
         witnesses.append({
-            "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
-            "label": f"rank2_{source_dtype}_{'bias' if bias_fused else 'no_bias'}",
+            "schema": "atlas_real_shape_command_contract_witness_v2",
+            "label": (
+                f"{'batched' if kind == 'matmul_batched' else 'rank2'}_"
+                f"{source_dtype}_{'bias' if bias_fused else 'no_bias'}"
+            ),
             "status": "fresh_device_domain_execution_matches_independent_oracle",
             "claim": (
                 "static command-contract and host conversion evidence only; encoded image, "
@@ -598,6 +621,7 @@ def accelerator_contract_witnesses(
             "representative_partition_id": contract.partition_id,
             "class_partition_count": len(contracts),
             "geometry": geometry,
+            "kind": kind,
             "source_dtype": source_dtype,
             "bias_fused": bias_fused,
             "output_sha256": array_sha256(actual),

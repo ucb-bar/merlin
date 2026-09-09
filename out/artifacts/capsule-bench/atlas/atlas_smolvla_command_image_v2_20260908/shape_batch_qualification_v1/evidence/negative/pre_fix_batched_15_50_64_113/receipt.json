@@ -1,10 +1,10 @@
 {
   "claim_scope": "assertion-sensitivity control only; never positive qualification evidence",
   "compile_receipt": "evidence/negative/pre_fix_batched_15_50_64_113/matmul_batched_15_50_64_113.json",
-  "compile_receipt_sha256": "dc81423256799c94aa8b5815644ae922e73a2a4595f7d85633ca9bc833863efb",
+  "compile_receipt_sha256": "8519ea003128a93c84c29202b10320256cf2b4da0e65f56acf33293625a7a3f8",
   "control": "pre-fix unchunked batched image on identical 15x50x64x113 workload/stimulus",
   "control_passed": true,
-  "elapsed_ns": 1389933293,
+  "elapsed_ns": 1380136075,
   "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim_assert",
   "engine_kind": "assertion-enabled elaborated RTL GSIM",
   "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",

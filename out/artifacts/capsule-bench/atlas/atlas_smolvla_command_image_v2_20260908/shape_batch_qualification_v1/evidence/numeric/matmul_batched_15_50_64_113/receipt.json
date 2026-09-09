@@ -8,10 +8,10 @@
     "mismatches": 0
   },
   "compile_receipt": "evidence/receipts/compile/matmul_batched_15_50_64_113.json",
-  "compile_receipt_sha256": "aa5e05ec5056247ccfdaf88e40410d506649d8767d69f74dcf03ac43058442db",
+  "compile_receipt_sha256": "854212d83d7404e3c98a7eba713e5b5353614b725e9a724c9a64e9f595ddde6e",
   "cycles": 4114764,
-  "cycles_per_second": 826041.2338590946,
-  "elapsed_ns": 4981305813,
+  "cycles_per_second": 779100.3270486275,
+  "elapsed_ns": 5281430205,
   "engine_binary": "/scratch/agustin/tmp/gsim-atlas-core/atlas_gsim_sim_assert",
   "engine_kind": "assertion-enabled elaborated RTL GSIM",
   "engine_sha256": "731b02d31494bba394091fd84a16d7654b49ca42b55990c0dd8c7c7f0d637756",

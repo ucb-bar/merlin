@@ -122,18 +122,23 @@ is added.
 
 The accelerator side is now split into 31 exact kernel/source/origin classes.
 Static source, ABI, allocation, command-chain, and image-receipt agreement is
-proven for 302/391 partitions: 208 BF16 no-bias rank-2 matmuls, 17 F32 no-bias
-rank-2 matmuls, and 77 F32 bias-fused rank-2 matmuls. Their 947/1,250 conversion
-boundaries have concrete FP8/BF16 host conversion semantics, including scaled
-BF16 output publication. The 36 direct device requantizations whose producers
-are rejected batched partitions remain unqualified. Three real-shape software witnesses match independent
-oracles. These events remain physically non-executable unless their capture-bound
-RTL receipt exists, so physical coverage is unchanged at 3/391 and 12/1,250.
+proven for 390/391 partitions: 208 BF16 no-bias rank-2 matmuls, 17 F32 no-bias
+rank-2 matmuls, 77 F32 bias-fused rank-2 matmuls, 24 BF16 batched matmuls, and
+64 F32 batched matmuls. Their 1,247/1,250 conversion boundaries have concrete
+FP8/BF16 host conversion semantics, including all 88 direct device
+requantizations and scaled BF16 output publication. Five real-shape software
+witnesses match independent oracles. These events remain physically
+non-executable unless their capture-bound RTL receipt exists, so physical
+coverage is unchanged at 3/391 and 12/1,250.
 
-The other 89 static contracts fail closed: one patch convolution needs im2col
-preprocessing outside its image, while all 88 batched buffers pack `W` into a
-resident handle but execute from raw `W`. The latter is a concrete command
-dependency defect, not missing model parallelism or a calibration guess.
+The batched command defect is repaired fail-closed: each buffer now records
+`RES_PACK W -> W_resident`, consumes `W_resident` in `BATCHED_MATMUL`, and
+evicts the handle. Mutating the consumer back to raw `W` or deleting the evict
+is rejected. Fresh assertion-enabled GSIM preserves the exact
+`15x50x64x113` result at 4,114,764 cycles with 0/84,750 mismatches; this is a
+shape-level control, not physical capture qualification. The sole remaining
+static rejection is the patch convolution whose im2col preprocessing is
+outside its image.
 
 The deterministic full-capture planner identifies 391 structural contraction
 partitions, 28 kernel variants, 88 direct accelerator dependencies, and 303
@@ -283,7 +288,8 @@ The 28 unique contraction programs do not fit one resident image. A real
 end-to-end SmolVLA result still requires:
 
 1. capture-specific calibration and numeric qualification for the remaining 388
-   accelerator partitions and their 1,238 conversion events;
+   accelerator partitions and their 1,238 physically unqualified conversion
+   events; the static conversion contracts now cover 1,247/1,250 boundaries;
 2. a physical runtime for the already ordered 6,104 host, bridge, conversion,
    and device events, including binding the interval-planned device arena;
 3. one fresh full-input execution and source-model output comparison.

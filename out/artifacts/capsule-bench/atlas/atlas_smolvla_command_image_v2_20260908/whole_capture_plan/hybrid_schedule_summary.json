@@ -70,7 +70,7 @@
         "source_semantic": "addmm"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 12,
         "count": 12,
         "input_origins": [
           "accelerator_partition",
@@ -95,7 +95,7 @@
         "source_semantic": "batch_matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 12,
         "count": 12,
         "input_origins": [
           "host_region",
@@ -301,7 +301,7 @@
         "source_semantic": "matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 16,
         "count": 16,
         "input_origins": [
           "host_region",
@@ -330,7 +330,7 @@
         "source_semantic": "batch_matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 16,
         "count": 16,
         "input_origins": [
           "host_region",
@@ -565,7 +565,7 @@
         "source_semantic": "matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 8,
         "count": 8,
         "input_origins": [
           "host_region",
@@ -586,7 +586,7 @@
         "source_semantic": "batch_matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 8,
         "count": 8,
         "input_origins": [
           "host_region",
@@ -731,7 +731,7 @@
         "source_semantic": "matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 8,
         "count": 8,
         "input_origins": [
           "host_region",
@@ -752,7 +752,7 @@
         "source_semantic": "batch_matmul"
       },
       {
-        "contract_qualified": 0,
+        "contract_qualified": 8,
         "count": 8,
         "input_origins": [
           "host_region",
@@ -810,13 +810,13 @@
       }
     ],
     "contract_qualified_by_kind": {
-      "matmul": 302
+      "matmul": 302,
+      "matmul_batched": 88
     },
-    "contract_qualified_partitions": 302,
-    "contract_unqualified_partitions": 89,
+    "contract_qualified_partitions": 390,
+    "contract_unqualified_partitions": 1,
     "exact_class_count": 31,
     "rejections_by_reason": {
-      "batched command consumes raw W after declaring an unused resident pack": 88,
       "rank-2 source requires capture-specific preprocessing outside the command": 1
     },
     "schema": "atlas_accelerator_contract_census_v1"
@@ -826,20 +826,21 @@
       "bias_fused": false,
       "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
       "class_partition_count": 208,
-      "command_contract_sha256": "37e1159130f95a13c9ae320590e1c9d3dd03c4144960c34b5488fb2249d96b11",
+      "command_contract_sha256": "08def99d8705f29e0a896eb7c4f8c2e58a08fccd604acb7466f7727ac5563430",
       "conversion_preload_bytes": 266400,
       "geometry": {
         "K": 720,
         "M": 50,
         "N": 320
       },
+      "kind": "matmul",
       "label": "rank2_bf16_no_bias",
       "oracle_sha256": "dc8b6074df1209ec53a5c1ab05bc94de679f2c637ae8968f9c6c72756f52afee",
       "output_sha256": "dc8b6074df1209ec53a5c1ab05bc94de679f2c637ae8968f9c6c72756f52afee",
       "published_capture_sha256": "fb580fafbb4ae41fb7dd74805c50f4700fab7e557227b5ba4a4cc9ea52c966c7",
       "published_oracle_sha256": "fb580fafbb4ae41fb7dd74805c50f4700fab7e557227b5ba4a4cc9ea52c966c7",
       "representative_partition_id": "atlas_p0247",
-      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "schema": "atlas_real_shape_command_contract_witness_v2",
       "source_dtype": "bf16",
       "status": "fresh_device_domain_execution_matches_independent_oracle"
     },
@@ -847,20 +848,21 @@
       "bias_fused": false,
       "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
       "class_partition_count": 17,
-      "command_contract_sha256": "5a1ba037dd36c5a7790525c751929b237395815e85832dda8d4511aaebbc4b32",
+      "command_contract_sha256": "3011059b71a82403c25f6d117509dd7050f2bb8f03948c3e080d9b2670db2365",
       "conversion_preload_bytes": 138560,
       "geometry": {
         "K": 320,
         "M": 113,
         "N": 320
       },
+      "kind": "matmul",
       "label": "rank2_f32_no_bias",
       "oracle_sha256": "2fea2d24bd1afc4d5d9e3a47f4272da88780c02ab35c2ee17f8f9f5f3e052a65",
       "output_sha256": "2fea2d24bd1afc4d5d9e3a47f4272da88780c02ab35c2ee17f8f9f5f3e052a65",
       "published_capture_sha256": "d8edb5967f4cfb4036188e7e92fb302b2788b68acce311bf9e53a6f676137852",
       "published_oracle_sha256": "d8edb5967f4cfb4036188e7e92fb302b2788b68acce311bf9e53a6f676137852",
       "representative_partition_id": "atlas_p0256",
-      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "schema": "atlas_real_shape_command_contract_witness_v2",
       "source_dtype": "f32",
       "status": "fresh_device_domain_execution_matches_independent_oracle"
     },
@@ -868,20 +870,67 @@
       "bias_fused": true,
       "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
       "class_partition_count": 77,
-      "command_contract_sha256": "103ad7fe41890fc92e1d06cac9626d4ee8d4c58f9f570918ea2d9e6571424798",
+      "command_contract_sha256": "df34c995fd59743b15b222e712520c7786e208246541039441eb9908a17355d0",
       "conversion_preload_bytes": 32672,
       "geometry": {
         "K": 32,
         "M": 1,
         "N": 960
       },
+      "kind": "matmul",
       "label": "rank2_f32_bias",
       "oracle_sha256": "e8e0feed116fb1055bb89ab076ee693e967f2c754697b8f1e6faf1b4adfb33ca",
       "output_sha256": "e8e0feed116fb1055bb89ab076ee693e967f2c754697b8f1e6faf1b4adfb33ca",
       "published_capture_sha256": "9cca3612ab40e07d4fe8d32af9954bafa41e2bc4dbc09ac6d7403ad9b9b3a652",
       "published_oracle_sha256": "9cca3612ab40e07d4fe8d32af9954bafa41e2bc4dbc09ac6d7403ad9b9b3a652",
       "representative_partition_id": "atlas_p0098",
-      "schema": "atlas_real_shape_rank2_command_contract_witness_v1",
+      "schema": "atlas_real_shape_command_contract_witness_v2",
+      "source_dtype": "f32",
+      "status": "fresh_device_domain_execution_matches_independent_oracle"
+    },
+    {
+      "bias_fused": false,
+      "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
+      "class_partition_count": 24,
+      "command_contract_sha256": "39d873af3c90e01fc022d5493f81d17d967dd68e205fd86f3c21d205e46d9bcb",
+      "conversion_preload_bytes": 278730,
+      "geometry": {
+        "B": 15,
+        "K": 163,
+        "M": 50,
+        "N": 64
+      },
+      "kind": "matmul_batched",
+      "label": "batched_bf16_no_bias",
+      "oracle_sha256": "813f61e17e55e3d226fb195927a3a3445c7a9022e2e55058b14fa6b5ef6133e9",
+      "output_sha256": "813f61e17e55e3d226fb195927a3a3445c7a9022e2e55058b14fa6b5ef6133e9",
+      "published_capture_sha256": "49a22cfd92256af66bddbc01d1e0f4b4dcdb4fc44f8af47390cbd5d5f669d558",
+      "published_oracle_sha256": "49a22cfd92256af66bddbc01d1e0f4b4dcdb4fc44f8af47390cbd5d5f669d558",
+      "representative_partition_id": "atlas_p0250",
+      "schema": "atlas_real_shape_command_contract_witness_v2",
+      "source_dtype": "bf16",
+      "status": "fresh_device_domain_execution_matches_independent_oracle"
+    },
+    {
+      "bias_fused": false,
+      "claim": "static command-contract and host conversion evidence only; encoded image, physical partition, DMA/event runtime, and E2E are not qualified",
+      "class_partition_count": 64,
+      "command_contract_sha256": "eecc3f8a47a2edf09f9138aa90f28208666779c707518ad27240ea0319037301",
+      "conversion_preload_bytes": 193230,
+      "geometry": {
+        "B": 15,
+        "K": 113,
+        "M": 50,
+        "N": 64
+      },
+      "kind": "matmul_batched",
+      "label": "batched_f32_no_bias",
+      "oracle_sha256": "9a6f027d00f3ee557bb9f203062d4b304b729d26447875f51d5a332345bcbe3e",
+      "output_sha256": "9a6f027d00f3ee557bb9f203062d4b304b729d26447875f51d5a332345bcbe3e",
+      "published_capture_sha256": "28d83c32fae5b1b33abe4a2b6852de5d2b4dd5aaa233f9379238c9f21bebe977",
+      "published_oracle_sha256": "28d83c32fae5b1b33abe4a2b6852de5d2b4dd5aaa233f9379238c9f21bebe977",
+      "representative_partition_id": "atlas_p0259",
+      "schema": "atlas_real_shape_command_contract_witness_v2",
       "source_dtype": "f32",
       "status": "fresh_device_domain_execution_matches_independent_oracle"
     }
@@ -969,7 +1018,7 @@
     },
     "count": 1250,
     "qualified": 12,
-    "semantics_qualified": 947
+    "semantics_qualified": 1247
   },
   "coverage": {
     "host_materialized_layout_bridges": 358,
@@ -1026,7 +1075,7 @@
     "qualified_accelerator_partitions": 3,
     "qualified_layout_bridges": 2033,
     "semantic_host_required_regions": 2430,
-    "static_command_contract_partitions_qualified": 302,
+    "static_command_contract_partitions_qualified": 390,
     "strided_broadcast_bridges": 246,
     "structural_accelerator_partitions": 391
   },
@@ -1046,7 +1095,7 @@
     "missing_host_semantics": 0,
     "missing_host_semantics_by_semantic": {},
     "missing_physical_event_runtime": 1,
-    "unqualified_accelerator_command_contracts": 89,
+    "unqualified_accelerator_command_contracts": 1,
     "unqualified_accelerator_partitions": 388,
     "unrealized_layout_bridges": 0
   },
@@ -1162,7 +1211,7 @@
   ],
   "full_schedule": {
     "path": "whole_capture_plan/hybrid_schedule.json",
-    "sha256": "799e0edf181ce20ec25f89a45c34fb515f48aee33a8e205ef4882bfe2aa633e3"
+    "sha256": "d70d61f26de5b778a95ce05efcf5042223c4405007a47a6e5cb8118b1a1f6790"
   },
   "generic_host_chain": {
     "claim": "host semantic execution only; no device execution and not whole-model E2E",

@@ -844,7 +844,7 @@
       "assembly_sha256": "5d51c494ed5f5bc8745f8a71c5b473802f458959a83f0f8c9512e33ce21ac40d",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_12_1024_1024_64.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 12,
@@ -868,7 +868,7 @@
       "assembly_sha256": "cec511f8112a1a04cdc0fb19a913b1b385a2f686a401490bcc8b1a4632a05524",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_12_1024_64_1024.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 12,
@@ -892,7 +892,7 @@
       "assembly_sha256": "892eb681643ca8e73ca183b88537b77033498197afbfe2c8ec90f42c34727cdf",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_113_113_64.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -916,7 +916,7 @@
       "assembly_sha256": "43135952f69fb0fd7f1c75175b7fcb6f9381fd4c7994d5ea5da78c79cf443c09",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_113_64_113.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -940,7 +940,7 @@
       "assembly_sha256": "f09b7643b113a538d7ab316350bcf4e33353c1e87ec56092e9f15ee942db04b9",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_50_113_64.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -964,7 +964,7 @@
       "assembly_sha256": "5b62316187378b14563a318818feb9a4907a5f9f4bdaa087a7210126ba282f22",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_50_163_64.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -988,7 +988,7 @@
       "assembly_sha256": "c71e314b8064a59a6841e21250fc49ad82b3ec9bff774fde39982302ab388e16",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_50_64_113.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -1012,7 +1012,7 @@
       "assembly_sha256": "3f2beb5c5fe60b15e79e9330ec89a25615500b750ffdbcd539ecf6856406de07",
       "bias_fused": false,
       "command_buffer": "whole_capture_plan/command_buffers/matmul_batched_15_50_64_163.json",
-      "command_count": 2,
+      "command_count": 3,
       "fits_imem": true,
       "geometry": {
         "B": 15,
@@ -4481,7 +4481,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -4615,7 +4615,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -5475,7 +5475,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -5609,7 +5609,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -6469,7 +6469,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -6603,7 +6603,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -7463,7 +7463,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -7597,7 +7597,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -8457,7 +8457,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -8591,7 +8591,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -9451,7 +9451,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -9585,7 +9585,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -10445,7 +10445,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -10579,7 +10579,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -11439,7 +11439,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -11573,7 +11573,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -12433,7 +12433,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -12567,7 +12567,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -13427,7 +13427,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -13561,7 +13561,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -14421,7 +14421,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -14555,7 +14555,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -15415,7 +15415,7 @@
         "N": 1024
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -15549,7 +15549,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 5718,
@@ -16586,7 +16586,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -16724,7 +16724,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -17578,7 +17578,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -17716,7 +17716,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -18570,7 +18570,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -18708,7 +18708,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -19562,7 +19562,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -19700,7 +19700,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -20554,7 +20554,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -20692,7 +20692,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -21546,7 +21546,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -21684,7 +21684,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -22538,7 +22538,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -22676,7 +22676,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -23530,7 +23530,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -23668,7 +23668,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -24522,7 +24522,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -24660,7 +24660,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -25514,7 +25514,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -25652,7 +25652,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -26506,7 +26506,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -26644,7 +26644,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -27498,7 +27498,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -27636,7 +27636,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -28490,7 +28490,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -28628,7 +28628,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -29482,7 +29482,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -29620,7 +29620,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -30474,7 +30474,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -30612,7 +30612,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -31466,7 +31466,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32274,
@@ -31604,7 +31604,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21408,
@@ -32806,7 +32806,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -32944,7 +32944,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -33848,7 +33848,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -34003,7 +34003,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -34837,7 +34837,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -34975,7 +34975,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -35879,7 +35879,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -36034,7 +36034,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -36868,7 +36868,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -37006,7 +37006,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -37910,7 +37910,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -38065,7 +38065,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -38899,7 +38899,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -39037,7 +39037,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -39941,7 +39941,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -40096,7 +40096,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -40930,7 +40930,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -41068,7 +41068,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -41972,7 +41972,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -42127,7 +42127,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -42961,7 +42961,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -43099,7 +43099,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -44003,7 +44003,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -44158,7 +44158,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -44992,7 +44992,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -45130,7 +45130,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -46034,7 +46034,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -46189,7 +46189,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
@@ -47023,7 +47023,7 @@
         "N": 163
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 26326,
@@ -47161,7 +47161,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 18540,
@@ -48065,7 +48065,7 @@
         "N": 113
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 32458,
@@ -48220,7 +48220,7 @@
         "N": 64
       },
       "image": {
-        "command_count": 2,
+        "command_count": 3,
         "fits_imem": true,
         "imem_words": 32768,
         "instruction_words": 21764,
