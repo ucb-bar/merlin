@@ -72,6 +72,63 @@ def _cat(name: str):
         return FailureCategory.RUNNER_CRASH
 
 
+def validate_interface_tensor_dtypes(cb: dict, interface_mlir: str) -> None:
+    """Require the command buffer to preserve every interface tensor's logical dtype.
+
+    ``physical`` describes how bytes of the *same logical tensor* are laid out for readback.  It is
+    not permission to narrow an interface result and let the oracle decode fewer bytes.  Without this
+    binding check a backend can, for example, replace an ``f32`` result with ``bf16`` storage, attach
+    an ignored ``logical_dtype`` hint, and have the independent oracle compare numerically equal BF16
+    values instead of verifying the declared 32-bit ABI.
+
+    Dtype aliases are resolved through the shared format registry, so MLIR spellings such as
+    ``f8E4M3FN`` remain equivalent to the command-buffer spelling ``fp8_e4m3``.  Plain machine types
+    (for example ``i32``/``int32``) are compared by signedness family and width.  Non-``merlin_iface``
+    inputs are left to their own frontend contract.
+    """
+    if "merlin_iface." not in interface_mlir:
+        return
+
+    from merlin.common import quant_formats as qf
+    from .contract.interface_emit import InterfaceGrammarError, parse_interface_mlir
+
+    try:
+        declared = parse_interface_mlir(interface_mlir)
+    except InterfaceGrammarError as exc:
+        raise schemas.ContractViolation(
+            f"cannot bind command-buffer tensors to the interface: {exc}") from exc
+
+    def identity(token: object) -> tuple[str, object]:
+        key = str(token)
+        if key.startswith("torch."):
+            key = key[len("torch."):]
+        if qf.has(key):
+            return "format", qf.get(key).name
+        bits = qf.machine_bits(key)
+        if bits is None:
+            return "opaque", key
+        for prefix, family in (("float", "float"), ("uint", "uint"), ("int", "int"),
+                               ("f", "float"), ("u", "uint"), ("i", "int")):
+            if key.startswith(prefix) and key[len(prefix):].isdigit():
+                return family, bits
+        return "opaque", key
+
+    emitted = cb.get("tensors") or {}
+    problems: list[str] = []
+    for name, expected in declared.get("tensors", {}).items():
+        actual = emitted.get(name)
+        if not isinstance(actual, dict):
+            continue
+        want, got = expected.get("dtype"), actual.get("dtype")
+        if identity(want) != identity(got):
+            problems.append(
+                f"tensor {name!r} changes logical dtype from interface {want!r} to "
+                f"command buffer {got!r}")
+    if problems:
+        raise schemas.ContractViolation(
+            "command-buffer/interface ABI mismatch: " + "; ".join(problems))
+
+
 def load_capsule(capsule_dir: str | Path, *, contract: str | Path | None = None) -> dict:
     """Load + validate a capsule.yaml; stamp its directory for interface-MLIR resolution."""
     d = Path(capsule_dir)
@@ -245,6 +302,7 @@ def run_entrypoints(pkg, package_dir: str | Path, capsule: dict, paths, *,
     try:
         cb = json.loads(cb_path.read_text(encoding="utf-8"))
         schemas.validate_command_buffer(cb, contract=contract)
+        validate_interface_tensor_dtypes(cb, inp.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, schemas.ContractViolation) as e:
         raise CertFailure("command_buffer_schema", _cat("PROTOCOL_VIOLATION"),
                           f"command_buffer.json invalid: {e}") from e

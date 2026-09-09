@@ -663,6 +663,11 @@ def certify(package_dir: str | Path, interface_mlir: str | Path, *, runs_root: s
         try:
             cb = json.loads(cb_path.read_text(encoding="utf-8"))
             schemas.validate_command_buffer(cb, contract=contract)
+            # Schema validity alone does not bind this artifact back to the input program.  In
+            # particular, a backend must not narrow an interface output and ask the oracle to decode
+            # the smaller container.  Import locally to avoid the capsule-common/runner module cycle.
+            from .capsule_common import validate_interface_tensor_dtypes
+            validate_interface_tensor_dtypes(cb, inp.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, schemas.ContractViolation) as e:
             raise CertFailure("abi_schema", FailureCategory.PROTOCOL_VIOLATION,
                               f"command_buffer.json invalid: {e}") from e
