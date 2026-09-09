@@ -636,6 +636,120 @@ def _linear_subgraph(model):
 _TORCH_TO_NP = {}  # filled after torch import
 
 
+def _state_key_score(captured_key: str, live_key: str) -> tuple[int, int, int, int]:
+    """Structural similarity for two parameter paths, independent of any model vocabulary.
+
+    Shape and dtype are checked by the caller.  Here, an uninterrupted suffix carries the most
+    evidence (``layers.7.mlp.down_proj.weight``), followed by ordered-token overlap, token-set
+    overlap, and finally path-length similarity.  Numeric layer tokens therefore distinguish the
+    many same-shaped tensors in a transformer without teaching this infrastructure any architecture
+    or framework-specific rename.
+    """
+    left, right = captured_key.split("."), live_key.split(".")
+    suffix = 0
+    for a, b in zip(reversed(left), reversed(right)):
+        if a != b:
+            break
+        suffix += 1
+
+    # Longest common token subsequence. State paths are short, so the simple dynamic program keeps
+    # this audit-friendly and avoids a dependency in the foreign ExecuTorch venv.
+    row = [0] * (len(right) + 1)
+    for a in left:
+        previous = row[:]
+        for j, b in enumerate(right, 1):
+            row[j] = previous[j - 1] + 1 if a == b else max(previous[j], row[j - 1])
+    lcs = row[-1]
+    shared = len(set(left).intersection(right))
+    return suffix, lcs, shared, -abs(len(left) - len(right))
+
+
+def reconcile_captured_state_dict(captured_state, live_state):
+    """Return captured tensors keyed for ``live_state``, refusing every uncertain assignment.
+
+    Framework releases sometimes re-parent a module while preserving the graph and tensors. Exact
+    captured weights remain the right benchmark identity, but a plain strict load then rejects only
+    the renamed paths. This routine accepts such drift iff there is a complete, metadata-compatible
+    bijection and every structural match is the unique best choice in BOTH directions. It never
+    assigns by iteration order and never contains model-specific path rewrites.
+    """
+    captured_keys, live_keys = list(captured_state), list(live_state)
+    if len(captured_keys) != len(live_keys):
+        raise RuntimeError(
+            "captured/live state dictionaries do not form a bijection: "
+            f"{len(captured_keys)} captured tensors vs {len(live_keys)} live tensors")
+
+    def metadata(tensor):
+        return tuple(int(x) for x in tensor.shape), str(tensor.dtype)
+
+    incompatible_exact = [
+        key for key in captured_keys
+        if key in live_state and metadata(captured_state[key]) != metadata(live_state[key])
+    ]
+    if incompatible_exact:
+        raise RuntimeError(
+            "captured/live state has exact-name tensors with incompatible shape or dtype: "
+            + ", ".join(incompatible_exact[:4]))
+
+    mapping = {key: key for key in captured_keys if key in live_state}
+    captured_left = [key for key in captured_keys if key not in mapping]
+    live_left = [key for key in live_keys if key not in mapping.values()]
+    if not captured_left:
+        return dict(captured_state), f"captured state matched exactly ({len(mapping)}/{len(mapping)})"
+
+    candidates = {
+        old: [new for new in live_left
+              if metadata(captured_state[old]) == metadata(live_state[new])]
+        for old in captured_left
+    }
+    missing = [old for old, choices in candidates.items() if not choices]
+    if missing:
+        raise RuntimeError("no shape/dtype-compatible live tensor for captured state key(s): "
+                           + ", ".join(missing[:4]))
+
+    scored = {
+        old: {new: _state_key_score(old, new) for new in choices}
+        for old, choices in candidates.items()
+    }
+    proposed = {}
+    for old, choices in scored.items():
+        best_score = max(choices.values())
+        best = [new for new, score in choices.items() if score == best_score]
+        # A two-token common suffix is the smallest useful identity: e.g. lm_head.weight. A lone
+        # "weight" shared by arbitrary modules is not evidence and must remain a hard failure.
+        if len(best) != 1 or best_score[0] < 2:
+            raise RuntimeError(
+                f"ambiguous or low-confidence captured state mapping for {old!r}: "
+                f"best score {best_score}, candidates {best[:4]}")
+        proposed[old] = best[0]
+
+    if len(set(proposed.values())) != len(proposed):
+        raise RuntimeError("captured/live state mapping is not a bijection (live-key collision)")
+
+    # Reciprocal uniqueness prevents a locally attractive greedy match from stealing a live tensor
+    # that is structurally a better fit for another captured tensor of the same shape.
+    for old, new in proposed.items():
+        reverse = {
+            candidate: _state_key_score(candidate, new)
+            for candidate in captured_left
+            if metadata(captured_state[candidate]) == metadata(live_state[new])
+        }
+        best_score = max(reverse.values())
+        best = [candidate for candidate, score in reverse.items() if score == best_score]
+        if best != [old]:
+            raise RuntimeError(
+                f"ambiguous reciprocal captured state mapping for {new!r}: candidates {best[:4]}")
+    mapping.update(proposed)
+    if set(mapping.values()) != set(live_keys):
+        raise RuntimeError("captured/live state mapping did not produce a complete bijection")
+
+    remapped = {live: captured_state[old] for live in live_keys
+                for old in (next(k for k, v in mapping.items() if v == live),)}
+    return remapped, (
+        f"captured state structurally remapped {len(proposed)}/{len(captured_keys)} tensor keys "
+        "through a unique shape/dtype/path bijection")
+
+
 def _int8_whole_model_bias_preserving(model):
     """Whole-model weight-only int8 (per-channel) that PRESERVES nn.Linear bias.
 
@@ -703,6 +817,9 @@ def main() -> int:
     ap.add_argument("--loader", required=True, help="path to model2MLIR workloads/<model>/loader.py")
     ap.add_argument("--inputs-npz", required=True, help="captured inputs.npz (seeds the golden)")
     ap.add_argument("--golden-npy", required=True, help="captured golden.npy (reference output)")
+    ap.add_argument("--captured-weights", default=None,
+                    help="optional bundle weights.safetensors to load strictly into the live model "
+                         "before export; mismatched state identity refuses the run")
     ap.add_argument("--compute-golden", action="store_true",
                     help="compute the reference by running the eager torch model on the captured "
                          "input (writes it to --golden-npy). Use when the captured golden was made "
@@ -718,15 +835,14 @@ def main() -> int:
                          "--compute-golden (gate = eager-vs-ExecuTorch for THIS config). NOTE: this "
                          "is IGNORED when --int8-whole-model is also set (that path is a module "
                          "swap, not PT2E) — pass --qd8 with --quantize and WITHOUT "
-                         "--int8-whole-model to get the arithmetic merlin's int8 actually runs.")
+                         "--int8-whole-model to reach XNNPACK's dynamic-W8A8 deployment path.")
     ap.add_argument("--qd8", action="store_true",
                     help="with --quantize: use per-channel weights + DYNAMIC per-row activation "
                          "quantization (XNNPACK qd8) instead of the default static per-tensor qs8. "
-                         "This is the mirror of merlin's own int8 datapath (passes_quant_int: each "
-                         "activation dynamically quantized to i8, symmetric, per output row, against "
-                         "per-channel weight scales) and of the qd8 expert fixture the beam is "
-                         "taught from, so an ours-vs-ExecuTorch int8 ratio compares two runs of the "
-                         "same arithmetic rather than two different quantization schemes.")
+                         "This is the same dynamic-W8A8 deployment class and expert-kernel family "
+                         "used to guide Merlin, but its affine activation qparams differ from "
+                         "Merlin's symmetric TorchAO recipe. Compare whole-system latency only "
+                         "after both outputs clear the same fp32 quality gate.")
     ap.add_argument("--m2m-root", default="/path/to/model2MLIR",
                     help="model2MLIR repo root (added to sys.path for its deps)")
     ap.add_argument("--int8-whole-model", action="store_true",
@@ -812,6 +928,21 @@ def main() -> int:
         if _b.is_floating_point() or _b.is_complex():
             _b.requires_grad_(False)
 
+    _captured_weight_note = ""
+    if args.captured_weights:
+        from safetensors.torch import load_file as _load_safetensors
+
+        _captured_state = _load_safetensors(args.captured_weights, device="cpu")
+        # The final strict load is the identity boundary. Reconciliation permits only a proven
+        # one-to-one namespace migration; a partial load would silently retain fresh parameters.
+        _captured_state, _reconcile_note = reconcile_captured_state_dict(
+            _captured_state, model.state_dict())
+        model.load_state_dict(_captured_state, strict=True)
+        _captured_weight_note = (
+            f"strictly replayed {len(_captured_state)} captured state tensors from "
+            f"{Path(args.captured_weights).name}; {_reconcile_note}")
+        print(f"[{args.model_name}] {_captured_weight_note}", file=sys.stderr)
+
     # PT2E emits quantized_decomposed ops that run OUTSIDE the delegate, and those kernels handle
     # no bfloat16. Scoped to the PT2E branch: --int8-whole-model is an eager module swap that emits
     # none of them, so its cells keep the exact arithmetic they were measured with.
@@ -830,8 +961,10 @@ def main() -> int:
         print(f"[{args.model_name}] {_arity_note}", file=sys.stderr)
 
     subgraph_note = ""
+    if _captured_weight_note:
+        subgraph_note = _captured_weight_note
     if _bf16_note:
-        subgraph_note = _bf16_note
+        subgraph_note = (subgraph_note + "; " if subgraph_note else "") + _bf16_note
     _shim_note = verify_shape_static_vision_patch(model, captured)
     if _shim_note:
         print(f"[{args.model_name}] {_shim_note}", file=sys.stderr)
@@ -899,10 +1032,12 @@ def main() -> int:
             # WHICH int8 this is, named rather than defaulted. `get_symmetric_quantization_config()`
             # with no arguments is STATIC PER-TENSOR qs8, which is not the datapath merlin runs and
             # therefore not a comparand for it: `llvmlower/passes_quant_int` dynamically quantizes
-            # each activation to i8, symmetric, PER OUTPUT ROW, against per-channel weight scales --
-            # i.e. qd8, the same family as the expert fixture the beam is taught from
-            # (merlin/tests/data/cca_asm/xnnpack_qd8_gemm_rvv.objdump). `--qd8` selects that mirror
-            # so an ours-vs-ExecuTorch int8 ratio compares two runs of the same arithmetic.
+            # each activation to i8, symmetric, PER OUTPUT ROW, against per-channel weight scales.
+            # XNNPACK qd8 is the same dynamic-W8A8 deployment family and uses the expert kernel
+            # fixture the beam is taught from, but its activation qparams are affine (-128/127,
+            # data-dependent zero point), not Merlin/TorchAO's symmetric (-127/127, zero point 0).
+            # A deployment latency comparison is valid only under a shared fp32 quality gate; an
+            # arithmetic-equivalence claim is not.
             qcfg = (get_symmetric_quantization_config(is_per_channel=True, is_dynamic=True)
                     if args.qd8 else get_symmetric_quantization_config())
             # Not a plain XNNPACKQuantizer: its transform_for_annotation retypes INTEGER scalar
@@ -923,9 +1058,9 @@ def main() -> int:
             # Which recipe produced these numbers, recorded WITH them. Two different int8 recipes
             # (weight-only module swap vs PT2E qd8 vs PT2E qs8) produce walls that are not
             # comparable to each other, and an unlabelled one gets compared anyway.
-            _pt2e_recipe = ("pt2e-qd8(symmetric, per-channel weights, DYNAMIC per-row activation "
-                            "quant -> XNNPACK qd8 int8 ukernels; mirrors merlin's "
-                            "passes_quant_int datapath)" if args.qd8 else
+            _pt2e_recipe = ("pt2e-qd8(affine, per-channel weights, DYNAMIC activation "
+                            "quant -> XNNPACK qd8 int8 ukernels; same deployment class but not "
+                            "the symmetric TorchAO arithmetic in Merlin passes_quant_int)" if args.qd8 else
                             "pt2e-qs8(symmetric, per-tensor, STATIC activation quant)")
             if args.qd8:
                 _pt2e_recipe += "; " + _nhwc_status

@@ -111,10 +111,11 @@ def build_xnn_object(cc: Path, cflags: list[str], n_sigs: int, work: Path) -> Pa
             f"XNNPACK RVV ukernel not found under {xnn_src} (set MERLIN_XNNPACK_REPO)")
     work.mkdir(parents=True, exist_ok=True)
 
-    # Per-signature alias wrappers: each numbered MLIR decl ``@merlin_xnn_gemm_f32_<i>`` forwards
-    # to the single shim entry ``merlin_xnn_gemm_f32``. They share the descriptor-unpacked ABI, so
-    # a thin pass-through is exact. Compiled in the SAME translation unit as the shim (appended)
-    # so the SpacemiT clang lays out the struct-return ABI identically to the model.ll caller.
+    # The model calls these per-signature aliases from separately compiled code. Capturing the
+    # caller return address here gives the resident-pack cache a stable per-CALLSITE identity even
+    # when two projections share a type or their temporary B buffers recycle the same heap address.
+    # Keep declarations deduplicated by signature: making hundreds of distinct external callees
+    # triggers a RISC-V register-scavenger failure in the current LLVM 23 backend on OpenVLA.
     aliases = []
     for i in range(n_sigs):
         aliases.append(
@@ -122,7 +123,8 @@ def build_xnn_object(cc: Path, cflags: list[str], n_sigs: int, work: Path) -> Pa
             "float*a0,float*a1,intptr_t a2,intptr_t a3,intptr_t a4,intptr_t a5,intptr_t a6,"
             "float*b0,float*b1,intptr_t b2,intptr_t b3,intptr_t b4,intptr_t b5,intptr_t b6,"
             "float*c0,float*c1,intptr_t c2,intptr_t c3,intptr_t c4,intptr_t c5,intptr_t c6)"
-            "{return merlin_xnn_gemm_f32(a0,a1,a2,a3,a4,a5,a6,b0,b1,b2,b3,b4,b5,b6,"
+            "{return merlin_xnn_gemm_f32_site((uintptr_t)__builtin_return_address(0),"
+            "a0,a1,a2,a3,a4,a5,a6,b0,b1,b2,b3,b4,b5,b6,"
             "c0,c1,c2,c3,c4,c5,c6);}")
 
     obj = work / "xnn_gemm_rvv.o"

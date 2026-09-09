@@ -3,10 +3,10 @@ pure-arith convert, so the generic carrying it stops being a scalar libm call si
 
 WHAT IT IS FOR, and why the size of it is not obvious from the op count.
 
-The int8 activation quantize (``passes_quant_int``, three separate construction sites, all emitting
-the identical five-op body) is::
+The int8 activation quantize (``passes_quant_int``, several construction sites, all emitting the
+same round/clamp/convert body after a separately materialized reciprocal) is::
 
-    %v = arith.divf   %x, %s                : f32
+    %v = arith.mulf   %x, %inverse_scale    : f32
     %r = math.roundeven %v                  : f32
     %a = arith.minimumf %r, %hi             : f32
     %b = arith.maximumf %a, %lo             : f32
@@ -66,9 +66,9 @@ operation, NOT affected by the dynamic rounding mode), `C` for the clamp the cha
     * `v` NaN: `arith.minimumf` is IEEE `minimum` and PROPAGATES NaN, so both forms would reach
       `fptosi(NaN)`, which is POISON in LLVM. They are therefore equivalent only for defined inputs,
       not observationally interchangeable after optimization. In particular, an all-zero activation
-      used to give `amax = 0`, `s = 0`, and `0/0 = NaN`. Scale construction now selects `s = 1`
-      for exactly that case; the matcher follows the tensor producer and accepts only that proved
-      guard (or a finite nonzero constant), refusing an unguarded dynamic divisor.
+      used to give `amax = 0`, `s = 0`, and `0/0 = NaN`. Scale construction now floors `s` to the
+      framework's positive epsilon; the matcher follows the tensor producer and accepts only that
+      proved floor (or a finite nonzero constant), refusing an unguarded dynamic divisor.
     * `v = +/-inf`: `re` fixes them, the clamp pins them to `hi`/`lo`. The rewrite clamps first and
       gets `hi`/`lo` directly. Same.
     * `|v| >= 2^23`: `v` is already integral, so `re(v) = v` and the clamp pins it to `hi`/`lo`. The
@@ -201,16 +201,16 @@ def _guarded_scale_value(value):
 
 
 def _is_zero_guarded_scale(value) -> bool:
-    """Whether ``value`` comes from the exact ``amax == 0 ? 1 : amax / C`` constructor."""
+    """Whether ``value`` comes from a proved-positive symmetric scale constructor."""
     selected = _guarded_scale_value(value)
     select = getattr(selected, "owner", None)
     if getattr(select, "name", None) != "arith.select":
         return False
     cond, when_zero, otherwise = select.operands
-    one = _const_float(when_zero)
+    fallback = _const_float(when_zero)
     false_owner = getattr(otherwise, "owner", None)
     cmp = getattr(cond, "owner", None)
-    if (one is None or one != one or one == 0.0
+    if (fallback is None or fallback != fallback or fallback <= 0.0
             or getattr(cmp, "name", None) != "arith.cmpf"):
         return False
     # Most constructors select the raw division. i-GELU retains its pre-existing positive epsilon
@@ -239,6 +239,28 @@ def _is_zero_guarded_scale(value) -> bool:
     lhs, rhs = cmp.operands
     return ((lhs is numerator and _const_float(rhs) == 0.0)
             or (rhs is numerator and _const_float(lhs) == 0.0))
+
+
+def _dynamic_scale_of_quant_input(value):
+    """Return the scale in ``x / scale`` or TorchAO's ``x * (1 / scale)`` spelling."""
+    owner = getattr(value, "owner", None)
+    if getattr(owner, "name", None) == "arith.divf":
+        return owner.operands[1]
+    if getattr(owner, "name", None) != "arith.mulf":
+        return None
+    for candidate in owner.operands:
+        reciprocal = getattr(candidate, "owner", None)
+        if getattr(reciprocal, "name", None) != "arith.divf":
+            # The efficient TorchAO form computes the reciprocal in a separate linalg.generic.
+            # Follow that one producer edge, then inspect its yielded scalar expression.
+            yielded = _guarded_scale_value(candidate)
+            reciprocal = getattr(yielded, "owner", None)
+        if getattr(reciprocal, "name", None) != "arith.divf":
+            continue
+        numerator, scale = reciprocal.operands
+        if _const_float(numerator) == 1.0:
+            return scale
+    return None
 
 
 def _int_range(int_type) -> tuple[int, int]:
@@ -287,12 +309,11 @@ def _match_chain(fptosi_op):
             # ``fptosi(NaN)``, which is poison, but the old scalar libm call happens to inhibit
             # vectorization while the inline form lets LLVM exploit that poison.  On K1 the latter
             # made TinyLlama's complete output canonical NaNs.  Preserve the observed program until
-            # Scale construction now defines the zero-amax case as one. Only rewrite when the
-            # divisor is a finite nonzero constant or comes from that exact guarded producer.
+            # Scale construction defines the zero-amax case with a positive floor. Only rewrite
+            # when the divisor is a finite nonzero constant or comes from that exact producer.
             rounded = owner.operands[0]
-            rounded_owner = getattr(rounded, "owner", None)
-            if getattr(rounded_owner, "name", None) == "arith.divf":
-                divisor_value = rounded_owner.operands[1]
+            divisor_value = _dynamic_scale_of_quant_input(rounded)
+            if divisor_value is not None:
                 divisor = _const_float(divisor_value)
                 if ((divisor is None or divisor != divisor or divisor == 0.0)
                         and not _is_zero_guarded_scale(divisor_value)):
@@ -428,7 +449,7 @@ def ensure_registered() -> str:
                 "non-integral bound, a one-sided clamp, a bound outside the destination integer "
                 "type, an unguarded dynamic or zero divisor, a shared intermediate and `fptoui`. "
                 "It follows an activation scale through one linalg producer edge only when that "
-                "producer yields the exact `amax == 0 ? 1 : amax / C` guard. This isolated "
+                "producer yields a proved-positive symmetric scale. This isolated "
                 "point intentionally does "
                 "NOT imply `vectorize_non_contraction_generics`: that broad schedule changed "
                 "TinyLlama's packed MR4/NR32 kernel from `lb + vwmacc.vx` to a broadcast-heavy "

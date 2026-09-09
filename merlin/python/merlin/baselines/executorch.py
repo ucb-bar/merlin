@@ -292,6 +292,7 @@ def _failure_summary(text: str, *, max_chars: int = 900) -> str:
 def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
                xnnpack: bool = True, quantize: bool = False, compute_golden: bool = False,
                int8_subgraph: bool = False, int8_whole_model: bool = False, qd8: bool = False,
+               replay_captured_weights: bool = False,
                extra_env: dict[str, str] | None = None, timeout: int = 3600,
                reuse_existing: bool = False) -> ExportResult:
     """Run the AOT export helper under the ET venv to produce ``model.pte`` (+ ``.ptd`` weights).
@@ -304,6 +305,9 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
     ``compute_golden``: recompute the reference from the eager torch model on the captured input
     (used for a layer-reduced fit-on-board config whose captured golden was made with the full
     model); the correctness gate then compares ExecuTorch vs eager-torch for THIS exact config.
+    ``replay_captured_weights``: strictly load the bundle's safetensors state into the live torch
+    model before export. This is the identity-matched path for random-init captures; any missing or
+    unexpected state key refuses the export instead of silently benchmarking a fresh instantiation.
     ``extra_env``: passed to the export subprocess (e.g. ``M2M_LLAMA_LAYERS`` for the reduced build).
     """
     try:
@@ -328,6 +332,13 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
            "--loader", str(loader.resolve()), "--inputs-npz", str(b.inputs.resolve()),
            "--golden-npy", str(golden), "--out", str(out), "--model-name", model,
            "--m2m-root", str(_bundle.model2mlir_root())]
+    captured_weights = None
+    if replay_captured_weights:
+        if not b.weights.is_file():
+            raise ExecuTorchError(
+                f"captured-weight replay requested but {b.weights} is absent")
+        captured_weights = b.weights.resolve()
+        cmd += ["--captured-weights", str(captured_weights)]
     if not xnnpack:
         cmd.append("--no-xnnpack")
     if quantize:
@@ -350,6 +361,8 @@ def export_pte(model: str, b: _bundle.CaptureBundle, work: Path, *,
         "loader": _file_identity(loader),
         "inputs": _file_identity(b.inputs),
         "capture_golden": _file_identity(b.golden),
+        "captured_weights": (_file_identity(captured_weights)
+                             if captured_weights is not None else None),
         "xnnpack": bool(xnnpack),
         "quantize": bool(quantize),
         "compute_golden": bool(compute_golden),
@@ -795,6 +808,38 @@ def _board_free_bytes() -> int | None:
     return None
 
 
+def _board_available_memory_bytes() -> int | None:
+    """Kernel-estimated RAM available to a new board process, or None if unreachable."""
+    try:
+        r = k1_exec.run(["cat", "/proc/meminfo"])
+        for line in r.stdout.splitlines():
+            field, _, rest = line.partition(":")
+            if field.strip() != "MemAvailable":
+                continue
+            value, _, unit = rest.strip().partition(" ")
+            return int(value) * (1024 if unit.strip().lower() == "kb" else 1)
+    except Exception:  # noqa: BLE001 - an unreachable board makes this optional probe unknown
+        pass
+    return None
+
+
+def _estimated_resident_bytes(exp: "ExportResult", *, mmap_model: bool) -> int:
+    """Conservative artifact-derived resident-set estimate for a board execution.
+
+    Non-mmap execution reads the program into a fully resident buffer. External constants and
+    captured inputs are conservatively counted in both modes. The runtime memory-plan arena is
+    additive. With mmap, program pages are demand-loaded, so charging the full .pte would recreate
+    the very false rejection mmap exists to avoid.
+    """
+    resident = 0 if mmap_model else exp.pte.stat().st_size
+    resident += sum(p.stat().st_size for p in exp.ptd_files if p.is_file())
+    resident += sum(p.stat().st_size for p in exp.input_files if p.is_file())
+    profile_summary = exp.summary.get("aot_profile", {}) if exp.summary else {}
+    if isinstance(profile_summary, dict):
+        resident += int(profile_summary.get("memory_plan_total_bytes") or 0)
+    return resident
+
+
 def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
                   *, num_executions: int = 1, timeout: int = 1200,
                   mmap_model: bool = False, etdump: bool = False,
@@ -823,6 +868,12 @@ def _run_on_board(res: BaselineResult, runner: Path, exp: "ExportResult",
             raise k1_exec.BoardUnavailable(
                 f"board rootfs has {free/1e9:.2f} GB free but the model needs {total/1e9:.2f} GB "
                 f"(shared board is disk-constrained; not filling it)")
+        available = _board_available_memory_bytes()
+        resident = _estimated_resident_bytes(exp, mmap_model=mmap_model)
+        if available is not None and available < resident + 256 * 1024 * 1024:
+            raise k1_exec.BoardUnavailable(
+                f"board has {available/1e9:.2f} GB available RAM but this exported artifact "
+                f"needs about {resident/1e9:.2f} GB resident plus 0.27 GB runtime headroom")
         # A whole-model .pte can be multi-GB; the default 300 s scp timeout truncates it (which then
         # fails on the board). Scale the timeout to the payload (~5 MB/s worst case over this link).
         def _push(p: Path, remote: str) -> str:
@@ -961,6 +1012,7 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
               xnnpack: bool = True, quantize: bool | None = None, compute_golden: bool = False,
               int8_subgraph: bool = False, int8_whole_model: bool | None = None, qd8: bool = False,
               full_fidelity: bool = True,
+              replay_captured_weights: bool = False,
               export_env: dict[str, str] | None = None,
               num_executions: int = 1, etdump: bool = False,
               cpu_threads: int | None = None,
@@ -981,9 +1033,10 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # int8 variant defaults to ExecuTorch's OFFICIAL whole-model llama recipe (source-transform
     # weight-only int8 per-channel) — the path that unblocks full-model int8 on HF Llama. Falls back
     # to the decoder-linear subgraph only if explicitly requested.
-    # WHICH int8 recipe. `qd8` selects PT2E dynamic per-row activation quant against per-channel
-    # weights -- XNNPACK's qd8 int8 ukernels, and the mirror of merlin's own datapath
-    # (llvmlower/passes_quant_int). It is NOT the default only because it is newer; the default
+    # WHICH int8 recipe. `qd8` selects PT2E dynamic affine activation quant against per-channel
+    # weights and reaches XNNPACK's qd8 int8 ukernels. It is the same deployment class as Merlin's
+    # dynamic W8A8 path, but NOT the same arithmetic: Merlin's captured TorchAO recipe is symmetric
+    # per token (zero point 0), while XNNPACK selects a data-dependent affine zero point. The default
     # below stays the weight-only module swap so existing cells keep their meaning.
     #
     # The distinction is not cosmetic. The weight-only recipe's dequant const-folds into an fp32
@@ -1031,7 +1084,8 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
     # re-instantiated export: gating against it measures weight provenance, not the framework. Recompute
     # the reference from THIS instance (as the int8 path already does) and LABEL the cell — the cos then
     # means lowering-exactness, never a semantic match. Non-random-init models are untouched.
-    lowering_exact_only = _bundle.golden_unreproducible(model) and not compute_golden
+    lowering_exact_only = (_bundle.golden_unreproducible(model) and not compute_golden
+                           and not replay_captured_weights)
     if lowering_exact_only:
         compute_golden = True
     res = BaselineResult(framework=FRAMEWORK, model=model, variant=variant,
@@ -1085,6 +1139,8 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
             xnnpack=xnnpack, quantize=quantize, compute_golden=compute_golden,
             int8_subgraph=int8_subgraph, int8_whole_model=int8_whole_model,
             qd8=qd8, extra_env=export_env)
+        if replay_captured_weights:
+            export_kwargs["replay_captured_weights"] = True
         if reuse_export:
             export_kwargs["reuse_existing"] = True
         exp = export_pte(model, b, work, **export_kwargs)
@@ -1097,6 +1153,8 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
             res.notes += " pt2e_w8a8=True"
         if compute_golden:
             res.notes += " golden=eager-torch(this-config)"
+        if replay_captured_weights:
+            res.notes += " weights=capture-bundle(strict-state-dict)"
         # WHICH reference the cos/rel below are against, derived from the golden path the scorer is
         # actually handed rather than from the flags that were requested. `export_pte` forces a
         # recompute on its own for the int8-subgraph / whole-model-int8 paths (executorch.py:282-285)
@@ -1165,17 +1223,9 @@ def run_model(model: str, variant: str = "fp32", *, work_root: Path | None = Non
         res.board_vlenb = k1_exec.board_vlenb()
         return _finish(res, model, variant, write)
 
-    # 4. K1 on-board run — the ONLY board-gated step. Fail-closed when the board is down / too full.
-    #    RAM-infeasible models (7B-class VLAs: openvla/molmoact/pi05) are BUILT (export succeeds) but
-    #    NOT run on-board — their fp32 embeddings alone exceed the 3.8 GB board. Honest not_run gap,
-    #    never a false fit. (The _run_on_board free-space guard also fail-closes if the .pte is too
-    #    big, but we short-circuit the known-infeasible set to avoid a pointless multi-GB transfer.)
-    if model in _bundle.K1_RAM_INFEASIBLE:
-        res.gap_reason = (f"{model} is RAM-infeasible whole-model on the K1 (3.8 GB board): a "
-                          "7B-class VLA whose fp32 embeddings/weights exceed board RAM even at int8. "
-                          "Exported + RVV-audited off-board; not run on-board (no false fit).")
-        res.board_vlenb = k1_exec.board_vlenb()
-        return _finish(res, model, variant, write)
+    # 4. K1 on-board run — the ONLY board-gated step. Feasibility belongs to this exported artifact,
+    #    not its registry name: reduced captures of otherwise huge models can be small and runnable.
+    #    _run_on_board checks the concrete payload, memory plan, current board RAM, and disk headroom.
     # Whole-model int8 is const-folded (dequant weights -> fp32 program constants), giving a
     # multi-GB .pte whose weight pages must demand-load; mmap it so the board's RAM ceiling is not
     # blown by a fully-resident read. The layer-reduced/subgraph paths have small .ptes -> no mmap.

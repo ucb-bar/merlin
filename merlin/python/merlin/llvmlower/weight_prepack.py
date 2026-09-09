@@ -49,7 +49,7 @@ FEATURE = "prepack_weight_layout"
 
 #: bump when the produced bundle's BYTES would change, so cached bundles from an older rewrite are
 #: not reused under the new semantics
-REWRITE_VERSION = "1"
+REWRITE_VERSION = "2"
 
 #: files whose content defines the rewrite's input; the cache key is (name, size, mtime_ns) of each
 _KEY_FILES = ("model.mlir", "weights.safetensors", "weights.safetensors.manifest.json")
@@ -92,19 +92,28 @@ def plan(src: Path | str, func_name: str = "forward") -> PrepackPlan:
     with IR_LOCK:
         report = weight_layout_report(mq.parse((src / "model.mlir").read_text()), func_name)
 
-    problems: list[str] = list(report.unpriceable)      # an unpriced re-layout is not a free one
     man = json.loads((src / "weights.safetensors.manifest.json").read_text())
+    weight_args = {int(k) for k, entry in man.items()
+                   if k.isdigit() and "weight" in entry}
+    # `weight_layout_report` deliberately knows only IR structure, so it also reports transposed
+    # runtime inputs.  At the bundle seam we can distinguish them: only manifest-declared weights
+    # are candidates for an offline storage rewrite.  A non-weight transpose stays in the graph; it
+    # is not a soundness failure for the weights that *can* be hoisted.
+    eligible = [r for r in report.hoistable if r.arg in weight_args]
+    problems: list[str] = [
+        problem for problem in report.unpriceable
+        if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
+    ]
     want: dict[str, int] = {}
-    for r in report.hoistable:
+    for r in eligible:
         entry = man.get(str(r.arg))
-        if entry is None or "weight" not in entry:
-            problems.append(f"arg {r.arg} is hoistable in the IR but names no weight in the manifest")
-            continue
+        assert entry is not None and "weight" in entry
         want[entry["weight"]] = r.arg
     if want:
-        problems.extend(hoist_safety_problems(src, man, want, {r.arg for r in report.hoistable}))
-    return PrepackPlan(bundle=src.name, hoistable=len(report.hoistable),
-                       blocked=len(report.blocked), bytes_per_inference=report.hoistable_bytes,
+        problems.extend(hoist_safety_problems(src, man, want, {r.arg for r in eligible}))
+    return PrepackPlan(bundle=src.name, hoistable=len(eligible),
+                       blocked=len(report.blocked) + len(report.hoistable) - len(eligible),
+                       bytes_per_inference=sum(r.bytes_moved for r in eligible),
                        problems=tuple(problems))
 
 

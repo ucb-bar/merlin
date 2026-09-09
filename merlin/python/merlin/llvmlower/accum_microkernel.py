@@ -55,6 +55,7 @@ from .parallel_grain import LATE_STAGE_SRC as _PARALLEL_GRAIN_LATE_SRC
 from .parallel_grain import RUNNER_PRELUDE as _PARALLEL_GRAIN_PRELUDE
 from .parallel_coarsen import RUNNER_PRELUDE as _PARALLEL_COARSEN_PRELUDE
 from .parallel_coarsen import STAGE_SRC as _PARALLEL_COARSEN_STAGE_SRC
+from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
 from .parallel_team import RUNNER_PRELUDE as _PARALLEL_TEAM_PRELUDE
 from .parallel_team import STAGE_SRC as _PARALLEL_TEAM_STAGE_SRC
 from .panel_parallel import MID_STAGE_SRC as _PANEL_PARALLEL_MID_SRC
@@ -63,6 +64,7 @@ from .selfcopy import RUNNER_PRELUDE as _SELFCOPY_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
+from .alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
 
 # Sentinel pass name spliced into the pipeline string by the feature's edit_pipeline to mark where
 # the A-scalarization rewrite runs (after contract->vector.fma lowering, before one-shot-bufferize).
@@ -421,6 +423,8 @@ def run_source(*, tag_bmm_tails: bool = False) -> str:
         + _PARALLEL_GRAIN_LATE_SRC
         + _PARALLEL_TEAM_STAGE_SRC
         + _PARALLEL_COARSEN_STAGE_SRC +
+        _ALLOCA_SCOPE_LOWER_PRELUDE +
+        _ROUND_INTRINSIC_PRELUDE +
         f"\nMARKER = {SCALARIZE_MARKER!r}\n"
         "src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]\n"
         "passes = pipeline.split(',')\n"

@@ -223,11 +223,16 @@ def test_the_lever_resolves_in_a_process_that_imports_no_proposer():
 
 
 def test_the_explicit_vectorized_variant_composes_both_features():
+    import inspect
+
     from merlin.llvmlower.impr_features import normalize
+    from merlin.runtime.backends import zephyr_model
 
     got = normalize({"fuse_quantize_round_convert_vec"})
     assert "fuse_quantize_round_convert" in got
     assert "vectorize_non_contraction_generics" in got
+    prep = inspect.getsource(zephyr_model.prepare_for_lowering)
+    assert "fuse_quant_round=_FUSE_QUANT_ROUND in _closed" in prep
 
 
 def test_it_is_ranked_so_the_search_can_reach_it():

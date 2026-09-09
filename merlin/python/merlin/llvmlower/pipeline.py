@@ -235,10 +235,9 @@ def _parallel_pipeline(features: "frozenset[str] | None" = None) -> str:
         "one-shot-bufferize{bufferize-function-boundaries function-boundary-type-conversion=identity-layout-map}",
         "buffer-results-to-out-params{modify-public-functions}",  # heap intermediates (K1)
         "__DEALLOC__",
-        # ``buffer-hoisting`` wraps moved allocations in ``memref.alloca_scope``.
-        # Lowering a surrounding forall/OpenMP region then makes that scope multi-block,
-        # which is verifier-invalid. Keep both hoisting stages on the serial path only.
-        *( ["func.func(buffer-hoisting,buffer-loop-hoisting)"] if not par else [] ),
+        # Do not run buffer-hoisting here: it wraps moved allocations in ``memref.alloca_scope``;
+        # lowering this pipeline's surrounding OpenMP region then makes that scope multi-block,
+        # which is verifier-invalid. The serial pipeline retains both hoisting stages.
         # parallel iterator dims -> scf.parallel; reduction dims stay scf.for (sequential).
         "func.func(convert-linalg-to-parallel-loops)",
         "convert-scf-to-openmp",          # scf.parallel -> omp.parallel{omp.wsloop}
@@ -814,6 +813,8 @@ from .transpose_fuse import RUNNER_PRELUDE as _TRANSPOSE_FUSE_PRELUDE
 from .transpose_maps import RUNNER_PRELUDE as _TRANSPOSE_MAPS_PRELUDE
 from .broadcast_fold import RUNNER_PRELUDE as _BROADCAST_FOLD_PRELUDE
 from .named_broadcast_fold import RUNNER_PRELUDE as _NAMED_BROADCAST_FOLD_PRELUDE
+from .alloca_scope_lower import RUNNER_PRELUDE as _ALLOCA_SCOPE_LOWER_PRELUDE
+from .roundeven_intrinsic import RUNNER_PRELUDE as _ROUND_INTRINSIC_PRELUDE
 
 # --- The use-after-free check that guards the sinking stage ---------------------------------
 #
@@ -1045,7 +1046,7 @@ import sys
 from torch_mlir import ir
 from torch_mlir.passmanager import PassManager
 from torch_mlir.dialects import llvm
-''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _BROADCAST_FOLD_PRELUDE + _NAMED_BROADCAST_FOLD_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PARALLEL_TEAM_PRELUDE + _PARALLEL_COARSEN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC + _PARALLEL_GRAIN_LATE_SRC + _PARALLEL_TEAM_STAGE_SRC + _PARALLEL_COARSEN_STAGE_SRC + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
+''' + _SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE + _TRANSPOSE_MAPS_PRELUDE + _BROADCAST_FOLD_PRELUDE + _NAMED_BROADCAST_FOLD_PRELUDE + _COPY_EXPAND_PRELUDE + _CONCAT_DPS_PRELUDE + _PARALLEL_GRAIN_PRELUDE + _PARALLEL_TEAM_PRELUDE + _PARALLEL_COARSEN_PRELUDE + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC + _PARALLEL_GRAIN_LATE_SRC + _PARALLEL_TEAM_STAGE_SRC + _PARALLEL_COARSEN_STAGE_SRC + _ALLOCA_SCOPE_LOWER_PRELUDE + _ROUND_INTRINSIC_PRELUDE + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 
 def _residual_vector_ops(module):
     """Return vector-dialect op names still present at the LLVM translation edge."""
@@ -1135,6 +1136,8 @@ _RUNNER_ACT_POLY_TAIL = (_SELFCOPY_PRELUDE + _TRANSPOSE_FUSE_PRELUDE
                          + _PANEL_PARALLEL_PRELUDE + _MID_STAGE_SRC + _PANEL_PARALLEL_MID_SRC
                          + _PARALLEL_GRAIN_LATE_SRC + _PARALLEL_TEAM_STAGE_SRC
                          + _PARALLEL_COARSEN_STAGE_SRC
+                         + _ALLOCA_SCOPE_LOWER_PRELUDE
+                         + _ROUND_INTRINSIC_PRELUDE
                          + DEALLOC_CHECK_PRELUDE + DEALLOC_CHECK_RUNNER + r'''
 src_path, out_path, pipeline = sys.argv[1], sys.argv[2], sys.argv[3]
 ctx = ir.Context()
@@ -1340,7 +1343,15 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # this module therefore need the same registration that lower.py performs before normalization.
     from .epilogue_fusion import ensure_registered as _register_epilogue_fusion
     _register_epilogue_fusion()
+    from .roundeven_intrinsic import ensure_registered as _register_roundeven_intrinsic
+    _register_roundeven_intrinsic()
+    from .quant_scope import ensure_registered as _register_quant_scope
+    _register_quant_scope()
     feats = normalize(features)
+    if {"lower_roundeven_to_intrinsic", "fuse_quantize_round_convert"} <= feats:
+        raise PipelineError(
+            "lower_roundeven_to_intrinsic and fuse_quantize_round_convert are alternative exact "
+            "lowerings of the same math.roundeven operation; select one")
     if parallel_harts is not None and not vectorize:
         raise PipelineError(
             "parallel_harts requires vectorize=True (it layers an outer forall UNDER the "
@@ -1480,6 +1491,11 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
     # argv[15] selects the after-schedule/pre-generalize named add/mul fold.
     from .named_broadcast_fold import FEATURE as _NAMED_BROADCAST_FOLD_FEATURE
     _named_broadcast_gate = "1" if _NAMED_BROADCAST_FOLD_FEATURE in feats else "0"
+    # Requant fusion can create tile-local accumulator scopes inside a parallel region. Lower their
+    # structured lifetime before SCF-to-CFG; after that point a scope contains multiple blocks and
+    # is verifier-invalid. The pair tags are the durable witness because the user-facing sentinel
+    # has already been consumed by per-op schedule derivation.
+    _alloca_scope_gate = "1" if omp and "merlin.rqfuse" in mlir_text else "0"
     # OpenMP transport: the runner DUMPS the LLVM-dialect module and the standalone
     # mlir-translate produces the .ll out-of-process (the in-process torch-mlir bridge
     # segfaults on omp IR). Otherwise the runner writes the .ll directly.
@@ -1488,7 +1504,7 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
         [str(m2m_python()), str(runner), str(src), str(stage_out), pipeline, _erase, _fuse_tb,
          _expand_copy, _fold_wt, _concat_dps_gate, _grain_gate, _panel_parallel_gate,
          _team_work_gate, _team_cap_gate, _coarsen_gate, _fold_broadcast_gate,
-         _named_broadcast_gate],
+         _named_broadcast_gate, _alloca_scope_gate],
         capture_output=True, text=True, timeout=timeout)
     if proc.returncode != 0 or not stage_out.is_file():
         raise PipelineError(f"upstream lowering failed:\n{proc.stdout}\n{proc.stderr}")
@@ -1504,6 +1520,13 @@ def lower_to_llvm_ir(mlir_text: str, workdir: str | Path | None = None,
         try:
             _named = _require_named_broadcast_report(proc.stdout, work)
             print(f"[named-broadcast-fold] {_named}")
+        except ValueError as exc:
+            raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
+    if _alloca_scope_gate == "1":
+        from .alloca_scope_lower import require_report as _require_alloca_scope_report
+        try:
+            _lowered_scopes = _require_alloca_scope_report(proc.stdout, work)
+            print(f"[alloca-scope] lowered {_lowered_scopes} structured scope(s) before CFG")
         except ValueError as exc:
             raise PipelineError(str(exc) + f"\n{proc.stdout}") from exc
     if _panel_parallel_gate == "1":

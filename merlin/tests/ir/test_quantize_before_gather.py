@@ -251,7 +251,7 @@ def test_pre_gather_scale_defines_the_all_zero_tensor(tmp_path):
     ]
     assert len(scales) == 1
     names = [op.name for op in scales[0].body.blocks[0].ops]
-    assert "arith.cmpf" in names and "arith.select" in names, names
+    assert "arith.maximumf" in names and "arith.cmpf" in names and "arith.select" in names, names
 
 
 def test_zero_pre_gather_activation_stays_finite_after_qround(tmp_path):

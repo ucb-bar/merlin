@@ -137,3 +137,49 @@ def test_reference_warm_slope_reuses_the_export(monkeypatch):
     assert result["ok"] is True
     assert len(calls) == 2
     assert all(call["reuse_export"] is True for call in calls)
+
+
+def _verdict_fixture(*, ours_bundle="fixture", ref_bundle="fixture",
+                     ref_recipe="pt2e_qd8", ref_accuracy="capture_golden_fp32"):
+    module = _module()
+    ours = {
+        "min_wall_ns": 90,
+        "gate": {"fp32_cos": 0.9999, "fp32_rel": 0.001},
+        "accuracy_reference_by_tier": {"fp32": "capture_golden_fp32"},
+    }
+    arm = {
+        "warm_ns": 100,
+        "runs": [{
+            "bundle_id": ref_bundle,
+            "quant_recipe": ref_recipe,
+            "accuracy_reference": ref_accuracy,
+            "cos": 0.9998,
+            "rel": 0.002,
+            "load_ns": 5,
+        }],
+    }
+    return module.verdict(ours, arm, ours_bundle)
+
+
+def test_deployment_comparison_refuses_a_bundle_mismatch_without_a_nested_number():
+    result = _verdict_fixture(ours_bundle="model_layout_rewrite", ref_bundle="other_model")
+    assert result["status"] == "not_comparable"
+    assert result["deployment_comparison"]["status"] == "not_comparable"
+    assert "speedup" not in result["deployment_comparison"]
+
+
+def test_deployment_comparison_allows_distinct_recipes_only_at_shared_fp32_quality():
+    result = _verdict_fixture()
+    assert result["status"] == "not_comparable"  # arithmetic recipes are distinct
+    assert "quant" in result["reason"].lower()
+    deployment = result["deployment_comparison"]
+    assert deployment["status"] == "measured"
+    assert deployment["beats_executorch"] is True
+    assert deployment["speedup"] == pytest.approx(100 / 90)
+
+
+def test_deployment_comparison_refuses_different_accuracy_references():
+    result = _verdict_fixture(ref_accuracy="some_other_golden")
+    assert result["status"] == "not_comparable"
+    assert result["deployment_comparison"]["status"] == "not_comparable"
+    assert "speedup" not in result["deployment_comparison"]

@@ -4,12 +4,12 @@
 Five things have to hold at once for an ours-vs-ExecuTorch int8 number to be citable, and every
 published ratio in this repo so far has broken at least one of them:
 
-1. **The same ARITHMETIC.** ``variant="int8"`` defaults to ExecuTorch's weight-only module swap,
+1. **Named ARITHMETIC.** ``variant="int8"`` defaults to ExecuTorch's weight-only module swap,
    whose dequant const-folds into an fp32 const weight that XNNPACK partitions as a normal fp32
    GEMM — so that cell measures fp32 compute with int8 *storage* and never reaches an int8 ukernel.
-   Merlin's int8 dynamically quantizes each activation to i8 (symmetric, per output row) against
-   per-channel weight scales, i.e. qd8. This script drives ExecuTorch with ``qd8=True`` so both
-   sides run the same scheme, and records ``quant_recipe`` on the result either way.
+   Merlin uses TorchAO's symmetric per-token recipe; XNNPACK qd8 uses affine activation qparams.
+   This script records both names and refuses to call them bit-identical. It separately reports a
+   whole-system comparison only when both clear the same absolute fp32 quality bar.
 
 2. **The same PROTOCOL.** ExecuTorch's runner has no warmup and averages its cold first execution
    into ``--num_executions``; merlin's certify path is min-of-n after warmup. On small_llama int8
@@ -332,7 +332,9 @@ def et_arm(model: str, *, qd8: bool, n_lo: int, n_hi: int,
 
 
 #: What OUR arm computes, always. Not a function of the reference.
-OURS_QUANT_RECIPE = "merlin_int8_w8a8"
+OURS_QUANT_RECIPE = "torchao_sym_per_token_w8a8"
+#: The reference kind used when the bundle actually provides an independent fp32 tier.
+OURS_ACCURACY_REFERENCE = "capture_golden_fp32"
 
 def ours_accuracy_reference(ours: dict) -> str:
     """Which reference OUR fp32-comparable score was actually taken against, or "" for none.
@@ -347,11 +349,13 @@ def ours_accuracy_reference(ours: dict) -> str:
     ours under a label claiming both were fp32. "" routes into the same UNKNOWN refusal the reference
     side already gets when it fails to record its own basis, which is the honest answer.
     """
-    return (ours.get("accuracy_reference_by_tier") or {}).get("fp32", "")
+    return (OURS_ACCURACY_REFERENCE
+            if (ours.get("accuracy_reference_by_tier") or {}).get("fp32")
+            else "")
 
 
 def same_rule_both_arms(ours: dict, arm: dict, ours_bundle: str) -> dict:
-    """Both arms' cos/rel under the SAME derived bar. Reporting only -- changes no verdict.
+    """Both arms' fp32 cos/rel under the same absolute int8 quality bar.
 
     The two arms are graded by DIFFERENT rules today, and the asymmetry favours the reference.
     ``baselines.bundle.int8_accuracy_bar`` derives a bar from the model's OWN quantization noise
@@ -368,29 +372,26 @@ def same_rule_both_arms(ours: dict, arm: dict, ours_bundle: str) -> dict:
     our stricter bar refused is exactly where the difference decides how the row reads.
     """
     try:
-        from merlin.baselines.bundle import int8_accuracy_bar as _bar
-        from merlin.common.artifacts import recaptures_dir
-        # `verdict` is handed the bundle NAME, not its path -- resolve it the same way the rest of
-        # the harness does rather than threading a second argument through.
-        b = _bar(recaptures_dir() / ours_bundle)
-        cos_thr, rel_thr = b.get("cos_threshold"), b.get("rel_threshold")
+        from merlin.baselines.bundle import FP32_TIER_MIN_COS
+        cos_thr, rel_thr = FP32_TIER_MIN_COS, None
         g = ours.get("gate") or {}
-        o_cos, o_rel = g.get("cos"), g.get("rel")
+        o_cos, o_rel = g.get("fp32_cos"), g.get("fp32_rel")
         runs = arm.get("runs") or []
         e_cos = next((r.get("cos") for r in runs if r.get("cos")), None)
         e_rel = next((r.get("rel") for r in runs if r.get("rel")), None)
 
         def _passes(c, r):
-            if c is None or r is None or cos_thr is None or rel_thr is None:
+            if c is None or cos_thr is None:
                 return None          # UNKNOWN, never a silent pass
-            return bool(c > cos_thr and r < rel_thr)
+            return bool(c > cos_thr)
 
-        return {"basis": b.get("basis"), "cos_threshold": cos_thr, "rel_threshold": rel_thr,
+        return {"basis": "absolute shared fp32 int8 quality gate",
+                "cos_threshold": cos_thr, "rel_threshold": rel_thr,
                 "ours": {"cos": o_cos, "rel": o_rel, "passes": _passes(o_cos, o_rel)},
                 "executorch": {"cos": e_cos, "rel": e_rel, "passes": _passes(e_cos, e_rel)},
-                "note": ("the derived bar the reference arm is already judged by, applied to BOTH "
-                         "arms. Reporting only: the cell's verdict remains the gate's own, and our "
-                         "T1 asks a tighter question than this bar does.")}
+                "note": ("same fp32 reference kind and cosine threshold on both arms; relative "
+                         "L2 is reported but not gated because the established int8 T2 contract "
+                         "is cosine-based (decision/top-1 checks remain model-specific)")}
     except Exception as exc:        # noqa: BLE001
         return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:200]}"}
 
@@ -411,23 +412,53 @@ def verdict(ours: dict, arm: dict, ours_bundle: str) -> dict:
                 "ours_ungated_wall_ns": ours.get("min_ungated_wall_ns")}
     ref_bundle = next((r.get("bundle_id", "") for r in arm["runs"] if r.get("bundle_id")), "")
     ref_recipe = next((r.get("quant_recipe", "") for r in arm["runs"] if r.get("quant_recipe")), "")
-    # Ours is the merlin int8 datapath by construction (the package is int8) and its recipe name is
-    # a CONSTANT -- never derived from what the reference ran. Deriving it from the comparand is how
-    # a guard ends up comparing the reference against itself: the qd8 arm passed that way once, and
-    # the mismatch check could not have fired on any input. Whether merlin_int8_w8a8 is comparable
-    # to pt2e_qd8 is a declared equivalence in QUANT_RECIPE_EQUIVALENT, justified there.
-    # Both guards refuse UNKNOWN as firmly as a mismatch.
-    for why in (bundle_mismatch_reason(ours_bundle, ref_bundle),
-                quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)):
-        if why:
-            return {"status": "not_comparable", "reason": why}
-    # A speed number without its accuracy is not a result on a quantized datapath -- but an
-    # accuracy number scored against a different reference is not a comparison either. Report the
-    # pair, or refuse it, on the same fail-closed terms as the ratio itself.
     ref_acc = next((r.get("accuracy_reference", "") for r in arm["runs"]
                     if r.get("accuracy_reference")), "")
     ours_acc = ours_accuracy_reference(ours)
+    shared_quality = same_rule_both_arms(ours, arm, ours_bundle)
+
+    # A deployment comparison may legitimately compare different quantization recipes, but it
+    # may never compare different (or unknown) model bundles or accuracy references. Check those
+    # identities before constructing a numerical deployment result so a refusal cannot contain a
+    # nested object that still says ``status=measured``.
+    why_bundle = bundle_mismatch_reason(ours_bundle, ref_bundle)
     why_acc = accuracy_reference_mismatch_reason(ours_acc, ref_acc)
+    identity_refusal = why_bundle or why_acc
+    if identity_refusal:
+        return {
+            "status": "not_comparable",
+            "reason": identity_refusal,
+            "deployment_comparison": {
+                "status": "not_comparable",
+                "reason": identity_refusal,
+                "scope": "whole-system warm latency; quantization recipes may differ",
+                "same_fp32_quality_gate": shared_quality,
+            },
+        }
+    # Ours is the merlin int8 datapath by construction (the package is int8) and its recipe name is
+    # a CONSTANT -- never derived from what the reference ran. Deriving it from the comparand is how
+    # a guard ends up comparing the reference against itself: the qd8 arm passed that way once, and
+    # the mismatch check could not have fired on any input. TorchAO symmetric and XNNPACK affine
+    # qd8 are deliberately distinct recipe names; the deployment comparison below uses a shared
+    # fp32 quality gate instead of pretending their intermediate integer codes are identical.
+    # Both guards refuse UNKNOWN as firmly as a mismatch.
+    deployment = {
+        "status": ("measured" if shared_quality.get("ours", {}).get("passes") is True
+                    and shared_quality.get("executorch", {}).get("passes") is True
+                    else "quality_gate_failed"),
+        "scope": "whole-system warm latency; quantization recipes differ",
+        "same_fp32_quality_gate": shared_quality,
+    }
+    if deployment["status"] == "measured":
+        deployment.update(speedup=et_w / ours_w, beats_executorch=et_w > ours_w,
+                          ours_ns=ours_w, executorch_ns=et_w)
+    why_recipe = quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)
+    if why_recipe:
+        return {"status": "not_comparable", "reason": why_recipe,
+                "deployment_comparison": deployment}
+    # A speed number without its accuracy is not a result on a quantized datapath -- but an
+    # accuracy number scored against a different reference is not a comparison either. Report the
+    # pair, or refuse it, on the same fail-closed terms as the ratio itself.
     if why_acc:
         accuracy = {"status": "not_comparable", "reason": why_acc,
                     "ours": {"reference": ours_acc,
@@ -612,7 +643,12 @@ def main() -> None:
     from merlin.common import provenance as _prov
     _src = [_MERLIN_PY / "merlin" / "llvmlower" / "passes_quant_int.py",
             _MERLIN_PY / "merlin" / "llvmlower" / "impr_features.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "pipeline.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "quant_round.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "roundeven_intrinsic.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "residual_autovec.py",
             _MERLIN_PY / "merlin" / "llvmlower" / "quant_passes.py",
+            _MERLIN_PY / "merlin" / "llvmlower" / "quant_scope.py",
             _MERLIN_PY / "merlin" / "runtime" / "backends" / "zephyr_model.py",
             _MERLIN_PY / "merlin" / "mining" / "k1.py"]
     _src = [q for q in _src if q.is_file()]
@@ -733,7 +769,7 @@ def main() -> None:
     print("== ours ==", flush=True)
     rec["ours"] = ours_arm(md, pkg, refs, work, n=a.n, warmup=a.warmup, iters=a.iters,
                            parallel_harts=a.parallel_harts, dump_cap=a.dump_cap)
-    print("== executorch qd8 (the matching arithmetic) ==", flush=True)
+    print("== executorch qd8 (affine W8A8 reference) ==", flush=True)
     rec["executorch_qd8"] = et_arm(a.model, cpu_threads=a.ref_cpu_threads, qd8=True, n_lo=a.et_n_lo, n_hi=a.et_n_hi)
     if a.also_weight_only:
         print("== executorch weight-only (LABELLED: not int8 compute) ==", flush=True)

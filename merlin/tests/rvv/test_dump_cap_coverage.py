@@ -129,8 +129,11 @@ def test_binary_output_transfer_retries_a_dropped_scp_before_cleanup(monkeypatch
 
     monkeypatch.setattr(k1, "_run", flaky_run)
     monkeypatch.setattr(k1, "K1_HOST", "board")
+    sleeps = []
+    monkeypatch.setattr(k1.time, "sleep", sleeps.append)
     k1._pull_full_output("/remote/output.bin", tmp_path, result)
     assert attempts == 2
+    assert sleeps == [1]
     assert result["output_complete"] is True
     assert np.array_equal(result["outputs"], values)
 

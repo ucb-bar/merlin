@@ -142,8 +142,9 @@ class BaselineResult:
     #: ``weight_only`` (eager module swap -- its dequant const-folds to an fp32 const weight that
     #: XNNPACK partitions as a NORMAL FP32 GEMM, so it measures fp32 compute with int8 storage and
     #: never reaches an int8 ukernel), ``pt2e_qs8`` (static per-tensor activation quant), and
-    #: ``pt2e_qd8`` (per-channel weights + DYNAMIC per-row activation quant -- XNNPACK's qd8 int8
-    #: ukernels, and the mirror of merlin's own ``passes_quant_int`` datapath).
+    #: ``pt2e_qd8`` (per-channel weights + DYNAMIC affine activation quant -- XNNPACK's qd8 int8
+    #: ukernels). This is the same deployment class as Merlin's dynamic W8A8 path, but not the same
+    #: arithmetic as its symmetric TorchAO activation qparams.
     #: Empty means the producer did not record it, which a consumer must treat as UNKNOWN and refuse
     #: to compare -- the same rule as ``bundle_id``. Every cached row predates this field, so every
     #: historical int8 ratio in this repo was taken against an unlabelled recipe.

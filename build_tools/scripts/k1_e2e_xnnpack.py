@@ -7,10 +7,10 @@ reporting the min CLOCK_MONOTONIC wall + fp32 cos vs the SAME host golden the e2
 
   - baseline        = hand_v0 (frozen RVV transform schedule).
   - ours-optimized  = hand_v0 + fused_vfmacc_tiled (the compiler-emitted bounded tiled vfmacc).
-  - xnnpack-kernels = hand_v0, but the routable f32 linalg.matmul dispatches lowered to calls into
-                      XNNPACK's hand-written RVV GEMM ukernel (xnn_f32_gemm_ukernel_1x4v__rvv);
-                      attention / rmsnorm / elementwise stay on the Merlin-emitted runtime (the
-                      same hybrid the host prototype proved). #dispatches routed is reported.
+  - xnnpack-kernels = Merlin's best additive graph cleanup (transpose fusion + self-copy erase),
+                      but the routable f32 linalg.matmul dispatches lower to XNNPACK's hand-written
+                      RVV GEMM ukernel (xnn_f32_gemm_ukernel_1x4v__rvv); attention / rmsnorm /
+                      elementwise stay on the Merlin-emitted runtime. #dispatches is reported.
 
 Headline: with the SAME graph + weights, how does swapping in XNNPACK's hand RVV GEMM compare to
 our compiler-emitted vfmacc kernel, whole-model on real silicon? This isolates kernel-level vs
@@ -41,7 +41,7 @@ from merlin.runtime.backends import zephyr_model as zm
 
 
 def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
-            kernel_backend: str | None) -> dict:
+            kernel_backend: str | None, *, iters: int = 1, warmup: int = 0) -> dict:
     """Run one config N times on the board; gate cos, then take min wall over the runs."""
     runs: list[dict] = []
     cos = None
@@ -50,7 +50,10 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
     for i in range(n):
         work = Path(tempfile.mkdtemp(prefix=f"k1xnn_{tag}_{i}_"))
         try:
-            res = k1.run_on_k1(model_dir, work, pkg, timeout=900, kernel_backend=kernel_backend)
+            res = k1.run_on_k1(
+                model_dir, work, pkg, timeout=900, kernel_backend=kernel_backend,
+                iters=iters, warmup=warmup,
+            )
             g = zm._gate(res["prefix"], {"fp32": golden})
             cos = g["fp32_cos"]
             n_xnn = res.get("n_xnn_routed", 0)
@@ -76,13 +79,18 @@ def run_cfg(model_dir: Path, pkg, golden: np.ndarray, n: int, tag: str,
         std = (sum((w-mean)**2 for w in walls)/len(walls))**0.5
         spread = {"min_ns": mn, "max_ns": mx, "median_ns": med,
                   "stdev_ns": round(std), "range_pct": round(100.0*(mx-mn)/mn, 2), "n": len(walls)}
+    ok = cos is not None and cos >= 0.9999
+    if cos is not None and not ok and blocker is None:
+        blocker = f"correctness gate failed: fp32_cos={cos:.9f} < 0.9999"
     return {"tag": tag, "run_id": pkg.run_id,
             "compiler_features": list(pkg.compiler_features or []),
             "kernel_backend": kernel_backend,
+            "timed_iters_per_run": iters,
+            "warmup_iters_per_run": warmup,
             "n_xnn_routed": n_xnn,
             "min_wall_ns": walls[0] if walls else None,
             "spread": spread,
-            "fp32_cos": cos, "ok": (cos is not None and cos >= 0.9999),
+            "fp32_cos": cos, "ok": ok,
             "blocker": blocker, "runs": runs}
 
 
@@ -90,7 +98,9 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
                  n: int = 3,
                  configs: str = "baseline,ours_tiled,ours_v3,ours_wholemodel,ours_wholemodel_vf,"
                                 "xnnpack_kernels,openblas_kernels",
-                 out: str | Path | None = None) -> dict:
+                 out: str | Path | None = None, *, iters: int = 1, warmup: int = 0,
+                 ours_best_features: list[str] | None = None,
+                 hybrid_graph_features: list[str] | None = None) -> dict:
     """Run the four-way (baseline / ours-* / xnnpack / openblas kernel-swap) on ONE model on the K1,
     N reps/config in a single pass, and return the summary dict (schema = compare/empirical ingests).
 
@@ -113,10 +123,17 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
     # the older ours_* arms are kept for lineage. per-matmul MR is added here once A11 lands.
     # mrpad IS the vf recipe + per-matmul MR (both are full-schedule-replacement, so they cannot
     # coexist); pick mrpad as the single schedule base, plus the two ADDITIVE passes.
-    OURS_BEST_FEATURES = ["accumulator_resident_wholemodel_vf_mrpad", "fuse_transpose_b", "erase_self_copy"]
+    BEST_GRAPH_FEATURES = list(hybrid_graph_features or
+                               ["fuse_transpose_b", "erase_self_copy"])
+    OURS_BEST_FEATURES = list(ours_best_features or
+                              ["accumulator_resident_wholemodel_vf_mrpad",
+                               *BEST_GRAPH_FEATURES])
     ours_best_pkg = replace(base, run_id="ours_best", compiler_features=OURS_BEST_FEATURES)
-    xnn_pkg = replace(base, run_id="xnnpack_kernels")
-    ob_pkg = replace(base, run_id="openblas_kernels")
+    # Hybrid columns keep Merlin's best target-independent graph cleanup and swap only the GEMM
+    # implementation. Running the expert kernel on the old baseline graph is neither the user's
+    # compiler nor a useful localization of kernel quality versus graph/runtime quality.
+    xnn_pkg = replace(base, run_id="xnnpack_kernels", compiler_features=BEST_GRAPH_FEATURES)
+    ob_pkg = replace(base, run_id="openblas_kernels", compiler_features=BEST_GRAPH_FEATURES)
 
     def maybe(tag, pkg, backend):
         if tag not in want:
@@ -124,7 +141,7 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
                     "ok": False, "n_xnn_routed": 0, "spread": None, "blocker": "not in --configs",
                     "compiler_features": list(pkg.compiler_features or []), "runs": []}
         print(f"=== {tag} ===")
-        return run_cfg(md, pkg, golden, n, tag, backend)
+        return run_cfg(md, pkg, golden, n, tag, backend, iters=iters, warmup=warmup)
 
     rb = maybe("baseline", base, None)
     ro = maybe("ours_tiled", ours, None)
@@ -138,34 +155,40 @@ def run_workload(model_dir: str | Path, baseline_pkg: str = "out/artifacts/targe
     def spd(a_ns, b_ns):
         return (a_ns / b_ns) if (a_ns and b_ns) else None
 
+    def valid_wall(result):
+        return result.get("min_wall_ns") if result.get("ok") else None
+
     # best ours config that actually ran (highest speedup vs baseline)
     ours_cands = {"ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw, "ours_wholemodel_vf": rwv, "ours_best": rbest}
-    ours_best_tag = max((t for t, r in ours_cands.items() if r.get("min_wall_ns")),
-                        key=lambda t: spd(rb["min_wall_ns"], ours_cands[t]["min_wall_ns"]) or 0,
+    ours_best_tag = max((t for t, r in ours_cands.items() if valid_wall(r)),
+                        key=lambda t: spd(valid_wall(rb), valid_wall(ours_cands[t])) or 0,
                         default=None)
     ours_best = ours_cands.get(ours_best_tag) if ours_best_tag else None
     summary = {
         "model": str(md), "n": n, "board": "k1_spacemit", "vlen": k1.VLEN, "same_pass": True,
-        "timer": "CLOCK_MONOTONIC wall_ns; cycle_accurate=false",
+        "timer": "CLOCK_MONOTONIC wall_ns per iteration; cycle_accurate=false",
+        "protocol": {"independent_runs": n, "timed_iters_per_run": iters,
+                     "warmup_iters_per_run": warmup, "statistic": "min of per-iteration means"},
         "note": ("Same-pass head-to-head vs the SAME baseline in ONE pass. xnnpack-kernels routes f32 "
                  "linalg.matmul to xnn_f32_gemm_ukernel_1x4v__rvv with RESIDENT-WEIGHT pack (excluded "
-                 "from the timed path, matching ours' pack-free scope). cos gated before any wall."),
+                 "from the timed path, matching ours' pack-free scope), after the same additive "
+                 "Merlin graph cleanup. cos gated before any wall."),
         "configs_run": sorted(want),
         "baseline": rb, "ours_tiled": ro, "ours_v3": rv, "ours_wholemodel": rw,
         "ours_wholemodel_vf": rwv, "ours_best": rbest, "xnnpack_kernels": rx, "openblas_kernels": rob,
         "ours_best_features": OURS_BEST_FEATURES,
-        "speedup_ours_tiled": spd(rb["min_wall_ns"], ro["min_wall_ns"]),
-        "speedup_ours_v3": spd(rb["min_wall_ns"], rv["min_wall_ns"]),
-        "speedup_ours_wholemodel": spd(rb["min_wall_ns"], rw["min_wall_ns"]),
-        "speedup_ours_wholemodel_vf": spd(rb["min_wall_ns"], rwv["min_wall_ns"]),
-        "speedup_ours_best": spd(rb["min_wall_ns"], rbest["min_wall_ns"]),
-        "ours_best_over_xnnpack": spd(rx["min_wall_ns"], rbest["min_wall_ns"]) if rbest.get("min_wall_ns") else None,
-        "speedup_xnnpack": spd(rb["min_wall_ns"], rx["min_wall_ns"]),
-        "speedup_openblas": spd(rb["min_wall_ns"], rob["min_wall_ns"]),
-        "v3_over_xnnpack": spd(rx["min_wall_ns"], rv["min_wall_ns"]),
+        "hybrid_graph_features": BEST_GRAPH_FEATURES,
+        "speedup_ours_tiled": spd(valid_wall(rb), valid_wall(ro)),
+        "speedup_ours_v3": spd(valid_wall(rb), valid_wall(rv)),
+        "speedup_ours_wholemodel": spd(valid_wall(rb), valid_wall(rw)),
+        "speedup_ours_wholemodel_vf": spd(valid_wall(rb), valid_wall(rwv)),
+        "speedup_ours_best": spd(valid_wall(rb), valid_wall(rbest)),
+        "speedup_xnnpack": spd(valid_wall(rb), valid_wall(rx)),
+        "speedup_openblas": spd(valid_wall(rb), valid_wall(rob)),
+        "v3_over_xnnpack": spd(valid_wall(rx), valid_wall(rv)),
         "ours_best_tag": ours_best_tag,
-        "ours_best_over_xnnpack": spd(rx["min_wall_ns"], ours_best["min_wall_ns"]) if ours_best else None,
-        "ours_best_over_openblas": spd(rob["min_wall_ns"], ours_best["min_wall_ns"]) if ours_best else None,
+        "ours_best_over_xnnpack": spd(valid_wall(rx), valid_wall(ours_best)) if ours_best else None,
+        "ours_best_over_openblas": spd(valid_wall(rob), valid_wall(ours_best)) if ours_best else None,
         "xnnpack_kernel": "xnn_f32_gemm_ukernel_1x4v__rvv",
         "openblas_kernel": "sgemm_kernel_8x8_zvl128b",
     }
@@ -183,11 +206,36 @@ def main() -> None:
     ap.add_argument("--model", default="out/artifacts/recaptures/bitvla_fp32_consistent")
     ap.add_argument("--baseline", default="out/artifacts/targets/rvv/hand_v0")
     ap.add_argument("-n", type=int, default=3)
+    ap.add_argument("--iters", type=int, default=1,
+                    help="timed in-process iterations per independent run")
+    ap.add_argument("--warmup", type=int, default=0,
+                    help="untimed in-process warmup iterations per independent run")
+    ap.add_argument("--ours-best-features", default=None,
+                    help="comma-separated compiler features for the ours_best arm; defaults to "
+                         "the current stacked compiler recipe")
+    ap.add_argument("--hybrid-graph-features", default=None,
+                    help="comma-separated Merlin graph features retained when GEMMs are routed to "
+                         "XNNPACK/OpenBLAS; defaults to fuse_transpose_b,erase_self_copy")
     ap.add_argument("--configs", default="baseline,ours_tiled,ours_v3,xnnpack_kernels",
                     help="comma list of: baseline,ours_tiled,ours_v3,ours_wholemodel,xnnpack_kernels")
     ap.add_argument("--out", default="out/artifacts/measurements/k1_spacemit/k1_e2e_xnnpack_bitvla.json")
     a = ap.parse_args()
-    summary = run_workload(a.model, a.baseline, a.n, a.configs, out=a.out)
+    if a.iters < 1 or a.warmup < 0:
+        ap.error("--iters must be >= 1 and --warmup must be >= 0")
+    ours_best_features = (a.ours_best_features.split(",")
+                          if a.ours_best_features is not None else None)
+    hybrid_graph_features = (a.hybrid_graph_features.split(",")
+                             if a.hybrid_graph_features is not None else None)
+    if ours_best_features is not None and not all(ours_best_features):
+        ap.error("--ours-best-features must be a non-empty comma-separated list")
+    if hybrid_graph_features is not None and not all(hybrid_graph_features):
+        ap.error("--hybrid-graph-features must be a non-empty comma-separated list")
+    summary = run_workload(
+        a.model, a.baseline, a.n, a.configs, out=a.out,
+        iters=a.iters, warmup=a.warmup,
+        ours_best_features=ours_best_features,
+        hybrid_graph_features=hybrid_graph_features,
+    )
     print("\n=== SUMMARY ===")
     print(json.dumps(summary, indent=2))
 
@@ -203,14 +251,17 @@ def _write_md(path: Path, s: dict) -> None:
             ("ours-v3 (accum-resident microkernel)", s["ours_v3"], s["speedup_ours_v3"]),
             ("ours-wholemodel (accum-resident, tail-safe)", s["ours_wholemodel"], s["speedup_ours_wholemodel"]),
             ("ours-wholemodel-vf (.vf, no broadcast ladder)", s.get("ours_wholemodel_vf", {}), s.get("speedup_ours_wholemodel_vf")),
+            ("ours-best (current stacked compiler)", s.get("ours_best", {}), s.get("speedup_ours_best")),
             ("xnnpack-kernels (RVV ukernel, resident pack)", s["xnnpack_kernels"], s["speedup_xnnpack"]),
             ("openblas-kernels (sgemm 8x8, resident pack)", s.get("openblas_kernels", {}), s.get("speedup_openblas"))]
     rows = [(n, r, sp) for (n, r, sp) in rows if r and not r.get("skipped")]
     lines = [
         f"# K1 whole-model SAME-PASS head-to-head — {Path(s['model']).name}",
         "",
-        f"Board: SpacemiT K1 (real RVV silicon, VLEN={s['vlen']}). N={s['n']} runs/config, ONE pass, "
-        f"min CLOCK_MONOTONIC wall + spread. Timer: {s['timer']}.",
+        f"Board: SpacemiT K1 (real RVV silicon, VLEN={s['vlen']}). N={s['n']} independent runs/config, "
+        f"{s.get('protocol', {}).get('warmup_iters_per_run', 0)} warmup + "
+        f"{s.get('protocol', {}).get('timed_iters_per_run', 1)} timed iterations/run, "
+        f"min per-iteration CLOCK_MONOTONIC wall + spread. Timer: {s['timer']}.",
         f"XNNPACK kernel: `{s['xnnpack_kernel']}` (resident-weight pack, excluded from timed path). "
         "cos gated vs host golden before any wall.",
         "",

@@ -180,7 +180,7 @@ def test_every_lowering_runner_carries_the_panel_rewrite_and_gate():
     lowering = open(P.__file__, encoding="utf-8").read()
     assert "_grain_gate, _panel_parallel_gate," in lowering
     assert "_team_work_gate, _team_cap_gate, _coarsen_gate, _fold_broadcast_gate," in lowering
-    assert "_named_broadcast_gate]" in lowering
+    assert "_named_broadcast_gate, _alloca_scope_gate]" in lowering
 
 
 def test_report_is_fail_closed_and_persisted(tmp_path):

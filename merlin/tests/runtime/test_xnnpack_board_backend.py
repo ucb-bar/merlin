@@ -49,6 +49,29 @@ def test_rewrite_routes_plain_matmul_to_external_call():
     assert out.index("private @merlin_xnn_gemm_f32_0") < out.index("func.func @forward")
 
 
+def test_same_shape_projections_keep_one_monomorphic_declaration():
+    """The C alias derives cache identity from each caller; MLIR types remain deduplicated."""
+    t = (
+        'module {\n  func.func @forward(%a: tensor<4x4xf32>, %b0: tensor<4x4xf32>, '
+        '%b1: tensor<4x4xf32>, %c0: tensor<4x4xf32>, %c1: tensor<4x4xf32>) {\n'
+        '    %0 = linalg.matmul ins(%a, %b0 : tensor<4x4xf32>, tensor<4x4xf32>) '
+        'outs(%c0 : tensor<4x4xf32>) -> tensor<4x4xf32>\n'
+        '    %1 = linalg.matmul ins(%0, %b1 : tensor<4x4xf32>, tensor<4x4xf32>) '
+        'outs(%c1 : tensor<4x4xf32>) -> tensor<4x4xf32>\n  }\n}\n')
+    out, n = xb.rewrite_matmuls_to_xnn(t)
+    assert n == 2
+    assert "call @merlin_xnn_gemm_f32_0" in out
+    assert "call @merlin_xnn_gemm_f32_1" not in out
+    assert out.count("func.func private @merlin_xnn_gemm_f32_") == 1
+
+
+def test_shim_cache_is_keyed_by_compiled_callsite_not_transient_b_pointer():
+    shim = (xb._HERE / "xnn_gemm_rvv_shim.c").read_text()
+    assert "uintptr_t site" in shim
+    source = (xb._HERE / "__init__.py").read_text()
+    assert "__builtin_return_address(0)" in source
+
+
 def test_rewrite_skips_nonroutable_matmul():
     # bf16 matmul must fall through (NOT routed) — stays on the compiled runtime.
     t = (

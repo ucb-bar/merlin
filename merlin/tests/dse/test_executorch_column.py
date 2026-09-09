@@ -286,34 +286,30 @@ def test_our_recipe_is_never_derived_from_what_the_reference_ran():
     worse than none: it prints a verdict that reads as if it had been checked. Pin the constant.
     """
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
-    assert 'OURS_QUANT_RECIPE = "merlin_int8_w8a8"' in src
+    assert 'OURS_QUANT_RECIPE = "torchao_sym_per_token_w8a8"' in src
     assert "quant_recipe_mismatch_reason(OURS_QUANT_RECIPE, ref_recipe)" in src
     assert 'recipe_requested"] == "pt2e_qd8"' not in src, (
         "our recipe is being selected from the reference arm again")
 
 
-def test_the_qd8_equivalence_is_declared_and_everything_else_still_refuses():
-    """merlin_int8_w8a8 IS the qd8 arithmetic -- by declaration, with the residual stated."""
+def test_torchao_symmetric_and_xnnpack_qd8_are_not_declared_equivalent():
+    """Both are dynamic W8A8, but their activation qparam selection differs bit-observably."""
     from merlin.compare.executorch_column import (QUANT_RECIPE_EQUIVALENT,
                                                   quant_recipe_mismatch_reason)
-    assert frozenset({"merlin_int8_w8a8", "pt2e_qd8"}) in QUANT_RECIPE_EQUIVALENT
-    # comparable, in both directions
-    assert quant_recipe_mismatch_reason("merlin_int8_w8a8", "pt2e_qd8") is None
-    assert quant_recipe_mismatch_reason("pt2e_qd8", "merlin_int8_w8a8") is None
-    # the equivalence is NOT a blanket pass: the other two recipes are still different computations
-    for other in ("weight_only", "pt2e_qs8"):
-        why = quant_recipe_mismatch_reason("merlin_int8_w8a8", other)
+    assert not QUANT_RECIPE_EQUIVALENT
+    for other in ("pt2e_qd8", "weight_only", "pt2e_qs8"):
+        why = quant_recipe_mismatch_reason("torchao_sym_per_token_w8a8", other)
         assert why and "MISMATCH" in why, other
         # and our own recipe must be NAMED in the refusal, never rendered as 'unknown recipe'
         assert "unknown recipe" not in why, why
-        assert "merlin_int8_w8a8" in why
+        assert "torchao_sym_per_token_w8a8" in why
 
 
 def test_an_unknown_recipe_is_still_refused_even_against_an_equivalent_one():
     """The equivalence must not resurrect the UNKNOWN case: empty is refused, as before."""
     from merlin.compare.executorch_column import quant_recipe_mismatch_reason
     assert "UNKNOWN" in (quant_recipe_mismatch_reason("", "pt2e_qd8") or "")
-    assert "UNKNOWN" in (quant_recipe_mismatch_reason("merlin_int8_w8a8", "") or "")
+    assert "UNKNOWN" in (quant_recipe_mismatch_reason("torchao_sym_per_token_w8a8", "") or "")
 
 
 def test_accuracy_scored_against_different_references_is_refused_not_ranked():
@@ -341,7 +337,8 @@ def test_the_harness_keeps_every_tier_score_not_the_collapsed_pair():
     src = (repo_root() / "build_tools" / "scripts" / "k1_int8_fair_compare.py").read_text()
     assert "accuracy_reference_by_tier" in src
     assert 'OURS_ACCURACY_REFERENCE = "capture_golden_fp32"' in src
-    assert "accuracy_reference_mismatch_reason(OURS_ACCURACY_REFERENCE, ref_acc)" in src
+    assert "ours_acc = ours_accuracy_reference(ours)" in src
+    assert "accuracy_reference_mismatch_reason(ours_acc, ref_acc)" in src
     # load_ns must be carried: it decides whether our offline weight-transpose hoisting mirrors
     # XNNPACK's delegate-init prepacking or is an advantage we granted ourselves.
     assert '"load_ns": getattr(r, "load_ns", None)' in src

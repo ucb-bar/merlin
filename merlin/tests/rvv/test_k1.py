@@ -76,6 +76,15 @@ def test_persistent_openmp_harness_is_default_off_and_reports_worker_cpus():
     assert "merlin_omp_init_from_env(8)" in on
 
 
+def test_one_explicit_hart_selects_serial_lowering():
+    selection = k1._resolve_openmp_selection(
+        parallel=False, parallel_harts=1, host_effects=None)
+
+    assert selection.parallel_harts is None
+    assert selection.provider is None
+    assert selection.worker_pool_size is None
+
+
 def test_persistent_openmp_selection_materializes_host_policy_effects():
     from merlin.mining.host_actions import resolve_host_policy
 

@@ -291,6 +291,45 @@ def test_mmap_model_adds_runner_flag(tmp_path, monkeypatch):
     assert not any("mmap_model" in str(a) for a in captured_argv["argv"])
 
 
+def test_board_memory_feasibility_is_derived_from_exported_artifact(tmp_path):
+    pte = tmp_path / "model.pte"
+    ptd = tmp_path / "weights.ptd"
+    inp = tmp_path / "input.bin"
+    pte.write_bytes(b"p" * 17)
+    ptd.write_bytes(b"w" * 11)
+    inp.write_bytes(b"i" * 5)
+    exp = et.ExportResult(
+        pte=pte, ptd_files=[ptd], input_files=[inp], golden=tmp_path / "g.npy",
+        summary={"aot_profile": {"memory_plan_total_bytes": 7}},
+    )
+
+    assert et._estimated_resident_bytes(exp, mmap_model=False) == 17 + 11 + 5 + 7
+    assert et._estimated_resident_bytes(exp, mmap_model=True) == 11 + 5 + 7
+
+
+def test_board_available_memory_reads_memavailable(monkeypatch):
+    proc = type("Proc", (), {"stdout": "MemTotal: 4096000 kB\nMemAvailable: 123456 kB\n"})()
+    monkeypatch.setattr(et.k1_exec, "run", lambda *a, **k: proc)
+    assert et._board_available_memory_bytes() == 123456 * 1024
+
+
+def test_board_run_refuses_concrete_artifact_that_exceeds_current_ram(tmp_path, monkeypatch):
+    import contextlib
+
+    pte = tmp_path / "model.pte"
+    pte.write_bytes(b"p" * 32)
+    exp = et.ExportResult(pte=pte, ptd_files=[], input_files=[], golden=tmp_path / "g.npy")
+    res = et.BaselineResult(framework="executorch", model="openvla", variant="fp32")
+    monkeypatch.setattr(et.k1_exec, "board_lock", lambda *a, **k: contextlib.nullcontext())
+    monkeypatch.setattr(et, "_board_free_bytes", lambda: 10 * 1024**3)
+    monkeypatch.setattr(et, "_board_available_memory_bytes", lambda: 128 * 1024**2)
+    monkeypatch.setattr(
+        et.k1_exec, "push", lambda *a, **k: pytest.fail("RAM refusal must happen before transfer"))
+
+    with pytest.raises(et.k1_exec.BoardUnavailable, match="available RAM"):
+        et._run_on_board(res, pte, exp)
+
+
 def test_cos_rel_matches_golden(tmp_path):
     import numpy as np
 
@@ -419,10 +458,10 @@ def test_int8_variant_defaults_to_whole_model(monkeypatch, tmp_path):
     assert r.cos_threshold == 0.99  # int8 gate
 
 
-def test_ram_infeasible_models_are_built_not_run(monkeypatch, tmp_path):
-    # openvla/molmoact/pi05 are RAM-infeasible whole-model on the K1: they must be BUILT (export +
-    # audit) but recorded not_run with a specific RAM gap, never a false fit. We stub past export +
-    # cross-compile + audit so the RAM short-circuit is what sets the gap.
+def test_reduced_capture_is_not_refused_by_a_full_model_name(monkeypatch, tmp_path):
+    # Resource feasibility is a property of THIS exported artifact, not of the registry model name.
+    # A reduced OpenVLA capture is tens of MB and must reach the board path even though the native
+    # 7B OpenVLA artifact is too large for K1.
     from merlin.baselines import bundle as _bundle
 
     (tmp_path / "golden.npy").write_bytes(b"\x00" * 8)
@@ -445,12 +484,21 @@ def test_ram_infeasible_models_are_built_not_run(monkeypatch, tmp_path):
     fake_runner.write_bytes(b"\x7fELF")
     monkeypatch.setattr(et, "audit_binary", lambda r: (0.1, [], {}))
     monkeypatch.setattr(et.k1_exec, "board_vlenb", lambda: 32)
+    called = []
+
+    def _board(res, runner, exp, **kwargs):
+        called.append((runner, exp))
+        res.ran = True
+        res.cos = 1.0
+        res.rel = 0.0
+        res.e2e_wall_ns = 1
+
+    monkeypatch.setattr(et, "_do_board", _board)
     r = et.run_model("openvla", "int8", write=False, run_board=True,
                      runner_override=fake_runner)
-    assert r.built is True          # export + audit happened
-    assert r.status() == "not_run"  # but not run on-board
-    assert "RAM-infeasible" in r.gap_reason
-    assert not r.passed
+    assert called
+    assert r.built is True and r.ran is True
+    assert r.status() == "pass" and r.passed
     r.validate()
 
 

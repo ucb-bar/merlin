@@ -143,7 +143,7 @@ def test_every_lowering_runner_carries_the_rewrite_and_the_same_argv_gate():
     assert "_concat_dps_gate, _grain_gate, _panel_parallel_gate," in lowering, (
         "the argv slots are never passed")
     assert ("_team_work_gate, _team_cap_gate, _coarsen_gate, _fold_broadcast_gate," in lowering
-            and "_named_broadcast_gate]" in lowering), (
+            and "_named_broadcast_gate, _alloca_scope_gate]" in lowering), (
         "the post-OpenMP argv slots are never passed")
 
 

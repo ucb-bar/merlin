@@ -303,20 +303,75 @@ def _is_amax(op) -> bool:
 
 
 def _is_scale(op) -> bool:
-    """An all-parallel map that divides its single input by a loop-invariant value."""
+    """A per-row scale map emitted by either supported quant-pass generation.
+
+    The current form additionally clamps tiny scales and selects epsilon for an all-zero row.  That
+    is the same scale contract, not an unrelated elementwise map; matching the entire body keeps the
+    extension fail-closed if the producer changes again.
+    """
+    body = sorted(name for name in _body_op_names(op) if name != "arith.constant")
     return (op.name == "linalg.generic"
             and not any("reduction" in k for k in _iterator_kinds(op))
-            and _body_op_names(op) == ["arith.divf"]
+            and body in (["arith.divf"],
+                         ["arith.cmpf", "arith.divf", "arith.maximumf", "arith.select"])
             and len(op.operands) >= 2)
 
 
+def _quantize_formula(op) -> "str | None":
+    """Which equivalent quantization spelling this op uses, or ``None``.
+
+    Older lowering divides by the scale directly. Current lowering computes an inverse-scale map
+    once and multiplies every element by it. Both narrow through the identical round/clamp/fptosi
+    tail; the return value tells :func:`plan` where to find the real scale producer.
+    """
+    body = sorted(name for name in _body_op_names(op) if name != "arith.constant")
+    if op.name != "linalg.generic" or any("reduction" in k for k in _iterator_kinds(op)):
+        return None
+    if body == ["arith.divf", "arith.fptosi", "arith.maximumf", "arith.minimumf",
+                "math.roundeven"]:
+        return "divide_scale"
+    if body == ["arith.fptosi", "arith.maximumf", "arith.minimumf", "arith.mulf",
+                "math.roundeven"]:
+        return "multiply_inverse"
+    return None
+
+
 def _is_quantize(op) -> bool:
-    """An all-parallel map spelling divide -> round -> clamp -> narrow."""
-    body = sorted(_body_op_names(op))
-    return (op.name == "linalg.generic"
+    return _quantize_formula(op) is not None
+
+
+def _is_reciprocal(op) -> bool:
+    """The current producer's inverse-scale map (one division and no other arithmetic)."""
+    return (op is not None and op.name == "linalg.generic"
             and not any("reduction" in k for k in _iterator_kinds(op))
-            and body == ["arith.divf", "arith.fptosi", "arith.maximumf", "arith.minimumf",
-                         "math.roundeven"])
+            and [name for name in _body_op_names(op) if name != "arith.constant"] == ["arith.divf"]
+            and len(op.operands) >= 2)
+
+
+def _strip_views(value):
+    """Walk shape-only adapters and return ``(source_value, adapter_ops)``."""
+    adapters = []
+    while getattr(getattr(value, "owner", None), "name", None) in VIEW_OPS:
+        owner = value.owner
+        adapters.append(owner)
+        value = owner.operands[0]
+    return value, adapters
+
+
+def _float_constants(op) -> list[float]:
+    """Float constants used by a generic, whether captured or defined inside its body."""
+    from xdsl.dialects.builtin import FloatAttr
+
+    found = []
+    for inner in op.regions[0].blocks[0].ops:
+        owners = [inner, *(getattr(v, "owner", None) for v in getattr(inner, "operands", ()))]
+        for owner in owners:
+            if getattr(owner, "name", None) != "arith.constant":
+                continue
+            value = owner.properties.get("value")
+            if isinstance(value, FloatAttr):
+                found.append(float(value.value.data))
+    return found
 
 
 def _yielded_const(op, which: str):
@@ -325,19 +380,7 @@ def _yielded_const(op, which: str):
     Read off the body's own constant ops rather than assumed, so a capture that clamps to a
     different range (a 7-bit weight, an unsigned scheme) is either read correctly or refused.
     """
-    from xdsl.dialects.builtin import FloatAttr
-    # The clamp bounds are FUNCTION-SCOPE constants captured into the region (xDSL prints them
-    # before the generic and refers to them from the body), not ops inside the body -- so the search
-    # is over the body ops' OPERANDS, following each to its defining op wherever that op lives.
-    vals = []
-    for inner in op.regions[0].blocks[0].ops:
-        for operand in getattr(inner, "operands", ()):
-            owner = getattr(operand, "owner", None)
-            if getattr(owner, "name", None) != "arith.constant":
-                continue
-            v = owner.properties.get("value")
-            if isinstance(v, FloatAttr):
-                vals.append(float(v.value.data))
+    vals = _float_constants(op)
     if not vals:
         return None
     return max(vals) if which == "max" else min(vals)
@@ -366,6 +409,21 @@ def plan(module, activation_args, load_arg):
         if len(ins) < 3:
             raise QuantHoistRefused("quantize generic with fewer than 3 operands; unexpected shape")
         src, scale_v = ins[0], ins[1]
+        reciprocal_op = None
+        reciprocal_views = []
+        scale_views = []
+        formula = _quantize_formula(op)
+        if formula == "multiply_inverse":
+            scale_v, reciprocal_views = _strip_views(scale_v)
+            reciprocal_op = getattr(scale_v, "owner", None)
+            if not _is_reciprocal(reciprocal_op):
+                raise QuantHoistRefused(
+                    "inverse-multiply quantize's second operand is not a reciprocal map "
+                    f"(owner={getattr(reciprocal_op, 'name', None)!r}, "
+                    f"body={_body_op_names(reciprocal_op) if reciprocal_op is not None else []}); "
+                    "refusing")
+            scale_v = list(reciprocal_op.operands)[0]
+            scale_v, scale_views = _strip_views(scale_v)
         scale_op = getattr(scale_v, "owner", None)
         if not (scale_op is not None and _is_scale(scale_op)):
             raise QuantHoistRefused("quantize's scale operand is not a divide map; refusing")
@@ -393,6 +451,14 @@ def plan(module, activation_args, load_arg):
             raise QuantHoistRefused(
                 f"recomputed amax shape {tuple(amax.shape)} != IR's {want}; refusing")
         scale = (amax / np.float32(qmax)).astype(np.float32)
+        scale_body = sorted(name for name in _body_op_names(scale_op)
+                            if name != "arith.constant")
+        if "arith.select" in scale_body:
+            positive = [v for v in _float_constants(scale_op) if v > 0.0]
+            if not positive:
+                raise QuantHoistRefused("guarded scale map has no positive epsilon constant")
+            epsilon = np.float32(min(positive))
+            scale = np.where(amax == 0.0, epsilon, np.maximum(scale, epsilon)).astype(np.float32)
         b = _broadcast_for(op, scale, wq_src.shape)
         q = np.clip(np.rint(wq_src.astype(np.float32) / b), qlo, qhi)
         qt = _np_of(_elem_str(op.results[0].type))
@@ -403,7 +469,9 @@ def plan(module, activation_args, load_arg):
         sa = HoistedArg(f"qhoist::scale::{n}", tuple(scale.shape), "f32")
         qa = HoistedArg(f"qhoist::weight::{n}", tuple(qv.shape), _elem_str(op.results[0].type))
         values[sa.key], values[qa.key] = scale, qv
-        chains.append((amax_op, scale_op, op, (sa, qa)))
+        auxiliary = tuple(reciprocal_views + ([reciprocal_op] if reciprocal_op else [])
+                          + scale_views)
+        chains.append((amax_op, scale_op, auxiliary, op, (sa, qa)))
         n += 1
     return chains, values
 
@@ -450,6 +518,123 @@ def _np_of(mlir_dtype: str):
     return getattr(np, _NP_OF[mlir_dtype])
 
 
+def _aten(op) -> str:
+    value = getattr(op, "attributes", {}).get("prov.aten")
+    return str(getattr(value, "data", ""))
+
+
+def _scalar_constant(value) -> "float | None":
+    """A scalar constant reached through zero or more splats, or ``None``."""
+    from xdsl.dialects.builtin import FloatAttr, IntegerAttr
+
+    owner = getattr(value, "owner", None)
+    while getattr(owner, "name", None) == "tensor.splat":
+        value = owner.operands[0]
+        owner = getattr(value, "owner", None)
+    if getattr(owner, "name", None) != "arith.constant":
+        return None
+    attr = owner.properties.get("value")
+    if isinstance(attr, FloatAttr):
+        return float(attr.value.data)
+    if isinstance(attr, IntegerAttr):
+        return float(attr.value.data)
+    return None
+
+
+def _match_absmean_weight_transpose(op, module, load_arg):
+    """Match captured ``round(clamp(weight / mean(abs(weight))))`` followed by transpose.
+
+    This is the float fake-quant form used by ternary and other low-bit modules. Matching follows
+    SSA edges and verifies every arithmetic stage plus its constants; provenance supplies semantic
+    op identity, never a model/module name. Returns the exact build-time value or ``None`` when the
+    transpose is unrelated. A partially matching chain raises, because silently accepting a changed
+    quantization formula would bake wrong weights into every downstream target.
+    """
+    import numpy as np
+
+    if op.name != "linalg.transpose" or len(op.operands) < 1 or len(op.results) != 1:
+        return None
+    final_div = getattr(op.operands[0], "owner", None)
+    if _aten(final_div) != "aten.div.Tensor":
+        return None
+    clamp = getattr(final_div.operands[0], "owner", None)
+    scale_identity = getattr(final_div.operands[1], "owner", None)
+    if _aten(clamp) != "aten.clamp.default" or _aten(scale_identity) != "aten.mul.Tensor":
+        raise QuantHoistRefused("absmean weight chain changed after its final divide; refusing")
+    round_op = getattr(clamp.operands[0], "owner", None)
+    premul = getattr(round_op.operands[0], "owner", None) if _aten(round_op) == "aten.round.default" else None
+    if _aten(premul) != "aten.mul.Tensor" or premul.operands[1] is not final_div.operands[1]:
+        raise QuantHoistRefused("absmean weight chain does not share one inverse scale; refusing")
+    root = premul.operands[0]
+
+    reciprocal = getattr(scale_identity.operands[0], "owner", None)
+    if _aten(reciprocal) != "aten.reciprocal.default":
+        raise QuantHoistRefused("absmean weight chain has no reciprocal scale; refusing")
+    mean_clamp = getattr(reciprocal.operands[0], "owner", None)
+    mean = getattr(mean_clamp.operands[0], "owner", None) \
+        if _aten(mean_clamp) == "aten.clamp.default" else None
+    if _aten(mean) != "aten.mean.default":
+        raise QuantHoistRefused("absmean weight chain has no clamped mean; refusing")
+    reduction = getattr(mean.operands[0], "owner", None)
+    absolute = getattr(reduction.operands[0], "owner", None) \
+        if getattr(reduction, "name", None) == "linalg.reduce" else None
+    if _aten(absolute) != "aten.abs.default" or absolute.operands[0] is not root:
+        raise QuantHoistRefused("absmean weight chain reduction is not rooted in its weight; refusing")
+
+    clamp_bounds = sorted(set(_float_constants(clamp)))
+    if not (clamp_bounds and clamp_bounds[0] == -1.0 and clamp_bounds[-1] == 1.0):
+        raise QuantHoistRefused(f"absmean ternary clamp bounds changed: {clamp_bounds}; refusing")
+    epsilons = [v for v in _float_constants(mean_clamp) if v > 0.0]
+    if not epsilons:
+        raise QuantHoistRefused("absmean mean-clamp has no positive epsilon; refusing")
+    epsilon = np.float32(min(epsilons))
+    identity = _scalar_constant(scale_identity.operands[1])
+    if identity != 1.0 or 1.0 not in _float_constants(reciprocal):
+        raise QuantHoistRefused("absmean reciprocal/identity constants are not one; refusing")
+
+    weight = _resolve_source(module, root, load_arg).astype(np.float32, copy=False)
+    divisor = _scalar_constant(mean.operands[1])
+    if divisor is None or int(divisor) != weight.size:
+        raise QuantHoistRefused(
+            f"absmean reduction divisor {divisor} != weight elements {weight.size}; refusing")
+    scale = np.maximum(np.mean(np.abs(weight), dtype=np.float32), epsilon).astype(np.float32)
+    quantized = np.clip(np.rint(weight / scale), -1.0, 1.0) * scale
+    result_shape = _shape_of(op.results[0].type)
+    if weight.ndim != 2 or result_shape != tuple(reversed(weight.shape)):
+        raise QuantHoistRefused(
+            f"absmean transpose result {result_shape} is not rank-2 reverse of {weight.shape}")
+    return np.ascontiguousarray(quantized.T.astype(_np_of(_elem_str(op.results[0].type)))), root
+
+
+def _plan_absmean_weight_transposes(module, load_arg, start: int):
+    values, matches = {}, []
+    for op in list(module.walk()):
+        matched = _match_absmean_weight_transpose(op, module, load_arg)
+        if matched is None:
+            continue
+        value, _root = matched
+        arg = HoistedArg(f"qhoist::absmean_transpose::{start + len(matches)}",
+                         tuple(value.shape), _elem_str(op.results[0].type))
+        values[arg.key] = value
+        matches.append((op, arg))
+    return matches, values
+
+
+def _erase_dead_tree(op) -> None:
+    """Erase a now-unused pure producer tree; later canonicalization is only a backup."""
+    pending = [op]
+    while pending:
+        current = pending.pop(0)
+        if current is None or not hasattr(current, "results"):
+            continue
+        if any(any(True for _ in result.uses) for result in current.results):
+            continue
+        owners = [getattr(value, "owner", None) for value in current.operands]
+        current.detach()
+        current.erase()
+        pending.extend(owner for owner in owners if hasattr(owner, "results"))
+
+
 def apply(module, activation_args, load_arg):
     """Rewrite the module in place; return ``(args, values, n_chains)``.
 
@@ -461,26 +646,37 @@ def apply(module, activation_args, load_arg):
     from xdsl.dialects.builtin import FunctionType
 
     chains, values = plan(module, activation_args, load_arg)
-    if not chains:
+    absmean_chains, absmean_values = _plan_absmean_weight_transposes(
+        module, load_arg, len(chains))
+    values.update(absmean_values)
+    if not chains and not absmean_chains:
         return [], {}, 0
 
     func = _forward_func(module)
     block = func.regions[0].blocks[0]
     args: list[HoistedArg] = []
-    for amax_op, scale_op, quant_op, (sa, qa) in chains:
+    for amax_op, scale_op, auxiliary, quant_op, (sa, qa) in chains:
         s_arg = block.insert_arg(scale_op.results[0].type, len(block.args))
         q_arg = block.insert_arg(quant_op.results[0].type, len(block.args))
         quant_op.results[0].replace_all_uses_with(q_arg)
         scale_op.results[0].replace_all_uses_with(s_arg)
-        for dead in (quant_op, scale_op, amax_op):
+        for dead in (quant_op, *auxiliary, scale_op, amax_op):
+            if dead is None:
+                continue
             if not any(True for _ in dead.results[0].uses):
                 dead.detach()
                 dead.erase()
         args.extend((sa, qa))
 
+    for transpose_op, arg in absmean_chains:
+        lifted = block.insert_arg(transpose_op.results[0].type, len(block.args))
+        transpose_op.results[0].replace_all_uses_with(lifted)
+        _erase_dead_tree(transpose_op)
+        args.append(arg)
+
     func.properties["function_type"] = FunctionType.from_lists(
         [a.type for a in block.args], list(func.function_type.outputs.data))
-    return args, values, len(chains)
+    return args, values, len(chains) + len(absmean_chains)
 
 
 def ensure_registered() -> str:

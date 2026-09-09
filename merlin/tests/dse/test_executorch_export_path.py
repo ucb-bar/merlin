@@ -15,9 +15,10 @@ Why these three concerns and not the exporter itself:
   * ``reconcile_input_arity`` — a stateful controller's forward takes recurrent state the capture
     bundle does not store, so the npz alone under-feeds it. Padding from the loader's own example is
     allowed; dropping captured tensors is not.
-  * the int8 recipe — ``pt2e_qd8`` (dynamic per-row activation quant, per-channel weights) is the
-    only recipe that mirrors merlin's own int8 datapath. ``weight_only`` const-folds to an fp32 GEMM.
-    A cell must record which one ran, and the two must never be silently interchangeable.
+  * the int8 recipe — ``pt2e_qd8`` (dynamic affine activation quant, per-channel weights) is the
+    relevant dynamic-W8A8 deployment, but not arithmetic-equivalent to Merlin's symmetric TorchAO
+    recipe. ``weight_only`` const-folds to an fp32 GEMM. A cell must record which one ran, and the
+    recipes must never be silently interchangeable.
 """
 from __future__ import annotations
 
@@ -97,6 +98,58 @@ def test_export_cache_reuses_only_the_exact_recorded_artifact(tmp_path):
 
     pte.write_bytes(b"different program")
     assert et._read_export_cache(cache, key) is None
+
+
+def test_export_can_replay_the_capture_bundle_weights_exactly(tmp_path, monkeypatch):
+    """A torch baseline may consume the same parameter bytes as the MLIR arm.
+
+    Re-instantiating a random-init model and comparing only its shapes is not an identity-matched
+    benchmark.  The opt-in path must hand the bundle's safetensors file to the export subprocess and
+    bind its identity into the export cache key, so changing those bytes can never reuse a stale PTE.
+    """
+    m2m = tmp_path / "m2m"
+    loader = _workload(m2m, "toy", "") / "loader.py"
+    loader.write_text("def get_model_and_inputs(): pass\n")
+    monkeypatch.setenv("MERLIN_MODEL2MLIR", str(m2m))
+
+    bundle_root = tmp_path / "bundle"
+    bundle_root.mkdir()
+    for name, payload in {
+        "inputs.npz": b"inputs",
+        "golden.npy": b"golden",
+        "weights.safetensors": b"captured-parameter-bytes",
+    }.items():
+        (bundle_root / name).write_bytes(payload)
+    bundle = et._bundle.CaptureBundle(model="toy", variant="fp32", root=bundle_root)
+
+    class _Identity:
+        def as_dict(self):
+            return {"source_commit": "pinned"}
+
+    captured = {}
+
+    class _Proc:
+        returncode = 0
+        stderr = ""
+        stdout = "ET_EXPORT_JSON {}\n"
+
+    def _run(argv, **kwargs):
+        captured["argv"] = argv
+        captured["cwd"] = kwargs["cwd"]
+        Path(argv[argv.index("--out") + 1]).write_bytes(b"pte")
+        return _Proc()
+
+    monkeypatch.setattr(et, "et_identity", lambda: _Identity())
+    monkeypatch.setattr(et, "et_venv_python", lambda: Path("/fake/python"))
+    monkeypatch.setattr(et.subprocess, "run", _run)
+
+    et.export_pte("toy", bundle, tmp_path / "work", replay_captured_weights=True)
+
+    flag = "--captured-weights"
+    assert flag in captured["argv"]
+    assert captured["argv"][captured["argv"].index(flag) + 1] == str(bundle.weights.resolve())
+    cache = json.loads((tmp_path / "work" / "export_result.json").read_text())
+    assert cache["key"]["captured_weights"] == et._file_identity(bundle.weights)
 
 
 # ------------------------------------------------------------------- loader environment derivation
@@ -199,6 +252,54 @@ class _Shaped:
 
     def __repr__(self):
         return f"_Shaped{self.shape}"
+
+
+class _StateTensor:
+    """Tensor metadata stand-in for captured-state reconciliation tests."""
+
+    def __init__(self, shape, dtype="float32"):
+        self.shape = shape
+        self.dtype = dtype
+
+
+def test_captured_state_reconciliation_handles_framework_namespace_drift():
+    """A dependency version may re-parent modules without changing parameter identity.
+
+    The reconciliation is structural rather than model-specific: tensor metadata narrows the
+    candidates and numbered path tokens disambiguate repeated transformer layers.
+    """
+    helper = _load_et_export_helper()
+    captured = {
+        "vla.language_model.model.layers.0.mlp.down_proj.weight": _StateTensor((8, 4)),
+        "vla.language_model.model.layers.1.mlp.down_proj.weight": _StateTensor((8, 4)),
+        "vla.language_model.lm_head.weight": _StateTensor((32, 8)),
+    }
+    live = {
+        "vla.model.language_model.layers.0.mlp.down_proj.weight": _StateTensor((8, 4)),
+        "vla.model.language_model.layers.1.mlp.down_proj.weight": _StateTensor((8, 4)),
+        "vla.lm_head.weight": _StateTensor((32, 8)),
+    }
+
+    remapped, note = helper.reconcile_captured_state_dict(captured, live)
+
+    assert list(remapped) == list(live)
+    assert remapped["vla.model.language_model.layers.0.mlp.down_proj.weight"] is captured[
+        "vla.language_model.model.layers.0.mlp.down_proj.weight"]
+    assert remapped["vla.lm_head.weight"] is captured["vla.language_model.lm_head.weight"]
+    assert "structurally remapped 3/3" in note
+
+
+def test_captured_state_reconciliation_refuses_an_ambiguous_same_shape_guess():
+    """Repeated same-shape tensors without enough path identity must never be assigned by order."""
+    helper = _load_et_export_helper()
+    captured = {"old.weight": _StateTensor((8, 8))}
+    live = {
+        "new.left.weight": _StateTensor((8, 8)),
+        "new.right.weight": _StateTensor((8, 8)),
+    }
+
+    with pytest.raises(RuntimeError, match="ambiguous|bijection|confidence"):
+        helper.reconcile_captured_state_dict(captured, live)
 
 
 # ------------------------------------------------------------------------------- int8 recipe choice
@@ -312,7 +413,7 @@ def test_qd8_export_of_a_float_graph_is_byte_for_byte_unaffected_by_the_dtype_fi
 def test_lstmnetvit_qd8_exports_now_that_the_nhwc_walk_is_bounded():
     """lstmnetvit was a REFUSED int8 cell purely because of the unbounded dynamic-qdq NHWC branch.
 
-    fp32 and qs8 both exported fine; only qd8 — the one recipe comparable to merlin's datapath —
+    fp32 and qs8 both exported fine; only qd8 — the relevant dynamic-W8A8 deployment path —
     died in ``ChannelsLastTaggedReshapePass``, first at export (``required rank 4 tensor to use
     channels_last``) and then, once the walk was rank-bounded, at execute: the pass re-pointed a
     partition OUTPUT at its NHWC copy, so the delegate returned a (1,15,23,32) buffer for a tensor

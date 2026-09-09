@@ -255,6 +255,13 @@ Then `aggregate.collect_dir(...)` renders the merlin-vs-baselines matrix into `a
   (`export_env={'M2M_LLAMA_LAYERS':'1'}` + `compute_golden=True`, gate = eager-torch-vs-ExecuTorch)
   proves the ExecuTorch+XNNPACK-RVV path end-to-end on real K1 silicon (cos 0.9999999999, rel 2.7e-6,
   217 ms wall).
+- **Board feasibility is artifact-derived, never a model-name blacklist.** Native 7B OpenVLA does
+  not fit 3.8 GB, but a strict captured-weight replay of its reduced `_consistent` bundle does. The
+  board path prices the concrete `.pte`/`.ptd`/inputs plus the exported memory-plan arena against
+  current `MemAvailable`, with runtime headroom, and separately checks rootfs capacity. Non-mmap
+  runs charge the full `.pte`; mmap runs charge only external resident data and the arena. This keeps
+  native oversized exports fail-closed without falsely refusing small captures of the same registry
+  model.
 - **WHOLE-MODEL int8 (`int8_whole_model`, the default for `variant="int8"`) — ExecuTorch's OFFICIAL
   llama recipe:** generic PT2E is IMPOSSIBLE on HF Llama (`prepare_pt2e`'s `transform_for_annotation`
   pass corrupts an integer-index dtype — the position/causal-mask `aten.index.Tensor` on a `cumsum`

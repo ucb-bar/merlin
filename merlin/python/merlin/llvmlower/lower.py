@@ -118,6 +118,14 @@ def lower_model(mlir_text: str, workdir: str | Path,
         from .arena_bind import bind_arena
         ll_text, arena_report = bind_arena(ll_text)
         stats["static_arena"] = arena_report.to_dict()
+    # MLIR's C wrapper expands each memref pointer into the implementation's flattened descriptor
+    # ABI.  An external call can make LLVM decline to inline a hundreds-of-arguments boundary,
+    # leaving target backends to materialize an enormous outgoing frame.  Repair that artificial
+    # boundary by ABI width before any target compiles the module.  This is model- and target-agnostic
+    # and preserves both public symbols; see llvmlower.ciface_inline.
+    from .ciface_inline import inline_wide_ciface_implementations
+    ll_text, ciface_inline_report = inline_wide_ciface_implementations(ll_text)
+    stats["ciface_boundary_inline"] = ciface_inline_report
     ll_path = work / "model.ll"
     ll_path.write_text(ll_text, encoding="utf-8")
 

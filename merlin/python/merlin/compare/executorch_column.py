@@ -227,14 +227,14 @@ _LAYOUT_ONLY_REWRITES: frozenset = frozenset({"hoist_weight_transposes"})
 #: The int8 recipes, and which of them are the same ARITHMETIC. `weight_only` is the odd one out and
 #: the trap: its dequant const-folds into an fp32 const weight that XNNPACK partitions as a normal
 #: fp32 GEMM, so a cell labelled int8 measures fp32 compute with int8 STORAGE and never reaches an
-#: int8 ukernel. `pt2e_qd8` is the one that mirrors merlin's own datapath (dynamic per-row activation
-#: quant against per-channel weights).
+#: int8 ukernel. `pt2e_qd8` and Merlin are both dynamic-activation/per-channel-weight W8A8
+#: deployments, but their activation qparam arithmetic differs (affine versus symmetric).
 QUANT_RECIPE_LABELS = {
     "weight_only": "weight-only int8 storage; compute is a normal fp32 GEMM (no int8 ukernel)",
     "pt2e_qs8": "PT2E static per-tensor activation quant (XNNPACK qs8)",
     "pt2e_qd8": "PT2E per-channel weights + dynamic per-row activation quant (XNNPACK qd8)",
-    "merlin_int8_w8a8": "merlin passes_quant_int: per-channel weight scales + dynamic per-row "
-                        "activation quant to i8, symmetric (the qd8 arithmetic)",
+    "torchao_sym_per_token_w8a8": "Merlin passes_quant_int: TorchAO symmetric per-token "
+                                  "activations (-127/127, eps=1e-5) + per-channel weights",
 }
 
 #: Recipe names that denote THE SAME ARITHMETIC and may therefore be compared.
@@ -244,15 +244,13 @@ QUANT_RECIPE_LABELS = {
 #: and the guard can never fire; that is the same inert-guard shape as a bundle check whose
 #: ``ours_bundle_id`` defaults to None, and it shipped here first.
 #:
-#: merlin's ``llvmlower/passes_quant_int`` dynamically quantizes each activation to i8, symmetric,
-#: PER OUTPUT ROW, against per-channel weight scales -- which is what XNNPACK calls qd8.
-#:
-#: Residual the equivalence deliberately does NOT hide: merlin additionally runs I-BERT integer
-#: softmax/GELU where ExecuTorch keeps those fp32, so the two are matched on the GEMM and merlin is
-#: MORE integer elsewhere. State that beside any ratio taken across this equivalence.
-QUANT_RECIPE_EQUIVALENT: tuple[frozenset[str], ...] = (
-    frozenset({"merlin_int8_w8a8", "pt2e_qd8"}),
-)
+#: No cross-name equivalence is currently declared. TorchAO's eager dynamic-int8 recipe is
+#: symmetric (-127/127, zero point 0, eps 1e-5); XNNPACK PT2E qd8 requests per-tensor-affine
+#: activations (-128/127) and selects data-dependent qparams. Both are dynamic W8A8, but calling
+#: them the same arithmetic made a compiler ratio pass a guard that an existing bit-exact fixture
+#: already proved false. A deployment-level comparison may still use one shared fp32 quality bar;
+#: it must be labelled as comparing whole systems, not identical arithmetic.
+QUANT_RECIPE_EQUIVALENT: tuple[frozenset[str], ...] = ()
 
 
 #: How an accuracy score identifies WHAT IT WAS SCORED AGAINST. A cos/rel is meaningless without

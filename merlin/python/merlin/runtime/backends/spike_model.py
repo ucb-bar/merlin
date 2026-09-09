@@ -234,7 +234,7 @@ def build(model_dir: str | Path, work: str | Path, inputs_npz: str | Path | None
 
     # 2. generate the data-driven runtime artifacts (arg table, call, weights.bin, io)
     cgen = work / "cgen"
-    info = c_runtime.generate(model_dir, cgen, inputs_npz)
+    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work)
     # The region ahead of the weights blob holds code, the stack, and the harness's STATIC I/O
     # storage -- and that last term is a property of the model, not a constant: `static float
     # OUT[MERLIN_OUT_ELEMS]` is 125 MiB of .bss for a 128x256000 logits output, four times what a

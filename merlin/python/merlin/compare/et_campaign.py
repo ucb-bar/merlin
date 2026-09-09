@@ -38,7 +38,7 @@ from merlin.compare import executorch_column as _etc
 #: What OUR arm computes. A CONSTANT, never derived from what the reference happened to run — a
 #: recipe derived from the comparand compares the reference against itself and the guard can never
 #: fire. Mirrors ``k1_int8_fair_compare.OURS_QUANT_RECIPE``; the two are asserted equal by the tests.
-OURS_QUANT_RECIPE = "merlin_int8_w8a8"
+OURS_QUANT_RECIPE = "torchao_sym_per_token_w8a8"
 
 #: The tier of ours comparable IN KIND with a reference scored against fp32.
 OURS_ACCURACY_REFERENCE = "capture_golden_fp32"

@@ -6,8 +6,8 @@ This module rewrites every contraction (``linalg.matmul`` and the batched ``lina
 matmuls/attention from ``collapse_overrank_matmul``) into a real integer contraction:
 
   * each f32 activation operand is dynamically quantized to i8 (symmetric, per output-row:
-    ``s = max|x|/127`` reduced over the operand's contraction dim, with ``s = 1`` when the maximum
-    is zero, zero-point 0);
+    ``s = max(max|x|/127, 1e-5)`` reduced over the operand's contraction dim, then
+    ``roundeven(x * (1/s))``, zero-point 0), matching TorchAO's captured arithmetic;
   * a ``dequantize_per_channel`` weight operand is used directly as i8 (its per-channel scale
     carried forward), the dequant dropped;
   * the contraction runs ``i8×i8→i32`` (clang ``-march=rv64gcv`` lowers it to widening
@@ -100,13 +100,14 @@ def _select_targets(targets, select, key=None):
     return [t for t in targets if select(k(t))]
 
 
-def _emit_zero_safe_scale(block, amax, denominator):
-    """Emit ``amax == 0 ? 1 : amax / denominator`` and return the selected scale.
+def _emit_torchao_symmetric_scale(block, amax, denominator):
+    """Emit TorchAO's symmetric int8 scale, including its mandatory ``1e-5`` floor.
 
-    The old ``amax / 127`` spelling makes an all-zero quantization group divide ``0 / 0`` in the
-    following quantizer.  That reaches ``fptosi(NaN)``, which is LLVM poison.  Selecting one only
-    for the zero maximum defines that case while leaving every nonzero scale's arithmetic and bits
-    unchanged.  The explicit select is also a structural proof for passes which inline rounding.
+    ``Int8DynamicActivationInt8WeightConfig`` computes ``amax / 127`` and then clamps the result
+    to ``1e-5``.  The former zero-only fallback to one made zero rows finite, but it was not the
+    arithmetic captured by model2MLIR and changed every group whose magnitude was below 0.00127.
+    Keep an explicit select around the clamp: it is redundant numerically, but gives the
+    quantize-round optimizer a local proof that an all-zero group's divisor is nonzero.
     """
     from xdsl.dialects import arith
     from xdsl.dialects.builtin import FloatAttr
@@ -114,11 +115,42 @@ def _emit_zero_safe_scale(block, amax, denominator):
     ftype = amax.type
     raw = arith.DivfOp(amax, denominator)
     zero = arith.ConstantOp(FloatAttr(0.0, ftype))
-    one = arith.ConstantOp(FloatAttr(1.0, ftype))
+    eps = arith.ConstantOp(FloatAttr(1.0e-5, ftype))
+    floored = arith.MaximumfOp(raw.result, eps.results[0])
     is_zero = arith.CmpfOp(amax, zero.results[0], "oeq")
-    safe = arith.SelectOp(is_zero.result, one.results[0], raw.result)
-    block.add_ops([raw, zero, one, is_zero, safe])
+    safe = arith.SelectOp(is_zero.result, eps.results[0], floored.result)
+    block.add_ops([raw, zero, eps, floored, is_zero, safe])
     return safe.result
+
+
+def _emit_torchao_reciprocal_tensor(scale):
+    """Materialize one reciprocal per scale group, as TorchAO does before elementwise quantization.
+
+    Besides bit-exactness (``x * (1/s)`` can round differently from ``x/s``), keeping the reciprocal
+    in its own generic prevents a floating-point division per activation element.  The number of
+    divisions is therefore the number of rows/groups, independent of their reduction width.
+    """
+    from xdsl.dialects import arith, tensor
+    from xdsl.dialects.builtin import AffineMapAttr, ArrayAttr, FloatAttr
+    from xdsl.dialects.linalg import ops as L
+    from xdsl.ir import Block, Region
+    from xdsl.ir.affine import AffineMap
+
+    scale_type = scale.type
+    rank = len(scale_type.get_shape())
+    empty = tensor.EmptyOp((), scale_type)
+    body = Block(arg_types=[scale_type.element_type, scale_type.element_type])
+    one = arith.ConstantOp(FloatAttr(1.0, scale_type.element_type))
+    reciprocal = arith.DivfOp(one.results[0], body.args[0])
+    body.add_ops([one, reciprocal, L.YieldOp(reciprocal.result)])
+    identity = AffineMapAttr(AffineMap.identity(rank))
+    generic = L.GenericOp(
+        inputs=(scale,), outputs=(empty.results[0],), body=Region(body),
+        indexing_maps=ArrayAttr([identity, identity]),
+        iterator_types=ArrayAttr(
+            [L.IteratorTypeAttr(L.IteratorType.PARALLEL)] * rank),
+        result_types=(scale_type,))
+    return [empty, generic], generic.results[0]
 
 
 # --- quantize-before-gather ---------------------------------------------------------------------
@@ -445,24 +477,25 @@ def _emit_prequant_gather(gather, reshapes):
     # --- s = amax / 127 ---
     sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
     sb = Block(arg_types=[f32, f32]); s_in, _unused = sb.args
-    safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+    safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
     sb.add_op(L.YieldOp(safe_scale))
     s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                       indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
                       iterator_types=ArrayAttr([]), result_types=(sc_t,))
-    # --- quantize the SOURCE (not the expansion): q = fptosi(clamp(roundeven(x/s), +-127)) ---
+    reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_a.results[0])
+    # --- quantize the SOURCE (not the expansion): q = fptosi(clamp(roundeven(x*(1/s)), +-127)) ---
     # Quantizes ALL of A, including elements outside the covered box, which may therefore saturate at
     # +-127. That is sound because the gather never reads them: the only consumer of this i8 tensor is
     # the gather rebuilt below, whose read set is exactly the box the scale was derived from.
     ident_r = AffineMap.identity(r).results
     i8_src_t = TensorType(i8, ash)
     q_e = tensor.EmptyOp((), i8_src_t); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-    qb = Block(arg_types=[f32, f32, i8]); xv, sv, _q = qb.args
-    q1 = arith.DivfOp(xv, sv); q2 = mathd.RoundEvenOp(q1.result)
+    qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _q = qb.args
+    q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
     q3 = arith.MinimumfOp(q2.result, c127.results[0])
     q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
     qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-    q = L.GenericOp(inputs=(src, s_a.results[0]), outputs=(q_e.results[0],), body=Region(qb),
+    q = L.GenericOp(inputs=(src, reciprocal), outputs=(q_e.results[0],), body=Region(qb),
                     indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
                     iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
                     result_types=(i8_src_t,))
@@ -474,7 +507,8 @@ def _emit_prequant_gather(gather, reshapes):
                      indexing_maps=gather.indexing_maps, iterator_types=gather.iterator_types,
                      result_types=(g_t,))
     g8.attributes.update({k: v for k, v in gather.attributes.items() if k.startswith("prov.")})
-    pre = pre_amax + [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, q_e, c127n, q, g_e, g8]
+    pre = (pre_amax + [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a]
+           + reciprocal_ops + [q_e, c127n, q, g_e, g8])
     # The quantization ops belong to the region the gather came from, so they carry ITS identity with
     # a role of their own. Without this a profile joining on `prov.fqn` falls back to the MLIR op name
     # and every activation quantize in the model collapses into one `linalg.generic` bucket.
@@ -696,27 +730,29 @@ def lower_contraction_int8(module, *, named_contraction: bool = False,
             sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
             ident_p = AffineMap.identity(len(sc_shape)).results
             sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
-            safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+            safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
             sb.add_op(L.YieldOp(safe_scale))
             sc = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                              indexing_maps=ArrayAttr([amap(len(sc_shape), ident_p),
                                                       amap(len(sc_shape), ident_p)]),
                              iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(sc_shape)),
                              result_types=(sc_t,))
-            # quantize: q = fptosi(clamp(roundeven(x/s), -127, 127))
+            reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(sc.results[0])
+            # quantize: q = fptosi(clamp(roundeven(x*(1/s)), -127, 127))
             i8_t = TensorType(i8, shp)
             q_e = tensor.EmptyOp((), i8_t); c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            qb = Block(arg_types=[f32, f32, i8]); xv, sv, _ = qb.args
-            q1 = arith.DivfOp(xv, sv); q2 = mathd.RoundEvenOp(q1.result)
+            qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _ = qb.args
+            q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
             q3 = arith.MinimumfOp(q2.result, c127.results[0])
             q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
             qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-            q = L.GenericOp(inputs=(operand, sc.results[0]), outputs=(q_e.results[0],),
+            q = L.GenericOp(inputs=(operand, reciprocal), outputs=(q_e.results[0],),
                             body=Region(qb),
                             indexing_maps=ArrayAttr([amap(r, ident_r), sc_map_out, amap(r, ident_r)]),
                             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
                             result_types=(i8_t,))
-            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, sc, q_e, c127n, q]
+            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, sc, *reciprocal_ops,
+                    q_e, c127n, q]
             i8_inputs.append(q.results[0])
             scale_vals.append((sc.results[0], par_outpos))
 
@@ -982,7 +1018,7 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
             ws_e = tensor.EmptyOp((), ws_t); wc127 = arith.ConstantOp(FloatAttr(127.0, f32))
             id_k = AffineMap.identity(len(ws_shape)).results
             wsb = Block(arg_types=[f32, f32]); ws_in, _ = wsb.args
-            safe_wscale = _emit_zero_safe_scale(wsb, ws_in, wc127.results[0])
+            safe_wscale = _emit_torchao_symmetric_scale(wsb, ws_in, wc127.results[0])
             wsb.add_op(L.YieldOp(safe_wscale))
             s_w_g = L.GenericOp(inputs=(w_amx.results[0],), outputs=(ws_e.results[0],),
                                 body=Region(wsb),
@@ -991,21 +1027,23 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
                                 iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * len(ws_shape)),
                                 result_types=(ws_t,))
             s_w = s_w_g.results[0]
+            reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_w)
             wi8_t = TensorType(i8, wsh); wq_e = tensor.EmptyOp((), wi8_t)
             wc127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            wqb = Block(arg_types=[f32, f32, i8]); wxv, wsv, _ = wqb.args
-            wq1 = arith.DivfOp(wxv, wsv); wq2 = mathd.RoundEvenOp(wq1.result)
+            wqb = Block(arg_types=[f32, f32, i8]); wxv, inv_wsv, _ = wqb.args
+            wq1 = arith.MulfOp(wxv, inv_wsv); wq2 = mathd.RoundEvenOp(wq1.result)
             wq3 = arith.MinimumfOp(wq2.result, wc127.results[0])
             wq4 = arith.MaximumfOp(wq3.result, wc127n.results[0]); wq5 = arith.FPToSIOp(wq4.result, i8)
             wqb.add_ops([wq1, wq2, wq3, wq4, wq5, L.YieldOp(wq5.result)])
-            wq = L.GenericOp(inputs=(wt, s_w_g.results[0]), outputs=(wq_e.results[0],),
+            wq = L.GenericOp(inputs=(wt, reciprocal), outputs=(wq_e.results[0],),
                              body=Region(wqb),
                              indexing_maps=ArrayAttr([amap(wr, id_w), amap(wr, keep_res),
                                                       amap(wr, id_w)]),
                              iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * wr),
                              result_types=(wi8_t,))
             wt_i8 = wq.results[0]
-            pre += [w_amx_e, wzero, w_amx_f, w_amx, ws_e, wc127, s_w_g, wq_e, wc127n, wq]
+            pre += [w_amx_e, wzero, w_amx_f, w_amx, ws_e, wc127, s_w_g,
+                    *reciprocal_ops, wq_e, wc127n, wq]
 
         recovered = static_activation(act)
         if recovered is not None:
@@ -1028,23 +1066,25 @@ def lower_conv_int8(module, *, select=None, report_out: "dict | None" = None) ->
                               result_types=(sc_t,))
             sc_e = tensor.EmptyOp((), sc_t); c127 = arith.ConstantOp(FloatAttr(127.0, f32))
             sb = Block(arg_types=[f32, f32]); s_in, _ = sb.args
-            safe_scale = _emit_zero_safe_scale(sb, s_in, c127.results[0])
+            safe_scale = _emit_torchao_symmetric_scale(sb, s_in, c127.results[0])
             sb.add_op(L.YieldOp(safe_scale))
             s_a = L.GenericOp(inputs=(amx.results[0],), outputs=(sc_e.results[0],), body=Region(sb),
                               indexing_maps=ArrayAttr([amap(0, []), amap(0, [])]),
                               iterator_types=ArrayAttr([]), result_types=(sc_t,))
+            reciprocal_ops, reciprocal = _emit_torchao_reciprocal_tensor(s_a.results[0])
             i8_t = TensorType(i8, ash); q_e = tensor.EmptyOp((), i8_t)
             c127n = arith.ConstantOp(FloatAttr(-127.0, f32))
-            qb = Block(arg_types=[f32, f32, i8]); xv, sv, _ = qb.args
-            q1 = arith.DivfOp(xv, sv); q2 = mathd.RoundEvenOp(q1.result)
+            qb = Block(arg_types=[f32, f32, i8]); xv, inv_sv, _ = qb.args
+            q1 = arith.MulfOp(xv, inv_sv); q2 = mathd.RoundEvenOp(q1.result)
             q3 = arith.MinimumfOp(q2.result, c127.results[0])
             q4 = arith.MaximumfOp(q3.result, c127n.results[0]); q5 = arith.FPToSIOp(q4.result, i8)
             qb.add_ops([q1, q2, q3, q4, q5, L.YieldOp(q5.result)])
-            q = L.GenericOp(inputs=(act, s_a.results[0]), outputs=(q_e.results[0],), body=Region(qb),
+            q = L.GenericOp(inputs=(act, reciprocal), outputs=(q_e.results[0],), body=Region(qb),
                             indexing_maps=ArrayAttr([amap(r, ident_r), amap(r, []), amap(r, ident_r)]),
                             iterator_types=ArrayAttr([L.IteratorTypeAttr(par)] * r),
                             result_types=(i8_t,))
-            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, q_e, c127n, q]
+            pre += [amx_e, zero_f, amx_f, amx, sc_e, c127, s_a, *reciprocal_ops,
+                    q_e, c127n, q]
             q_value, s_a_value = q.results[0], s_a.results[0]
         # --- i8×i8→i32 conv: EXACT original maps + iterators preserved ---
         acc_t = TensorType(i32, list(out_t.get_shape()))

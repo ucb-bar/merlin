@@ -130,7 +130,7 @@ def test_lower_matmul_int8_makes_integer_contraction(tmp_path):
 
 
 def test_dynamic_matmul_scale_defines_the_all_zero_row(tmp_path):
-    """The generated activation scale is 1 for ``amax == 0``, never ``0 / 127``.
+    """The generated scale uses TorchAO's positive ``1e-5`` floor, never ``0 / 127``.
 
     Besides making zero input well-defined, keeping the guard in the scale constructor gives the
     quantize-round fusion a structural proof that its divisor cannot be zero.
@@ -151,8 +151,61 @@ def test_dynamic_matmul_scale_defines_the_all_zero_row(tmp_path):
         and any(body_op.name == "arith.divf" for body_op in op.body.blocks[0].ops)
         and any(body_op.name == "linalg.yield" for body_op in op.body.blocks[0].ops)
     ]
-    assert any("arith.cmpf" in names and "arith.select" in names for names in scale_bodies), \
+    assert any("arith.maximumf" in names and "arith.cmpf" in names
+               and "arith.select" in names for names in scale_bodies), \
         scale_bodies
+
+    quantizers = [
+        op for op in module.walk()
+        if op.name == "linalg.generic" and op.body.blocks
+        and any(body_op.name == "arith.fptosi" for body_op in op.body.blocks[0].ops)
+    ]
+    assert len(quantizers) == 1
+    quant_names = [op.name for op in quantizers[0].body.blocks[0].ops]
+    assert "arith.mulf" in quant_names and "arith.divf" not in quant_names, quant_names
+    reciprocal = quantizers[0].inputs[1].owner
+    reciprocal_names = [op.name for op in reciprocal.body.blocks[0].ops]
+    assert reciprocal_names.count("arith.divf") == 1, reciprocal_names
+
+
+@pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
+@pytest.mark.parametrize("case", ["ulp", "tiny", "zeros"])
+def test_dynamic_matmul_quantization_is_bit_exact_torchao(case, tmp_path):
+    """The real contraction path uses TorchAO's scale floor and reciprocal spelling exactly.
+
+    An identity int8 weight exposes the activation code after requantization.  The expected scale
+    and code come from TorchAO itself, not from another transcription in this test.
+    """
+    from merlin.common.paths import merlin_dir
+    from merlin.frontends.linalg_mlir import parse_mlir_file
+    from merlin.llvmlower.abi import HostModel
+    from merlin.llvmlower.lower import lower_model
+    from merlin.llvmlower.passes_quant_int import lower_matmul_int8
+    from merlin.xdsl_dialects._common import text as to_text
+
+    ref = np.load(merlin_dir() / "tests" / "data" / "torchao_affine" / "reference.npz")
+    act = np.ascontiguousarray(ref[f"{case}::x"])
+    want_scale = np.asarray(ref[f"{case}::scale"], dtype=np.float32).reshape(1, 1)
+    want_q = np.asarray(ref[f"{case}::q"], dtype=np.int8)
+    k = act.shape[1]
+
+    src = tmp_path / f"torchao_{case}.mlir"
+    src.write_text(_DEQUANT_MM.format(m=1, k=k, n=k), encoding="utf-8")
+    module = parse_mlir_file(src)
+    assert lower_matmul_int8(module) == 1
+    result = lower_model(to_text(module), tmp_path / f"torchao_{case}_host", targets=("host",))
+    model = HostModel.load(str(result.host_so))
+
+    weight = np.eye(k, dtype=np.int8)
+    weight_scale = np.ones((k,), dtype=np.float32)
+    zero_point = np.zeros((k,), dtype=np.int32)
+    out = np.full((1, k), np.nan, dtype=np.float32)
+    model([(act.ctypes.data, act.shape), (weight.ctypes.data, weight.shape),
+           (weight_scale.ctypes.data, weight_scale.shape),
+           (zero_point.ctypes.data, zero_point.shape), (out.ctypes.data, out.shape)])
+    expected = want_q.astype(np.float32) * want_scale
+    assert np.array_equal(out.view(np.uint32), expected.view(np.uint32)), (
+        case, int(np.count_nonzero(out.view(np.uint32) != expected.view(np.uint32))))
 
 
 @pytest.mark.skipif(not toolchain.available(), reason="m2m venv / clang-23 missing")
@@ -261,7 +314,7 @@ def test_lower_conv_int8_makes_integer_conv(tmp_path):
 
 
 def test_dynamic_conv_scales_define_zero_activation_and_weight_groups(tmp_path):
-    """Both runtime-created conv scales select one for a zero maximum.
+    """Both runtime-created conv scales use TorchAO's positive floor for a zero maximum.
 
     The fixture has an f32 activation and an f32 weight, so it exercises the per-tensor activation
     constructor and the per-output-channel dynamic-weight constructor independently.
@@ -284,7 +337,8 @@ def test_dynamic_conv_scales_define_zero_activation_and_weight_groups(tmp_path):
         if names and names[0] == "arith.divf" and op.results[0].type.element_type == f32:
             scale_bodies.append(names)
     assert len(scale_bodies) == 2, scale_bodies
-    assert all("arith.cmpf" in names and "arith.select" in names for names in scale_bodies), \
+    assert all("arith.maximumf" in names and "arith.cmpf" in names
+               and "arith.select" in names for names in scale_bodies), \
         scale_bodies
 
 

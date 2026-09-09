@@ -87,7 +87,8 @@ def _embed_array(arr: "np.ndarray", dt: str) -> str:
 def generate(model_dir: str | Path, out_dir: str | Path,
              inputs_npz: str | Path, extra_npz: str | Path | None = None, *,
              ciface_name: str = "forward", invoke_name: str = "merlin_invoke",
-             max_session_steps: int | None = None) -> dict:
+             max_session_steps: int | None = None,
+             prepared_dir: str | Path | None = None) -> dict:
     """Emit the runtime-driving artifacts for a captured model into ``out_dir``.
 
     Non-weight args are embedded as C arrays: real inputs from ``inputs_npz`` (by order),
@@ -95,11 +96,16 @@ def generate(model_dir: str | Path, out_dir: str | Path,
     ``extra_npz`` (matched by manifest name; ``buf::`` keys for buffers, bare keys for
     lifted constants). Weights stay in the blob, referenced by offset.
 
+    ``prepared_dir`` is the authority for build-time ABI additions emitted while rewriting the
+    captured module. It is deliberately separate from ``out_dir``, which only receives generated C
+    artifacts. Callers that do no preparation may leave it unset.
+
     ``max_session_steps`` caps how many steps of a session corpus are embedded (streams and the
     correctness/quality references together, so step k still meets reference k). ``None`` embeds the
     whole corpus, which is what every existing caller gets.
     """
     model_dir, out_dir = Path(model_dir).resolve(), Path(out_dir).resolve()
+    prepared_dir = Path(prepared_dir).resolve() if prepared_dir is not None else out_dir
     # A build whose PREPARED module has panel-packed weight arguments must be handed the bundle whose
     # blob and manifest were packed to match. The argument table below is built from THIS bundle while
     # the compiled object follows the prepared module, so the stock bundle here would produce an
@@ -232,7 +238,37 @@ def generate(model_dir: str | Path, out_dir: str | Path,
             begin = _append_blob(np.ascontiguousarray(arr).tobytes())
             rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape),
                          DT_BYTES[arg.dtype], arg.dtype))
-    n_sig_args = len(sig) + len(qinner_args)
+    # BUILD-TIME WEIGHT-INVARIANT RESULTS. `quant_hoist.apply` appends these after qinner's
+    # arguments in the prepared @forward signature. The plan and bytes live in `prepared_dir`
+    # because they are products of preparation, not capture or C generation. Reading either without
+    # the other is an ABI
+    # error: leaving the new descriptors unbound makes a perfectly linked image compute from
+    # arbitrary memory.
+    from . import quant_hoist as _quant_hoist
+    quant_hoist_args = _quant_hoist.read_plan(prepared_dir)
+    quant_hoist_values = _quant_hoist.read_values(prepared_dir)
+    if quant_hoist_args:
+        present = set(getattr(quant_hoist_values, "files", quant_hoist_values.keys()))
+        expected = {arg.key for arg in quant_hoist_args}
+        if present != expected:
+            raise ValueError(
+                "quant-hoist plan/value disagreement: "
+                f"missing={sorted(expected - present)}, extra={sorted(present - expected)}")
+        numpy_dtype = {"f64": np.float64, "f32": np.float32, "f16": np.float16,
+                       "i64": np.int64, "i32": np.int32, "i16": np.int16,
+                       "i8": np.int8, "u8": np.uint8}
+        for arg in quant_hoist_args:
+            if arg.dtype not in numpy_dtype:
+                raise ValueError(f"quant-hoist argument {arg.key!r} has unsupported {arg.dtype}")
+            arr = np.ascontiguousarray(quant_hoist_values[arg.key])
+            if tuple(arr.shape) != tuple(arg.shape) or arr.dtype != np.dtype(numpy_dtype[arg.dtype]):
+                raise ValueError(
+                    f"quant-hoist argument {arg.key!r} bytes are {arr.shape}x{arr.dtype}, "
+                    f"plan requires {arg.shape}x{arg.dtype}")
+            begin = _append_blob(arr.tobytes())
+            rows.append(("MERLIN_WEIGHT", begin, len(arg.shape), list(arg.shape),
+                         DT_BYTES[arg.dtype], arg.dtype))
+    n_sig_args = len(sig) + len(qinner_args) + len(quant_hoist_args)
     # Output rows follow the input/weight rows in MLIR result order. Keeping every result is what
     # lets a captured decoder/LSTM expose its updated state instead of the runtime silently dropping
     # all but result zero.
@@ -509,5 +545,6 @@ def generate(model_dir: str | Path, out_dir: str | Path,
             "has_session_quality": quality_values is not None,
             "ciface_name": ciface_name, "invoke_name": invoke_name,
             "n_qinner": len(qinner_args),
+            "n_quant_hoist": len(quant_hoist_args),
             "weights_bytes": len(blob) + len(appended),
             "static_io_bytes": static_io_bytes + output_bytes}

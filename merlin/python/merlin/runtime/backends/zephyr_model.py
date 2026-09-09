@@ -415,6 +415,7 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
                         fuse_quant_round: bool = False,
                         vectorize_amax_reduction: bool = False,
                         hoist_weight_invariant_quantize: bool = False,
+                        respect_captured_quantization_scope: bool = False,
                         bundle_dir: "Path | None" = None,
                         op_counts_out: "dict[str, int] | None" = None,
                         vec_lanes: int = _VEC_RANK_LANES,
@@ -463,8 +464,16 @@ def _prepare_model_mlir(mlir_path: Path, work: Path, *, int8_compute: bool = Fal
         # to BEFORE the im2col expansion. Reported, not silent: a pass that rewrote nothing and a
         # pass that could not reach anything both return 0, and only the counters separate them.
         _qrep: dict = {}
-        apply_quant(module, named_contraction=named_contraction,
-                    prequant_gather=prequant_gather, report_out=_qrep)
+        if respect_captured_quantization_scope:
+            from ...llvmlower.quant_scope import captured_quantized_contraction
+            apply_quant(module, ["contraction_int8"], named_contraction=named_contraction,
+                        prequant_gather=prequant_gather, report_out=_qrep,
+                        select=captured_quantized_contraction)
+            print("[quant_scope] respected captured quantization evidence: "
+                  "contraction_int8 only; conv/nonlinear integer approximation passes disabled")
+        else:
+            apply_quant(module, named_contraction=named_contraction,
+                        prequant_gather=prequant_gather, report_out=_qrep)
         _pg = _qrep.get("contraction_int8", {})
         if prequant_gather:
             print(f"[quant] quantize_before_gather: "
@@ -749,9 +758,11 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
     # expands `implies`, and it runs inside the LOWERING (pipeline.apply_schedule) -- after this
     # point. So a feature that implies the vectorize arms got the arms spliced into the schedule and
     # NO `merlin.vec_r{rank}` tags for them to match, which is an inert lever that reports as
-    # applied. Only this read is taken from the closure: `features` itself stays as the caller gave
-    # it, so the membership tests below (and the `blocking` gate) are unchanged and every existing
-    # feature set builds byte-identically.
+    # applied. Preparation-only prerequisites must also be read from this closure. In particular,
+    # ``fuse_quantize_round_convert_vec`` implies the exact quant-round rewrite plus the bounded
+    # vector schedule. Reading the former from the raw set made that composite tag vector loops
+    # while silently retaining every scalar ``roundevenf`` call. Direct feature sets remain
+    # byte-identical; only a composite now receives the prerequisite declared by ``implies``.
     from ...llvmlower.impr_features import normalize as _normalize
     _closed = _normalize(features)
     _lanes = _vec_lanes(_closed)
@@ -760,13 +771,21 @@ def prepare_for_lowering(mlir_path: Path, work: Path, *, int8_compute: bool = Fa
                                             QUANTIZE_BEFORE_GATHER_NAME)
     from ...llvmlower.quant_round import FEATURE as _FUSE_QUANT_ROUND
     from ...llvmlower.reduce_vec import FEATURE as _VEC_AMAX_REDUCTION
+    from ...llvmlower.quant_scope import FEATURE as _CAPTURED_QUANT_SCOPE
+    from ...llvmlower.quant_hoist import FEATURE as _HOIST_WEIGHT_INVARIANT_QUANTIZE
     _op_counts: dict[str, int] = {}
     prepared = _prepare_model_mlir(mlir_path, work, int8_compute=int8_compute,
                                    tag_vec_ranks=_lanes is not None,
                                    named_contraction=NAMED_INT8_CONTRACTION_NAME in features,
                                    prequant_gather=QUANTIZE_BEFORE_GATHER_NAME in features,
-                                   fuse_quant_round=_FUSE_QUANT_ROUND in features,
-                                   vectorize_amax_reduction=_VEC_AMAX_REDUCTION in features,
+                                   fuse_quant_round=_FUSE_QUANT_ROUND in _closed,
+                                   vectorize_amax_reduction=_VEC_AMAX_REDUCTION in _closed,
+                                   hoist_weight_invariant_quantize=(
+                                       _HOIST_WEIGHT_INVARIANT_QUANTIZE in _closed),
+                                   respect_captured_quantization_scope=_CAPTURED_QUANT_SCOPE in _closed,
+                                   # The manifest and safetensors beside this module are the
+                                   # authority that distinguishes resident weights from inputs.
+                                   bundle_dir=Path(mlir_path).parent,
                                    op_counts_out=_op_counts,
                                    vec_lanes=_lanes or _VEC_RANK_LANES,
                                    vec_max_rank=_max_rank or _VEC_RANK_MAX_RANK)
@@ -2096,7 +2115,10 @@ def build_app(model_dir: str | Path, work: str | Path, *, board: str = "spike_ri
 
     # 2. data-driven runtime artifacts (arg table, ciface, weights.bin, embedded io).
     cgen = work / "cgen"
-    info = c_runtime.generate(model_dir, cgen, inputs_npz)
+    # Preparation can append build-time constants to @forward (for example invariant weight
+    # quantization). Point C generation at the same authority so its descriptor table cannot drift
+    # from the object ABI merely because generated C lives in the `cgen` subdirectory.
+    info = c_runtime.generate(model_dir, cgen, inputs_npz, prepared_dir=work)
 
     # 3. weights.bin -> binary blob object; archive it with model.o.
     _run([ld, "-r", "-b", "binary", "-o", work / "weights_blob.o", "weights.bin"], cwd=cgen)

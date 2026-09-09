@@ -135,6 +135,36 @@ def test_hoist_is_bit_exact_and_names_its_own_weights(tmp_path):
     assert (src / "weights.safetensors").read_bytes() == before
 
 
+def test_transposed_runtime_input_does_not_block_independent_weight_hoist(tmp_path):
+    """The IR-only analyzer sees both transposes; the manifest is the authority on storage.
+
+    A runtime input has no safetensors payload to rewrite, so its transpose must remain in the graph
+    while the independent stored weight is still hoisted.  Treating the input as a malformed weight
+    made mixed-input models such as RDT2 unable to use this otherwise applicable general pass.
+    """
+    mlir = MLIR.replace(
+        "    func.return %4 : tensor<3x2xi8>",
+        "    %5 = tensor.empty() : tensor<3x2xi8>\n"
+        "    %6 = linalg.transpose ins(%2:tensor<2x3xi8>) "
+        "outs(%5:tensor<3x2xi8>) permutation = [1, 0]\n"
+        "    func.return %4 : tensor<3x2xi8>",
+    )
+    src = _bundle(tmp_path / "src", mlir=mlir, manifest={
+        "0": {"kind": "param", "weight": "w0", "shape": [2, 3], "dtype": "int8"},
+        "1": {"kind": "param", "weight": "s0", "shape": [3], "dtype": "float32"},
+        "2": {"kind": "input", "shape": [2, 3], "dtype": "int8"},
+    })
+
+    candidate = wp.plan(src)
+    assert (candidate.hoistable, candidate.blocked, candidate.problems) == (1, 1, ())
+    dst, effect = wp.prepacked_bundle(src, cache_root=tmp_path / "cache")
+    text = (dst / "model.mlir").read_text()
+    assert text.count("linalg.transpose") == 1
+    assert "ins(%2:tensor<2x3xi8>)" in text
+    assert effect["weights_pre_transposed"] == 1
+    assert effect["non_weight_transposes_not_hoisted"] == 1
+
+
 def test_cache_is_reused_for_the_same_bundle_and_rewrite(tmp_path):
     src = _bundle(tmp_path / "src")
     cache = tmp_path / "cache"
@@ -202,9 +232,10 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
     class ReachedABI(Exception):
         pass
 
-    def generate(bundle, destination, inputs):
+    def generate(bundle, destination, inputs, **kwargs):
         seen["abi"] = Path(bundle)
         seen["inputs"] = Path(inputs)
+        seen["prepared_dir"] = Path(kwargs["prepared_dir"])
         raise ReachedABI
 
     monkeypatch.setattr(zm, "prepare_for_lowering", prepare)
@@ -220,6 +251,7 @@ def test_build_entry_points_share_prepacked_ir_and_runtime_bundle(tmp_path, monk
             src, work, features=feature_set, vlen=512)
     assert seen["lower"] == seen["abi"]
     assert seen["inputs"] == seen["abi"] / "inputs.npz"
+    assert seen["prepared_dir"] == work
     if enabled:
         assert seen["vlen"] == 512
         assert seen["prepare"] == seen["abi"] != src

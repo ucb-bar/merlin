@@ -821,6 +821,13 @@ def _resolve_openmp_selection(*, parallel: bool, parallel_harts: int | None,
     """Resolve the lowering width and the ABI provider materialized by K1."""
     if parallel_harts is not None and int(parallel_harts) < 1:
         raise ValueError("parallel_harts must be positive when provided")
+    # A one-core budget is a serial lowering, even when a measurement harness
+    # spells it explicitly as ``parallel_harts=1``.  Selecting OpenMP here used
+    # to reach a transform schedule that correctly rejects widths below two.
+    # Keep the legacy ``parallel=True`` switch strict because it explicitly asks
+    # for a parallel lowering.
+    if parallel_harts is not None and int(parallel_harts) == 1 and not parallel:
+        parallel_harts = None
     if host_effects is None:
         active = bool(parallel or parallel_harts)
         return _OpenMPSelection(
@@ -1290,7 +1297,8 @@ def build_k1_binary(model_dir: str | Path, work: str | Path, pkg,
               f"retyped, {_panel['abi_args_checked']} ABI arguments checked "
               f"(cached={_panel.get('cached')})")
     cinfo = c_runtime.generate(model_dir, cgen, inputs_npz,
-                               max_session_steps=max_session_steps)
+                               max_session_steps=max_session_steps,
+                               prepared_dir=work)
     if cinfo.get("has_session_quality"):
         (work / "HAS_SESSION_QUALITY").write_text("1")
 
@@ -1824,6 +1832,11 @@ def _pull_full_output(remote_out: str, bwork: Path, result: dict[str, Any]) -> N
             local_out.unlink(missing_ok=True)
             if attempt == 2:
                 raise
+            # A dropped SSH transport can remain unusable for the next immediate
+            # connection attempt while sshd tears the old session down.  Back off
+            # briefly; the remote result is immutable and still present until the
+            # caller's cleanup, so retrying the pull is safe and idempotent.
+            time.sleep(1 << attempt)
     import numpy as _np
     output = _np.fromfile(local_out, dtype=_np.float32)
     expected = int(result.get("metrics", {}).get("output_file_elems") or 0)

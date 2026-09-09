@@ -306,21 +306,29 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
     with IR_LOCK:
         report = weight_layout_report(mq.parse(mlir_text), func_name)
 
-    hoistable = report.hoistable
-    if report.unpriceable:
+    man = json.loads((src / "weights.safetensors.manifest.json").read_text())
+    weight_args = {int(k) for k, entry in man.items()
+                   if k.isdigit() and "weight" in entry}
+    # The IR-only analysis also sees sole-use transposes of runtime inputs.  Those values have no
+    # stored payload to rewrite and must remain graph operations; they do not invalidate independent
+    # manifest-declared weight candidates.  Storage eligibility is decided here, where the manifest
+    # is authoritative, rather than guessed from provenance or argument position.
+    by_arg = {r.arg: r for r in report.hoistable if r.arg in weight_args}
+    unpriceable_weights = [
+        problem for problem in report.unpriceable
+        if any(problem.startswith(f"arg {arg}:") for arg in weight_args)
+    ]
+    if unpriceable_weights:
         raise ValueError(                       # fail closed: an unpriced weight is not a free one
-            f"cannot hoist safely, {len(report.unpriceable)} re-layout(s) could not be priced: "
-            f"{report.unpriceable}")
-    if not hoistable:
+            f"cannot hoist safely, {len(unpriceable_weights)} weight re-layout(s) could not be "
+            f"priced: {unpriceable_weights}")
+    if not by_arg:
         raise ValueError(f"no hoistable weight transposes in {src}")
 
-    man = json.loads((src / "weights.safetensors.manifest.json").read_text())
-    by_arg = {r.arg: r for r in hoistable}
     want: dict[str, int] = {}                   # safetensors tensor name -> arg index
     for arg in by_arg:
         entry = man.get(str(arg))
-        if entry is None or "weight" not in entry:
-            raise ValueError(f"arg {arg} is hoistable in the IR but names no weight in the manifest")
+        assert entry is not None and "weight" in entry
         want[entry["weight"]] = arg
 
     # The IR analysis proves the transpose is the argument's SOLE CONSUMER. That is a fact about
@@ -363,16 +371,21 @@ def hoist_weight_transposes(src: Path | str, dst: Path | str,
             "weights_pre_transposed": done,
             "transposes_removed": len(by_arg),
             "ops_removed": dropped,
-            "bytes_moved_per_inference_before": report.hoistable_bytes,
-            "mib_moved_per_inference_before": round(report.hoistable_bytes / 2 ** 20, 1),
+            "bytes_moved_per_inference_before": sum(r.bytes_moved for r in by_arg.values()),
+            "mib_moved_per_inference_before": round(
+                sum(r.bytes_moved for r in by_arg.values()) / 2 ** 20, 1),
             "bytes_moved_per_inference_after": 0,
             "blocked_not_hoisted": len(report.blocked),
+            "non_weight_transposes_not_hoisted": len(report.hoistable) - len(by_arg),
             "weights_file_retargeted": retargeted,
             "sidecars_not_carried": skipped,
             "analysis": "merlin.xdsl_dialects.lowering.weight_layout.weight_layout_report",
         },
         caveats=([f"{len(report.blocked)} re-layout(s) were NOT hoisted (argument has other readers)"]
                  if report.blocked else [])
+        + ([f"{len(report.hoistable) - len(by_arg)} sole-use transpose(s) were NOT hoisted because "
+            "their arguments are runtime inputs, not manifest-declared weights"]
+           if len(report.hoistable) != len(by_arg) else [])
         + ([f"stale, NOT carried over from the source bundle: {skipped}"] if skipped else [])
         + ([] if retargeted else ["prov.weights_file was absent, so it could not be retargeted at "
                                   "this bundle's own weights"]),
