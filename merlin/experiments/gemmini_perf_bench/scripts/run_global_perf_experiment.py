@@ -2480,10 +2480,29 @@ class GlobalPerfExperiment:
         for index, (sentinel, analysis) in enumerate(zip(
                 self.portfolio_sentinels, analyses, strict=True)):
             current = by_capsule.get(sentinel.capsule_sha256)
-            if not current:
-                raise ValueError("static analysis bundle lacks one portfolio member's artifacts")
             if index == 0:
+                if not current:
+                    # The OBJECTIVE's artifacts are required. Skipping them silently would leave a
+                    # bundle that looks complete and binds to nothing.
+                    raise ValueError("static analysis bundle lacks the objective's own artifacts")
                 selected = static_artifacts
+            elif not current:
+                # A TRAINING member that published no primary artifacts is recorded, not fatal.
+                # It used to abort the whole run, which is why the portfolio could never be
+                # widened: the models with the most optimization room are exactly the ones whose
+                # emission is hardest, and one of them failing to publish a reusable artifact set
+                # killed the campaign for every member including the objective. The member's
+                # ANALYSIS is still carried in `member_analyses` and is still worth having -- a
+                # host-lane census is what identifies where a model's cost is, and it does not
+                # depend on the artifacts being reusable for probe preparation.
+                member_artifacts.append({
+                    "capsule_sha256": sentinel.capsule_sha256,
+                    "artifacts": None,
+                    "status": "member_published_no_reusable_artifacts",
+                    "consequence": ("this member cannot back a probe or a cross-run artifact "
+                                    "binding; its analysis is still recorded in member_analyses"),
+                })
+                continue
             else:
                 selected = {key: copy.deepcopy(value) for key, value in current.items()
                             if key != "interface" and key != "parsed_lowered_module"}
@@ -2493,6 +2512,7 @@ class GlobalPerfExperiment:
             member_artifacts.append({
                 "capsule_sha256": sentinel.capsule_sha256,
                 "artifacts": self._validate_static_artifacts(selected, analysis=analysis),
+                "status": "reusable",
             })
         bundle = {
             "schema": "global_cross_run_static_analysis_bundle_v1",
@@ -2783,6 +2803,15 @@ class GlobalPerfExperiment:
             analysis["iteration_readiness"] = copy.deepcopy(readiness)
             if readiness["status"] != "ready_for_probe_admission":
                 raise ValueError("imported static analysis fails current readiness recomputation")
+            if artifact_row.get("artifacts") is None:
+                # A bundle may legitimately carry a training member that published no reusable
+                # artifacts (see `_persist_static_analysis_bundle`). Such a bundle cannot be
+                # IMPORTED, because import replays artifact bindings rather than recomputing them.
+                # Refuse it by name so the run re-analyzes instead of failing on a missing key.
+                raise ValueError(
+                    "static analysis seed bundle carries a portfolio member with no reusable "
+                    f"artifacts ({artifact_row.get('status')}); re-analyze this candidate instead "
+                    "of importing the bundle")
             artifacts = self._validate_static_artifacts(
                 artifact_row.get("artifacts"), analysis=analysis)
             source = Path(sentinel.frozen_source_path)
@@ -3517,6 +3546,7 @@ class GlobalPerfExperiment:
             # (-1 and -2 host allocations) reported `candidate_minus_previous` all zeros.
             host = plan.get("host_activity") or {}
             host_ops = host.get("static_operations") or {}
+            host_dyn = host.get("dynamic_operations") or {}
             return {
                 "command_buffer_macs": arm.get("macs") if arm.get("exact") is True else None,
                 "full_model_contraction_macs": ((diag.get("model_contraction_placement") or {})
@@ -3529,7 +3559,119 @@ class GlobalPerfExperiment:
                 "host_store_payload_bytes": host.get("store_payload_bytes"),
                 "host_static_allocation_payload_bytes": host.get("static_allocation_payload_bytes"),
                 "host_static_allocations": host_ops.get("allocation"),
+                # The best CYCLE proxy available without a simulator. Host DYNAMIC operation count
+                # is what the host lane actually executes, and the host lane is >=93% of the
+                # measured window on the one FireSim run with a counter partition -- so a relative
+                # reduction here converts to a whole-model estimate directly, which payload BYTES
+                # do not (bytes say nothing about how many operations touched them).
+                #
+                # Read it as an UPPER bound on the benefit and check the mix before quoting it: a
+                # revision that removed 11,920 operations (-0.981%) removed only integer_arithmetic
+                # and branch while leaving floating_arithmetic exactly unchanged, so its
+                # cycle-weighted effect is below its operation-count effect.
+                "host_dynamic_operations_total": (
+                    sum(v for v in host_dyn.values() if isinstance(v, int) and not isinstance(v, bool))
+                    if host_dyn else None),
+                # ... and the MIX, per family, because the total alone has no gradient worth
+                # following. The warning above was written as a comment and therefore reached
+                # nobody: the authoring loop kept removing `integer_arithmetic` and `branch` --
+                # the cheap families -- while `floating_arithmetic` sat at 164,554 untouched,
+                # because one collapsed scalar cannot say WHICH family moved. These per-family
+                # counters flow into `candidate_minus_previous` like every other numeric field, so
+                # an edit that trades 10,000 integer operations for 100 float ones is visible as
+                # what it is instead of reading as a win.
+                **{f"host_dynamic_operations_{family}": value
+                   for family, value in sorted(host_dyn.items())
+                   if isinstance(value, int) and not isinstance(value, bool)},
             }
+        def cost_locations(analysis: Mapping[str, Any], *, limit: int = 8) -> list[dict[str, Any]]:
+            """The most expensive host tasks, NAMED, with the family that dominates each.
+
+            A magnitude with no location is not a gradient. The loop was told only how many host
+            operations a whole model executes, never which of its tasks executed them, so every
+            edit was a guess about where the cost was. The per-task breakdown and its
+            `source_regions` already exist in `host_cfg_activity_v1`; this only stops discarding
+            them. `share_of_host_dynamic_operations` is the fraction of the whole host lane, so a
+            task worth working on is distinguishable from one that is already noise.
+            """
+            plan = (analysis.get("diagnostics") or {}).get("verified_global_plan_emission") or {}
+            host = plan.get("host_activity") or {}
+            tasks = host.get("tasks")
+            if not isinstance(tasks, list):
+                return []
+            whole = sum(v for v in (host.get("dynamic_operations") or {}).values()
+                        if isinstance(v, int) and not isinstance(v, bool))
+            ranked: list[tuple[int, dict[str, Any]]] = []
+            for index, task in enumerate(tasks):
+                if not isinstance(task, Mapping):
+                    continue
+                families = {name: value for name, value in (task.get("dynamic_operations") or {}).items()
+                            if isinstance(value, int) and not isinstance(value, bool)}
+                total = sum(families.values())
+                if not total:
+                    continue
+                dominant = max(families.items(), key=lambda item: (item[1], item[0]))
+                regions = [str(name) for name in (task.get("source_regions") or [])]
+                ranked.append((total, {
+                    "task_index": index,
+                    "dynamic_operations": total,
+                    "share_of_host_dynamic_operations": round(total / whole, 6) if whole else None,
+                    "dominant_family": dominant[0],
+                    "dominant_family_operations": dominant[1],
+                    "dynamic_operations_by_family": dict(sorted(families.items())),
+                    # Truncated because a task can name hundreds of regions and this payload is
+                    # read by the agent every iteration; the count is kept so the truncation is
+                    # never mistaken for the whole task.
+                    "source_regions": regions[:12],
+                    "source_region_count": len(regions),
+                }))
+            ranked.sort(key=lambda item: -item[0])
+            return [entry for _, entry in ranked[:limit]]
+
+        def reference_gap(analysis: Mapping[str, Any]) -> dict[str, Any]:
+            """Distance to a MEASURED destination for this objective -- or the fact there is none.
+
+            An authoring loop that sees only its own last revision can tell that it moved, never
+            whether it moved far enough or toward anything. This reports the objective's own
+            measured reference and the estimated distance to it, and when the objective has no
+            measured reference it says SO, loudly, because that is the more important finding: a
+            campaign ran seventeen iterations against an objective with no reference point and
+            sealed a round at -2 host operations, and nothing in the loop could say that the model
+            being optimized had no destination to be optimized toward.
+            """
+            from merlin.perf.target_reference import (estimate_cycles, find_reference_for_capsule)
+
+            capsule = str(((analysis.get("workload") or {}).get("capsule")) or "")
+            if not capsule:
+                return {"status": "objective_capsule_not_declared"}
+            found = find_reference_for_capsule(capsule)
+            if found is None:
+                return {
+                    "status": "no_measured_reference_for_objective",
+                    "objective_capsule": capsule,
+                    "consequence": (
+                        "there is no measured cycle count for this objective, so no edit made "
+                        "against it can be shown to close a gap toward a known destination; the "
+                        "host-operation deltas below are self-relative only"),
+                    "remedy": ("add a portfolio member whose capsule appears in "
+                               "merlin/contract/perf_reference_targets.yaml"),
+                }
+            name, reference = found
+            plan = (analysis.get("diagnostics") or {}).get("verified_global_plan_emission") or {}
+            host_dyn = (plan.get("host_activity") or {}).get("dynamic_operations") or {}
+            total = sum(v for v in host_dyn.values()
+                        if isinstance(v, int) and not isinstance(v, bool))
+            record: dict[str, Any] = {"status": "derived", "reference": name,
+                                      "objective_capsule": capsule,
+                                      "reference_whole_model_cycles":
+                                          (reference.get("measured") or {}).get("whole_model_cycles")}
+            if total:
+                # Absolute, because there is no measured host-operation count to divide by: the
+                # reference measured CYCLES, not the operations its own host lane executed. So this
+                # is the weaker of the two forms and is labelled as such by `basis`.
+                record["cycles"] = estimate_cycles(total, reference)
+            return record
+
         left = counters(previous) if previous else {}
         right = counters(current)
         changes = {name: right[name] - left[name] for name in right
@@ -3541,6 +3683,8 @@ class GlobalPerfExperiment:
             if previous else {"status": "initial_observation", "cycle_selection": "UNMEASURED"},
             "previous_iteration": previous_iteration,
             "candidate_totals": right, "candidate_minus_previous": changes,
+            "host_cost_locations": cost_locations(current),
+            "reference_gap": reference_gap(current),
             "unknown_metrics": [name for name, value in right.items() if value is None],
             "selection": "requires_global_cost_evidence",
             "previous_revision_mechanism_feedback": (
