@@ -773,8 +773,21 @@ def main(argv: list[str] | None = None) -> int:
         waive=tuple(config["waive_functional_gate"]))
     gaps = tuple(sorted(str(row["capsule"]) for row in functional.public_score["per_capsule"]
                         if row.get("status") != "pass"))
+    # The expected phase-1 counts are an operator ASSERTION checked against the frozen receipts --
+    # the anti-tamper guard that a qualification has not changed underneath the campaign. They were
+    # literals for one specific run (92/96), which silently made every other pin unlaunchable, so
+    # they are declared in the campaign config instead. They are never read off the receipts being
+    # checked; that would make the guard agree with itself.
+    try:
+        expected_passed = int(config["functional_expected_public_passed"])
+        expected_total = int(config["functional_expected_public_total"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(
+            "campaign config must declare functional_expected_public_passed and "
+            "functional_expected_public_total for the pinned phase-1 run") from exc
     phase1 = FrozenPhase1(run_root, functional.run_id, functional.digest,
-                         tuple(config["waive_functional_gate"]), 92, 96, gaps)
+                         tuple(config["waive_functional_gate"]),
+                         expected_passed, expected_total, gaps)
     phase1.verify(functional.submission_dir)
     if args.output.exists():
         raise ValueError("macro stage output must be fresh")
