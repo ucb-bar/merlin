@@ -1,6 +1,6 @@
 {
   "summary": {
-    "schema": "merlin_gemmini_native_narrow_epilogue_inventory_v1",
+    "schema": "merlin_gemmini_native_narrow_epilogue_inventory_v2",
     "source": "/scratch/agustin/projects/oscar-merlin/out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/model2mlir_direct.mlir",
     "weights": "/scratch/agustin/projects/oscar-merlin/out/artifacts/recaptures/resnet50_pt2e_w8a8_universal_dog_direct_20260906/weights.safetensors",
     "prepared_integer_convolutions": 53,
@@ -8,12 +8,15 @@
     "native_exact_admitted": 0,
     "native_exact_refused": 53,
     "all_channels_nonzero_bias": 53,
+    "all_bias_channels_exact_integer_accumulator_offset": 0,
     "per_channel_scale": 53,
+    "output_channels_total": 26560,
+    "minimum_channel_partitioned_loop_conv_launches": 26560,
     "residual_add_paths": 20,
     "maxpool_paths": 1,
     "global_tail_paths": 1,
     "hardware_qualification": "not_run_no_candidate_admitted",
-    "erratum": "nonzero bias is supported by LoopConvLdBias LOAD3 even when the ordinary execute-path D operand is hardwired to garbage"
+    "erratum": "nonzero bias is supported by LoopConvLdBias LOAD3 even when the ordinary execute-path D operand is hardwired to garbage; the refusal is the captured f32 arithmetic, not transport"
   },
   "convolutions": [
     {
@@ -45,9 +48,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.005859375,
+        "fractional_distance_to_integer_max": 0.4931640625,
         "min": -9.418174743652344,
         "max": 22.49496078491211
       },
+      "activation_scale": 0.03135662525892258,
+      "output_scale": 0.31260228157043457,
       "weight_scale": {
         "arg": 54,
         "tensor": "_scale_0",
@@ -58,6 +66,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "maxpool_requires_native_loop_conv_emission"
       ]
@@ -89,9 +98,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.02880859375,
+        "fractional_distance_to_integer_max": 0.4775390625,
         "min": -20.147268295288086,
         "max": 15.999448776245117
       },
+      "activation_scale": 0.31260228157043457,
+      "output_scale": 0.11396259069442749,
       "weight_scale": {
         "arg": 56,
         "tensor": "_scale_1",
@@ -102,6 +116,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -132,9 +147,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0052947998046875,
+        "fractional_distance_to_integer_max": 0.49609375,
         "min": -12.553802490234375,
         "max": 14.834203720092773
       },
+      "activation_scale": 0.11396259069442749,
+      "output_scale": 0.11763249337673187,
       "weight_scale": {
         "arg": 58,
         "tensor": "_scale_2",
@@ -145,6 +165,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -176,9 +197,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00146484375,
+        "fractional_distance_to_integer_max": 0.499267578125,
         "min": -14.034213066101074,
         "max": 11.683894157409668
       },
+      "activation_scale": 0.11763249337673187,
+      "output_scale": 0.14915281534194946,
       "weight_scale": {
         "arg": 60,
         "tensor": "_scale_3",
@@ -189,6 +215,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -221,9 +248,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0048828125,
+        "fractional_distance_to_integer_max": 0.498779296875,
         "min": -14.145302772521973,
         "max": 24.49135398864746
       },
+      "activation_scale": 0.31260228157043457,
+      "output_scale": 0.14915281534194946,
       "weight_scale": {
         "arg": 62,
         "tensor": "_scale_4",
@@ -234,6 +266,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -265,9 +298,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.019775390625,
+        "fractional_distance_to_integer_max": 0.498046875,
         "min": -9.282356262207031,
         "max": 32.378662109375
       },
+      "activation_scale": 0.14915281534194946,
+      "output_scale": 0.13782764971256256,
       "weight_scale": {
         "arg": 64,
         "tensor": "_scale_5",
@@ -278,6 +316,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -308,9 +347,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0068359375,
+        "fractional_distance_to_integer_max": 0.495361328125,
         "min": -1.486552357673645,
         "max": 5.628358840942383
       },
+      "activation_scale": 0.13782764971256256,
+      "output_scale": 0.11158231645822525,
       "weight_scale": {
         "arg": 66,
         "tensor": "_scale_6",
@@ -321,6 +365,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -352,9 +397,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0054931640625,
+        "fractional_distance_to_integer_max": 0.497802734375,
         "min": -8.83262825012207,
         "max": 12.252721786499023
       },
+      "activation_scale": 0.11158231645822525,
+      "output_scale": 0.16288718581199646,
       "weight_scale": {
         "arg": 68,
         "tensor": "_scale_7",
@@ -365,6 +415,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -396,9 +447,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.003662109375,
+        "fractional_distance_to_integer_max": 0.4984130859375,
         "min": -8.432600975036621,
         "max": 4.936821937561035
       },
+      "activation_scale": 0.16288718581199646,
+      "output_scale": 0.06132619082927704,
       "weight_scale": {
         "arg": 70,
         "tensor": "_scale_8",
@@ -409,6 +465,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -439,9 +496,14 @@
         "channels": 64,
         "nonzero_channels": 64,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.01123046875,
+        "fractional_distance_to_integer_max": 0.486572265625,
         "min": -11.86962604522705,
         "max": 6.579132556915283
       },
+      "activation_scale": 0.06132619082927704,
+      "output_scale": 0.06748208403587341,
       "weight_scale": {
         "arg": 72,
         "tensor": "_scale_9",
@@ -452,6 +514,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -483,9 +546,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001953125,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -10.943815231323242,
         "max": 14.686656951904297
       },
+      "activation_scale": 0.06748208403587341,
+      "output_scale": 0.15427424013614655,
       "weight_scale": {
         "arg": 74,
         "tensor": "_scale_10",
@@ -496,6 +564,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -527,9 +596,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00423431396484375,
+        "fractional_distance_to_integer_max": 0.49609375,
         "min": -9.545639038085938,
         "max": 4.6019792556762695
       },
+      "activation_scale": 0.15427424013614655,
+      "output_scale": 0.09931888431310654,
       "weight_scale": {
         "arg": 76,
         "tensor": "_scale_11",
@@ -540,6 +614,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -570,9 +645,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.49853515625,
         "min": -1.207034945487976,
         "max": 4.810915470123291
       },
+      "activation_scale": 0.09931888431310654,
+      "output_scale": 0.12791429460048676,
       "weight_scale": {
         "arg": 78,
         "tensor": "_scale_12",
@@ -583,6 +663,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -614,9 +695,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0001220703125,
+        "fractional_distance_to_integer_max": 0.49755859375,
         "min": -16.608327865600586,
         "max": 11.61974811553955
       },
+      "activation_scale": 0.12791429460048676,
+      "output_scale": 0.14284946024417877,
       "weight_scale": {
         "arg": 80,
         "tensor": "_scale_13",
@@ -627,6 +713,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -659,9 +746,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00048828125,
+        "fractional_distance_to_integer_max": 0.498046875,
         "min": -8.700763702392578,
         "max": 9.98996353149414
       },
+      "activation_scale": 0.15427424013614655,
+      "output_scale": 0.14284946024417877,
       "weight_scale": {
         "arg": 82,
         "tensor": "_scale_14",
@@ -672,6 +764,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -703,9 +796,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00390625,
+        "fractional_distance_to_integer_max": 0.498291015625,
         "min": -9.920166969299316,
         "max": 4.073278427124023
       },
+      "activation_scale": 0.14284946024417877,
+      "output_scale": 0.05848422646522522,
       "weight_scale": {
         "arg": 84,
         "tensor": "_scale_15",
@@ -716,6 +814,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -746,9 +845,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001953125,
+        "fractional_distance_to_integer_max": 0.49853515625,
         "min": -13.5668306350708,
         "max": 8.072240829467773
       },
+      "activation_scale": 0.05848422646522522,
+      "output_scale": 0.05297976732254028,
       "weight_scale": {
         "arg": 86,
         "tensor": "_scale_16",
@@ -759,6 +863,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -790,9 +895,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00390625,
+        "fractional_distance_to_integer_max": 0.4990234375,
         "min": -6.752218723297119,
         "max": 5.60001802444458
       },
+      "activation_scale": 0.05297976732254028,
+      "output_scale": 0.11963285505771637,
       "weight_scale": {
         "arg": 88,
         "tensor": "_scale_17",
@@ -803,6 +913,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -834,9 +945,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.004243373870849609,
+        "fractional_distance_to_integer_max": 0.4991455078125,
         "min": -7.345354080200195,
         "max": 3.24829363822937
       },
+      "activation_scale": 0.11963285505771637,
+      "output_scale": 0.043919239193201065,
       "weight_scale": {
         "arg": 90,
         "tensor": "_scale_18",
@@ -847,6 +963,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -877,9 +994,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.01171875,
+        "fractional_distance_to_integer_max": 0.4970703125,
         "min": -3.279099941253662,
         "max": 6.68617057800293
       },
+      "activation_scale": 0.043919239193201065,
+      "output_scale": 0.062229856848716736,
       "weight_scale": {
         "arg": 92,
         "tensor": "_scale_19",
@@ -890,6 +1012,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -921,9 +1044,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0001220703125,
+        "fractional_distance_to_integer_max": 0.497802734375,
         "min": -6.772764682769775,
         "max": 4.626742362976074
       },
+      "activation_scale": 0.062229856848716736,
+      "output_scale": 0.12125502526760101,
       "weight_scale": {
         "arg": 94,
         "tensor": "_scale_20",
@@ -934,6 +1062,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -965,9 +1094,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001708984375,
+        "fractional_distance_to_integer_max": 0.49853515625,
         "min": -4.224554061889648,
         "max": 2.7518701553344727
       },
+      "activation_scale": 0.12125502526760101,
+      "output_scale": 0.038526128977537155,
       "weight_scale": {
         "arg": 96,
         "tensor": "_scale_21",
@@ -978,6 +1112,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1008,9 +1143,14 @@
         "channels": 128,
         "nonzero_channels": 128,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0052490234375,
+        "fractional_distance_to_integer_max": 0.498046875,
         "min": -5.147319793701172,
         "max": 5.488915920257568
       },
+      "activation_scale": 0.038526128977537155,
+      "output_scale": 0.05464450642466545,
       "weight_scale": {
         "arg": 98,
         "tensor": "_scale_22",
@@ -1021,6 +1161,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1052,9 +1193,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 2,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.4990234375,
         "min": -11.459210395812988,
         "max": 7.954369068145752
       },
+      "activation_scale": 0.05464450642466545,
+      "output_scale": 0.11812004446983337,
       "weight_scale": {
         "arg": 100,
         "tensor": "_scale_23",
@@ -1065,6 +1211,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1096,9 +1243,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.4970703125,
         "min": -5.776217937469482,
         "max": 4.646461009979248
       },
+      "activation_scale": 0.11812004446983337,
+      "output_scale": 0.0564151257276535,
       "weight_scale": {
         "arg": 102,
         "tensor": "_scale_24",
@@ -1109,6 +1261,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1139,9 +1292,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00732421875,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -1.819549560546875,
         "max": 3.8689894676208496
       },
+      "activation_scale": 0.0564151257276535,
+      "output_scale": 0.04500645026564598,
       "weight_scale": {
         "arg": 104,
         "tensor": "_scale_25",
@@ -1152,6 +1310,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1183,9 +1342,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 3,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -7.228767395019531,
         "max": 8.161531448364258
       },
+      "activation_scale": 0.04500645026564598,
+      "output_scale": 0.06860918551683426,
       "weight_scale": {
         "arg": 106,
         "tensor": "_scale_26",
@@ -1196,6 +1360,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1228,9 +1393,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.000732421875,
+        "fractional_distance_to_integer_max": 0.499267578125,
         "min": -6.735016345977783,
         "max": 5.402318477630615
       },
+      "activation_scale": 0.11812004446983337,
+      "output_scale": 0.06860918551683426,
       "weight_scale": {
         "arg": 108,
         "tensor": "_scale_27",
@@ -1241,6 +1411,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1272,9 +1443,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.4990234375,
         "min": -4.058315277099609,
         "max": 4.522781848907471
       },
+      "activation_scale": 0.06860918551683426,
+      "output_scale": 0.038419533520936966,
       "weight_scale": {
         "arg": 110,
         "tensor": "_scale_28",
@@ -1285,6 +1461,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1315,9 +1492,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00390625,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -5.925135612487793,
         "max": 6.228141784667969
       },
+      "activation_scale": 0.038419533520936966,
+      "output_scale": 0.03913911432027817,
       "weight_scale": {
         "arg": 112,
         "tensor": "_scale_29",
@@ -1328,6 +1510,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1359,9 +1542,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.499755859375,
         "min": -5.187296390533447,
         "max": 4.831145286560059
       },
+      "activation_scale": 0.03913911432027817,
+      "output_scale": 0.07113739103078842,
       "weight_scale": {
         "arg": 114,
         "tensor": "_scale_30",
@@ -1372,6 +1560,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1403,9 +1592,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0029296875,
+        "fractional_distance_to_integer_max": 0.497314453125,
         "min": -3.1252357959747314,
         "max": 3.442765474319458
       },
+      "activation_scale": 0.07113739103078842,
+      "output_scale": 0.03502032905817032,
       "weight_scale": {
         "arg": 116,
         "tensor": "_scale_31",
@@ -1416,6 +1610,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1446,9 +1641,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -2.4722583293914795,
         "max": 4.424267768859863
       },
+      "activation_scale": 0.03502032905817032,
+      "output_scale": 0.07692234218120575,
       "weight_scale": {
         "arg": 118,
         "tensor": "_scale_32",
@@ -1459,6 +1659,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1490,9 +1691,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00054931640625,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -7.154050827026367,
         "max": 5.396468639373779
       },
+      "activation_scale": 0.07692234218120575,
+      "output_scale": 0.11502187699079514,
       "weight_scale": {
         "arg": 120,
         "tensor": "_scale_33",
@@ -1503,6 +1709,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1534,9 +1741,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.000732421875,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -3.495725631713867,
         "max": 3.277282953262329
       },
+      "activation_scale": 0.11502187699079514,
+      "output_scale": 0.21325233578681946,
       "weight_scale": {
         "arg": 122,
         "tensor": "_scale_34",
@@ -1547,6 +1759,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1577,9 +1790,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0013427734375,
+        "fractional_distance_to_integer_max": 0.497314453125,
         "min": -3.6695897579193115,
         "max": 4.069202899932861
       },
+      "activation_scale": 0.21325233578681946,
+      "output_scale": 0.24455055594444275,
       "weight_scale": {
         "arg": 124,
         "tensor": "_scale_35",
@@ -1590,6 +1808,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1621,9 +1840,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.000244140625,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -7.58204460144043,
         "max": 3.9578564167022705
       },
+      "activation_scale": 0.24455055594444275,
+      "output_scale": 0.2572654187679291,
       "weight_scale": {
         "arg": 126,
         "tensor": "_scale_36",
@@ -1634,6 +1858,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1665,9 +1890,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0003662109375,
+        "fractional_distance_to_integer_max": 0.49884033203125,
         "min": -3.3195958137512207,
         "max": 1.710150957107544
       },
+      "activation_scale": 0.2572654187679291,
+      "output_scale": 0.34701400995254517,
       "weight_scale": {
         "arg": 128,
         "tensor": "_scale_37",
@@ -1678,6 +1908,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1708,9 +1939,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00091552734375,
+        "fractional_distance_to_integer_max": 0.49755859375,
         "min": -4.696188449859619,
         "max": 4.687714576721191
       },
+      "activation_scale": 0.34701400995254517,
+      "output_scale": 0.12398907542228699,
       "weight_scale": {
         "arg": 130,
         "tensor": "_scale_38",
@@ -1721,6 +1957,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1752,9 +1989,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0001220703125,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -7.952134609222412,
         "max": 3.9050252437591553
       },
+      "activation_scale": 0.12398907542228699,
+      "output_scale": 0.18057049810886383,
       "weight_scale": {
         "arg": 132,
         "tensor": "_scale_39",
@@ -1765,6 +2007,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1796,9 +2039,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001708984375,
+        "fractional_distance_to_integer_max": 0.4984130859375,
         "min": -3.009478807449341,
         "max": 3.398073673248291
       },
+      "activation_scale": 0.18057049810886383,
+      "output_scale": 0.1047859936952591,
       "weight_scale": {
         "arg": 134,
         "tensor": "_scale_40",
@@ -1809,6 +2057,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1839,9 +2088,14 @@
         "channels": 256,
         "nonzero_channels": 256,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.00146484375,
+        "fractional_distance_to_integer_max": 0.49786376953125,
         "min": -5.109373092651367,
         "max": 3.9009556770324707
       },
+      "activation_scale": 0.1047859936952591,
+      "output_scale": 0.08168860524892807,
       "weight_scale": {
         "arg": 136,
         "tensor": "_scale_41",
@@ -1852,6 +2106,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1883,9 +2138,14 @@
         "channels": 1024,
         "nonzero_channels": 1024,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.4998779296875,
         "min": -6.390344619750977,
         "max": 3.7934517860412598
       },
+      "activation_scale": 0.08168860524892807,
+      "output_scale": 0.1362939327955246,
       "weight_scale": {
         "arg": 138,
         "tensor": "_scale_42",
@@ -1896,6 +2156,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -1927,9 +2188,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0008544921875,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -3.226940155029297,
         "max": 1.6000139713287354
       },
+      "activation_scale": 0.1362939327955246,
+      "output_scale": 0.053616512566804886,
       "weight_scale": {
         "arg": 140,
         "tensor": "_scale_43",
@@ -1940,6 +2206,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -1970,9 +2237,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001953125,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -1.9576716423034668,
         "max": 5.953485488891602
       },
+      "activation_scale": 0.053616512566804886,
+      "output_scale": 0.07072114944458008,
       "weight_scale": {
         "arg": 142,
         "tensor": "_scale_44",
@@ -1983,6 +2255,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2014,9 +2287,14 @@
         "channels": 2048,
         "nonzero_channels": 2048,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.49951171875,
         "min": -7.966121673583984,
         "max": 8.913094520568848
       },
+      "activation_scale": 0.07072114944458008,
+      "output_scale": 0.2649398446083069,
       "weight_scale": {
         "arg": 144,
         "tensor": "_scale_45",
@@ -2027,6 +2305,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2059,9 +2338,14 @@
         "channels": 2048,
         "nonzero_channels": 2048,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -6.620062828063965,
         "max": 5.5980682373046875
       },
+      "activation_scale": 0.1362939327955246,
+      "output_scale": 0.2649398446083069,
       "weight_scale": {
         "arg": 146,
         "tensor": "_scale_46",
@@ -2072,6 +2356,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2103,9 +2388,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0008544921875,
+        "fractional_distance_to_integer_max": 0.499481201171875,
         "min": -5.670987129211426,
         "max": 3.1857028007507324
       },
+      "activation_scale": 0.2649398446083069,
+      "output_scale": 0.1740572601556778,
       "weight_scale": {
         "arg": 148,
         "tensor": "_scale_47",
@@ -2116,6 +2406,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2146,9 +2437,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.0018310546875,
+        "fractional_distance_to_integer_max": 0.4990234375,
         "min": -6.859125137329102,
         "max": 4.024154186248779
       },
+      "activation_scale": 0.1740572601556778,
+      "output_scale": 0.08777085691690445,
       "weight_scale": {
         "arg": 150,
         "tensor": "_scale_48",
@@ -2159,6 +2455,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2190,9 +2487,14 @@
         "channels": 2048,
         "nonzero_channels": 2048,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 1,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -13.521289825439453,
         "max": 5.127305507659912
       },
+      "activation_scale": 0.08777085691690445,
+      "output_scale": 0.4253818392753601,
       "weight_scale": {
         "arg": 152,
         "tensor": "_scale_49",
@@ -2203,6 +2505,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize"
       ]
@@ -2234,9 +2537,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 6.103515625e-05,
+        "fractional_distance_to_integer_max": 0.4996337890625,
         "min": -4.767824649810791,
         "max": 1.5657347440719604
       },
+      "activation_scale": 0.4253818392753601,
+      "output_scale": 0.18775691092014313,
       "weight_scale": {
         "arg": 154,
         "tensor": "_scale_50",
@@ -2247,6 +2555,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2277,9 +2586,14 @@
         "channels": 512,
         "nonzero_channels": 512,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 0,
+        "fractional_distance_to_integer_min": 0.001220703125,
+        "fractional_distance_to_integer_max": 0.49981689453125,
         "min": -8.537635803222656,
         "max": 8.516261100769043
       },
+      "activation_scale": 0.18775691092014313,
+      "output_scale": 0.09415198862552643,
       "weight_scale": {
         "arg": 156,
         "tensor": "_scale_51",
@@ -2290,6 +2604,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration"
       ]
     },
@@ -2327,9 +2642,14 @@
         "channels": 2048,
         "nonzero_channels": 2048,
         "native_transport": "loop_conv_load3_to_accumulator",
+        "exact_integer_accumulator_channels": 2,
+        "fractional_distance_to_integer_min": 0.0,
+        "fractional_distance_to_integer_max": 0.5,
         "min": -9.319655418395996,
         "max": 3.583876132965088
       },
+      "activation_scale": 0.09415198862552643,
+      "output_scale": 0.06832040101289749,
       "weight_scale": {
         "arg": 158,
         "tensor": "_scale_52",
@@ -2340,6 +2660,7 @@
       },
       "native_exact_admitted": false,
       "refusal_reasons": [
+        "float_bias_not_exact_integer_accumulator_offset",
         "per_channel_scale_requires_channel_partitioned_store_configuration",
         "residual_add_precedes_quantize",
         "global_reduction_or_fc_precedes_quantize"

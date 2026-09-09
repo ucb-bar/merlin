@@ -6,10 +6,11 @@ the integer convolution into its captured FP32 bias/requant graph, resolves the
 frozen parameters through the bundle manifest, and records every reason a
 native i8 LOOP_CONV result would change model semantics.
 
-Bias is deliberately not a refusal reason.  The target's ordinary execute-path
-D operand is hardwired away, but LoopConvLdBias has an independent LOAD3 path
-which writes per-output-channel i32 bias directly into accumulator rows before
-execution.  Conflating those two paths was the v1 postmortem's original error.
+The target's ordinary execute-path D operand is hardwired away, but
+LoopConvLdBias has an independent LOAD3 path which writes per-output-channel
+i32 bias directly into accumulator rows before execution.  Conflating those two
+paths was the v1 postmortem's original error.  Bias remains an *arithmetic*
+refusal when the captured f32 bias is not an exact integer accumulator offset.
 """
 from __future__ import annotations
 
@@ -86,6 +87,18 @@ def _f32_bits_unique(values: np.ndarray) -> int:
     return int(np.unique(np.asarray(values, dtype=np.float32).view(np.uint32)).size)
 
 
+def _scalar_constant(value) -> np.float32 | None:
+    """Resolve a scalar through tensor.splat to an arith.constant."""
+    owner = value.owner
+    if getattr(owner, "name", "") == "tensor.splat" and owner.operands:
+        owner = owner.operands[0].owner
+    if getattr(owner, "name", "") != "arith.constant":
+        return None
+    attr = getattr(owner, "value", None)
+    data = getattr(getattr(attr, "value", None), "data", None)
+    return np.float32(data) if data is not None else None
+
+
 def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
     prepared, preparation = prepare_int8_text(source.read_text())
     module = parse_module(prepared)
@@ -108,6 +121,20 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         bias_name = manifest[str(bias_arg)]["weight"] if bias_arg is not None else None
         weight_scale = weights.get(weight_scale_name) if weight_scale_name else np.array([])
         bias = weights.get(bias_name) if bias_name else np.array([])
+        activation_scale = (_scalar_constant(requant.operands[1])
+                            if requant is not None and len(requant.operands) > 1 else None)
+        output_scale = (_scalar_constant(path[-1].operands[1])
+                        if path and len(path[-1].operands) > 1 else None)
+        bias_ratio = np.array([], dtype=np.float32)
+        bias_exact_channels = 0
+        bias_fractional_distance = np.array([], dtype=np.float32)
+        if (bias.size and weight_scale.size and activation_scale is not None
+                and bias.shape == weight_scale.shape):
+            accumulator_unit = np.float32(activation_scale * weight_scale.astype(np.float32))
+            bias_ratio = np.float32(bias.astype(np.float32) / accumulator_unit)
+            nearest = np.rint(bias_ratio).astype(np.float32)
+            bias_exact_channels = int(np.count_nonzero(bias_ratio == nearest))
+            bias_fractional_distance = np.abs(np.float32(bias_ratio - nearest))
         path_ops = [_attr(op, "prov.op") or _op_name(op) for op in path]
         residual = "add" in path_ops
         maxpool = "max_pool2d" in path_ops
@@ -117,6 +144,8 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         reasons = []
         if requant is None or bias_name is None or not path or _op_name(path[-1]) != "quant_ext.quantize_per_tensor":
             reasons.append("unrecognized_conv_bias_requant_quantize_chain")
+        if bias.size and bias_exact_channels != int(bias.size):
+            reasons.append("float_bias_not_exact_integer_accumulator_offset")
         if unique_scales > 1:
             reasons.append("per_channel_scale_requires_channel_partitioned_store_configuration")
         if residual:
@@ -138,8 +167,17 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
             "bias": {"arg": bias_arg, "tensor": bias_name, "channels": int(bias.size),
                      "nonzero_channels": nonzero_bias,
                      "native_transport": "loop_conv_load3_to_accumulator",
+                     "exact_integer_accumulator_channels": bias_exact_channels,
+                     "fractional_distance_to_integer_min": (
+                         float(bias_fractional_distance.min())
+                         if bias_fractional_distance.size else None),
+                     "fractional_distance_to_integer_max": (
+                         float(bias_fractional_distance.max())
+                         if bias_fractional_distance.size else None),
                      "min": float(bias.min()) if bias.size else None,
                      "max": float(bias.max()) if bias.size else None},
+            "activation_scale": float(activation_scale) if activation_scale is not None else None,
+            "output_scale": float(output_scale) if output_scale is not None else None,
             "weight_scale": {"arg": weight_scale_arg, "tensor": weight_scale_name,
                              "channels": int(weight_scale.size),
                              "unique_f32_values": unique_scales,
@@ -150,7 +188,7 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         })
 
     summary = {
-        "schema": "merlin_gemmini_native_narrow_epilogue_inventory_v1",
+        "schema": "merlin_gemmini_native_narrow_epilogue_inventory_v2",
         "source": str(source.resolve()),
         "weights": str(weights_path.resolve()),
         "prepared_integer_convolutions": preparation["integer_pass_counts"]["conv_int8"],
@@ -159,7 +197,13 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         "native_exact_refused": sum(not r["native_exact_admitted"] for r in records),
         "all_channels_nonzero_bias": sum(
             r["bias"]["channels"] == r["bias"]["nonzero_channels"] for r in records),
+        "all_bias_channels_exact_integer_accumulator_offset": sum(
+            r["bias"]["channels"] == r["bias"]["exact_integer_accumulator_channels"]
+            for r in records),
         "per_channel_scale": sum(r["weight_scale"]["unique_f32_values"] > 1 for r in records),
+        "output_channels_total": sum(r["geometry"]["co"] for r in records),
+        "minimum_channel_partitioned_loop_conv_launches": sum(
+            r["geometry"]["co"] for r in records),
         "residual_add_paths": sum("residual_add_precedes_quantize" in r["refusal_reasons"]
                                   for r in records),
         "maxpool_paths": sum("maxpool_requires_native_loop_conv_emission" in r["refusal_reasons"]
@@ -169,7 +213,8 @@ def audit(source: Path, manifest_path: Path, weights_path: Path) -> dict:
         "hardware_qualification": "not_run_no_candidate_admitted",
         "erratum": (
             "nonzero bias is supported by LoopConvLdBias LOAD3 even when the "
-            "ordinary execute-path D operand is hardwired to garbage"
+            "ordinary execute-path D operand is hardwired to garbage; the refusal is "
+            "the captured f32 arithmetic, not transport"
         ),
     }
     return {"summary": summary, "convolutions": records}

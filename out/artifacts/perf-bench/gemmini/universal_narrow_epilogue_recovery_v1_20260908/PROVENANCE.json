@@ -1,5 +1,5 @@
 {
-  "schema": "merlin_gemmini_narrow_recovery_provenance_v1",
+  "schema": "merlin_gemmini_narrow_recovery_provenance_v2",
   "parent_compiler_artifact": "out/artifacts/perf-bench/gemmini/universal_d_preload_guard_recovery_20260908",
   "source_mlir": {
     "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/model2mlir_direct.mlir",
@@ -13,7 +13,16 @@
     "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/provenance/weights.safetensors.manifest.json",
     "sha256": "93d5ba6a921647f118d70b767602978f3f7e0639b0e964065ee1ff5899243d73"
   },
-  "inventory_sha256": "fb8bb6524a1c8a234b76215f412a124637f3a844b09fce4d6e1d948a2b386ffd",
+  "quantized_input": {
+    "path": "out/artifacts/perf-bench/gemmini/resnet50_qdq_v2_quantfix_exact_smallread_firesim_bundle_20260908/payload/input_quantized_i8.bin",
+    "sha256": "ff5c115ae28986fdb0f15819205c6a4c659e8012770d10e4e4a0a4de2eaf7604"
+  },
+  "inventory_sha256": "c30c2e3cd1bb6cb7799df926145acf3f3a1d41760a79eb5d10e6d9bc8ec9c436",
+  "conv1_numeric_proof_sha256": "e5b861eea89b34c3b1583a7d8ba9b45ad9724da8dd6c31b1e594bbd405fd6a7b",
+  "analyzer_sha256": "27225780e26421363cf8a8c110a8f5803b7bdec154991bb9f3b24c61fec2236a",
+  "conv1_proof_program_sha256": "22b2650205572dd94802e48a68d16a1737473c1bfaf228a210ddcfa3802310b9",
   "hardware_qualification": "not_run_no_candidate_admitted",
-  "erratum": "LoopConvLdBias uses an independent LOAD3 accumulator preload; hardcoded execute-path D does not prohibit convolution bias"
+  "erratum": "LoopConvLdBias uses an independent LOAD3 accumulator preload; hardcoded execute-path D does not prohibit convolution bias",
+  "arithmetic_status": "current PT2E FP32-bias/per-channel-scale contract is not exactly representable by native narrow LOOP_CONV; per-tensor weights alone do not repair it",
+  "next_contract": "separate native-aligned W8A8 with i32 accumulator bias and one f32 store scale; requires independent golden and quality qualification"
 }

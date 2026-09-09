@@ -21,8 +21,16 @@ Pinned evidence inspected on 2026-09-08:
 | `/scratch/jack/chipyard/generators/gemmini/software/gemmini-rocc-tests/include/gemmini.h` | `2f97540b6ba4378c22572e7d4a41d5d0c95931ac55dcf1fa5246b3923e4ad3ff` |
 | Jack's generated `target_config.json` | `8a6c8e777c5765efdabd6bb84312f22d5e4cd2ab9fb04e5313441472129a51e4` |
 
-The corrected current admission remains 0/53, but for a different reason:
-all 53 captured convolutions require per-channel output scaling while a single
-LOOP_CONV store configuration supplies one scale. The required compiler work is
-therefore native LOOP_CONV plus exact channel-partitioned stores, followed by
-separate handling of residual/global tails.
+The corrected current admission remains 0/53, but for arithmetic reasons rather
+than bias transport. All 53 captured convolutions require per-channel output
+scaling while a single LOOP_CONV store configuration supplies one scale. More
+importantly, every captured FP32 bias vector has zero channels exactly
+representable as an integer accumulator offset. The deterministic conv1 proof
+shows 143 differences before max-pool and 33 afterward for the ordinary
+LOAD3-plus-CONFIG_ST construction.
+
+Per-tensor weights remove the per-channel store-configuration conflict but do
+not alone repair the FP32 bias and reassociation difference (364/802,816 conv1
+values differ before pool in the controlled ablation). The legal next route is
+a separately declared native-aligned W8A8 quantization/reference contract, not
+reinterpretation of the existing PT2E golden.
