@@ -463,6 +463,219 @@ pins:
       fp6 revision, which is precisely the mis-attribution the registry exists to prevent. If the fp6
       revision is genuinely what a piece of work wants, it needs its own pin and its own goldens.
 
+  gemmini_universal_rtl:
+    description: >-
+      The "Universal" Gemmini configuration -- a SECOND systolic revision of the same generator, and the
+      hardware a second capsule-bench systolic target would be graded against. It is a 16x16 int8 mesh
+      like `gemmini_rtl`'s GemminiRocketConfig and it is NOT the same device: the spatial array is
+      WEIGHT-STATIONARY ONLY (`dataflow = Dataflow.WS`), the accumulator has no full-width readout
+      (`acc_read_full_width = false`), the execute stage can neither read the accumulator nor write the
+      scratchpad (`ex_read_from_acc = false`, `ex_write_to_spad = false`), and the D operand is
+      hardcoded to GARBAGE_ADDR (`hardcode_d_to_garbage_addr = true`). Each of those removes programs
+      the pinned revision executes, so a verdict measured on one is not a verdict about the other.
+
+      WHY A COMMIT ALONE CANNOT NAME THIS DEVICE -- the reason this is a separate pin rather than a
+      note on `gemmini_rtl`. The checkout is at the SAME sha as `gemmini_rtl` (8c3f9923) and is not the
+      same hardware. Measured 2026-09-09: 25 tracked Scala sources carry 2879 added / 376 removed
+      uncommitted lines, and the configuration ITSELF lives in files that are UNTRACKED in both the
+      generator and its superproject --
+        src/main/scala/gemmini/UniversalResNet50Config.scala          (the parameter set)
+        chipyard/UniversalResNet50GemminiConfigs.scala                (the chipyard binding)
+        generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala  (FireSim wrapper,
+          in the superproject and covered by `gemmini_universal_chipyard` below)
+      So `verify("gemmini_rtl")` run against THIS checkout would report the declared commit, find its
+      three Scala read paths dirty, and say nothing at all about a weight-stationary-only array. The
+      bytes are therefore declared in `local_edits`, and what actually identifies the device is the
+      ELABORATION, declared as artifacts: `gemmini_universal_verilator_firrtl` (the TestHarness
+      elaboration a gsim/verilator cert would be built from) and `gemmini_universal_firesim_firrtl`.
+
+      GemminiISA.scala IS ONE OF THE EDITED FILES AND THE EDIT REACHES ENCODINGS, which is why it is in
+      the read set. Measured against 8c3f9923: `CONFIG_SCALE_MEM = 26.U` is added; `MvoutRs2` takes 3
+      bits out of its rows spacer for an `mx_chunk_id`; and CONFIG_EX RS1's two spacer fields are
+      replaced by `uselut` (1 bit) plus three 2-bit MX format fields. That is the RTL side of the same
+      delta `gemmini_isa_headers` records on the header side for revision e6df8b9f -- i.e. the header
+      surface that pin calls "undefined on this RTL" IS implemented here. Programs that pass 0 for the
+      new fields encode identically; a program that reaches for them is defined here and not there.
+    repo_canonical: https://github.com/ucb-bar/gemmini
+    repo_observed_note: >-
+      NOT the checkout `gemmini_rtl` reads. Observed at /scratch/jack/chipyard/generators/gemmini, a
+      tree owned by another user and READ ONLY from merlin. The root env var is deliberately a NEW one:
+      pointing $MERLIN_CHIPYARD at this tree would silently re-attribute every existing gemmini claim to
+      a WS-only device, so that must not be how this pin is reached. Unset by default, and `verify`
+      then reports "cannot be located" rather than passing.
+    commit: "8c3f9923a44a2fe2c7930587be297d6d4f8c09ca"
+    targets: [gemmini_universal]
+    branch: HEAD
+    root_env: MERLIN_UNIVERSAL_CHIPYARD
+    path: generators/gemmini
+    # THE READ SET. Every path here is read by a derivation about this target: the two config files
+    # define it, GemminiConfigs.scala both declares the parameter class and GENERATES gemmini_params.h,
+    # GemminiISA.scala carries the encodings, and the remaining six are what the mesh/capacity/dataflow
+    # and accumulator-readout facts are derived from.
+    requires_paths:
+      - src/main/scala/gemmini/UniversalResNet50Config.scala
+      - chipyard/UniversalResNet50GemminiConfigs.scala
+      - src/main/scala/gemmini/GemminiConfigs.scala
+      - src/main/scala/gemmini/Configs.scala
+      - src/main/scala/gemmini/GemminiISA.scala
+      - src/main/scala/gemmini/Mesh.scala
+      - src/main/scala/gemmini/Tile.scala
+      - src/main/scala/gemmini/PE.scala
+      - src/main/scala/gemmini/AccumulatorMem.scala
+      - src/main/scala/gemmini/ExecuteController.scala
+      - src/main/scala/gemmini/Scratchpad.scala
+    # NO forbids_paths, DELIBERATELY, and this is the honest answer rather than an omission. What is
+    # absent about this device -- the output-stationary datapath, the full-width accumulator readout, the
+    # execute-stage accumulator read and scratchpad write -- is absent because of PARAMETER VALUES in an
+    # untracked Scala file, not because a file is missing. Gemmini is one Chisel source set for every
+    # configuration: the OS branch lives in the same PE.scala either way. Declaring a path absent here
+    # would be a check that cannot fail, which this repo has been bitten by repeatedly, so the absences
+    # are pinned where they can actually be witnessed instead:
+    #   * by CONTENT, via the local_edits digest of UniversalResNet50Config.scala (the parameter values);
+    #   * in the ELABORATION, where they are constant-folded -- measured in
+    #     `gemmini_universal_verilator_firrtl`, PE's output-stationary branch is gated by a literal
+    #     `and(UInt<1>(0h0), ...)` and its propagate registers are SInt<8> rather than accumulator-wide,
+    #     so no OS program can be expressed by this netlist;
+    #   * in the generated ABI, where `#define ACC_READ_FULL_WIDTH` must be ABSENT (see gaps below).
+    #
+    # CONTENT_CHECK IS OFF, also deliberately, and NOT to quiet anything. `content_check` compares each
+    # read path's bytes against that path AT THIS PIN'S COMMIT out of the object store; it is the right
+    # question when HEAD has moved off the pin, which is not the case here -- HEAD IS 8c3f9923 and every
+    # divergence is uncommitted. Two of the eleven read paths exist in no revision at all, so the object
+    # store has no blob for them and `source_status` would return UNDETERMINABLE, which
+    # `check_provenance.py --verify-pins` treats as a gate FAILURE. Failing the gate for anyone who sets
+    # the root var would teach people to unset it, and would say nothing true that the digests below do
+    # not already say: with content_check off, `verify` intersects the dirty set with the read set and
+    # compares each touched path against `local_edits`, which covers all eleven -- including the two
+    # untracked ones, whose bytes are the whole configuration. Turn content_check on the day the config
+    # lands in a revision.
+    content_check: false
+    # DECLARED LOCAL EDITS -- the digests of the bytes a derivation about this target would actually
+    # read, measured 2026-09-09 at /scratch/jack/chipyard/generators/gemmini. This is what makes
+    # "8c3f9923 plus exactly these bytes" a nameable revision; it is NOT a claim that any of them match
+    # upstream, and every one of them differs from 8c3f9923's. The first two are UNTRACKED: they belong
+    # to no revision anywhere, which is why a result citing this pin must cite the digest and never the
+    # sha alone. UniversalResNet50Config.scala's digest independently agrees with the value Jack's own
+    # experiment records as `gemmini_array_overlay_scala`, which is the only cross-check available for a
+    # file git has never seen.
+    local_edits:
+      src/main/scala/gemmini/UniversalResNet50Config.scala: "cb6a5248cbeeab2d5ba9564d1e6ca5a3be17287512e5050991f2eb9edaffa8f5"
+      chipyard/UniversalResNet50GemminiConfigs.scala: "ee6f568f679ccec67165cbda95365b077e7595ea7c06baab9488645d6acf2fda"
+      src/main/scala/gemmini/GemminiConfigs.scala: "06d763189914715ced1a547dc56386f61066d18f9ae2c8d01ca3b19de6fd8416"
+      src/main/scala/gemmini/Configs.scala: "2b25c82a385a382acd35aa3ed4a704d91845916fb095d869b6dc7d1bf1f09da6"
+      src/main/scala/gemmini/GemminiISA.scala: "5be2e064806c005f06b1997a54a3caa8ad7626c9b1de6191c617b9bad408a218"
+      src/main/scala/gemmini/Mesh.scala: "36f776baa16c4023a130c7b05e82f9474e9466419b2d1979e51c5dab302fb067"
+      src/main/scala/gemmini/Tile.scala: "a6d73c30556244b64c6e811adb70affb9fa8f6660e0f6715bf16f8aaadd86af9"
+      src/main/scala/gemmini/PE.scala: "0ee6f576c4ef22c456fa0cda4b2bb2d932b3863198922e5e6d07da2faab858f0"
+      src/main/scala/gemmini/AccumulatorMem.scala: "d7f1adf823a8297765da3d12da14668429729bebb165614729895d54f59d8758"
+      src/main/scala/gemmini/ExecuteController.scala: "9588552cdcf63d89787cad8d682a99b352853be59158095fd6301a42fd87878f"
+      src/main/scala/gemmini/Scratchpad.scala: "a0586977c9e167bf1c2d2785a903b3c87479d691a16c793bb3e5a20027785a43"
+    used_by:
+      - candidate second systolic capsule-bench target (not yet wired; see gaps)
+    notes: >-
+      WHAT WAS VERIFIED BY CONTENT RATHER THAN BELIEVED, 2026-09-09. The configuration's own contract
+      file (/scratch/jack/experiments/universal_resnet50_gemmini_20260906/hardware/UNIVERSAL_GEMMINI_U250.yaml,
+      sha256 5d4aa1e286d83783f782bf0beac1f5042324432b18bd774faf076f9e40c06497) carries
+      `status: source_config_frozen_not_elaborated_not_built`, and the sibling PROVENANCE.yaml lists
+      "RTL elaboration" and "simulator invocation" under `explicitly_not_performed`. BOTH ARE STALE.
+      Two elaborations and a linked Verilator simulator exist and are declared as artifacts below.
+      Corroborated straight out of the FIRRTL: Mesh instantiates 256 Tiles each holding one PE (16x16,
+      tileRows=tileColumns=1); the scratchpad is four `UInt<8>[16] [4096]` memories = 256 KiB / 16384
+      rows; the accumulator is two banks of 2 x `UInt<256>[1] [512]` = 64 KiB / 1024 rows with
+      `addr : UInt<9>` and `data : SInt<32>[1][16]`. Those match the contract's declarations exactly.
+
+      THE ISA HEADERS ARE NOT PINNED HERE, ON PURPOSE, AND THIS IS THE OPEN BLOCKER. `gemmini_rtl` has a
+      sibling `gemmini_isa_headers` pin because every dtype claim about that target is read out of the
+      generated header. This configuration HAS NO GENERATED HEADER: searched the whole of
+      /scratch/jack on 2026-09-09 and every gemmini_params.h there belongs to some other config. The
+      nested submodule in THIS checkout is at 7c540b3a (the gitlink it records) with both headers locally
+      modified, and its gemmini_params.h (sha256 0b9c7b43...) declares BANK_ROWS 2048 / ACC_ROWS 512 and
+      `#define ACC_READ_FULL_WIDTH` -- i.e. HALF this device's scratchpad, HALF its accumulator, and a
+      readout port it does not have. Compiling against it would mis-size every tile and emit a
+      full-width accumulator mvout the hardware cannot service. Until the header is regenerated from
+      THIS parameter set there is no ABI for this target, and a sibling headers pin would have nothing
+      to name. Recorded as UNKNOWN rather than filled in with the plausible candidate: a header whose
+      #define set matches this config's declared `expected_generated_header` byte-for-byte does exist
+      (sha256 d6db18f8edbfeb854780286d8c2afb81ae3b9103224522478a9047d5550272e5, 149 copies under
+      /scratch/jack, differing from merlin's own gemmini_params.h by exactly the one line
+      `#define ACC_READ_FULL_WIDTH`), but it was written 2026-08-30, a week before this configuration
+      was authored, and nothing ties it to this elaboration. Shape agreement is not provenance.
+    gaps:
+      - >-
+        No generated gemmini_params.h for this configuration exists anywhere, so the software ABI is
+        UNKNOWN. Regenerate it from UniversalResNet50Configs.arrayConfig before any claim.
+      - >-
+        CLOSED 2026-09-09, and recorded because the first two places one would look say the opposite.
+        `acc_read_full_width = false` is NOT witnessable from AccumulatorMem: its read request still
+        carries a `full : UInt<1>` field, and this config's accumulator memory is the MX-era
+        `AsymmetricTwoPortSyncMem` (2 x UInt<256> banks) which exposes BOTH a full-row and a
+        chunk read. The absence lives one level out, in Scratchpad.scala's
+        `writer_data_width = if (acc_read_full_width) acc_w else spad_w`, and it IS in the elaboration:
+        `gemmini_universal_verilator_firrtl`'s StreamWriter carries `data : UInt<128>` (DIM x int8)
+        where the pinned revision's carries `data : UInt<512>` (DIM x int32). The mvout DMA on this
+        device physically cannot move an int32 accumulator row.
+      - >-
+        `spatialArrayOutputType = SInt(20.W)` IS INERT IN THIS CONFIGURATION, so the contract's declared
+        `spatial_output_type: sint20` does not describe the hardware. This tree's Mesh.scala passes
+        `meshAccPrecisionList(r)` as the tile's output type, and GemminiConfigs.scala:138 defaults an
+        empty `meshAccPrecisionList` to `Seq.fill(meshRows)(accType)`. The config declares
+        `meshAccPrecisionList = Seq()`, so the mesh elaborates at accType: measured in the elaborated
+        FIRRTL, PE carries `in_b/out_b/out_c : SInt<32>` where the pinned revision's PE carries
+        `SInt<20>`. The spatial partial-sum width is therefore 32, not 20, and any numeric claim that
+        cites the declared 20 is citing a value the netlist does not use.
+      - >-
+        The generated collateral directory of the Verilator elaboration is mode 0770 and owned by
+        another user, so its Verilog is unreadable from here. The .fir and the linked simulator are
+        readable; a REBUILD from this tree is not currently possible without that user's help.
+      - >-
+        `verify` cannot read either checkout's REVISION from this account and reports it UNKNOWN, not
+        "clean": git refuses a repository owned by another user ("detected dubious ownership") and the
+        observation collapses to UNDETERMINABLE, which is the correct fail-closed answer and not a fault
+        in the tree. Measured 2026-09-09: with the root var set, all 11 declared read-path digests match
+        on disk byte for byte, so the CONTENT half of this pin verifies while the revision half does not.
+        A caller that needs the revision must add that path to its own git `safe.directory` -- per
+        invocation (`git -c safe.directory=...`), never by editing a shared config, and never by touching
+        the tree.
+
+  gemmini_universal_chipyard:
+    description: >-
+      The SUPERPROJECT half of the Universal Gemmini configuration. Pinned apart from
+      `gemmini_universal_rtl` for the reason `gemmini_isa_headers` is pinned apart from `gemmini_rtl`: a
+      pin has exactly one `commit`, and these files belong to a different revision (chipyard e27c6561)
+      than the generator's (8c3f9923). It carries the FireSim target wrapper the config's own contract
+      names as `target_config`, plus the build.sbt edit without which the chipyard-side binding does not
+      compile -- `chipyard/UniversalResNet50GemminiConfigs.scala` sits OUTSIDE gemmini's src/main/scala
+      source root and is only reachable through it.
+    repo_canonical: https://github.com/ucb-bar/chipyard
+    repo_observed_note: >-
+      Observed at /scratch/jack/chipyard, another user's tree, READ ONLY from merlin. Same new root env
+      var as the generator pin, unset by default.
+    commit: "e27c6561c0066c1f60bf4eb4885a38391c850ac0"
+    targets: [gemmini_universal]
+    branch: HEAD
+    root_env: MERLIN_UNIVERSAL_CHIPYARD
+    path: ""
+    requires_paths:
+      - generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala
+      - build.sbt
+    content_check: false
+    local_edits:
+      generators/firechip/chip/src/main/scala/UniversalResNet50TargetConfig.scala: "296db4f97b379a14c9c347c74da93d29ca1aa6fd3c02006c9c170bea01c52431"
+    notes: >-
+      UniversalResNet50TargetConfig.scala is UNTRACKED in chipyard, so its digest is the only thing that
+      names it. build.sbt is tracked-and-modified and its digest is NOT declared: the file is read by
+      the elaboration, not by any fact derivation, and declaring a digest for it would freeze an
+      unrelated developer's build edits into this registry. `verify` will therefore report it as an
+      unaccounted dirty read path, which is the correct reading -- the elaboration this pin describes is
+      identified by the artifact digests below, not by this file.
+    gaps:
+      - >-
+        Both Universal chipyard configs (`UniversalResNet50GemminiRocketConfig` and
+        `UniversalResNet50LoopFixedGemminiRocketConfig`) expand to the IDENTICAL Config chain -- byte
+        for byte the same four fragments. The "LoopFixed" name promises a non-MX LOOP_WS wiring repair
+        that its definition does not contain. Two separate elaborations exist under those two names; do
+        not treat the name as evidence of a difference.
+
   atlas_npu:
     description: >-
       The atlas NPU generator revision an atlas capsule verdict is measured against. Everything the
@@ -1067,3 +1280,92 @@ artifacts:
     config: GemminiRocketConfig
     target: gemmini
     role: verilator_binary
+
+  gemmini_universal_verilator_firrtl:
+    description: >-
+      The TestHarness elaboration of the "Universal" Gemmini configuration -- the one a gsim or
+      Verilator model for a second systolic target would be built from, and the only Universal
+      elaboration in the shape merlin's fact extraction reads (`sims/verilator/generated-src/
+      chipyard.harness.TestHarness.<CONFIG>/<CONFIG>.fir` beside a `top_module_hierarchy.json`, which
+      `targetgen.rtl.introspect.find_artifacts` requires and the FireSim elaboration does not have).
+      Declared because the configuration's own contract says it was never elaborated and that is false:
+      this file exists, and a claim about this device has to name WHICH elaboration it came from.
+    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig.fir
+    digest: "92183c97a38d6f3ed4bed7169ceb8d17710eae06b1a773b7a5eef4a34964148a"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: verilator_firrtl
+    notes: >-
+      84 MB, elaborated 2026-09-07. Read-only from merlin; the sibling `gen-collateral/` directory is
+      mode 0770 and owned by another user, so the emitted Verilog is NOT readable from here and this
+      .fir plus the linked simulator are the whole readable surface.
+
+  gemmini_universal_module_hierarchy:
+    description: >-
+      The module hierarchy emitted beside `gemmini_universal_verilator_firrtl`. A pin in its own right
+      because `find_artifacts` refuses without it -- an extraction pointed at a .fir with no hierarchy
+      raises rather than proceeding -- so it is part of what makes the elaboration usable at all, and
+      nothing else records which hierarchy a fact set was walked against.
+    path: /scratch/jack/chipyard/sims/verilator/generated-src/chipyard.harness.TestHarness.UniversalResNet50GemminiRocketConfig/top_module_hierarchy.json
+    digest: "56a000c3a985438ecc4704208d1d80c9af1fda0d9c4371a1b97db7f0c3267735"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: module_hierarchy
+
+  gemmini_universal_verilator_simulator:
+    description: >-
+      A LINKED VERILATOR SIMULATOR for the Universal configuration, already built. Declared because its
+      existence contradicts both the configuration contract's `status:` field and its PROVENANCE.yaml's
+      `explicitly_not_performed: [RTL elaboration, simulator invocation]`, and because a cert produced by
+      it must name it: a path and an mtime cannot tell this binary from the default-config simulator
+      sitting in the same directory.
+    path: /scratch/jack/chipyard/sims/verilator/simulator-chipyard.harness-UniversalResNet50GemminiRocketConfig
+    digest: "0069d3816ec60f704cf8968bfe4595684b1216ebe435de259514ad7723238ebc"
+    built_from:
+      - gemmini_universal_verilator_firrtl
+      - gemmini_universal_rtl
+    config: UniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: verilator_binary
+    notes: >-
+      15,649,112 bytes, linked 2026-09-07 02:44 -- the same size class as this host's default-config
+      gemmini simulator, which is exactly why the digest and not the size is the identity. NOT yet
+      exercised from merlin: no ELF has been run against it from this repo, so nothing here yet says it
+      boots, and its per-capsule cost is UNKNOWN rather than assumed equal to the default config's.
+
+  gemmini_universal_firesim_firrtl:
+    description: >-
+      The FireSim elaboration of the Universal configuration -- the FPGA path, distinct from the
+      TestHarness elaboration above and NOT interchangeable with it. Its top module is `FireSim` and it
+      instantiates the FireSim bridge extmodules (FASED, TSI, UART, TracerV, RationalClock, BlockDev,
+      PeekPoke), which are implemented by the FireSim driver rather than by RTL, so it cannot be handed
+      to gsim or Verilator as-is. Recorded so the FPGA claim and the simulator claim cannot be conflated.
+    path: /scratch/jack/chipyard/sims/firesim-staging/generated-src/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig/firechip.chip.FireSim.FireSimUniversalResNet50GemminiRocketConfig.fir
+    digest: "ee0966a41993123812c8b4e329bbfdc8cf106d7a82a5594bc127aa85baaaa5a8"
+    built_from:
+      - gemmini_universal_rtl
+      - gemmini_universal_chipyard
+    config: FireSimUniversalResNet50GemminiRocketConfig
+    target: gemmini_universal
+    role: firesim_firrtl
+    notes: >-
+      50 MB / 417,736 lines / 2,700 modules, elaborated 2026-09-08 11:23 -- AFTER the PROVENANCE.yaml
+      that says no elaboration happened was written (2026-09-06), which is how that field went stale.
+
+      THE "LoopFixed" SIBLING IS THE SAME NETLIST, measured not assumed. A second elaboration exists at
+      .../firechip.chip.FireSim.FireSimUniversalResNet50LoopFixedGemminiRocketConfig/ and its .fir is
+      BYTE-IDENTICAL to this one -- the same sha256 ee0966a4... -- because both chipyard configs expand
+      to the same four Config fragments. The name promises a LOOP_WS wiring repair that the hardware does
+      not contain. Do not register it as a second device.
+    gaps:
+      - >-
+        The elaborated DTS reports `riscv,isa: rv64imafdcbzicsr_zifencei_zihpm_zfh_zba_zbb_zbs_xrocket`,
+        while the configuration contract declares `isa: rv64gc_zicntr`. Those disagree in both
+        directions: zicntr is not in the elaborated string, and zfh/zba/zbb/zbs are not in the declared
+        one. The elaboration is the fact; the declaration is UNRELIABLE for the host ISA.
