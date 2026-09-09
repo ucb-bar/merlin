@@ -24,6 +24,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
+# The grader's OWN list of statuses that mean "this row produced no verdict" (`not_graded`, `gated`,
+# `screened_only`, `budget_exhausted`, `infrastructure_fault`). IMPORTED, never restated here: a
+# second copy would silently stop honouring a status the grader learned later, and this module's whole
+# job is to be exact about what was and was not measured. Requires _common (above) on sys.path.
+from merlin.targetgen.capsule_common import NOT_MEASURED_STATUSES  # noqa: E402
+
 EXP = C.EXP
 REPORTS = C.REPORTS
 # Every run-dir subtree an arm can land in. cpp_merlininfra was missing, and it is its OWN
@@ -200,18 +206,9 @@ def _l3_evidence(run_dir) -> dict:
     A caller printing ``rtl_clean`` therefore reports the same quantity it always did, with the
     breakdown available beside it instead of the two causes being indistinguishable.
     """
-    import json as _json
-    from pathlib import Path as _Path
-    vs = sorted((_Path(run_dir) / "qa_history").glob("verdict_*.json"),
-                key=lambda q: q.stat().st_mtime)
-    for v in reversed(vs):
-        try:
-            j = _json.loads(v.read_text())
-        except Exception:
-            continue
+    j, vname = latest_verdict(run_dir)
+    if j is not None:
         pc = j.get("per_capsule") or []
-        if not pc or not j.get("n_capsules"):
-            continue
         clean = [c for c in pc if c.get("status") == "pass"
                  and (c.get("tiers") or {}).get("L3") == "pass"]
         l2only = [c for c in pc if c.get("status") == "pass"
@@ -222,13 +219,278 @@ def _l3_evidence(run_dir) -> dict:
         ran_not_passed = [c for c in pc if _cert_status(c) not in _CERT_NOT_RUN]
         budget = [c for c in ran_not_passed if _cert_abandoned(c)]
         failed = [c for c in ran_not_passed if not _cert_abandoned(c)]
+        # WHAT THIS RUN NEVER MEASURED, BY NAME AND STATUS. `n_capsules` above is the MEASURED
+        # denominator, so a deferred/gated/screened row is simply absent from it -- correct for this
+        # run in isolation and invisible to anyone comparing it with another run. Carrying the names
+        # here means a reader of one run's record can see the shrink, and `cohort_report` can
+        # normalize a comparison without re-deriving anything.
+        nm = not_measured(j)
         return {"rtl_clean": len(clean), "l2_only": len(l2only),
                 "gate_passed": j.get("n_passed"), "n_capsules": j.get("n_capsules"),
-                "l3_source": v.name,
-                "not_certified_budget": len(budget), "not_certified_failed": len(failed)}
+                "l3_source": vname,
+                "not_certified_budget": len(budget), "not_certified_failed": len(failed),
+                "n_not_measured": len(nm), "not_measured": not_measured_labels(j),
+                "not_measured_status": nm}
     return {"rtl_clean": None, "l2_only": None, "gate_passed": None,
             "n_capsules": None, "l3_source": None,
-            "not_certified_budget": None, "not_certified_failed": None}
+            "not_certified_budget": None, "not_certified_failed": None,
+            "n_not_measured": None, "not_measured": None, "not_measured_status": None}
+
+
+# ==================================================================================================
+# COMMON-COHORT NORMALIZATION -- comparing runs whose own denominators differ
+# ==================================================================================================
+# `capsule_grade` sets `n_capsules` to the rows it MEASURED, excluding `NOT_MEASURED_STATUSES`. For a
+# single run that is right: a deferred row is not a verdict, and counting it as a failure would put
+# `all_pass` out of reach and disable an agent loop's only early exit.
+#
+# Across runs it is a lie, and it flatters the WEAKEST run. Measured on the g3arm gemmini batch: arms
+# 1-3 reached an op pass fraction of ~0.96, so the whole-model gate OPENED, `M2_microvit_gemmini` and
+# `SY_micro_model` RAN, FAILED, and stayed in a denominator of 97 -> 93/97 (95.9%). Arm 4 reached
+# ~0.79, the gate stayed shut, those same two capsules were DEFERRED (`status: gated`) and left its
+# denominator -> 75/95 (78.9%). Arm 4's percentage was computed over a cohort with the two hardest
+# rows deleted while the others carried them as failures, so the reported gap UNDERSTATED the real
+# one (on the common cohort it is 93/95 vs 75/95).
+#
+# The fix is NOT to re-add deferred rows as failures -- they were not measured, and
+# "not run is not a pass" cuts both ways. It is to INTERSECT: score every run on the rows EVERY
+# compared run measured, and name what each run did not measure beside its number.
+# ==================================================================================================
+
+#: Verdict stages that are NOT a comparable grade. `first_grade_loop_tier` is the deliberately cheap
+#: L2-only snapshot written minutes into a run so the agent gets feedback before its first round
+#: closes; scoring a run from it would compare somebody's warm-up against a finished run. Skipped only
+#: where a COMPARISON is being built -- `_l3_evidence` keeps reading the newest verdict of any stage,
+#: exactly as it always did.
+_NOT_COMPARABLE_STAGES = ("first_grade_loop_tier",)
+
+
+def _verdict_files(run_dir) -> list[Path]:
+    """This run's archived verdicts, oldest first (by mtime, which is when the grade was written)."""
+    qh = Path(run_dir) / "qa_history"
+    if not qh.is_dir():
+        return []
+    return sorted(qh.glob("verdict_*.json"), key=lambda q: q.stat().st_mtime)
+
+
+def latest_verdict(run_dir, *, skip_stages: tuple[str, ...] = ()) -> tuple[dict | None, str | None]:
+    """The newest archived verdict that actually graded something, plus its file name.
+
+    A verdict with no `per_capsule` rows or `n_capsules` 0 graded nothing and is skipped -- an empty
+    grade must never read as a result. `skip_stages` additionally rejects stages that are not a
+    comparable grade (see `_NOT_COMPARABLE_STAGES`); the default empty tuple keeps the historical
+    behaviour for callers that want "the newest verdict, whatever it is".
+
+    Returns `(None, None)` when the run has no usable verdict -- never a synthesized empty one.
+    """
+    for v in reversed(_verdict_files(run_dir)):
+        try:
+            j = json.loads(v.read_text())
+        except Exception:            # a half-written verdict is not a verdict
+            continue
+        if not (j.get("per_capsule") or []) or not j.get("n_capsules"):
+            continue
+        if j.get("stage") in skip_stages:
+            continue
+        return j, v.name
+    return None, None
+
+
+def capsule_rows(verdict) -> dict[str, dict]:
+    """`{capsule name: row}` from a verdict's `per_capsule`. Unnamed rows are dropped (there is
+    nothing to intersect them ON); a repeated name keeps the LAST row, which is the current one."""
+    rows: dict[str, dict] = {}
+    for c in (verdict or {}).get("per_capsule") or []:
+        if isinstance(c, dict) and isinstance(c.get("capsule"), str) and c["capsule"]:
+            rows[c["capsule"]] = c
+    return rows
+
+
+def measured_names(verdict) -> set[str]:
+    """The capsules this verdict actually MEASURED -- i.e. produced a verdict for.
+
+    Exactly the complement of `NOT_MEASURED_STATUSES` over the rows present, which is the same rule
+    `capsule_grade` uses to build `n_capsules`. A row absent from `per_capsule` altogether is not
+    measured either, and is absent from this set for free.
+    """
+    return {n for n, c in capsule_rows(verdict).items()
+            if c.get("status") not in NOT_MEASURED_STATUSES}
+
+
+def not_measured(verdict) -> dict[str, str]:
+    """`{capsule name: status}` for every row this verdict did NOT measure, sorted by name.
+
+    Prefers the grader's own `not_measured_status` map when the verdict carries it (written by
+    `capsule_grade.grade`, which knows the full result list), and otherwise derives it from
+    `per_capsule` so every verdict already on disk classifies instead of reporting nothing.
+    """
+    v = verdict or {}
+    supplied = v.get("not_measured_status")
+    if isinstance(supplied, dict) and supplied:
+        return {str(k): str(supplied[k]) for k in sorted(supplied)}
+    return {n: str(c.get("status")) for n, c in sorted(capsule_rows(v).items())
+            if c.get("status") in NOT_MEASURED_STATUSES}
+
+
+def not_measured_labels(verdict) -> list[str]:
+    """`["M2_microvit_gemmini[gated]", ...]` -- the not-measured names WITH the status that excluded
+    each one, so a dropped row is visible in a one-line report rather than silently absent."""
+    return [f"{n}[{st}]" for n, st in not_measured(verdict).items()]
+
+
+def common_cohort(verdicts: dict[str, dict]) -> set[str]:
+    """The capsules EVERY one of `verdicts` measured -- the only rows a cross-run ratio may use.
+
+    Intersection, never union: a run that never measured a row has no verdict for it, and inventing
+    one (as a pass OR as a failure) is the thing this function exists to prevent. An empty mapping
+    yields an empty cohort, which makes every ratio 0/0 -- fail closed, not a vacuous 100%.
+    """
+    sets = [measured_names(v) for v in verdicts.values()]
+    return set.intersection(*sets) if sets else set()
+
+
+def cohort_scores(verdict, cohort) -> dict:
+    """This verdict's score restricted to `cohort`: gate passes and L3-clean passes over the same
+    denominator every compared run gets. A cohort row missing from this verdict is not a pass."""
+    rows = capsule_rows(verdict)
+    passed = sorted(n for n in cohort if (rows.get(n) or {}).get("status") == "pass")
+    l3 = sorted(n for n in passed if _cert_status(rows[n]) == "pass")
+    return {"passed": len(passed), "l3_clean": len(l3), "of": len(cohort),
+            "passed_ratio": f"{len(passed)}/{len(cohort)}",
+            "l3_clean_ratio": f"{len(l3)}/{len(cohort)}"}
+
+
+def cohort_report(runs: dict[str, dict]) -> dict:
+    """Compare `runs` on the rows all of them measured.
+
+    `runs` maps run id -> `{"arm": str, "verdict": dict, "verdict_file": str | None}`.
+
+    Every run gets BOTH numbers: its own `n_passed/n_capsules` (a per-run fact, kept verbatim) and
+    the cohort-normalized `passed/common` + `l3_clean/common`. `own_ratios_comparable` says whether
+    the own ratios may be printed side by side at all: they may only when every run measured exactly
+    the cohort. Equal own denominators are NOT sufficient -- two runs can both measure 96 of 97 rows
+    and have measured DIFFERENT 96, in which case their own ratios are still not the same question.
+    """
+    verdicts = {rid: (meta.get("verdict") or {}) for rid, meta in runs.items()}
+    cohort = common_cohort(verdicts)
+    union: set[str] = set()
+    for v in verdicts.values():
+        union |= measured_names(v)
+    per_run: dict[str, dict] = {}
+    for rid, meta in sorted(runs.items()):
+        v = verdicts[rid]
+        mine = measured_names(v)
+        per_run[rid] = {
+            "arm": meta.get("arm"),
+            "verdict_file": meta.get("verdict_file"),
+            "own_n_passed": v.get("n_passed"),
+            "own_n_capsules": v.get("n_capsules"),
+            "own_ratio": f"{v.get('n_passed')}/{v.get('n_capsules')}",
+            # True only when this run measured the whole cohort AND nothing outside it, i.e. its own
+            # ratio asks the same question the cohort ratio does.
+            "own_is_cohort": mine == cohort,
+            "cohort": cohort_scores(v, cohort),
+            "n_not_measured": len(not_measured(v)),
+            "not_measured": not_measured_labels(v),
+            "not_measured_status": not_measured(v),
+            # Rows some OTHER compared run measured and this one did not -- the rows whose absence
+            # is what shrinks this run's own denominator relative to its neighbours.
+            "missing_vs_union": sorted(union - mine),
+        }
+    comparable = bool(per_run) and all(r["own_is_cohort"] for r in per_run.values())
+    # NO row was measured by every selected run: the selection spans runs graded against different
+    # capsule sets (different batches, or a suite that grew between them). Every cohort ratio is then
+    # 0/0 -- arithmetically right, and worthless. Fail LOUD rather than emit a table of zeros.
+    reason = None
+    if per_run and not cohort:
+        reason = (f"the {len(per_run)} selected run(s) share no measured capsule at all (union "
+                  f"{len(union)}), so every cohort ratio below is 0/0. Narrow the selection to runs "
+                  f"graded against the same capsule set.")
+    return {
+        "n_runs": len(per_run),
+        "empty_cohort_reason": reason,
+        "common_cohort_size": len(cohort),
+        "common_cohort": sorted(cohort),
+        "union_measured_size": len(union),
+        "union_measured": sorted(union),
+        "own_denominators": {rid: r["own_n_capsules"] for rid, r in per_run.items()},
+        "own_ratios_comparable": comparable,
+        "comparable_metric": "own" if comparable else "cohort",
+        "runs": per_run,
+        "note": ("Compare runs on `cohort` (passed/l3_clean over the "
+                 f"{len(cohort)} capsule(s) every one of the {len(per_run)} run(s) measured). "
+                 + ("Every run measured exactly that cohort here, so each run's own "
+                    "n_passed/n_capsules asks the same question and is equally comparable."
+                    if comparable else
+                    "The `own_*` figures are PER-RUN ONLY and must NOT be placed side by side: a "
+                    "run's own denominator excludes what it never measured, which shrinks it exactly "
+                    "where that run did worst. See each run's `not_measured` for what it dropped.")),
+    }
+
+
+def format_cohort_table(report: dict) -> str:
+    """The cohort report as text, leading with the comparable columns.
+
+    When the own denominators are not comparable the own column is printed LAST and labelled as
+    per-run-only, so no reader can line up two ratios with different denominators as if they
+    answered the same question -- which is the specific lie this whole path exists to prevent.
+    """
+    runs = report.get("runs") or {}
+    n = report.get("common_cohort_size", 0)
+    comparable = bool(report.get("own_ratios_comparable"))
+    lines = [f"common cohort: {n} capsule(s) measured by ALL {report.get('n_runs', 0)} run(s); "
+             f"union {report.get('union_measured_size', 0)}"]
+    # An empty cohort makes every ratio 0/0. That is the correct arithmetic and a useless table, so
+    # say WHY out loud instead of printing a wall of zeros a reader might take for a result.
+    if report.get("empty_cohort_reason"):
+        lines.append(f"NO COMPARISON POSSIBLE: {report['empty_cohort_reason']}")
+    if not comparable:
+        dens = sorted({d for d in (report.get("own_denominators") or {}).values() if d is not None})
+        lines.append(f"NOT COMPARABLE side by side: own denominators/cohorts differ "
+                     f"({', '.join(str(d) for d in dens)}). Quote pass/cohort and L3/cohort; the "
+                     f"own column below is per-run only.")
+    own_hdr = "own" if comparable else "own (per-run ONLY)"
+    hdr = (f"{'run':46s} {'arm':16s} {'pass/cohort':>12s} {'L3/cohort':>11s} {own_hdr:>19s}  "
+           f"not measured")
+    lines += [hdr, "-" * len(hdr)]
+    for rid, r in sorted(runs.items(), key=lambda kv: (str(kv[1].get("arm")), kv[0])):
+        co = r.get("cohort") or {}
+        nm = ", ".join(r.get("not_measured") or []) or "-"
+        lines.append(f"{rid:46s} {str(r.get('arm')):16s} {co.get('passed_ratio', '?'):>12s} "
+                     f"{co.get('l3_clean_ratio', '?'):>11s} {r.get('own_ratio', '?'):>19s}  {nm}")
+    lines.append("")
+    lines.append(report.get("note", ""))
+    return "\n".join(lines)
+
+
+def collect_comparable_runs(select: tuple[str, ...] = ()) -> tuple[dict, dict]:
+    """Scan the arm subtrees for runs that have a comparable grade.
+
+    `select` is a tuple of substrings; a run is considered when its id contains ANY of them (an empty
+    tuple takes every run). Returns `(runs, skipped)` where `runs` feeds `cohort_report` and
+    `skipped` maps run id -> why it is not in the comparison, so a run is never silently dropped.
+
+    Deliberately independent of `load_run`: that function requires `cost_time_toolcalls.yaml`, which
+    a run that has not been finalized yet does not have, and a run's GRADE is readable long before
+    its cost accounting is written.
+    """
+    runs: dict[str, dict] = {}
+    skipped: dict[str, str] = {}
+    for sub in RUN_DIRS:
+        base = C.RUNS / sub
+        if not base.is_dir():
+            continue
+        for d in sorted(base.iterdir()):
+            if not d.is_dir():
+                continue
+            if select and not any(tok in d.name for tok in select):
+                continue
+            j, vname = latest_verdict(d, skip_stages=_NOT_COMPARABLE_STAGES)
+            if j is None:
+                skipped[d.name] = "no comparable verdict in qa_history/ (nothing graded yet)"
+                continue
+            runs[d.name] = {"arm": _arm_of(d) or d.parent.name, "verdict": j, "verdict_file": vname}
+    return runs, skipped
 
 
 def load_run(d: Path, audit: dict) -> dict | None:
@@ -266,7 +528,37 @@ def load_run(d: Path, audit: dict) -> dict | None:
     }
 
 
-def main():
+def cohort_main(select: tuple[str, ...]) -> int:
+    """Print a cohort-normalized comparison of the selected runs. READ-ONLY: writes nothing, so it is
+    safe to point at a batch while some of its runs are still live."""
+    runs, skipped = collect_comparable_runs(select)
+    if not runs:
+        print(f"no run with a comparable verdict matched {list(select) or ['<all>']}")
+        for rid, why in sorted(skipped.items()):
+            print(f"  skipped {rid}: {why}")
+        return 1
+    report = cohort_report(runs)
+    print(format_cohort_table(report))
+    matched_skips = {rid: why for rid, why in skipped.items()
+                     if not select or any(tok in rid for tok in select)}
+    if matched_skips:
+        print("\nnot in the comparison (nothing graded to compare):")
+        for rid, why in sorted(matched_skips.items()):
+            print(f"  {rid}: {why}")
+    return 0
+
+
+def main(argv: list[str] | None = None):
+    argv = list(sys.argv[1:] if argv is None else argv)
+    # `--cohort [SUBSTR,...]` compares runs on the rows all of them measured, instead of on each
+    # run's own (differently sized) denominator. Substring selection so a batch is named the way it
+    # already is on disk ("g3arm"); no argument compares every run that has a comparable grade.
+    if argv and argv[0] == "--cohort":
+        toks = tuple(t for t in ",".join(argv[1:]).split(",") if t)
+        return cohort_main(toks)
+    if argv:
+        print(f"usage: {Path(__file__).name} [--cohort SUBSTR[,SUBSTR...]]", file=sys.stderr)
+        return 2
     fa = REPORTS / "full_suite_audit.json"
     audit = json.loads(fa.read_text()) if fa.is_file() else {}
     out = {"arms": {a: [] for a in ARM_ORDER}, "n_valid": {}, "arm_order": ARM_ORDER}
@@ -291,6 +583,21 @@ def main():
     out["caveat"] = ("3-arm A/B/C. valid converged runs: " +
                      ", ".join(f"{a}={out['n_valid'][a]}" for a in ARM_ORDER) +
                      ". full-suite completeness present where full_suite_audit has been run.")
+    # EVERY run in this file carries its own MEASURED denominator, and those denominators are not
+    # all the same number. Say so here rather than leaving a plotter to divide by whichever one it
+    # happens to read: a ratio whose denominator differs from its neighbour's is not comparable to
+    # it. `--cohort` prints the normalized comparison.
+    _dens = sorted({r["n_capsules"] for a in ARM_ORDER for r in out["arms"][a]
+                    if r.get("n_capsules") is not None})
+    if len(_dens) > 1:
+        out["denominator_warning"] = {
+            "own_denominators": _dens,
+            "detail": ("These runs did NOT all measure the same number of capsules "
+                       f"(n_capsules in {_dens}): a run defers rows it could not reach (see each "
+                       "run's `not_measured`) and those rows leave its denominator. Do NOT compare "
+                       "n_passed/n_capsules across runs with different denominators -- run "
+                       "`agg_agentic_results.py --cohort <batch>` for the common-cohort figures."),
+        }
     p = REPORTS / "agentic_results.json"
     p.write_text(json.dumps(out, indent=2))
     print(f"wrote {p}")

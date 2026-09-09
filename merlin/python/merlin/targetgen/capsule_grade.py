@@ -750,6 +750,34 @@ def grade(package_dir: str | Path, *, capsules_root: str | Path, runs_root: str 
         score["not_graded_ineligible"] = sorted(r.get("capsule") for r in ungraded)
     if deferred:
         score["gated_deferred"] = sorted(r.get("capsule") for r in deferred)
+    # EVERY not-measured row, BY NAME AND STATUS, in one place. The per-status lists above and below
+    # (`not_graded_ineligible`, `gated_deferred`, `budget_exhausted`, `screened_only`) each name their
+    # own bucket, so the union has to be reassembled by anyone who wants "what is missing from this
+    # denominator" -- and `infrastructure_fault` only ever named a TRUNCATED first twelve. That
+    # reassembly is what a CROSS-RUN comparison needs, and re-deriving it from `per_capsule` puts a
+    # second copy of the exclusion rule in the reader.
+    #
+    # Why it matters: `n_capsules` above is the MEASURED denominator (correct -- a deferred row is not
+    # a verdict), so two runs that deferred different rows have ratios over different cohorts.
+    # Measured on a 97-capsule gemmini batch: the runs whose op coverage opened the whole-model gate
+    # RAN and FAILED two model capsules inside a denominator of 97 (93/97); the run whose coverage
+    # left the gate shut had those same two DEFERRED out of its denominator (75/95) -- so the weakest
+    # run was scored over a cohort with the two hardest rows removed. Naming the dropped rows here is
+    # what lets an aggregator intersect the cohorts instead of dividing by whichever denominator it
+    # happened to read. It does NOT change `n_capsules`/`n_passed`: those stay this run's own
+    # measured figures.
+    _unmeasured = [r for r in results if r.get("status") in NOT_MEASURED_STATUSES]
+    score["n_not_measured"] = len(_unmeasured)
+    if _unmeasured:
+        score["not_measured"] = sorted(str(r.get("capsule")) for r in _unmeasured)
+        score["not_measured_status"] = {
+            str(r.get("capsule")): str(r.get("status"))
+            for r in sorted(_unmeasured, key=lambda r: str(r.get("capsule")))}
+        score["not_measured_note"] = (
+            "these capsules produced NO verdict, so they are in neither n_passed nor n_capsules. "
+            "That is right for this run in isolation and WRONG to divide by when comparing runs: "
+            "another run that reached them carries them in ITS denominator. Compare runs on the "
+            "intersection of what both measured, and quote these names beside the ratio.")
     # STOPPED BY ITS OWN CLOCK, listed by name. A whole-model capsule under a wall-clock ceiling that
     # ran out produced no verdict: it is not a failure of the submission (nothing was measured) and
     # certainly not a pass. Excluded like the other unmeasured states, and reported separately so a
