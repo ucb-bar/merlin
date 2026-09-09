@@ -352,13 +352,20 @@ def _gate_check(gate: CorrectnessGate, *, output_offset: int, output_ctype: str,
             "}")
 
 
+def command_buffer_of(plan: PackPlan) -> Mapping[str, Any] | None:
+    """The buffer a plan was built from, when the plan carries it. ``None`` when it does not."""
+    return getattr(plan, "command_buffer", None)
+
+
 def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol: str,
                           output_tensor: str, output_ctype: str = "float",
                           counter_bracket: object = None,
                           reset_after_warm: str | None = None,
                           const_blob_base: int | None = None,
                           near_additional_bytes: int = 0,
-                          console_line_budget: int = CONSOLE_LINE_BUDGET) -> dict[str, Any]:
+                          console_line_budget: int = CONSOLE_LINE_BUDGET,
+                          command_buffer: Mapping[str, Any] | None = None,
+                          require_program: bool = True) -> dict[str, Any]:
     """``{"declarations", "call", "validate", "gate"}`` C fragments for one bundle's harness.
 
     ``declarations`` already contains the gate as ``merlin_gate_check()`` and ``validate`` is a call
@@ -381,6 +388,15 @@ def render_bundle_harness(plan: PackPlan, gate: CorrectnessGate, *, entry_symbol
     arena, code) has to be reachable, and ``near_additional_bytes`` is what the plan cannot see of
     that. Both are checked here rather than discovered after a link.
     """
+    # RENDERING A HARNESS IS COMMITTING TO BUILD SOMETHING EXECUTABLE, so this is the boundary
+    # where the buffer must declare it is one. `plan()` deliberately stays usable for analysis.
+    if require_program:
+        buffer = command_buffer if command_buffer is not None else command_buffer_of(plan)
+        if buffer is None:
+            raise BundleHarnessError(
+                "the pack plan carries no command buffer, so whether it describes an emitted "
+                "program cannot be established; pass command_buffer= or plan from a buffer")
+        require_executable_emission(buffer)
     if not entry_symbol or not entry_symbol.isidentifier():
         raise BundleHarnessError("the kernel entry symbol must be one plain C identifier")
     # THE ABI's OWN ORDER, never `const + mutable`. Those two coincide only while every read
@@ -657,3 +673,66 @@ def render_far_blob_assembly(*, blob_path: str, section: str = FAR_BLOB_SECTION)
         "merlin_far_const_blob_end:",
         "",
     ])
+
+
+# ---------------------------------------------------------------------------------------------
+# Is this command buffer an EXECUTABLE PROGRAM, or an analysis of one?
+# ---------------------------------------------------------------------------------------------
+#
+# THE MISTAKE THIS PREVENTS, made in full. Three whole-model ELFs were built from the phase-2
+# ANALYSIS emission cache, whose receipt says `entrypoints: ["emit_analysis_bundle"]` and `scope:
+# "compiler emission only"`. Those buffers carry a tensor table, a kernel ABI, commands and a lane
+# plan -- everything a builder reads -- so they build. They are not programs the compiler claims to
+# emit: run through the FULL path the same two models are DECLINED, with a stated reason ("the
+# CPU-lane program for @forward needs about 3,216,234,988 straight-line element evaluations, past
+# this backend's 400000 budget" for tiny_llama; 61,221,254,894 for ResNet-50) and an empty kernel.
+#
+# The ELFs built from the analysis buffers ran, produced plausible numbers, and failed their gates.
+# Two of those failures were then investigated as compiler defects -- a dropped KV-cache input, a
+# collapsed sequence dimension -- through a 32-minute simulation and a multi-step forensic chain,
+# before the artifact itself turned out to be the answer.
+#
+# WHY A POSITIVE DECLARATION IS REQUIRED. `host_lane_program_emitted` is set True by the host-lane
+# builder on success and False when it declines. It is ABSENT from an analysis emission -- measured:
+# absent in 119 of 150 command buffers under this target's artifact tree. So absence cannot be read
+# as failure, and it must not be read as success either: it means the buffer makes no claim, and
+# building an executable from a buffer that makes no claim is exactly the error above.
+
+#: The parameter a command buffer sets to declare that its host-lane program was actually emitted.
+EMITTED_PROGRAM_KEY = "host_lane_program_emitted"
+
+
+def is_executable_emission(command_buffer: Mapping[str, Any]) -> tuple[bool, str]:
+    """``(ok, why_not)`` -- whether this buffer declares itself an emitted, undeclined program."""
+    if not isinstance(command_buffer, Mapping):
+        return False, "the command buffer is not a mapping"
+    declined = command_buffer.get("declined")
+    if declined:
+        reason = ""
+        if isinstance(declined, Mapping):
+            reason = str(declined.get("reason") or "")
+        return False, (f"the compiler DECLINED this program and said why: {reason[:400]}"
+                       if reason else "the compiler declined this program")
+    params = command_buffer.get("params")
+    emitted = params.get(EMITTED_PROGRAM_KEY) if isinstance(params, Mapping) else None
+    if emitted is True:
+        return True, ""
+    if emitted is False:
+        return False, (f"params.{EMITTED_PROGRAM_KEY} is False: the host-lane builder ran and "
+                       f"declined to emit a program")
+    return False, (
+        f"params.{EMITTED_PROGRAM_KEY} is absent, so this buffer makes NO claim to be an emitted "
+        f"program. An analysis emission looks exactly like this -- it carries a tensor table, a "
+        f"kernel ABI, commands and a lane plan, so it builds -- and building one produces an ELF "
+        f"that runs, reports plausible numbers, and answers a question nobody asked. If this IS an "
+        f"analysis buffer, use it for placement and volume (offload, lane_cost, the roofline) and "
+        f"not for a binary")
+
+
+def require_executable_emission(command_buffer: Mapping[str, Any]) -> None:
+    """Raise unless the buffer declares itself an emitted, undeclined program."""
+    ok, why_not = is_executable_emission(command_buffer)
+    if not ok:
+        raise BundleHarnessError(
+            "refusing to render a harness for a command buffer that is not an emitted program: "
+            + why_not)

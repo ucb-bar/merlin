@@ -142,6 +142,10 @@ class PackPlan:
     abi_order: tuple[str, ...] = ()
     #: One row per declared carried state: which seed feeds which working copy from which output.
     carried: tuple[dict[str, Any], ...] = ()
+    #: The command buffer this plan was built from, so a consumer can ask what it CLAIMS to be.
+    #: A layout plan is legitimate over an analysis emission; rendering an executable harness from
+    #: one is not, and the distinction lives in the buffer rather than in the plan.
+    command_buffer: Mapping[str, Any] | None = None
     #: Tensors the program plan DECLARES as the program's outputs, in its own order. Recorded
     #: because the alternative is a heuristic: matching a reference's element count picks whichever
     #: tensor happens to have that many, and tiny_llama has two with exactly 256,000 (its output
@@ -448,7 +452,8 @@ def plan(command_buffer: Mapping[str, Any], *, row_pitch_elements: int,
     encodings = params.get("storage_encodings")
     encodings = encodings if isinstance(encodings, Mapping) else {}
 
-    out = PackPlan(row_pitch_elements=int(row_pitch_elements), alignment=int(alignment))
+    out = PackPlan(row_pitch_elements=int(row_pitch_elements), alignment=int(alignment),
+                   command_buffer=command_buffer)
 
     declared = params.get("global_program_plan")
     bindings = (declared or {}).get("entry_bindings") if isinstance(declared, Mapping) else None

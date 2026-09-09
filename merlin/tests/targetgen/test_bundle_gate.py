@@ -148,7 +148,8 @@ class TestTheHarnessReadsItsOutputFromThePlan:
                            "Y1": {"shape": [1, 8], "dtype": "f32"}},
                "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                        {"tensor": "Y0", "access": "write"},
-                                       {"tensor": "Y1", "access": "write"}]}}
+                                       {"tensor": "Y1", "access": "write"}]},
+               "params": {"host_lane_program_emitted": True}}
         return BP.plan(buf, row_pitch_elements=16)
 
     def _gate(self):
@@ -242,7 +243,8 @@ class TestTheGateActuallyFails:
         buf = {"tensors": {"arg0": {"shape": [4, 4], "dtype": "i8"},
                            "Y0": {"shape": [1, 8], "dtype": "f32"}},
                "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
-                                       {"tensor": "Y0", "access": "write"}]}}
+                                       {"tensor": "Y0", "access": "write"}]},
+               "params": {"host_lane_program_emitted": True}}
         plan = BP.plan(buf, row_pitch_elements=16)
         gate = BG.gate_for(model="m", datapath="w8a8", reference_kind="pt2e_integer",
                            comparison="exact_elementwise", atol=2e-5, rtol=2e-5,
@@ -626,7 +628,8 @@ class TestTheTrajectoryGateActuallyFails:
                 "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                         {"tensor": "arg1", "access": "read"},
                                         {"tensor": "Y0", "access": "write"},
-                                        {"tensor": "Y1", "access": "write"}]}}
+                                        {"tensor": "Y1", "access": "write"}]},
+                "params": {"host_lane_program_emitted": True}}
 
     def _plan(self):
         states = (BP.SessionState(name="timestep", input_arg=1, output_index=1),)
@@ -793,7 +796,7 @@ class TestAFarConstBlobIsAddressedAbsolutelyNotByRelocation:
         for index, count in enumerate(mutable_rows):
             tensors[f"Y{index + 1}"] = {"shape": [count, 16], "dtype": "i8"}
             args.append({"tensor": f"Y{index + 1}", "access": "write"})
-        return BP.plan({"tensors": tensors, "kernel_abi": {"args": args}, "params": {}},
+        return BP.plan({"tensors": tensors, "kernel_abi": {"args": args}, "params": {"host_lane_program_emitted": True}},
                        row_pitch_elements=16)
 
     def _gate(self, elements):
@@ -828,7 +831,7 @@ class TestAFarConstBlobIsAddressedAbsolutelyNotByRelocation:
                    "arg1": {"shape": [1, 8], "dtype": "f32"},
                    "Y0": {"shape": [1, 8], "dtype": "f32"},
                    "Y1": {"shape": [1, 8], "dtype": "f32"}}
-        buffer = {"tensors": tensors, "params": {}, "kernel_abi": {"args": [
+        buffer = {"tensors": tensors, "params": {"host_lane_program_emitted": True}, "kernel_abi": {"args": [
             {"tensor": "arg0", "access": "read"}, {"tensor": "arg1", "access": "read"},
             {"tensor": "Y0", "access": "write"}, {"tensor": "Y1", "access": "write"}]}}
         plan = BP.plan(buffer, row_pitch_elements=16,
@@ -987,7 +990,7 @@ class TestAConsoleWithNoFloatSupportMustNotBeAskedForOne:
     def _plan(self):
         return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
                                     "Y0": {"shape": [1, 8], "dtype": "f32"}},
-                        "params": {},
+                        "params": {"host_lane_program_emitted": True},
                         "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                                 {"tensor": "Y0", "access": "write"}]}},
                        row_pitch_elements=16)
@@ -1088,7 +1091,7 @@ class TestTheConsoleBudgetIsATotalNotAPerStepFigure:
                                     "arg1": {"shape": [1, 8], "dtype": "f32"},
                                     "Y0": {"shape": [elements], "dtype": "f32"},
                                     "Y1": {"shape": [1, 8], "dtype": "f32"}},
-                        "params": {},
+                        "params": {"host_lane_program_emitted": True},
                         "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                                 {"tensor": "arg1", "access": "read"},
                                                 {"tensor": "Y0", "access": "write"},
@@ -1274,7 +1277,7 @@ class TestALanguageModelsRankingIsPerTokenNotGlobal:
     def _plan(self, elements):
         return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
                                     "Y0": {"shape": [elements], "dtype": "f32"}},
-                        "params": {},
+                        "params": {"host_lane_program_emitted": True},
                         "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                                 {"tensor": "Y0", "access": "write"}]}},
                        row_pitch_elements=16)
@@ -1387,7 +1390,7 @@ class TestOnlyTheHARNESSDecidesWhatIsPrinted:
     def _plan(self, elements):
         return BP.plan({"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
                                     "Y0": {"shape": [elements], "dtype": "f32"}},
-                        "params": {},
+                        "params": {"host_lane_program_emitted": True},
                         "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
                                                 {"tensor": "Y0", "access": "write"}]}},
                        row_pitch_elements=16)
@@ -1409,3 +1412,105 @@ class TestOnlyTheHARNESSDecidesWhatIsPrinted:
         h = BH.render_bundle_harness(self._plan(256000), self._gate(256000), entry_symbol="k",
                                      output_tensor="Y0")
         assert h["dumps_values"] is False and h["total_value_lines"] == 0
+
+
+class TestAnAnalysisEmissionIsNotAProgram:
+    """The mistake this prevents, made in full and then measured.
+
+    Three whole-model ELFs were built from the phase-2 ANALYSIS emission cache, whose receipt says
+    `entrypoints: ["emit_analysis_bundle"]` and `scope: "compiler emission only"`. Those buffers
+    carry a tensor table, a kernel ABI, commands and a lane plan -- everything a builder reads -- so
+    they build. Run through the FULL path the same models are DECLINED with a stated number:
+    tiny_llama needs 3,216,234,988 straight-line element evaluations against a 400,000 budget,
+    ResNet-50 needs 61,221,254,894, and the emitted kernel is `llvm.return` and nothing else.
+
+    The ELFs ran, produced plausible numbers, failed their gates, and two of those failures were
+    then investigated as compiler defects through a 32-minute simulation before the artifact turned
+    out to be the answer.
+
+    `host_lane_program_emitted` is absent in 119 of 150 command buffers under this target's artifact
+    tree, so absence cannot mean failure -- and must not be taken for success. A POSITIVE
+    declaration is required.
+    """
+
+    def _buffer(self, params):
+        return {"tensors": {"arg0": {"shape": [1, 16], "dtype": "i8"},
+                            "Y0": {"shape": [1, 8], "dtype": "f32"}},
+                "kernel_abi": {"args": [{"tensor": "arg0", "access": "read"},
+                                        {"tensor": "Y0", "access": "write"}]},
+                "params": dict(params)}
+
+    def _gate(self):
+        return BG.gate_for(model="m", datapath="w8a8", reference_kind="w8a8_independent",
+                           comparison="tolerance_and_topk", atol=1e-4, rtol=1e-4,
+                           output_elements=8, expected_argmax=0)
+
+    def _render(self, buffer):
+        plan = BP.plan(buffer, row_pitch_elements=16)
+        return BH.render_bundle_harness(plan, self._gate(), entry_symbol="k", output_tensor="Y0")
+
+    def test_a_declared_program_emission_renders(self):
+        assert self._render(self._buffer({"host_lane_program_emitted": True}))["n_arguments"] == 2
+
+    def test_a_buffer_making_NO_claim_is_REFUSED(self):
+        with pytest.raises(BH.BundleHarnessError) as excinfo:
+            self._render(self._buffer({}))
+        message = str(excinfo.value)
+        assert "makes NO claim to be an emitted program" in message
+        assert "An analysis emission looks exactly like this" in message
+        assert "offload, lane_cost, the roofline" in message, (
+            "the refusal must say what an analysis buffer IS good for")
+
+    def test_a_buffer_whose_host_lane_builder_DECLINED_is_refused(self):
+        with pytest.raises(BH.BundleHarnessError, match="declined to emit a program"):
+            self._render(self._buffer({"host_lane_program_emitted": False}))
+
+    def test_a_DECLINED_program_is_refused_and_quotes_the_compiler(self):
+        buffer = self._buffer({"host_lane_program_emitted": True})
+        buffer["declined"] = {"reason": "needs about 3216234988 straight-line element evaluations, "
+                                        "past this backend's 400000 budget", "op": "host_lane"}
+        with pytest.raises(BH.BundleHarnessError) as excinfo:
+            self._render(buffer)
+        assert "DECLINED this program and said why" in str(excinfo.value)
+        assert "3216234988" in str(excinfo.value), "the compiler's own number must survive"
+
+    def test_declined_outranks_a_positive_declaration(self):
+        """A buffer can carry both; the refusal wins."""
+        buffer = self._buffer({"host_lane_program_emitted": True})
+        buffer["declined"] = {"reason": "x"}
+        ok, why = BH.is_executable_emission(buffer)
+        assert ok is False and "DECLINED" in why
+
+    def test_the_predicate_is_usable_without_raising(self):
+        ok, why = BH.is_executable_emission(self._buffer({"host_lane_program_emitted": True}))
+        assert ok is True and why == ""
+
+    def test_a_plan_carrying_no_buffer_at_all_is_refused(self):
+        plan = BP.plan(self._buffer({"host_lane_program_emitted": True}), row_pitch_elements=16)
+        plan.command_buffer = None
+        with pytest.raises(BH.BundleHarnessError, match="carries no command buffer"):
+            BH.render_bundle_harness(plan, self._gate(), entry_symbol="k", output_tensor="Y0")
+
+    def test_the_gate_can_be_waived_only_EXPLICITLY(self):
+        h = BH.render_bundle_harness(
+            BP.plan(self._buffer({}), row_pitch_elements=16), self._gate(),
+            entry_symbol="k", output_tensor="Y0", require_program=False)
+        assert h["n_arguments"] == 2
+
+    def test_it_refuses_every_analysis_emission_in_THIS_TREE(self):
+        """The acceptance test: the four buffers the three ELFs were actually built from."""
+        import glob
+        import json
+
+        from merlin.common.paths import artifacts_dir
+        root = (artifacts_dir() / "perf-bench" / "gemmini"
+                / "_global_phase2_baseline_emission_cache_v1")
+        found = sorted(glob.glob(str(root / "*" / "command_buffer.json")))
+        if not found:
+            pytest.skip("no analysis emission cache in this tree")
+        for path in found:
+            with open(path, encoding="utf-8") as handle:
+                buffer = json.load(handle)
+            ok, why = BH.is_executable_emission(buffer)
+            assert ok is False, f"{path} was admitted as a program emission"
+            assert "makes NO claim" in why
