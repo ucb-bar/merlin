@@ -1,0 +1,200 @@
+# PINNED COPY of target_experiment.yaml for the g3arm_20260908 batch. DO NOT use for new work.
+#
+# Arms 1-3 launched when the public/dev corpus held 97 capsules. Mid-batch, commit 68ef1374 added
+# `B1s_linear_relu_signed_i8` (a real pytorch_model_slice layer capsule requiring L0-L3), taking the
+# live scope to 98, and the resume / official-grade gate then refused every arm with
+# 'descriptor-derived task scope drifted' -- correctly: a submission must not be graded against a
+# corpus that changed under it.
+#
+# This copy pins the denominator with grading.search_cohort.include_capsules -- the field built for
+# exactly this case ('a new capsule does not silently enter an expensive repeated search'). It is an
+# explicit ALLOWLIST of the 97 capsules the arms actually graded, taken from an as-graded round
+# verdict, NOT a capability or resource exclusion: B1s is neither, it is simply outside this batch's
+# frozen denominator.
+#
+# The descriptor refuses search_cohort alongside exclusion policies, so the 11 capability
+# and 5 resource exclusions are dropped here -- the allowlist already omits every one of
+# them (asserted when this file was generated). Their provenance stays recorded in the arms' own
+# run records and in the unpinned descriptor.
+#
+# The shared descriptor is deliberately left UNTOUCHED: another session added that capsule on purpose,
+# and new runs should grade all 98.
+target: gemmini
+rtl:
+  via: mlc
+hardware_spec:
+  isa_headers:
+  - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini.h
+  - experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0/isa_include/gemmini_params.h
+  hwbringup_set: experiments/capsule_bench/targets/gemmini/contracts/hwbringup_gemmini_v0
+  curated_harness: contracts/harness_curated/gemmini-rocc-tests
+capsule_corpus: merlin/contract/capsules/isa
+grading:
+  expected_cohort:
+    # Reconciled 113 -> 114 on 2026-09-08: the shared source pool grew (a capsule was added to
+    # merlin/contract/capsules while this experiment was in flight). Safe to bump HERE and only
+    # here, because this pinned descriptor freezes the graded cohort by the explicit 97-name
+    # include_capsules allowlist below -- a new source row cannot enter the graded set, so the
+    # denominator the four arms are compared on is unchanged. The upstream `gemmini` descriptor
+    # still declares 113 and is NOT touched: bumping it there would move `admitted_capsules`
+    # 97 -> 98 and silently change the denominator for every other run on that descriptor.
+    source_capsules: 114
+    admitted_capsules: 97
+  hidden_capability_admission:
+    source_capsules: 15
+    admitted_capsules: 14
+  resource_bound:
+    policy: representative_l3_capstones_v1
+    required_admitted_models:
+    - M2_microvit_gemmini
+    - M3_host_island_seam_gemmini
+    - SY_micro_model
+  search_cohort:
+    include_capsules:
+    - A0_config_smoke
+    - A1_mvin_mvout
+    - A2_single_tile_matmul
+    - A3_k_accumulation
+    - A4_acc_scale_i8
+    - A5_relu_epilogue
+    - A6_resident_reuse
+    - A7_edge_padding
+    - B0_quantized_linear_i8
+    - B1_linear_relu_i8
+    - B2_linear_acc_scale_relu_i8
+    - B3_conv2d_im2col_i8
+    - B4_conv2d_relu_i8
+    - C0_mlp_linear1
+    - C1_mlp_activation_linear2
+    - C2_attention_q_projection
+    - C3_attention_k_projection
+    - C4_attention_v_projection
+    - C5_attention_qk_matmul
+    - C6_attention_pv_matmul
+    - C7_attention_qk_i8
+    - FE00_fused_epilogue_tail_15x16x17
+    - FE01_fused_epilogue_tail_15x32x17
+    - FT00_movement_tail_15x15
+    - FT01_movement_tail_17x15
+    - GB0_batched_matmul_i8
+    - GC0_conv2d_i8
+    - GC7_conv2d_pad_i8
+    - GC8_conv2d_stride2_i8
+    - GM0_deep_k_fits_single_i8
+    - GM1_deep_k_spills_i8
+    - GN0_layernorm_host_only_bf16_pt
+    - GP0_matmul_maxpool_i8
+    - GP1_matmul_maxpool_tail_i8
+    - GP2_conv2d_maxpool_i8
+    - GS0_matmul_spec
+    - M2_microvit_gemmini
+    - M3_host_island_seam_gemmini
+    - SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l2
+    - SY_app_contraction_i8_aligned_fits_double_rank2_squareish_gemm_l3
+    - SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l2
+    - SY_app_contraction_i8_aligned_fits_double_rank2_wide_skinny_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_gemv_like_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_projection_like_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_squareish_gemm_l3
+    - SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l2
+    - SY_app_contraction_i8_partial_fits_double_rank2_wide_skinny_l3
+    - SY_contraction_i8_aligned
+    - SY_contraction_i8_partial
+    - SY_contraction_i8_sub_tile
+    - SY_conv_k16x16_s16x16_d1x1_padUNKNOWN
+    - SY_conv_k3x3_s1x1_d1x1_pad1x1
+    - SY_conv_k3x3_s1x1_d1x1_pad1x1_2x2_indilated2x2
+    - SY_conv_k3x3_s1x1_d1x1_padUNKNOWN
+    - SY_conv_k3x3_s2x2_d1x1_pad1x1
+    - SY_conv_k4x4_s4x4_d1x1_padUNKNOWN
+    - SY_conv_k5x5_s1x1_d1x1_padUNKNOWN
+    - SY_conv_k7x7_s1x1_d1x1_padUNKNOWN
+    - SY_conv_k7x7_s4x4_d1x1_pad3x3
+    - SY_conv_k8x8_s8x8_d1x1_padUNKNOWN
+    - SY_elementwise_map_i8_aligned
+    - SY_elementwise_map_i8_partial
+    - SY_elementwise_map_i8_sub_tile
+    - SY_epilogue_acc_scale
+    - SY_epilogue_bias_add
+    - SY_epilogue_maxpool
+    - SY_epilogue_relu
+    - SY_epilogue_requant
+    - SY_geometry_odd_tail_heavy
+    - SY_geometry_projection_like
+    - SY_geometry_squareish_gemm
+    - SY_host_lane_attention_bf16
+    - SY_host_lane_contraction_bf16
+    - SY_host_lane_contraction_f32
+    - SY_host_lane_elementwise_map_bf16
+    - SY_host_lane_elementwise_map_f32
+    - SY_host_lane_reduction_bf16
+    - SY_host_lane_reduction_f32
+    - SY_host_lane_softmax_bf16
+    - SY_host_only_normalization
+    - SY_kdepth_fits_double
+    - SY_kdepth_fits_single
+    - SY_kdepth_spills
+    - SY_micro_model
+    - SY_movement_i8_aligned
+    - SY_movement_i8_partial
+    - SY_movement_i8_sub_tile
+    - SY_rank_contraction_batched
+    - SY_reduction_i8_aligned
+    - SY_reduction_i8_partial
+    - SY_reduction_i8_sub_tile
+    - SY_regime_fits_double
+    - SY_regime_fits_single
+    - SY_regime_spills
+    policy: g3arm_20260908_corpus_pin_v1
+answer_surfaces:
+  prior_backends:
+  - merlin_native_v0
+  - hand_smoke_oot
+  - agent_spec_v0_mlir_oot
+  - agent_spec_v1_mlir_oot
+performance:
+  global_objective_capsule: M2_microvit_gemmini
+toolchain:
+  sim_via: chipyard
+host:
+  board: chipyard_kodiak
+workload_spec:
+  models:
+  - resnet50
+  - tiny_llama
+  applications:
+  - smolvla_fp32_consistent
+  - smolvla_int8_consistent
+  - smolvla_denoise_step_fp32_app
+  - lstmnetvit_fp8_consistent
+  - lstmnetvit_int8_consistent
+  - lstmnetvit_int8_w8a8_consistent
+  cert_budget_s: 300
+  precision_preference:
+  - int8
+  - fp8_e4m3
+  - mxfp8
+  - fp16
+  - bf16
+  - fp32
+  max_synthesized_capsules: 160
+host_lane:
+  description: 'The int8 RVV host compiler: the scalar/vector lane every partitioned Gemmini model capsule falls back to for
+    the work the accelerator does not admit (normalization, reduction, activation tails). All of this experiment''s whole-model
+    capstones declare compile_dtype=int8, so the frozen package must declare dtype_strategy=int8_w8a8. Frozen for the duration
+    of the experiment.'
+  repo_canonical: https://github.com/ucb-bar/rvv-mlir.git
+  dtype_strategy: int8_w8a8
+  provenance: in_tree_minted
+  package: out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8
+  requires_paths:
+  - manifest.yaml
+  - schedule.mlir
+  - knobs.yaml
+  read_only:
+  - out/artifacts/targets/rvv/impr_tuned_wholemodel_vf_int8/
+  deny_modification:
+  - merlin/python/merlin/llvmlower/
