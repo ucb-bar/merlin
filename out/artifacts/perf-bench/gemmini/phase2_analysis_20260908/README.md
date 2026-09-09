@@ -226,8 +226,10 @@ belongs outside that driver**, which is affordable precisely because the instrum
 
 # PART IV — What the campaign produced
 
-All three fleet binaries link. Each frame pair is `clang -fstack-usage` before and after the static
-arena; each blob was verified byte-for-byte against its capture rather than merely sized.
+Three ELFs were produced and are retracted as binaries; the toolchain work that produced them
+stands on its own. Each frame pair below is `clang -fstack-usage` before and after the static arena,
+and each blob was verified byte-for-byte against its capture rather than merely sized -- both remain
+true of the artifacts, whatever those artifacts were.
 
 > ## RETRACTED — the three ELFs were built from the wrong artifact
 >
