@@ -131,6 +131,22 @@ def _budget_abandoned(text) -> bool:
     return any(m in low for m in _BUDGET_MARKERS)
 
 
+def _cert_abandoned(c: dict) -> bool:
+    """Was this capsule's CERT tier abandoned on time/budget rather than answered wrongly?
+
+    Two sources, in order of authority:
+
+    1. ``tiers_abandoned`` -- the grader's own STRUCTURED list of tiers it abandoned on budget (written
+       by ``qa_check``). When present it is the answer: no text is being interpreted at all.
+    2. otherwise the recorded reason text, so verdicts written before that field existed -- every
+       verdict already on disk -- still classify instead of silently counting as defects.
+    """
+    abandoned = c.get("tiers_abandoned")
+    if isinstance(abandoned, (list, tuple)) and _CERT_TIER_KEY in abandoned:
+        return True
+    return _budget_abandoned(_cert_reason(c))
+
+
 def _cert_reason(c: dict) -> str:
     """Every place a capsule record can carry WHY its cert tier did not pass, joined for inspection.
 
@@ -139,12 +155,11 @@ def _cert_reason(c: dict) -> str:
     as status strings plus ``failure_plane`` / ``failure_category`` / ``failure_detail``). Reading only
     one of them is how this classification would go silent the next time the verdict shape changes.
     """
+    # RECORDED text only. The verdict's structured `tiers_abandoned` list is read by _cert_abandoned
+    # instead of being turned into a synthetic reason sentence here: a classifier that matches text it
+    # wrote itself cannot be told apart from one that reads nothing, and this function's callers want
+    # the reason AS RECORDED.
     parts = []
-    # The verdict's own ABANDONMENT LIST, when qa_check wrote one. This is the only shape that carries
-    # the distinction without the reason text (which holds absolute paths and engine command lines and
-    # is therefore not on the redacted verdict), so it is checked FIRST and is authoritative.
-    if _CERT_TIER_KEY in (c.get("tiers_abandoned") or []):
-        parts.append("tier abandoned on time budget")
     tier = (c.get("tiers") or {}).get(_CERT_TIER_KEY)
     if isinstance(tier, dict):
         for k in ("reason", "detail", "error"):
@@ -205,8 +220,8 @@ def _l3_evidence(run_dir) -> dict:
         # rejected. Skipped/absent cert tiers are in neither: nothing ran, so there is nothing to
         # attribute (they are already visible as gate_passed minus rtl_clean).
         ran_not_passed = [c for c in pc if _cert_status(c) not in _CERT_NOT_RUN]
-        budget = [c for c in ran_not_passed if _budget_abandoned(_cert_reason(c))]
-        failed = [c for c in ran_not_passed if not _budget_abandoned(_cert_reason(c))]
+        budget = [c for c in ran_not_passed if _cert_abandoned(c)]
+        failed = [c for c in ran_not_passed if not _cert_abandoned(c)]
         return {"rtl_clean": len(clean), "l2_only": len(l2only),
                 "gate_passed": j.get("n_passed"), "n_capsules": j.get("n_capsules"),
                 "l3_source": v.name,

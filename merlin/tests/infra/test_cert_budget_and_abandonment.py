@@ -256,6 +256,23 @@ def test_an_abandoned_cert_is_unaffordable_and_a_wrong_answer_is_a_failure(agg, 
     assert ev["rtl_clean"] == 1, ev
 
 
+def test_the_graders_structured_abandonment_list_is_authoritative(agg, tmp_path):
+    """`qa_check` writes `tiers_abandoned` -- the tiers IT abandoned on budget. Where that field is
+    present no text is interpreted at all, which is what keeps this working when the reason text is
+    redacted out of the verdict."""
+    cap = _cap("too_slow", status="fail", l3="fail", detail=None)
+    cap["tiers_abandoned"] = ["L3"]
+    ev = agg._l3_evidence(_verdict(tmp_path, [cap]))
+    assert (ev["not_certified_budget"], ev["not_certified_failed"]) == (1, 0), ev
+
+
+def test_an_abandonment_list_naming_another_tier_does_not_excuse_the_cert(agg, tmp_path):
+    cap = _cap("wrong", status="fail", l3="fail", detail=_WRONG_NUMBERS)
+    cap["tiers_abandoned"] = ["L1"]
+    ev = agg._l3_evidence(_verdict(tmp_path, [cap]))
+    assert (ev["not_certified_budget"], ev["not_certified_failed"]) == (0, 1), ev
+
+
 def test_a_redacted_timeout_reason_is_still_recognised(agg, tmp_path):
     """The verdict's own copy of the reason has its digits replaced; it must still classify."""
     run = _verdict(tmp_path, [_cap("too_slow", status="fail", l3="fail", detail=_REDACTED_REASON)])
