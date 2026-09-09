@@ -925,6 +925,20 @@ def _treatment_snapshot_record(ws: Path, run_dir: Path, bundle_dir: Path,
     }
 
 
+def _treatment_row_identity(row: Mapping) -> dict:
+    """What actually defines the treatment for one file.
+
+    ``path`` records WHERE the file was read, not WHAT was served, and
+    ``_treatment_snapshot_record``'s aggregate deliberately excludes it.  The same
+    workspace legitimately spells differently across runs -- a pinned descriptor
+    directory reaches the shared ``_qa_ws`` through a symlink, so a resumed run
+    sees ``targets/<pin>/_qa_ws/...`` where setup recorded ``targets/<target>/_qa_ws/...``.
+    Comparing the spelling would fail a run whose served bytes are identical, which
+    is drift theatre: it blocks the honest resume it was written to protect.
+    """
+    return {key: value for key, value in row.items() if key != "path"}
+
+
 def _verify_treatment_snapshot(expected: Mapping, ws: Path, run_dir: Path,
                                bundle_dir: Path, resolved_tools) -> dict:
     """Recompute a treatment binding and fail closed on any prompt/tool drift."""
@@ -934,17 +948,20 @@ def _verify_treatment_snapshot(expected: Mapping, ws: Path, run_dir: Path,
         observed = _treatment_snapshot_record(ws, run_dir, bundle_dir, resolved_tools)
     except RuntimeError as exc:
         raise RuntimeError(f"experiment treatment drifted after setup: {exc}") from exc
-    if dict(expected) != observed:
-        expected_rows = {row.get("name"): row for row in expected.get("files", [])
-                         if isinstance(row, Mapping)}
-        observed_rows = {row["name"]: row for row in observed["files"]}
-        changed = sorted(name for name in set(expected_rows) | set(observed_rows)
-                         if expected_rows.get(name) != observed_rows.get(name))
-        if expected.get("resolved_tool_ids") != observed["resolved_tool_ids"]:
-            changed.append("resolved_tool_ids")
+    expected_rows = {row.get("name"): _treatment_row_identity(row)
+                     for row in expected.get("files", []) if isinstance(row, Mapping)}
+    observed_rows = {row["name"]: _treatment_row_identity(row) for row in observed["files"]}
+    changed = sorted(name for name in set(expected_rows) | set(observed_rows)
+                     if expected_rows.get(name) != observed_rows.get(name))
+    if expected.get("resolved_tool_ids") != observed["resolved_tool_ids"]:
+        changed.append("resolved_tool_ids")
+    if not changed and expected.get("content_sha256") != observed["content_sha256"]:
+        changed.append("content_sha256")
+    if not changed and expected.get("n_files_present") != observed["n_files_present"]:
+        changed.append("n_files_present")
+    if changed:
         raise RuntimeError(
-            "experiment treatment drifted after setup: "
-            + (", ".join(changed) if changed else "aggregate/metadata mismatch"))
+            "experiment treatment drifted after setup: " + ", ".join(changed))
     return observed
 
 
