@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from merlin.common.paths import merlin_dir
 from merlin.perf.firesim_receipt import (
     FireSimReceiptError,
     RECEIPT_SCHEMA,
@@ -17,7 +18,7 @@ from merlin.perf.firesim_receipt import (
 )
 
 
-_JOB_ID = 41
+_JOB_ID = 535
 _WORKLOAD = "synthetic-whole-model"
 _SUCCESS_MARKERS = (
     "VALIDATION output_digest=0123456789abcdef",
@@ -45,19 +46,18 @@ def _client(*, state: str = "DONE", exit_code: int = 0,
     )) + "\n"
 
 
+# The daemon log is the one the daemon actually wrote (job 535, phase and command lines vendored
+# verbatim), not a hand-written approximation.  The invented fixture this replaces omitted the
+# LEADING_KILL banner entirely and scoped the leading kill to INFRASETUP, so the receipt required
+# a lifecycle no real job has ever emitted and had never sealed a run.
+_OBSERVED_DAEMON_LOG = (
+    merlin_dir() / "tests/data/firesim_queue/job535_daemon_phase_skeleton.log")
+
+
 def _daemon() -> str:
-    return "\n".join((
-        f"=== [firesim-queue] phase=STAGING job_id={_JOB_ID} ===",
-        "staged /artifacts/model.elf -> /queue/workloads/model.elf",
-        f"=== [firesim-queue] phase=INFRASETUP job_id={_JOB_ID} ===",
-        "Running: kill",
-        f"=== [firesim-queue] phase=INFRASETUP job_id={_JOB_ID} ===",
-        "Running: infrasetup",
-        f"=== [firesim-queue] phase=RUNNING job_id={_JOB_ID} ===",
-        "Running: runworkload",
-        f"=== [firesim-queue] phase=TEARDOWN job_id={_JOB_ID} ===",
-        "Running: kill",
-    )) + "\n"
+    text = _OBSERVED_DAEMON_LOG.read_text(encoding="utf-8")
+    assert f"job_id={_JOB_ID} " in text, "the vendored daemon log must belong to _JOB_ID"
+    return text
 
 
 def _uart(*, cycles: int = 987654) -> str:
@@ -183,7 +183,9 @@ def test_client_job_and_workload_must_match_exactly(tmp_path: Path) -> None:
             "Running: placeholder", "Running: infrasetup", 1),
     lambda text: text.replace("Running: runworkload", "Running: status\nRunning: runworkload"),
     lambda text: text.replace("phase=RUNNING", "phase=TEARDOWN"),
-    lambda text: text.replace("job_id=41", "job_id=42", 1),
+    lambda text: text.replace(f"job_id={_JOB_ID}", f"job_id={_JOB_ID + 1}", 1),
+    # the leading kill must stay scoped to its own LEADING_KILL banner
+    lambda text: text.replace("phase=LEADING_KILL", "phase=INFRASETUP", 1),
 ])
 def test_daemon_requires_exact_phase_scoped_lifecycle(tmp_path: Path, daemon_edit) -> None:
     inputs = _inputs(tmp_path)
@@ -277,3 +279,98 @@ def test_cli_writes_the_same_verified_document(tmp_path: Path, capsys) -> None:
     assert main(arguments) == 0
     assert capsys.readouterr().out.strip() == str(output)
     assert json.loads(output.read_text(encoding="utf-8"))["status"] == "passed"
+
+
+# --- the four protocol constants, pinned to logs the queue and the harness actually wrote ---
+#
+# Every one of these constants had been written from a guess, and each guess made the receipt
+# unsatisfiable in a way no test could see, because the tests graded against the same guess.
+# There is no sealed receipt anywhere under out/artifacts/, which is what that costs.  These
+# tests parse the vendored real logs with the production parsers, so a constant can only be
+# wrong if the vendored bytes are wrong.
+
+_OBSERVED_UART_LOG = (
+    merlin_dir() / "tests/data/firesim_queue/job610_uart_marker_skeleton.log")
+
+
+def test_queue_phase_sequence_is_the_sequence_the_daemon_prints() -> None:
+    from merlin.perf.execution_policy import FIRESIM_QUEUE_PHASES
+    from merlin.perf.firesim_receipt import _daemon_phase
+
+    text = _OBSERVED_DAEMON_LOG.read_text(encoding="utf-8")
+    observed: list[str] = []
+    for number, line in enumerate(text.splitlines(), start=1):
+        phase = _daemon_phase(line, number, _JOB_ID)
+        if phase is not None and (not observed or observed[-1] != phase):
+            observed.append(phase)
+
+    assert tuple(observed) == FIRESIM_QUEUE_PHASES
+    # LEADING_KILL is the banner the constant used to omit, which alone made every run unsealable.
+    assert "LEADING_KILL" in FIRESIM_QUEUE_PHASES
+
+
+def test_lifecycle_commands_are_scoped_to_the_phases_the_daemon_scoped_them_to() -> None:
+    from merlin.perf.firesim_receipt import _verify_daemon
+
+    commands = _verify_daemon(_OBSERVED_DAEMON_LOG.read_text(encoding="utf-8"), _JOB_ID)
+
+    assert tuple((phase, command) for phase, command, _line in commands) == (
+        ("LEADING_KILL", "kill"),
+        ("INFRASETUP", "infrasetup"),
+        ("RUNNING", "runworkload"),
+        ("TEARDOWN", "kill"),
+    )
+
+
+def test_uart_cycle_metric_is_the_bare_form_the_harness_prints() -> None:
+    text = _OBSERVED_UART_LOG.read_text(encoding="utf-8")
+    metrics = [line for line in text.splitlines() if line.startswith("METRIC")]
+
+    assert metrics == ["METRIC cycles 33085199302"]
+    assert "MERLIN_METRIC" not in text, "the harness prints a bare METRIC, not MERLIN_METRIC"
+
+
+def test_invocation_line_carries_no_trailing_batch_field() -> None:
+    from merlin.perf.firesim_receipt import _INVOCATION_LINE
+
+    lines = [
+        line for line in _OBSERVED_UART_LOG.read_text(encoding="utf-8").splitlines()
+        if line.startswith("MERLIN_INVOCATIONS")
+    ]
+
+    assert lines == [_INVOCATION_LINE]
+
+
+def test_observed_profile_window_is_the_constant_the_receipt_requires() -> None:
+    from merlin.perf.firesim_receipt import _PROFILE_LINES
+
+    lines = tuple(
+        line for line in _OBSERVED_UART_LOG.read_text(encoding="utf-8").splitlines()
+        if line.startswith("MERLIN_PROFILE")
+    )
+
+    assert lines == _PROFILE_LINES
+
+
+def test_whole_model_harness_still_prints_no_line_a_policy_could_name() -> None:
+    """The remaining reason this harness's runs cannot be sealed, asserted so it fails loudly.
+
+    `UartValidationPolicy` requires at least one exact success marker, and refuses any marker
+    starting with MERLIN_PROFILE / MERLIN_INVOCATIONS / METRIC.  The whole-model harness that
+    produced job 610 publishes its verdict only implicitly, by withholding the METRIC when
+    validation fails, and otherwise prints raw `OUT <tensor> ...` value dumps.  So no policy can
+    be written for it and `parse_queued_firesim_receipt` cannot seal the run even now that the
+    phase constants match the daemon.
+
+    This is a harness gap, not a receipt gap: the fix is for the gate renderer to emit an explicit
+    validation line.  When it does, this test fails and should be replaced by one that seals a real
+    run end to end.
+    """
+    reserved = ("MERLIN_PROFILE", "MERLIN_INVOCATIONS", "METRIC")
+    candidates = [
+        line for line in _OBSERVED_UART_LOG.read_text(encoding="utf-8").splitlines()
+        if line and not line.startswith("#") and not line.startswith(reserved)
+    ]
+
+    assert candidates == [], (
+        "the harness now prints a line a validation policy could name; seal a real run instead")

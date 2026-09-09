@@ -24,14 +24,60 @@ GLOBAL_AUTHORING_ROUND_MAX_SECONDS = 1200.0
 # serializes workers, even though the normal two-worker wall time remains near ten minutes.
 FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS = 2400.0
 STATIC_PLANNER_MAX_SECONDS = 300.0
-FIRESIM_LIFECYCLE = (
-    ("firesim", "kill"),
-    ("firesim", "infrasetup"),
-    ("firesim", "runworkload"),
-    ("firesim", "kill"),
+def _running_phase(trace: tuple[tuple[str, str], ...]) -> list[str | None]:
+    """The phase banner in force at each trace entry, so commands can be scoped to it."""
+    current: str | None = None
+    scopes: list[str | None] = []
+    for kind, value in trace:
+        if kind == "phase":
+            current = value
+        scopes.append(current)
+    return scopes
+
+
+# The queue daemon's own phase/command interleaving, in the order it prints it, as observed
+# byte-identically in jobs 535 and 610 (/scratch/firesim_queue/jobs/<id>/stdout.log; the phase
+# and command lines are vendored verbatim in merlin/tests/data/firesim_queue/).  A "phase" entry
+# is a `=== [firesim-queue] phase=<NAME> job_id=<id> ===` banner; a "command" entry is the FireSim
+# manager's `Running: <subcommand>` line.  Note the daemon opens an INFRASETUP banner covering the
+# whole kill+infrasetup group and then re-banners each half, so INFRASETUP appears twice and the
+# leading kill is scoped to LEADING_KILL rather than to INFRASETUP.
+#
+# Every phase, lifecycle and command-scoping expectation in this module and in
+# `merlin.perf.firesim_receipt` derives from this one sequence, so a daemon change cannot leave
+# one copy stale while another still passes.
+FIRESIM_QUEUE_TRACE = (
+    ("phase", "STAGING"),
+    ("phase", "INFRASETUP"),
+    ("phase", "LEADING_KILL"),
+    ("command", "kill"),
+    ("phase", "INFRASETUP"),
+    ("command", "infrasetup"),
+    ("phase", "RUNNING"),
+    ("command", "runworkload"),
+    ("phase", "TEARDOWN"),
+    ("command", "kill"),
 )
+
+
+def _collapse_adjacent(names: tuple[str, ...]) -> tuple[str, ...]:
+    collapsed: list[str] = []
+    for name in names:
+        if not collapsed or collapsed[-1] != name:
+            collapsed.append(name)
+    return tuple(collapsed)
+
+
+FIRESIM_LIFECYCLE = tuple(
+    ("firesim", value) for kind, value in FIRESIM_QUEUE_TRACE if kind == "command")
 FIRESIM_QUEUE_OPERATION = "runworkload-full"
-FIRESIM_QUEUE_PHASES = ("STAGING", "INFRASETUP", "RUNNING", "TEARDOWN")
+FIRESIM_QUEUE_PHASES = _collapse_adjacent(
+    tuple(value for kind, value in FIRESIM_QUEUE_TRACE if kind == "phase"))
+# Each lifecycle command paired with the phase whose banner was open when the daemon ran it.
+FIRESIM_QUEUE_SCOPED_COMMANDS = tuple(
+    (phase, value)
+    for phase, (kind, value) in zip(_running_phase(FIRESIM_QUEUE_TRACE), FIRESIM_QUEUE_TRACE)
+    if kind == "command")
 _PROFILE_METRICS = frozenset({
     "total_compute_cycles",
     "resource_busy_cycles",
@@ -351,15 +397,10 @@ class QueuedFireSimReceipt:
                 or "terminal state=DONE" not in client_text):
             raise ValueError("queue client log does not prove this job id completed DONE")
         daemon_text = self.logs[1].verified_bytes().decode("utf-8", errors="replace")
-        daemon_markers = (
-            f"=== [firesim-queue] phase=STAGING job_id={self.queue_job_id}",
-            f"=== [firesim-queue] phase=INFRASETUP job_id={self.queue_job_id}",
-            "Running: kill",
-            "Running: infrasetup",
-            f"=== [firesim-queue] phase=RUNNING job_id={self.queue_job_id}",
-            "Running: runworkload",
-            f"=== [firesim-queue] phase=TEARDOWN job_id={self.queue_job_id}",
-            "Running: kill",
+        daemon_markers = tuple(
+            f"=== [firesim-queue] phase={value} job_id={self.queue_job_id}"
+            if kind == "phase" else f"Running: {value}"
+            for kind, value in FIRESIM_QUEUE_TRACE
         )
         cursor = 0
         for marker in daemon_markers:

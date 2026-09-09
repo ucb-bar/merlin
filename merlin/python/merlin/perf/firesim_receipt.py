@@ -27,6 +27,7 @@ from typing import Any
 from .execution_policy import (
     FIRESIM_QUEUE_OPERATION,
     FIRESIM_QUEUE_PHASES,
+    FIRESIM_QUEUE_SCOPED_COMMANDS,
     FireSimQueuePreflight,
     QueueLogEvidence,
     QueuedFireSimReceipt,
@@ -45,12 +46,9 @@ _PROFILE_LINES = (
     "MERLIN_PROFILE measured end rc=0",
 )
 _INVOCATION_LINE = "MERLIN_INVOCATIONS warmup=1 measured=1"
-_EXPECTED_COMMANDS = (
-    ("INFRASETUP", "kill"),
-    ("INFRASETUP", "infrasetup"),
-    ("RUNNING", "runworkload"),
-    ("TEARDOWN", "kill"),
-)
+# Each lifecycle command under the phase the daemon actually scopes it to, derived from the one
+# observed trace in execution_policy so this cannot drift from the phase sequence.
+_EXPECTED_COMMANDS = FIRESIM_QUEUE_SCOPED_COMMANDS
 
 
 class FireSimReceiptError(ValueError):

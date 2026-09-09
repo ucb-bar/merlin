@@ -3,6 +3,7 @@ import hashlib
 
 import pytest
 
+from merlin.common.paths import merlin_dir
 from merlin.perf.execution_policy import (
     FIRESIM_QUEUE_PHASES,
     FireSimQueuePreflight,
@@ -36,17 +37,17 @@ def _cycle_only_warm() -> WarmComputeReceipt:
         "whole_model", 1234, WarmProfileContract(), "same-process post-warm counter")
 
 
+# The daemon log every receipt test grades against is the one the daemon actually wrote, not a
+# hand-written approximation of it.  An invented fixture is how the phase constants drifted:
+# the receipt required a STAGING/INFRASETUP/RUNNING/TEARDOWN sequence with the leading kill
+# scoped to INFRASETUP, which no real job has ever emitted, so no run could ever be sealed.
+_OBSERVED_JOB_ID = 535
+_OBSERVED_DAEMON_LOG = (
+    merlin_dir() / "tests/data/firesim_queue/job535_daemon_phase_skeleton.log")
+
+
 def _daemon_lifecycle_log() -> str:
-    return "\n".join((
-        "=== [firesim-queue] phase=STAGING job_id=41 ===",
-        "=== [firesim-queue] phase=INFRASETUP job_id=41 ===",
-        "Running: kill",
-        "Running: infrasetup",
-        "=== [firesim-queue] phase=RUNNING job_id=41 ===",
-        "Running: runworkload",
-        "=== [firesim-queue] phase=TEARDOWN job_id=41 ===",
-        "Running: kill",
-    ))
+    return _OBSERVED_DAEMON_LOG.read_text(encoding="utf-8")
 
 
 def _log(tmp_path, role: str, relative: str, content: str | None = None) -> QueueLogEvidence:
@@ -62,7 +63,7 @@ def _queued_receipt(tmp_path, **changes) -> QueuedFireSimReceipt:
         (_LOCAL_QUEUE, "runworkload-full", "--stage-from", "/artifacts/model.elf"),
     )
     fields = {
-        "queue_job_id": 41,
+        "queue_job_id": _OBSERVED_JOB_ID,
         "queue_owned": True,
         "preflight": preflight,
         "queue_phases": FIRESIM_QUEUE_PHASES,
@@ -75,10 +76,10 @@ def _queued_receipt(tmp_path, **changes) -> QueuedFireSimReceipt:
         "logs": (
             _log(
                 tmp_path, "queue_client", "receipts/client.log",
-                "job_id=41\nterminal state=DONE\n",
+                "job_id=535\nterminal state=DONE\n",
             ),
             _log(
-                tmp_path, "queue_daemon", "queue/jobs/41/stdout.log",
+                tmp_path, "queue_daemon", "queue/jobs/535/stdout.log",
                 _daemon_lifecycle_log(),
             ),
             _log(
@@ -186,11 +187,11 @@ def test_firesim_preflight_rejects_direct_or_unpinned_execution(submission) -> N
 def test_firesim_receipt_binds_queue_job_and_all_logs(tmp_path) -> None:
     receipt = _queued_receipt(tmp_path)
 
-    assert receipt.queue_job_id == 41
+    assert receipt.queue_job_id == _OBSERVED_JOB_ID
     assert tuple(log.role for log in receipt.logs) == ("queue_client", "queue_daemon", "uart")
     document = receipt.to_dict()
     assert document["queue_submission"][:2] == [_LOCAL_QUEUE, "runworkload-full"]
-    assert document["queue_job_id"] == 41
+    assert document["queue_job_id"] == _OBSERVED_JOB_ID
     assert tuple(document["logs"]) == ("queue_client", "queue_daemon", "uart")
     assert document["warm_profile"]["profile"]["captured_metrics"] == [
         "total_compute_cycles"]
@@ -218,7 +219,7 @@ def test_firesim_log_evidence_refuses_tampering(tmp_path) -> None:
 def test_firesim_receipt_serialization_refuses_log_drift(tmp_path) -> None:
     receipt = _queued_receipt(tmp_path)
     (tmp_path / "receipts/client.log").write_text(
-        "job_id=41\nterminal state=DONE\nchanged\n", encoding="utf-8")
+        "job_id=535\nterminal state=DONE\nchanged\n", encoding="utf-8")
 
     with pytest.raises(ValueError, match="hash mismatch"):
         receipt.to_dict()
@@ -227,7 +228,7 @@ def test_firesim_receipt_serialization_refuses_log_drift(tmp_path) -> None:
 def test_firesim_receipt_refuses_unproven_daemon_phase_order(tmp_path) -> None:
     receipt = _queued_receipt(tmp_path)
     reversed_log = _log(
-        tmp_path, "queue_daemon", "queue/jobs/41/reversed.log",
+        tmp_path, "queue_daemon", "queue/jobs/535/reversed.log",
         "\n".join(
             f"=== [firesim-queue] phase={phase}" for phase in reversed(FIRESIM_QUEUE_PHASES)),
     )
@@ -236,18 +237,25 @@ def test_firesim_receipt_refuses_unproven_daemon_phase_order(tmp_path) -> None:
         _queued_receipt(tmp_path, logs=(receipt.logs[0], reversed_log, receipt.logs[2]))
 
 
-def test_firesim_receipt_refuses_unproven_command_order_inside_phases(tmp_path) -> None:
-    receipt = _queued_receipt(tmp_path)
-    wrong_commands = _log(
-        tmp_path, "queue_daemon", "queue/jobs/41/wrong-commands.log",
-        _daemon_lifecycle_log().replace(
-            "Running: kill\nRunning: infrasetup",
-            "Running: infrasetup\nRunning: kill",
-            1,
-        ),
-    )
+def test_firesim_receipt_refuses_swapped_kill_and_infrasetup(tmp_path) -> None:
+    """Swapping the leading kill with infrasetup breaks the daemon's ordered marker chain.
 
-    with pytest.raises(ValueError, match="Running: infrasetup"):
+    The two commands are not adjacent in the real log (the second INFRASETUP banner sits between
+    them), so the swap has to move both, and the chain then fails to find the banner after the
+    command it should precede.
+    """
+    receipt = _queued_receipt(tmp_path)
+    swapped = (
+        _daemon_lifecycle_log()
+        .replace("Running: kill", "Running: infrasetup", 1)
+        .replace("=== [firesim-queue] phase=INFRASETUP job_id=535 ===\nRunning: infrasetup",
+                 "=== [firesim-queue] phase=INFRASETUP job_id=535 ===\nRunning: kill", 1)
+    )
+    assert swapped != _daemon_lifecycle_log(), "the swap must actually change the log"
+    wrong_commands = _log(
+        tmp_path, "queue_daemon", "queue/jobs/535/wrong-commands.log", swapped)
+
+    with pytest.raises(ValueError, match="ordered lifecycle marker"):
         _queued_receipt(tmp_path, logs=(receipt.logs[0], wrong_commands, receipt.logs[2]))
 
 
