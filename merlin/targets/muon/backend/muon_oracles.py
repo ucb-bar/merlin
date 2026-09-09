@@ -248,6 +248,119 @@ def _cyclotron_host_dump_outputs(
     return {str(spec["name"]): [values[i:i + cols] for i in range(0, elements, cols)]}
 
 
+def _gsim_host_dump_plan(
+    elf: str | Path, outputs: list[Any], workdir: str | Path, *, soc_offset: int,
+) -> tuple[tuple[int, int, Path], dict[str, Any]]:
+    """Bind one answer-free output buffer to GSIM's physical DRAM aperture.
+
+    Symbol discovery happens on the submitted rv32 ELF.  GSIM loads the fused
+    rv64 image, so the only address conversion is the explicit SoC fuse offset.
+    The dump path is evaluator-owned and fixed directly inside ``workdir``.
+    """
+    from . import muon_result_page as _rp
+
+    if len(outputs) != 1:
+        raise muon.MuonUnavailable(
+            "GSIM evaluator-owned GMEM readback currently requires exactly one output")
+    out = outputs[0]
+    if out.dtype not in ("f32", "i32"):
+        raise muon.MuonUnavailable(
+            f"GSIM evaluator-owned GMEM readback does not support dtype {out.dtype!r}")
+    if not isinstance(soc_offset, int) or isinstance(soc_offset, bool) or soc_offset < 0:
+        raise muon.MuonUnavailable(f"invalid GSIM SoC fuse offset {soc_offset!r}")
+    elements = int(out.rows) * int(out.cols)
+    byte_length = elements * 4
+    symbol = f"_out_{out.name}"
+    try:
+        layout = _rp.symbol_layouts(elf, (symbol,))[symbol]
+    except (KeyError, OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        raise muon.MuonUnavailable(
+            f"could not bind GSIM output dump to ELF symbol {symbol!r}: {exc}") from exc
+    muon_address = int(layout["address"])
+    symbol_size = int(layout["size"])
+    if symbol_size != byte_length:
+        raise muon.MuonUnavailable(
+            f"ELF output symbol {symbol!r} is {symbol_size} bytes, expected {byte_length}")
+    soc_address = soc_offset + muon_address
+    if muon_address < 0 or soc_address < 0 or soc_address + byte_length > (1 << 64):
+        raise muon.MuonUnavailable(
+            f"ELF output symbol {symbol!r} is outside GSIM's physical address range")
+
+    elf_path = Path(elf).resolve()
+    dump_path = Path(workdir).resolve() / "gsim.output.bin"
+    manifest = {
+        "schema": "merlin.gsim-host-gmem-output.v1",
+        "elf_sha256": hashlib.sha256(elf_path.read_bytes()).hexdigest(),
+        "soc_fuse_offset": soc_offset,
+        "transport": "evaluator_owned_gmem_dump",
+        "output": {
+            "name": out.name,
+            "dtype": out.dtype,
+            "rows": int(out.rows),
+            "cols": int(out.cols),
+            "elements": elements,
+            "symbol": symbol,
+            "muon_address": muon_address,
+            "soc_address": soc_address,
+            "byte_length": byte_length,
+            "symbol_size": symbol_size,
+            "dump_file": dump_path.name,
+        },
+    }
+    (Path(workdir) / "gsim.host_dump.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return (soc_address, byte_length, dump_path), manifest
+
+
+def _gsim_host_dump_outputs(
+    console: str, dump_path: Path, manifest: dict[str, Any], *, workdir: str | Path,
+) -> dict[str, list]:
+    """Decode GSIM's exact binary dump after an explicit RTL completion witness."""
+    resolved_workdir = Path(workdir).resolve()
+    resolved_dump = Path(dump_path).resolve()
+    if resolved_dump.parent != resolved_workdir or resolved_dump.name != "gsim.output.bin":
+        raise muon.MuonUnavailable(
+            "GSIM output dump must be directly inside the GSIM work directory")
+    lines = [line.strip() for line in console.splitlines()]
+    finish = [line for line in lines if line.startswith("[gsim-emu] FINISHED:")]
+    if len(set(finish)) != 1 or "model_finished=1" not in finish[0]:
+        raise muon.MuonError(
+            "GSIM host readback requires one RTL model-completion witness")
+    spec = manifest["output"]
+    expected_bytes = int(spec["byte_length"])
+    marker = f"[gsim-emu] BINARY_DUMP complete bytes={expected_bytes}"
+    if lines.count(marker) != 1:
+        raise muon.MuonUnavailable(
+            "GSIM host readback requires one size-bound binary-dump completion marker")
+    try:
+        raw = resolved_dump.read_bytes()
+    except OSError as exc:
+        raise muon.MuonUnavailable(
+            "GSIM completed but its evaluator-owned output dump is unavailable") from exc
+    if len(raw) != expected_bytes:
+        raise muon.MuonUnavailable(
+            "GSIM evaluator-owned output dump has the wrong size: "
+            f"expected {expected_bytes} bytes, got {len(raw)}")
+    elements = int(spec["elements"])
+    fmt = "f" if spec["dtype"] == "f32" else "i"
+    values = list(struct.unpack(f"<{elements}{fmt}", raw))
+    cols = int(spec["cols"])
+    return {str(spec["name"]): [values[i:i + cols] for i in range(0, elements, cols)]}
+
+
+def _gsim_cycles_from_console(console: str) -> int | None:
+    marker = "[gsim-emu] FINISHED: cycles="
+    occurrences = [line for line in console.splitlines() if line.startswith(marker)]
+    # ``_read_console`` intentionally prepends preserved marker lines before
+    # the tail window; a short log can therefore contain the same physical
+    # line twice. Accept one unique witness, never two differing witnesses.
+    unique = set(occurrences)
+    if len(unique) != 1:
+        return None
+    token = unique.pop()[len(marker):].split(maxsplit=1)[0]
+    return int(token) if token.isdigit() else None
+
+
 def _adapter(simulator: str) -> Callable:
     def run(cb: dict, kernel_src: str, workdir: str | Path, timeout: int) -> dict:
         if not muon.available(simulator):
@@ -526,23 +639,22 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
         compact_opt_in = os.environ.get(
             "MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "").strip().lower() in (
                 "1", "true", "yes", "on")
-        compact_numeric = compact_opt_in and numeric_readback and muon.is_mlir_artifact(kernel_src)
+        host_dump_numeric = compact_opt_in and numeric_readback and muon.is_mlir_artifact(kernel_src)
         derived = _mh.args_from_cb(cb) if numeric_readback else None
         if numeric_readback and derived is None:
             raise muon.MuonUnavailable(
                 "GSIM numeric readback requested but the harness cannot derive declared outputs")
-        if compact_opt_in and numeric_readback and not compact_numeric:
+        if compact_opt_in and numeric_readback and not host_dump_numeric:
             raise muon.MuonUnavailable(
-                "trusted compact GSIM numeric validation requires an instrumentable MLIR artifact")
+                "trusted GSIM host readback requires an instrumentable MLIR artifact")
         # Build the graded ELF identically to the Verilator/cyclotron adapters (fork-free thesis path when
         # the artifact is LLVM-dialect MLIR; otherwise the runner-owned harness + oracle compile).
         if muon.is_mlir_artifact(kernel_src):
             elf, toolchain = muon.compile_mlir_forkfree(
                 kernel_src, cb, workdir, target=target,
-                result_page=numeric_readback and not compact_numeric,
-                compact_expected=expected if compact_numeric else None,
-                compact_policy=numeric_policy if compact_numeric else None,
-                compact_result_page=compact_numeric), "fork-free"
+                result_page=numeric_readback and not host_dump_numeric,
+                host_dump_outputs=host_dump_numeric,
+                host_dump_done_marker=not host_dump_numeric), "fork-free"
         else:
             program = _mh.program_from_cb(
                 cb, kernel_src, muon._model_for(target), result_page=numeric_readback)
@@ -552,7 +664,12 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             program = program or kernel_src
             elf, toolchain = muon.compile_for_oracle(program, workdir, target=target)
         result_manifest = outcome_symbols = None
-        if numeric_readback:
+        dump_spec = dump_manifest = None
+        if host_dump_numeric:
+            dump_spec, dump_manifest = _gsim_host_dump_plan(
+                elf, derived[1], workdir, soc_offset=muon.soc_fuse_offset())
+            soc = muon.fuse_soc_elf(Path(elf), Path(workdir))
+        elif numeric_readback:
             result_manifest = _rp.manifest_from_elf(
                 elf, derived[1], soc_offset=muon.soc_fuse_offset())
             import json
@@ -560,10 +677,7 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             manifest_path.write_text(json.dumps(result_manifest, indent=2) + "\n", encoding="utf-8")
             carrier = Path(workdir) / "result_carrier.c"
             elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])
-            carrier_source = (
-                _rp.render_compact_carrier(result_manifest, expected_elements=elements)
-                if compact_numeric else
-                _rp.render_carrier(result_manifest, expected, numeric_policy))
+            carrier_source = _rp.render_carrier(result_manifest, expected, numeric_policy)
             carrier.write_text(carrier_source, encoding="utf-8")
             soc = muon.fuse_soc_elf(Path(elf), Path(workdir), carrier_source=carrier)
             outcome_symbols = _rp.symbol_addresses(
@@ -597,10 +711,29 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
         # read-back window below, and keeps the FULL console on disk for debugging (strictly more than
         # the old path retained, which was capped at the 600-char failure tail anyway).
         log = Path(workdir) / "gsim_console.log"
+        run_env = None
+        if dump_spec is not None:
+            address, byte_length, dump_path = dump_spec
+            resolved_workdir = Path(workdir).resolve()
+            resolved_dump = Path(dump_path).resolve()
+            if resolved_dump.parent != resolved_workdir or resolved_dump.name != "gsim.output.bin":
+                raise muon.MuonUnavailable(
+                    "GSIM output dump must be directly inside the GSIM work directory")
+            resolved_dump.unlink(missing_ok=True)
+            run_env = os.environ.copy()
+            # Override rather than inherit these evaluator-owned controls. A
+            # caller's environment must not redirect or resize the oracle dump.
+            run_env.update({
+                "GSIM_STOP_ON_FINISH": "1",
+                "GSIM_DUMP_FILE": str(resolved_dump),
+                "GSIM_DUMP_ADDR": f"0x{address:x}",
+                "GSIM_DUMP_LOCAL_ADDR": f"0x{dump_manifest['output']['muon_address']:x}",
+                "GSIM_DUMP_LEN": str(byte_length),
+            })
         try:
             with log.open("wb") as fh:
                 completed = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout,
-                                           preexec_fn=_unlimited_stack)
+                                           preexec_fn=_unlimited_stack, env=run_env)
         except subprocess.TimeoutExpired as e:
             raise muon.MuonUnavailable(f"GSIM emu wall-timed out after {timeout}s") from e
         t2 = time.perf_counter()
@@ -609,6 +742,32 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
             raise muon.MuonUnavailable(
                 f"GSIM emu exited nonzero ({completed.returncode}); refusing completion markers from "
                 f"a failed process. tail:\n{console[-600:]}")
+        if dump_spec is not None and dump_manifest is not None:
+            outputs = _gsim_host_dump_outputs(
+                console, dump_spec[2], dump_manifest, workdir=workdir)
+            cycles = _gsim_cycles_from_console(console)
+            if cycles is None:
+                raise muon.MuonUnavailable(
+                    "GSIM binary dump completed without one parseable cycle witness")
+            return {
+                "outputs": outputs,
+                "cycles": cycles,
+                "oracle": {"kind": "rtl_gsim_muon_numeric", "derived_from_rtl": True,
+                           "fidelity": "elaborated_rtl"},
+                "console": console,
+                "console_spool": {"path": str(log), "bytes_on_disk": console_bytes,
+                                  "truncated": console_truncated,
+                                  "markers_preserved": list(muon._GSIM_MARKERS)},
+                "toolchain": toolchain,
+                "timing": _timing(t1 - t0, t2 - t1),
+                "gflops": muon.gflops(flops, cycles, target=target),
+                "pct_fp_peak": muon.pct_fp_peak(flops, cycles, target=target),
+                "host_gmem_dump": {
+                    **dump_manifest,
+                    "trust_scope": "frozen_non_adversarial_derived_evaluation_only",
+                },
+                "bounded_observation": cycle_budget,
+            }
         if numeric_readback:
             outcome = _rp.outcome_from_console(console, outcome_symbols)
             if outcome is None:
@@ -617,8 +776,6 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
                     f"{_rp.PASS_SYMBOL} nor {_rp.FAIL_SYMBOL}; the cycle cap is not a numeric verdict. "
                     f"tail:\n{console[-600:]}")
             elements = sum(int(spec["elements"]) for spec in result_manifest["outputs"])
-            witness = ("final_rocket_pc_over_trusted_muon_post_kernel_comparator"
-                       if compact_numeric else "final_rocket_pc")
             return {
                 "outputs": {},
                 "cycles": None,
@@ -636,12 +793,9 @@ def gsim_muon_adapter(target_name: str | None = None) -> Callable:
                     "status": outcome,
                     "elements_checked": elements,
                     "policy": dict(numeric_policy or {}),
-                    "witness": witness,
+                    "witness": "final_rocket_pc",
                     "pass_symbol": f"0x{outcome_symbols[_rp.PASS_SYMBOL]:x}",
                     "fail_symbol": f"0x{outcome_symbols[_rp.FAIL_SYMBOL]:x}",
-                    **({"trust_scope": "frozen_non_adversarial_derived_evaluation_only",
-                        "transport": "two_word_checked_mismatch_summary"}
-                       if compact_numeric else {}),
                 },
                 "result_page": result_manifest,
                 "bounded_observation": cycle_budget,

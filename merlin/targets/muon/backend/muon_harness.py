@@ -1103,6 +1103,7 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
                                compact_symbol_tag: str | None = None,
                                compact_result_page: bool = False,
                                host_dump_outputs: bool = False,
+                               host_dump_done_marker: bool = True,
                                launch: dict[str, Any] | None = None,
                                resource_claims: dict[str, Any] | None = None) -> Harness:
     """Harness ``main`` for an OBJECT kernel (an MLIR-lowered ``kernel.o``): declares ``kernel_symbol``
@@ -1119,6 +1120,8 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
             "result_page, compact_expected, and host_dump_outputs are mutually exclusive")
     if compact_result_page and compact_expected is None:
         raise ValueError("compact_result_page requires compact_expected")
+    if not host_dump_outputs and not host_dump_done_marker:
+        raise ValueError("suppressing DONE is valid only for host_dump_outputs")
     ptrs = ", ".join(["const void*"] * len(in_args) + ["void*"] * len(out_args)) or "void"
     blobs: dict[str, bytes] = {}
     statics: list[str] = []
@@ -1194,6 +1197,11 @@ def build_external_kernel_main(in_args: list[TensorArg], out_args: list[TensorAr
     elif compact_expected is not None:
         body += compact_checks
         body.append('  _ps("DONE\\n");')
+    elif host_dump_outputs:
+        # Cyclotron consumes DONE as its completion marker. GSIM suppresses that
+        # cache-polluting MMIO path and uses RTL allFinished/stopSim instead.
+        if host_dump_done_marker:
+            body.append('  _ps("DONE\\n");')
     else:
         body.append('  _ps("DONE\\n");')
     body += ["  return 0;", "}"]
@@ -1524,7 +1532,8 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                           compact_policy: dict[str, Any] | None = None,
                           compact_symbol_tag: str | None = None,
                           compact_result_page: bool = False,
-                          host_dump_outputs: bool = False) -> Harness | None:
+                          host_dump_outputs: bool = False,
+                          host_dump_done_marker: bool = True) -> Harness | None:
     """The object-kernel analogue of :func:`program_from_cb`: derive the operands from the cb and render the
     EXTERN-kernel harness ``main`` (to be compiled to ``main.o`` and fork-free-linked against the MLIR
     ``kernel.o``). None when the operands aren't available (fail-safe)."""
@@ -1542,6 +1551,7 @@ def external_main_from_cb(cb: dict, *, kernel_symbol: str, model,
                                       compact_symbol_tag=compact_symbol_tag,
                                       compact_result_page=compact_result_page,
                                       host_dump_outputs=host_dump_outputs,
+                                      host_dump_done_marker=host_dump_done_marker,
                                       launch=(cb.get("kernel_abi") or {}).get("launch"),
                                       resource_claims=cb.get("resources"))
 

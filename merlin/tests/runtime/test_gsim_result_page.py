@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from types import ModuleType, SimpleNamespace
 from pathlib import Path
+import struct
+import subprocess
 
 import pytest
 
@@ -288,9 +290,9 @@ def test_gsim_adapter_prefers_numeric_pc_witness_over_cycle_cap(
     assert not result.get("completion_only")
 
 
-@pytest.mark.parametrize(("final_pc", "status"), [(0x86, "pass"), (0xC6, "fail")])
-def test_gsim_compact_opt_in_uses_local_comparator_and_summary_carrier(
-        final_pc, status, monkeypatch, tmp_path) -> None:
+@pytest.mark.parametrize(("observed", "status"), [(1.0, "pass"), (2.0, "fail")])
+def test_gsim_compact_opt_in_uses_host_dump_and_ordinary_grader(
+        observed, status, monkeypatch, tmp_path) -> None:
     cb = {
         "target": "synthetic",
         "_oracle_expected_outputs": {"Y": [1.0]},
@@ -302,44 +304,51 @@ def test_gsim_compact_opt_in_uses_local_comparator_and_summary_carrier(
         },
     }
     compiled = {}
-    carriers = []
     monkeypatch.setenv("MERLIN_MUON_TRUSTED_COMPACT_NUMERIC", "1")
     monkeypatch.delenv("MERLIN_MUON_GSIM_MAXCYCLES", raising=False)
     monkeypatch.setattr(MO, "gsim_status", lambda target: (True, "stub"))
     from merlin.targetgen import gsim_emulator as GE
     monkeypatch.setattr(GE, "emulator_path", lambda *a, **k: tmp_path / "emu")
     monkeypatch.setattr(MU, "is_mlir_artifact", lambda src: True)
+    monkeypatch.setattr(MU, "soc_fuse_offset", lambda: 0x110000000)
 
     def compile_stub(*args, **kwargs):
         compiled.update(kwargs)
-        return tmp_path / "kernel.elf"
+        elf = tmp_path / "kernel.elf"
+        elf.write_bytes(b"sealed kernel")
+        return elf
 
     monkeypatch.setattr(MU, "compile_mlir_forkfree", compile_stub)
     monkeypatch.setattr(H, "args_from_cb", lambda cb: ([], [_arg("Y", 1)]))
-    monkeypatch.setattr(RP, "manifest_from_elf", lambda *a, **k: {
-        "status": {"soc_address": 0x110004000},
-        "mailbox": {"soc_address": 0x110004040, "words": 32},
-        "outputs": [{"name": "Y", "elements": 1, "dtype": "f32"}],
+    monkeypatch.setattr(RP, "symbol_layouts", lambda *a, **k: {
+        "_out_Y": {"address": 0x4040, "size": 4},
     })
-    monkeypatch.setattr(RP, "render_compact_carrier", lambda *a, **k: carriers.append(k) or "carrier")
     monkeypatch.setattr(MU, "fuse_soc_elf", lambda *a, **k: tmp_path / "kernel.soc.elf")
-    monkeypatch.setattr(RP, "symbol_addresses", lambda *a, **k: {
-        "merlin_numeric_pass": 0x86, "merlin_numeric_fail": 0xC6})
     monkeypatch.setattr(MO, "flops_from_cb", lambda cb: 0)
-    monkeypatch.setattr(
-        __import__("subprocess"), "run", lambda *a, **k: SimpleNamespace(returncode=0))
-    console = f"[gsim-probe final] rocket_pc=0x{final_pc:x}\n"
-    monkeypatch.setattr(MU, "_read_console", lambda log: (console, len(console), False))
+
+    def run_stub(*args, **kwargs):
+        Path(kwargs["env"]["GSIM_DUMP_FILE"]).write_bytes(struct.pack("<f", observed))
+        kwargs["stdout"].write(
+            b"[gsim-emu] FINISHED: cycles=123 wall=0.1s model_finished=1\n"
+            b"[gsim-emu] BINARY_DUMP complete bytes=4\n")
+        return subprocess.CompletedProcess(args[0], 0)
+
+    monkeypatch.setattr(subprocess, "run", run_stub)
 
     result = MO.gsim_muon_adapter("synthetic")(cb, "llvm.func @kernel()", tmp_path, 60)
 
     assert compiled["result_page"] is False
-    assert compiled["compact_expected"] == {"Y": [1.0]}
-    assert compiled["compact_result_page"] is True
-    assert carriers == [{"expected_elements": 1}]
-    assert result["numeric_verdict"]["status"] == status
-    assert result["numeric_verdict"]["trust_scope"] == \
+    assert compiled["host_dump_outputs"] is True
+    assert compiled["host_dump_done_marker"] is False
+    assert "compact_expected" not in compiled
+    assert result["outputs"] == {"Y": [[observed]]}
+    assert result["cycles"] == 123
+    assert "numeric_verdict" not in result
+    assert result["host_gmem_dump"]["trust_scope"] == \
         "frozen_non_adversarial_derived_evaluation_only"
+    from merlin.targetgen import capsule_golden as CG
+    report = CG.compare({"Y": [1.0]}, result["outputs"], {"compare": "exact"})
+    assert report["status"] == status
     assert result["bounded_observation"] == {
         "source": "sealed_l2_cycles", "max_cycles": 200_000,
         "l2_cycles": 25_000, "l2_multiplier": 8,

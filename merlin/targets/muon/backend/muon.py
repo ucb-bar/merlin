@@ -825,7 +825,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
                           compact_expected: dict | None = None,
                           compact_policy: dict | None = None,
                           compact_result_page: bool = False,
-                          host_dump_outputs: bool = False) -> Path:
+                          host_dump_outputs: bool = False,
+                          host_dump_done_marker: bool = True) -> Path:
     """FORK-FREE build from the agent's LLVM-dialect MLIR 4th artifact (the thesis path — the agent emits a
     COMPILER lowering, not a hand C++ kernel). Pipeline: ``lower_to_llvm_ir`` (the shared MLIR→LLVM-IR front
     gemmini uses) → STOCK clang rv32 → ``kernel.o``; a runner-owned EXTERN-kernel harness ``main.o`` embeds
@@ -865,6 +866,8 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
             "result_page, compact_expected, and host_dump_outputs are mutually exclusive")
     if compact_result_page and compact_expected is None:
         raise MuonError("compact_result_page requires compact_expected")
+    if not host_dump_outputs and not host_dump_done_marker:
+        raise MuonError("suppressing DONE is valid only for host_dump_outputs")
     _cache_inputs = {"mlir": lowered_mlir_text, "cb": _kernel_cb, "num_warps": num_warps}
     if result_page:
         _cache_inputs["result_page"] = True
@@ -873,6 +876,7 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         # protocol. Expected values and comparison policy remain evaluator-side
         # and therefore never enter the artifact identity.
         _cache_inputs["host_dump_outputs"] = True
+        _cache_inputs["host_dump_done_marker"] = bool(host_dump_done_marker)
     if compact_expected is not None:
         # Unlike the GSIM result page, Cyclotron has no independent Rocket
         # carrier.  Its trusted Muon harness performs the comparison, so the
@@ -911,6 +915,7 @@ def compile_mlir_forkfree(lowered_mlir_text: str, cb: dict, workdir: str | Path,
         compact_expected=compact_expected, compact_policy=compact_policy,
         compact_result_page=compact_result_page,
         host_dump_outputs=host_dump_outputs,
+        host_dump_done_marker=host_dump_done_marker,
         # Generated only after the submitted MLIR has been lowered and its
         # object compiled above.  A kernel that named the old predictable
         # expected symbol therefore retains an unresolved reference.
