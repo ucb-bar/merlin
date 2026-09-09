@@ -21,11 +21,30 @@ import yaml
 from .whole_model_report import OptimizationOpportunity, WholeModelReport
 
 
-SCOPES = frozenset({"flag", "knob", "heuristic", "pass", "codegen"})
-EFFECTS = frozenset({
-    "placement", "layout", "dtype", "encoding", "quantization", "movement", "residency",
-    "fusion", "synchronization", "issue", "tiling", "latency_hiding",
-})
+def _declared_surface_vocabulary() -> tuple[frozenset[str], frozenset[str]]:
+    """``(scopes, effects)`` READ FROM THE MANIFEST SCHEMA, which is the one place they are declared.
+
+    These were duplicated here as literal frozensets, and the copies drifted the moment one was
+    updated: `memory_planning` was added to the schema (two committed package surfaces needed it for
+    workspace-lifetime reuse) and this list was left behind, so 22 of 29 gemmini packages passed
+    `oot_runner.load_package` -- which validates against the schema -- and then raised
+    "has invalid effects" here, aborting every phase-2 launch before authoring. A second opinion
+    about a declared vocabulary is how the two come to disagree, so there is now only one.
+    """
+    from merlin.targetgen.contract.schemas import load_schema
+    surfaces = ((load_schema("manifest").get("properties") or {})
+                .get("optimization_surfaces") or {})
+    fields = (surfaces.get("items") or {}).get("properties") or {}
+    scopes = (fields.get("scope") or {}).get("enum")
+    effects = ((fields.get("effects") or {}).get("items") or {}).get("enum")
+    if not scopes or not effects:
+        raise ValueError(
+            "the manifest schema declares no optimization_surfaces scope/effects enum, so the "
+            "surface vocabulary cannot be derived; refusing to fall back to a baked copy")
+    return frozenset(str(v) for v in scopes), frozenset(str(v) for v in effects)
+
+
+SCOPES, EFFECTS = _declared_surface_vocabulary()
 _OPPORTUNITY_EFFECTS = {
     "missing_occupancy": frozenset({"latency_hiding", "issue", "tiling"}),
     "accelerator_bubbles": frozenset({
