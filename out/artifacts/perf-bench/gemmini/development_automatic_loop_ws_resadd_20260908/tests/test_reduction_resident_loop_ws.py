@@ -93,7 +93,18 @@ class ReductionResidentLoopWsTest(unittest.TestCase):
         self.assertTrue(all(not ins.attrs["accumulate"] for ins in loops))
         self.assertFalse(any(ins.kind == "fence" for ins in s.instrs))
 
-    def test_contraction_falls_back_when_full_reduction_cannot_fit(self) -> None:
+    def test_contraction_serializes_only_a_required_k_spill(self) -> None:
+        """A contraction whose reduction cannot stay resident SPLITS K, as the conv lane does.
+
+        This asserted the opposite until 2026-09-09 -- that the contraction fell back to the
+        fully unrolled mvin/preload/compute nest. That fallback is what LOOP_WS exists to avoid,
+        and it made whole models uncompilable rather than slower: TinyLlama's MLP
+        down-projection (K=5632, kt=352, minimum (bm+bn)*kt = 704 against 512 spad tiles) emitted
+        991,232 preload and 991,232 compute commands, taking the program to 3,002,597 against a
+        1,000,000 budget, while its other 155 contractions were resident and rolled into 8,015
+        loop_ws_block commands. Asking `loop_ws.block_shape` for the split instead -- the same
+        query the convolution lane already used -- emits 465 commands for the whole model.
+        """
         self.assertIsNone(loop_ws.reduction_resident_block_shape(1, 1, 257))
         s = scheduler([
             Buffer("lhs", [16, 4112], "i8", "input"),
@@ -101,8 +112,28 @@ class ReductionResidentLoopWsTest(unittest.TestCase):
             Buffer("dst", [16, 16], "i32", "output"),
         ])
         s.contraction(Contraction("lhs", "rhs", "dst", 16, 4112, 16, 4112, 16))
-        self.assertFalse(any(ins.kind == "loop_ws_block" for ins in s.instrs))
-        self.assertTrue(any(ins.kind == "compute" for ins in s.instrs))
+        kinds = [ins.kind for ins in s.instrs]
+        self.assertEqual(kinds, ["loop_ws_block", "fence", "loop_ws_block"])
+        self.assertFalse(any(ins.kind == "compute" for ins in s.instrs))
+        loops = [ins for ins in s.instrs if ins.kind == "loop_ws_block"]
+        # The second descriptor accumulates onto the first through D, and D must be the same
+        # address C was just written to, or the partial sum is read from the wrong tile.
+        self.assertEqual([ins.attrs["accumulate"] for ins in loops], [False, True])
+        self.assertEqual(loops[0].attrs["c_offset"], loops[1].attrs["d_offset"])
+
+    def test_a_resident_contraction_emits_no_fence(self) -> None:
+        """The resident schedule must stay byte-identical: one descriptor per output block, so
+        nothing aliases and no serialization is owed. Guards the split from leaking into it."""
+        kt = 8
+        self.assertIsNotNone(loop_ws.reduction_resident_block_shape(1, 1, kt))
+        s = scheduler([
+            Buffer("lhs", [16, kt * 16], "i8", "input"),
+            Buffer("rhs", [kt * 16, 16], "i8", "weight"),
+            Buffer("dst", [16, 16], "i32", "output"),
+        ])
+        s.contraction(Contraction("lhs", "rhs", "dst", 16, kt * 16, 16, kt * 16, 16))
+        self.assertEqual([ins.kind for ins in s.instrs], ["loop_ws_block"])
+        self.assertFalse(s.instrs[0].attrs["accumulate"])
 
     def test_conv_serializes_only_a_required_k_spill(self) -> None:
         s = scheduler([

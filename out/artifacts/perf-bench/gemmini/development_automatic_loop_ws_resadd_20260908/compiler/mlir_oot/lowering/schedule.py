@@ -799,14 +799,40 @@ class Scheduler:
             (out_dtype == F.ACCUMULATOR_DTYPE
              and acc_act == isa.NO_ACTIVATION and acc_scale == 1.0)
             or (mode == "native" and out_dtype == F.OPERAND_DTYPE)))
-        resident_loop_shape = (
-            loop_ws.reduction_resident_block_shape(mt, nt, kt) if use_loop_ws else None
-        )
-        if resident_loop_shape is not None:
-            bm, bn, bk = resident_loop_shape
+        # PARITY WITH THE CONVOLUTION PATH. This asked `reduction_resident_block_shape` directly
+        # and fell through to the fully unrolled schedule whenever the whole reduction could not
+        # stay resident. `loop_ws.block_shape` is the same query plus the capacity-bounded split
+        # fallback the convolution lane has always used, so the split path is already exercised
+        # (see the conv `k0 != 0` fence below and its regression test).
+        #
+        # Measured 2026-09-09: TinyLlama's MLP down-projection has K=5632, so kt=352 and the
+        # minimum (bm+bn)*kt is 704 against 512 spad tiles -- no resident block exists. That one
+        # shape emitted 991,232 preload and 991,232 compute commands (22 layers x 128 N-tiles x
+        # 352 K-tiles, exactly), taking the program to 3,002,597 commands against a 1,000,000
+        # budget, so the model could not be compiled at all -- while its other 155 contractions
+        # were resident-eligible and rolled into 8,015 loop_ws_block commands. Asking for the
+        # split instead emits 465 commands for the whole model.
+        loop_block = None
+        if use_loop_ws:
+            try:
+                loop_block = loop_ws.block_shape(mt, nt, kt)
+            except ValueError:
+                # The header capacity cannot partition even a 1x1 block; the unrolled schedule
+                # below is the remaining option and refuses on its own budget if it is too big.
+                loop_block = None
+        if loop_block is not None:
+            bm, bn, bk = loop_block
+            # A split reduction stores a partial C and reads it back as the next descriptor's D.
+            # LOOP_WS overlaps independent descriptors and does no DRAM-alias tracking between
+            # them, so that dependency must be serialized -- exactly as the convolution lane does.
+            # Full-K blocks issue one descriptor per output block and need no fence, so the
+            # resident schedule stays byte-identical.
+            k_splits = bk < kt
             for m0 in range(0, mt, bm):
                 for n0 in range(0, nt, bn):
                     for k0 in range(0, kt, bk):
+                        if k_splits and k0 != 0:
+                            self.emit("fence")
                         rows = min(bm * DIM, c.m - m0 * DIM)
                         cols = min(bn * DIM, c.n - n0 * DIM)
                         depth = min(bk * DIM, c.k - k0 * DIM)

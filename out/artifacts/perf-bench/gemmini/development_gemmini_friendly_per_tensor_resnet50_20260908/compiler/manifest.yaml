@@ -25,7 +25,7 @@ commands:
 
 optimization_surfaces:
   - id: native_aligned_i32_bias_scalar_epilogue
-    scope: canonicalization
+    scope: pass
     path: mlir_oot/frontend/native_aligned_epilogue.py
     symbol: fold
     effects: [fusion, movement, encoding]
@@ -48,7 +48,7 @@ optimization_surfaces:
       zero points, non-i32 bias, shared or malformed chains, non-round-even quantization, and any
       bias that is not Gemmini's hardware N axis.
   - id: exact_per_tensor_qdq_layout_reuse
-    scope: canonicalization
+    scope: pass
     path: mlir_oot/frontend/gemmini_friendly_quant.py
     symbol: _static_per_tensor_i8_layout_chain
     effects: [movement, memory_planning, fusion]
