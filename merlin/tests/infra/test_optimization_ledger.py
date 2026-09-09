@@ -102,8 +102,37 @@ def test_bound_ness_is_refused_without_a_measured_machine_balance():
 
 def test_bound_ness_is_decided_only_when_the_balance_is_supplied():
     dense = arithmetic_intensity(1000, 10, machine_macs_per_byte=50.0)
+    assert dense["bound_by"] == "compute"
+
+
+def test_below_an_UPPER_BOUND_ridge_decides_nothing():
+    """The measured ridge is an upper bound, so only the compute side is provable.
+
+    This asserted `memory` until 2026-09-09. The ridge comes from `movement_balance.fit`, whose
+    slope is a marginal rate over a domain the fixed per-transfer cost dominates -- a LOWER bound on
+    large-transfer bandwidth, hence an UPPER bound on the ridge. Three of four gemmini whole-model
+    workloads sit below it, and each would have been reported memory-bound on evidence its own
+    artifact says proves nothing.
+    """
     sparse = arithmetic_intensity(10, 1000, machine_macs_per_byte=50.0)
-    assert dense["bound_by"] == "compute" and sparse["bound_by"] == "memory"
+    assert sparse["bound_by"] == "UNKNOWN"
+    assert "proves nothing" in sparse["reason"]
+    assert sparse["ridge_is_upper_bound"] is True
+
+
+def test_a_two_sided_ridge_may_decide_the_memory_side():
+    """A caller with an achievable bandwidth, not a marginal rate, gets the symmetric verdict."""
+    sparse = arithmetic_intensity(10, 1000, machine_macs_per_byte=50.0,
+                                  ridge_is_upper_bound=False)
+    assert sparse["bound_by"] == "memory"
+    assert sparse["ridge_is_upper_bound"] is False
+
+
+def test_the_compute_side_is_sound_under_either_reading():
+    for sided in (True, False):
+        got = arithmetic_intensity(1000, 10, machine_macs_per_byte=50.0,
+                                   ridge_is_upper_bound=sided)
+        assert got["bound_by"] == "compute"
 
 
 def test_a_program_with_no_traffic_has_no_intensity():

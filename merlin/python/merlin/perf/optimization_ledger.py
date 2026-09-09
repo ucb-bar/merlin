@@ -353,7 +353,8 @@ class Ledger:
 
 
 def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
-                         machine_macs_per_byte: float | None = None) -> dict[str, Any]:
+                         machine_macs_per_byte: float | None = None,
+                         ridge_is_upper_bound: bool = True) -> dict[str, Any]:
     """MACs per byte for one program, and the bound-ness verdict only if the machine balance is given.
 
     Intensity is derivable from an emitted program. The RIDGE POINT -- the intensity at which a
@@ -361,6 +362,21 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
     (peak arithmetic rate over achievable bandwidth) and is NOT invented here: without a measured
     ``machine_macs_per_byte`` the verdict is UNKNOWN, because a roofline drawn through a guessed
     ridge would point optimization effort at whichever axis the guess favoured.
+
+    THE VERDICT IS ONE-SIDED BY DEFAULT, because the measurement that supplies the ridge is.
+    ``movement_balance.fit`` separates the transfer rate from the fixed per-transfer cost over a
+    controlled size series; where the intercept dominates that domain -- 128.5 cycles against a
+    smallest measured transfer of 40 B, measured 2026-09-08 -- its slope is the MARGINAL rate, which
+    is a LOWER bound on what a large transfer achieves. Peak compute over a lower-bound bandwidth is
+    therefore an UPPER bound on the ridge, and that artifact says so in as many words: "an intensity
+    below it proves NOTHING and is not evidence of being memory-bound."
+
+    So above the ridge the verdict is ``compute`` and is sound; below it the verdict is ``UNKNOWN``.
+    This used to return ``memory`` there, which read as a measured verdict and would have pointed
+    optimization at the movement axis for 3 of 4 gemmini whole-model workloads on evidence that
+    cannot support it. A caller holding a genuinely TWO-SIDED ridge -- one built from an achievable
+    bandwidth rather than a marginal rate, e.g. a DMA-saturating probe -- passes
+    ``ridge_is_upper_bound=False`` and gets the symmetric verdict back.
     """
     if traffic_bytes <= 0 or routed_macs < 0:
         return {"status": "unavailable", "reason": "a program with no priced traffic has no intensity"}
@@ -375,7 +391,18 @@ def arithmetic_intensity(routed_macs: int, traffic_bytes: int, *,
                          "and one is not invented here")
         return out
     out["machine_macs_per_byte"] = float(machine_macs_per_byte)
-    out["bound_by"] = "compute" if intensity >= machine_macs_per_byte else "memory"
+    out["ridge_is_upper_bound"] = bool(ridge_is_upper_bound)
+    if intensity >= machine_macs_per_byte:
+        out["bound_by"] = "compute"
+        return out
+    if ridge_is_upper_bound:
+        out["bound_by"] = "UNKNOWN"
+        out["reason"] = (
+            "intensity is below an UPPER BOUND on the ridge, which proves nothing: the true ridge "
+            "may sit below this intensity. Establish a lower bound on achievable bandwidth (a "
+            "transfer probe above the fitted domain) to decide this workload")
+        return out
+    out["bound_by"] = "memory"
     return out
 
 
