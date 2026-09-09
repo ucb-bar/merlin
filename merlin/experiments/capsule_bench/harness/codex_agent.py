@@ -646,9 +646,14 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # text, so two arms cannot silently differ in what they were asked to do.
     msg = prompt if prompt is not None else (
         "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-        "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
-        "submission --sim spike --capsules all` with your shell after each build to grade against the "
-        "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
+        "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
+        "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
+        "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
+        "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
+        "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
+        "iterate until the complete corpus passes. The harness is already producing the first full baseline: if "
+        "qa/verdict.json is absent, wait for it with await_verdict.py; do not launch `--capsules all` merely to "
+        "create the initial verdict. Use exact capsule directory names for focused checks. Begin now.")
     prompt_path.write_text(msg)
 
     inner_final = last_message_path(ws, final_path, sandbox)
@@ -690,7 +695,9 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     #: Sent when resuming. Deliberately the SAME standing instruction, never a hint: an arm that got
     #: extra guidance mid-session would not be comparable to one that did not.
     _CONTINUE_MSG = ("Continue. Re-read qa/verdict.json for the latest grade, then keep repairing the "
-                     "backend under submission/ and re-running agent_selfcheck until capsules pass.")
+                     "backend under submission/. With agent_selfcheck, re-check only the smallest affected "
+                     "capsule or coherent cluster after each edit; use `--capsules all` only after focused "
+                     "checks improve, and never edit submission/ while a self-check is running.")
     turn_index = 0
     rc = 0
     active_proc: subprocess.Popen | None = None

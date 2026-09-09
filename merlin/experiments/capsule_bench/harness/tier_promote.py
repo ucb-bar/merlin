@@ -193,6 +193,71 @@ def _submission_digest(ws) -> str:
     return submission_digests(ws)[0]
 
 
+def promotion_snapshot_path(ws, token: str, *, create_store: bool = False) -> Path | None:
+    """Resolve a promotion snapshot token inside the driver-private, per-workspace store.
+
+    Requests cross an agent-writable JSON channel, so they must never carry a host path that the broker
+    trusts. A token is accepted only when it is a lowercase hex nonce, and the broker derives the
+    containing directory itself. The workspace hash prevents simultaneous campaigns from sharing
+    snapshots even when their request ids happen to match.
+    """
+    import hashlib
+    import re
+    import tempfile
+
+    if not isinstance(token, str) or re.fullmatch(r"[0-9a-f]{32}", token) is None:
+        return None
+    base = Path(os.environ.get("TMPDIR") or tempfile.gettempdir())
+    ws_key = hashlib.sha256(str(Path(ws).resolve()).encode("utf-8")).hexdigest()[:24]
+    store = base / f"merlin_promotion_snapshots_{os.getuid()}" / ws_key
+    if create_store:
+        store.mkdir(parents=True, mode=0o700, exist_ok=True)
+        store.chmod(0o700)
+    return store / token
+
+
+def create_promotion_snapshot(ws, source_ws, expected_digest: str) -> tuple[str | None, str | None]:
+    """Freeze and verify the exact source promoted by a loop-tier verdict."""
+    import hashlib
+    import shutil
+
+    # One immutable source copy per workspace+digest, not one copy per capsule.  A large submission may
+    # promote dozens of capsules at once; duplicating a 200 MiB compiler for each queued L3 job would
+    # turn correctness isolation into tens of GiB of avoidable storage.
+    token = hashlib.sha256(expected_digest.encode("ascii")).hexdigest()[:32]
+    final = promotion_snapshot_path(ws, token, create_store=True)
+    assert final is not None
+    if final.is_dir():
+        actual = _submission_digest(final)
+        if actual == expected_digest:
+            return token, None
+        shutil.rmtree(final, ignore_errors=True)
+    stage = final.with_name(f".{token}.{os.getpid()}.{time.time_ns()}.tmp")
+    try:
+        submission = stage / "submission"
+        shutil.copytree(Path(source_ws) / "submission", submission,
+                        ignore=shutil.ignore_patterns("__pycache__"))
+        actual = _submission_digest(stage)
+        if actual != expected_digest:
+            return None, (f"promotion source moved while snapshotting: requested {expected_digest}, "
+                          f"copied {actual}")
+        try:
+            stage.rename(final)
+        except FileExistsError:
+            # Another promotion producer froze the same digest concurrently.  Its atomically published
+            # copy is equivalent if and only if it verifies against the same digest.
+            actual = _submission_digest(final)
+            if actual != expected_digest:
+                return None, (f"concurrent promotion snapshot identity mismatch: requested "
+                              f"{expected_digest}, snapshot {actual}")
+        return token, None
+    except Exception as exc:  # noqa: BLE001 -- promotion is optional; caller logs the concrete cause
+        return None, f"promotion snapshot failed: {type(exc).__name__}: {exc}"
+    finally:
+        if stage.exists():
+            shutil.rmtree(stage, ignore_errors=True)
+
+
 def execution_digest(capsule_result: str | Path) -> str | None:
     """Content identity for exactly what one capsule's hardware tier executes.
 
@@ -1358,14 +1423,28 @@ def promote(ws, ch, verdict, loop_tier, cert_tier, cover, log, *, source_ws=None
                   f"state holds no record for these bytes; NOT re-enqueued and NOT marked outstanding",
                   file=log, flush=True)
             continue
-        req.write_text(_j.dumps(
-            # `identity` travels WITH the request so the reap can hand a completed result back to the
-            # exact record it was launched for. Without it, a result whose reader produced no artifact
-            # identity is unattributable as soon as a second record is outstanding -- and the certificate
-            # the RTL just paid for is dropped.
-            {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
-             "promoted": True, "identity": key, "submission_digest": digest,
-             "submitted_at": time.time()}))
+        # Freeze before enqueue: L3 may wait behind minutes of work while the agent keeps editing.
+        snapshot, snapshot_error = create_promotion_snapshot(ws, source_ws, digest)
+        if snapshot_error:
+            print(f"[promote] {w.capsule} {cert_tier}: NOT enqueued -- {snapshot_error}",
+                  file=log, flush=True)
+            continue
+        try:
+            req.write_text(_j.dumps(
+                # `identity` travels WITH the request so the reap can hand a completed result back to the
+                # exact record it was launched for. Without it, a result whose reader produced no artifact
+                # identity is unattributable as soon as a second record is outstanding -- and the certificate
+                # the RTL just paid for is dropped.
+                {"sim": _sim, "capsules": w.capsule, "workers": 1, "tiers": cert_tier,
+                 "promoted": True, "identity": key, "submission_digest": digest,
+                 "submission_snapshot": snapshot, "submitted_at": time.time()}))
+        except Exception:
+            # No queue record owns this snapshot, so nothing else can clean it up.
+            import shutil as _shutil
+            _snapshot_path = promotion_snapshot_path(ws, snapshot)
+            if _snapshot_path is not None:
+                _shutil.rmtree(_snapshot_path, ignore_errors=True)
+            raise
         # Mark pending only once the request is actually on the queue.
         pending = {"status": "pending", "digest": digest, "components": dict(comps)}
         if execution_digest is not None:

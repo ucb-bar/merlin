@@ -363,6 +363,24 @@ def test_the_prompt_bytes_are_kept_as_an_artifact(tmp_path):
     assert "submission" in prompt
 
 
+def test_the_default_prompt_requires_narrow_iteration_before_a_full_sweep(tmp_path):
+    """The driver must not turn every source edit into a full-corpus grading job.
+
+    A Gemmini clean-room run followed the former ``--capsules all after each build`` instruction
+    literally: nine full 97-capsule checks in three hours, four invalidated by later edits, and only
+    one focused check.  Pin the feedback-loop policy at the actual prompt seam so a relaunch cannot
+    silently recreate that measurement churn.
+    """
+    _rc, tpath, _records = _run(tmp_path, _fake_codex(tmp_path, _stream()))
+    prompt = (tpath.parent / "round_00.prompt.txt").read_text()
+
+    assert "smallest affected capsule" in prompt
+    assert "only after the focused checks improve" in prompt
+    assert "Do not edit submission/ while a self-check is running" in prompt
+    assert "do not launch `--capsules all` merely to create the initial verdict" in prompt
+    assert "--capsules all` with your shell after each build" not in prompt
+
+
 def test_a_missing_codex_binary_fails_the_round_without_raising(tmp_path):
     ws = tmp_path / "ws"; ws.mkdir()
     run_dir = tmp_path / "run"; run_dir.mkdir()

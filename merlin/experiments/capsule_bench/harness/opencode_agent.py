@@ -671,9 +671,14 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
 
     msg = prompt if prompt is not None else (
         "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-        "backend under submission/ per those instructions. Run `python3 agent_selfcheck.py --submission "
-        "submission --sim spike --capsules all` with your bash tool after each build to grade against the "
-        "real oracle (goldens withheld), and iterate until capsules pass. Begin now.")
+        "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
+        "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
+        "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
+        "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
+        "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
+        "iterate until the complete corpus passes. The harness is already producing the first full baseline: if "
+        "qa/verdict.json is absent, wait for it with await_verdict.py; do not launch `--capsules all` merely to "
+        "create the initial verdict. Use exact capsule directory names for focused checks. Begin now.")
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
                "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is

@@ -84,6 +84,49 @@ def test_a_passing_capsule_produces_a_cert_job(tmp_path):
     assert r["submission_digest"] == B._submission_digest(ws)
 
 
+def test_promotion_launches_the_enqueue_time_snapshot_after_source_moves(tmp_path, monkeypatch):
+    """An L3 queue may be much slower than the edit loop; it must execute the bytes that earned L2.
+
+    This is the live Radiance failure in miniature: enqueue a promotion, change the mutable submission
+    before the broker claims it, and require the broker to recover the original source from a private
+    snapshot.  Re-hashing/copying ``workspace/submission`` at launch rejects useful work as "source
+    moved" and can leave an otherwise 28/29 campaign with zero valid L3 certificates.
+    """
+    monkeypatch.setenv("TMPDIR", str(tmp_path / "broker-private"))
+    B = _broker()
+    S = _harness_module("simjob_broker")
+    ws = _ws(tmp_path)
+    ch = ws / ".qa_channel"
+
+    assert B.promote(ws, ch, _verdict([("A", True)]), "L2", "L3", None, sys.stderr) == ["A"]
+    req = json.loads(next(ch.glob("simreq_*.json")).read_text())
+    token = req.get("submission_snapshot")
+    assert isinstance(token, str) and token, "promotion did not preserve its enqueue-time source"
+
+    (ws / "submission" / "manifest.yaml").write_text("x: 2")
+    submission, snapshot_root, error = S._promotion_snapshot(
+        ws, req["submission_digest"], req["identity"], token)
+    try:
+        assert error is None
+        assert (submission / "manifest.yaml").read_text() == "x: 1"
+    finally:
+        if snapshot_root:
+            shutil.rmtree(snapshot_root, ignore_errors=True)
+
+
+def test_broker_restart_does_not_replay_jobs_with_durable_responses(tmp_path):
+    """A fresh per-round broker must recover completed ids from disk, not replay the whole queue."""
+    S = _harness_module("simjob_broker")
+    ch = tmp_path / ".qa_channel"
+    ch.mkdir()
+    (ch / "simreq_done.json").write_text("{}")
+    (ch / "simresp_done.json").write_text('{"all_pass": true}')
+    (ch / "simreq_interrupted.json").write_text("{}")
+    (ch / "simrun_interrupted").write_text("running")
+
+    assert S._completed_job_ids(ch) == {"done"}
+
+
 def test_a_failing_capsule_buys_no_cert_time(tmp_path):
     """A capsule whose numerics are wrong cannot be rescued by RTL, and RTL costs minutes."""
     B = _broker()
@@ -712,6 +755,30 @@ def test_a_promoted_cert_job_keeps_the_harness_interpreter_ahead_of_the_sim_tool
     assert parts.index(own) < min(sim_entries), (
         "the sim toolchain's python3 shadows the harness interpreter, so a submission entrypoint runs "
         "under an interpreter that does not have the compiler's dependencies")
+
+
+def test_a_promoted_cert_job_cannot_read_the_campaign_terminal(monkeypatch, tmp_path):
+    """An async simulator must see EOF rather than being SIGTTIN-stopped on the campaign PTY."""
+    S = _harness_module("simjob_broker")
+    seen = {}
+    sentinel = object()
+
+    def fake_popen(argv, **kwargs):
+        seen["argv"] = argv
+        seen.update(kwargs)
+        return sentinel
+
+    monkeypatch.setattr(S.subprocess, "Popen", fake_popen)
+    log = tmp_path / "job.log"
+    with log.open("wb") as stream:
+        got = S._spawn_selfcheck(["selfcheck", "--tiers", "L3"], cwd=tmp_path,
+                                 env={"PATH": "test"}, job_log=stream, timeout_s=900)
+
+    assert got is sentinel
+    assert seen["stdin"] is S.subprocess.DEVNULL
+    assert seen["stdout"].name == str(log)
+    assert seen["stderr"] is S.subprocess.STDOUT
+    assert seen["argv"][:2] == ["timeout", "1020"]
 
 
 def test_a_promoted_job_runs_from_a_verified_source_snapshot(tmp_path):

@@ -135,7 +135,14 @@ def _strip_golden(obj):
     return obj
 
 
-def _promotion_snapshot(ws: Path, expected_digest: str, identity: str | None = None):
+def _completed_job_ids(ch: Path) -> set[str]:
+    """Recover jobs whose durable response was already published by an earlier broker process."""
+    prefix = "simresp_"
+    return {p.stem[len(prefix):] for p in ch.glob(f"{prefix}*.json")}
+
+
+def _promotion_snapshot(ws: Path, expected_digest: str, identity: str | None = None,
+                        snapshot_token: str | None = None):
     """Copy the source a promoted job will grade and verify its enqueue-time identity.
 
     Promotion is asynchronous: compiling directly from ``ws/submission`` lets an agent edit the tree
@@ -150,6 +157,36 @@ def _promotion_snapshot(ws: Path, expected_digest: str, identity: str | None = N
             and identity != f"submission:{expected_digest}"):
         return None, None, (f"promotion request source identity {identity} does not match its "
                             f"submission digest {expected_digest}")
+    if snapshot_token is not None:
+        frozen = _TP.promotion_snapshot_path(ws, snapshot_token)
+        if frozen is None:
+            return None, None, "promotion request has an invalid enqueue-time snapshot token"
+        frozen_submission = frozen / "submission"
+        if not frozen_submission.is_dir():
+            return None, None, "promotion enqueue-time snapshot is missing"
+        actual = _TP._submission_digest(frozen)
+        if actual != expected_digest:
+            return None, None, (f"promotion snapshot identity mismatch: requested {expected_digest}, "
+                                f"snapshot {actual}")
+        # Each child gets a disposable working copy; the content-addressed frozen copy is shared by all
+        # capsules promoted from this source version and never exposed as a mutable build directory.
+        root = Path(tempfile.mkdtemp(prefix="merlin_promotion_"))
+        submission = root / "submission"
+        try:
+            shutil.copytree(frozen_submission, submission,
+                            ignore=shutil.ignore_patterns("__pycache__"))
+            copied = _TP._submission_digest(root)
+            if copied != expected_digest:
+                shutil.rmtree(root, ignore_errors=True)
+                return None, None, (f"promotion snapshot moved while preparing launch: requested "
+                                    f"{expected_digest}, copied {copied}")
+            return submission, root, None
+        except Exception:
+            shutil.rmtree(root, ignore_errors=True)
+            raise
+
+    # Compatibility for requests queued before enqueue-time snapshots existed. Fail closed if the
+    # mutable workspace no longer has the requested bytes.
     root = Path(tempfile.mkdtemp(prefix="merlin_promotion_"))
     try:
         submission = root / "submission"
@@ -323,6 +360,24 @@ _CERT_TIER = None
 _COVER = None   # "grade on whatever tier this target's contract resolves to"
 
 
+def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
+    """Launch one asynchronous simulator check without inheriting the campaign terminal.
+
+    ``timeout`` creates a separate process group for the command it supervises. When that group is
+    behind the campaign's foreground process group, any simulator probe that reads inherited stdin is
+    stopped by the kernel with SIGTTIN. The broker then mistakes a job that never ran for an RTL
+    timeout. Simulator checks are non-interactive, so an explicit EOF is the only truthful stdin.
+    """
+    return subprocess.Popen(
+        ["timeout", str(timeout_s + 120)] + list(argv),
+        cwd=str(cwd),
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=job_log,
+        stderr=subprocess.STDOUT,
+    )
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", required=True)
@@ -353,7 +408,11 @@ def main(argv=None):
             vpc = 1200
 
     running: dict[str, dict] = {}          # jid -> {proc, slot, resp_tmp, sim}
-    claimed: set[str] = set()
+    # One broker is created per round, but the channel and its queue survive across rounds.  Starting
+    # from an empty set replays every historical request, including paid L3 work.  A response is the
+    # durable commit record; a bare simrun marker is not (the previous broker may have died mid-job), so
+    # only responses are recovered here and interrupted requests remain retryable.
+    claimed: set[str] = _completed_job_ids(ch)
     # STOP alone does not bound this broker's life: the sentinel is written by the driver, so if the
     # driver dies first nobody ever writes it and the broker polls forever -- while HOLDING sim slots and
     # child simulators. Three sibling brokers were found orphaned to init hours after their run ended,
@@ -458,7 +517,8 @@ def main(argv=None):
                 source_identity_verified = False
                 if bool(r.get("promoted")):
                     submission, snapshot_root, snapshot_error = _promotion_snapshot(
-                        Path(ws), r.get("submission_digest"), r.get("identity"))
+                        Path(ws), r.get("submission_digest"), r.get("identity"),
+                        r.get("submission_snapshot"))
                     if snapshot_error:
                         if slot:
                             slot.unlink(missing_ok=True)
@@ -493,9 +553,8 @@ def main(argv=None):
                 # per-job, beside the response, so a failure can be read after the fact.
                 job_log = (ch / f"simlog_{jid}.txt").open("wb")
                 try:
-                    proc = subprocess.Popen(["timeout", str(to + 120)] + argv2, cwd=str(ws),
-                                            env=_sim_env(), stdout=job_log,
-                                            stderr=subprocess.STDOUT)
+                    proc = _spawn_selfcheck(argv2, cwd=ws, env=_sim_env(), job_log=job_log,
+                                            timeout_s=to)
                 except Exception:
                     job_log.close()
                     if slot:
