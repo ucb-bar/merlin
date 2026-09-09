@@ -149,6 +149,17 @@ class Pipeline:
                     self.plan, self.instrs, self.staging = plan, instrs, staging
                     self._externalize_input_prologue()
                     self.artifact = llvm_emit.emit(plan, self.instrs, staging)
+                    # RECORD THE PROOF THE COMMENT ABOVE DEMANDS. The emit above is the proof that
+                    # this program builds; without recording it the buffer stayed silent, and a
+                    # silent buffer is exactly what an ANALYSIS emission looks like. So every mixed
+                    # whole model -- mesh commands plus host segments -- was refused by
+                    # bundle_harness.require_executable_emission even though its artifact had just
+                    # been built. host_lane.build sets this only for a pure-host program, so the
+                    # mixed path never had a writer. Guarded on the artifact so absence still means
+                    # "this buffer makes no claim" and not "the program failed to emit".
+                    if self.artifact is not None:
+                        plan.command_buffer.setdefault(
+                            "params", {})["host_lane_program_emitted"] = True
                     return self.plan
                 except LoweringDeclined as exc:
                     if not wl.mesh_regions:
@@ -171,6 +182,18 @@ class Pipeline:
                 if (self.plan.command_buffer.get("commands")
                         or (self.plan.command_buffer.get("kernel_abi") or {}).get("kind") == "whole_program"):
                     self.artifact = llvm_emit.emit(self.plan, self.instrs, self.staging)
+                    # THE CLAIM, EARNED WHERE IT IS PROVEN. The rule above is to prove the artifact
+                    # emits before the buffer claims a program exists. The proof ran here, but
+                    # nothing recorded it: host_lane sets host_lane_program_emitted True only on its
+                    # pure-host branch (kind == "whole_program"), so a MIXED program -- mesh
+                    # commands plus host segments, which is every whole model -- emitted a real
+                    # artifact and then declared nothing. Downstream that is indistinguishable from
+                    # an analysis buffer, and bundle_harness.require_executable_emission correctly
+                    # refused to render a harness for it. Set only when llvm_emit actually returned
+                    # an artifact, so absence still means "no claim" rather than "not emitted".
+                    if self.artifact:
+                        self.plan.command_buffer.setdefault(
+                            "params", {})["host_lane_program_emitted"] = True
             except LoweringDeclined as exc:
                 cb = self.plan.command_buffer
                 cb["commands"] = []

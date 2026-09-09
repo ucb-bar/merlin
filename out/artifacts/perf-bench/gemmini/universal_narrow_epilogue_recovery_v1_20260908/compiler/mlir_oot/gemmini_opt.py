@@ -164,6 +164,17 @@ class Pipeline:
                     # program exists next to an artifact that could not be built is the one
                     # inconsistency the runner reads as a protocol failure rather than a decline.
                     self.artifact = llvm_emit.emit(plan, self.instrs, staging)
+                    # RECORD THE PROOF THE COMMENT ABOVE DEMANDS. The emit above is the proof that
+                    # this program builds; without recording it the buffer stayed silent, and a
+                    # silent buffer is exactly what an ANALYSIS emission looks like. So every mixed
+                    # whole model -- mesh commands plus host segments -- was refused by
+                    # bundle_harness.require_executable_emission even though its artifact had just
+                    # been built. host_lane.build sets this only for a pure-host program, so the
+                    # mixed path never had a writer. Guarded on the artifact so absence still means
+                    # "this buffer makes no claim" and not "the program failed to emit".
+                    if self.artifact is not None:
+                        plan.command_buffer.setdefault(
+                            "params", {})["host_lane_program_emitted"] = True
                     return self.plan
                 except LoweringDeclined as exc:
                     # Not a program this backend can build after all -- fall through to the
