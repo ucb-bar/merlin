@@ -300,6 +300,25 @@ def _l3_promotion(verdict: dict, loop_tier: str | None) -> tuple[list, list]:
     return eligible, held
 
 
+def _conformance_ever(rounds) -> dict:
+    """Fold per-round conformance check dicts into the RUN-LEVEL view the gates read.
+
+    A check is True if it was satisfied in SOME round, None only if it was inapplicable in EVERY round
+    (so an inapplicable check never gates), and False if it applied and was never satisfied. Module-level
+    and pure so the resume path that rebuilds this from `qa_loop_state.yaml` is testable: the in-loop
+    accumulator it mirrors lives in a closure and cannot be exercised directly.
+    """
+    ever: dict = {}
+    for entry in rounds or []:
+        checks = ((entry or {}).get("conformance") or {}).get("checks") or {}
+        for key, value in checks.items():
+            if value is None:
+                ever.setdefault(key, None)
+            else:
+                ever[key] = bool(ever.get(key)) or bool(value)
+    return ever
+
+
 def _l3_checkpoint_should_run(run_l3: bool, workflow_conformant: bool, eligible) -> bool:
     """PER-CAPSULE gate: the cycle-accurate checkpoint runs when AT LEAST ONE capsule cleared the loop
     tier — never "when all of them did". With nothing eligible there is nothing to certify, so it is
@@ -3594,6 +3613,20 @@ def main(argv: list[str] | None = None) -> int:
     # evidence of exploration in the same round that proves completion -- unsatisfiable together, and a
     # run that reached all_pass looped until something else stopped it.
     _conf_ever: dict = {}
+
+    def _conformant_over_run() -> bool:
+        """Every check this arm mandates satisfied in SOME round (never all in one -- see _conf_ever).
+
+        Defined BEFORE the round loop on purpose: the exit path that this rule exists to unblock is the
+        READY-marker clear inside the loop, not only the post-loop barrier. `4e5ab2df` added this helper
+        after the loop and wired the barrier; `622ac429` then rebuilt the barrier from a base without the
+        fix, and the call sites reverted to the per-round flag while the helper and its test survived --
+        so the original defect (a converged run whose late rounds cannot satisfy `cca_used`, looping
+        until something else stops it) was live again.
+        """
+        applicable = [v for v in _conf_ever.values() if v is not None]
+        return all(applicable) if applicable else True
+
     try:                             # endpoint_kind — drives the per-round dev-conformance flag (asm applies only to external_backend)
         from merlin.targetgen.generate_prompt import prompt_slots as _pslots
         _endpoint_kind = _pslots(_te(), _manifest()).get("endpoint_kind", "")
@@ -3631,13 +3664,23 @@ def main(argv: list[str] | None = None) -> int:
         rnd = int(st.get("next_round", 0))
         verdict = {"all_pass": bool(st.get("converged", False))}
         workflow_conformant = bool(st.get("workflow_conformant", False))
+        # Rebuild the RUN-LEVEL accumulator the gates read. Without this a --resume starts it empty, so a
+        # run that had already evidenced every mandated check is blocked by its own fresh accumulator --
+        # the same shape of defect as gating on the current round, just moved into the resume path.
+        # Prefer the persisted map; fall back to re-accumulating from the round records, so a checkpoint
+        # written before this field existed still resumes correctly.
+        _saved_ever = st.get("conformance_ever")
+        if isinstance(_saved_ever, dict) and _saved_ever:
+            _conf_ever.update(_saved_ever)
+        else:
+            _conf_ever.update(_conformance_ever(rounds_summary))
         cum = st.get("cumulative", {}) or {}
         active_wall_s = float(cum.get("active_wall_s", 0.0))
         rate_limit_wait_s = float(cum.get("rate_limit_wait_s", 0.0))
         rl_waits_used = int(cum.get("rl_waits_used", 0))
         started_at = cum.get("started_at", started_at)
         print(f"[resume] restored from checkpoint: next_round={rnd} converged={verdict['all_pass']} "
-              f"workflow_conformant={workflow_conformant} "
+              f"workflow_conformant={workflow_conformant} over_run={_conformant_over_run()} "
               f"active={active_wall_s:.0f}s rate_limit_wait={rate_limit_wait_s:.0f}s "
               f"waits_used={rl_waits_used}")
 
@@ -3682,6 +3725,12 @@ def main(argv: list[str] | None = None) -> int:
             "converged": _authoring_complete(),
             "numeric_all_pass": bool(verdict.get("all_pass", False)),
             "workflow_conformant": workflow_conformant,
+            # RUN-LEVEL view, persisted because the gates now read it: `_conf_ever` lives only in memory,
+            # so a --resume restarted it empty and a run that had ALREADY earned every mandated check
+            # would be blocked by its own fresh accumulator. The per-round flag above stays -- it is how
+            # you see WHICH round did the work.
+            "conformance_ever": dict(_conf_ever),
+            "conformant_over_run": _conformant_over_run(),
             "cumulative": {"active_wall_s": round(active_wall_s, 3),
                            "rate_limit_wait_s": round(rate_limit_wait_s, 3),
                            "rl_waits_used": rl_waits_used, "started_at": started_at},
@@ -4030,10 +4079,14 @@ def main(argv: list[str] | None = None) -> int:
                   f"{verdict.get('n_passed')}/{verdict.get('n_capsules')} — DECLINED "
                   f"(--min-rounds {a.min_rounds}); marker cleared, continuing", flush=True)
             ready = False
-        if ready and not workflow_conformant:
+        if ready and not _conformant_over_run():
+            # RUN-LEVEL, not this round: `cca_used` and friends ask about start-of-work activities, and a
+            # converged agent has nothing left to enumerate, so demanding them in the same round that
+            # proves completion is unsatisfiable. Measured: a run reached 27/27 in round 3 and repeated
+            # it through round 7 without ever exiting, because tool calls fell 300 -> 37 -> 30 -> 20.
             (ws / "submission" / READY_MARKER).unlink(missing_ok=True)
             print(f"[round {rnd-1}] agent dropped {READY_MARKER}, but mandatory tooling is not "
-                  "successfully evidenced — marker cleared, continuing", flush=True)
+                  "successfully evidenced in ANY round — marker cleared, continuing", flush=True)
             ready = False
         if _authoring_complete() or ready:
             if ready:
@@ -4142,11 +4195,6 @@ def main(argv: list[str] | None = None) -> int:
     # The cycle-accurate RTL barrier is a pass-gate only when the target's corpus makes its RTL-cert tier
     # MANDATORY. A prototype target graded on its functional oracle (L3 optional) skips it, so a normal run
     # is not blocked on a slow/hanging verilator; convergence then rides the functional-tier (L2) verdict.
-    def _conformant_over_run() -> bool:
-        """Every check this arm mandates satisfied in SOME round (never all in one -- see _conf_ever)."""
-        applicable = [v for v in _conf_ever.values() if v is not None]
-        return all(applicable) if applicable else True
-
     _run_l3, _l3_reason = _cycle_accurate_checkpoint_enabled()
     if not _run_l3:
         print(f"[verilator] cycle-accurate RTL (L3) barrier SKIPPED — {_l3_reason}")
@@ -4159,14 +4207,14 @@ def main(argv: list[str] | None = None) -> int:
     # whenever AT LEAST ONE capsule is eligible, and only the eligible ones are submitted.
     _loop_tier = _loop_tier_name()
     _l3_eligible, _l3_held = _l3_promotion(verdict, _loop_tier)
-    if _run_l3 and workflow_conformant and not _l3_eligible:
+    if _run_l3 and _conformant_over_run() and not _l3_eligible:
         print(f"[verilator] cycle-accurate cert SKIPPED — no capsule passed the loop tier "
               f"({_loop_tier or 'status'}), so there is nothing to certify; "
               f"{len(_l3_held)} capsule(s) recorded not_promoted (UNKNOWN at the cert tier, not passed)")
     if a.seal_current:
         print("[operator-seal] intermediate repair barrier skipped; the official grader still runs "
               "the declared public/hidden tiers", flush=True)
-    elif _l3_checkpoint_should_run(_run_l3, workflow_conformant, _l3_eligible):
+    elif _l3_checkpoint_should_run(_run_l3, _conformant_over_run(), _l3_eligible):
         # Per-capsule: every capsule that cleared the loop tier is certified now, independently of the
         # others. In realistic mode this checkpoint is still the definition of done; the agent already
         # self-checked on the tool, so this confirms on the operator side. Up to VERILATOR_ATTEMPTS with

@@ -88,10 +88,21 @@ def test_the_gate_keeps_its_other_preconditions():
 
 
 def test_the_checkpoint_gate_no_longer_demands_all_pass():
-    """Guard the call site itself, so nobody restores the all-or-nothing condition."""
+    """Guard the call site itself, so nobody restores the all-or-nothing condition.
+
+    Pin the PER-CAPSULE shape only -- the cert-tier flag and the eligible list -- and deliberately not
+    which conformance view is passed as the middle argument. Spelling `workflow_conformant` here made
+    this test contradict `test_run_level_conformance.py`, which requires the run-level view, and that
+    contradiction is how the run-level fix was lost: `4e5ab2df` wired the barrier to
+    `_conformant_over_run()`, `622ac429` rebuilt the barrier from a base without it, and this assertion
+    then held the per-round spelling in place while the other test failed. Two tests pinning
+    incompatible spellings of one line cannot both be satisfied; only one of them was about this
+    behaviour.
+    """
     loop = _mod("run_baseline_qa_loop")
     src = inspect.getsource(loop.main)
-    assert "_l3_checkpoint_should_run(_run_l3, workflow_conformant, _l3_eligible)" in src
+    assert "_l3_checkpoint_should_run(_run_l3, " in src, "the cert-tier flag stays the first guard"
+    assert ", _l3_eligible)" in src, "and the gate is handed the per-capsule eligible list"
     assert 'verdict.get("all_pass") or (_EXPERIMENT == "realistic" and _ready_marker)' not in src
     assert "_verilator_grade(vatt, _l3_eligible, _l3_held)" in src
 

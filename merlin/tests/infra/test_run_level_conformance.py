@@ -74,3 +74,46 @@ def test_the_per_round_flag_is_still_recorded():
     """The per-round signal stays: it is how you see WHICH round did the work."""
     src = LOOP.read_text()
     assert '"workflow_conformant": workflow_conformant' in src
+
+
+def _loop():
+    import sys
+    sys.path.insert(0, str(merlin_dir() / "experiments/capsule_bench/harness"))
+    import run_baseline_qa_loop  # noqa: PLC0415
+    return run_baseline_qa_loop
+
+
+def test_the_run_level_view_is_rebuilt_from_the_round_records():
+    """A --resume must recover the accumulator, not restart it empty.
+
+    `_conf_ever` lives in a closure, so a resumed run began with `{}` and a run that had ALREADY
+    evidenced every mandated check was blocked by its own fresh accumulator -- the same defect as
+    gating on the current round, moved into the resume path.
+    """
+    rounds = [
+        {"conformance": {"checks": {"cca_used": True, "full_selfcheck": False, "asm_used": None}}},
+        {"conformance": {"checks": {"cca_used": False, "full_selfcheck": True, "asm_used": None}}},
+    ]
+    ever = _loop()._conformance_ever(rounds)
+    assert ever == {"cca_used": True, "full_selfcheck": True, "asm_used": None}
+
+
+def test_a_check_that_never_held_is_false_after_the_fold():
+    rounds = [{"conformance": {"checks": {"cca_used": False}}},
+              {"conformance": {"checks": {"cca_used": False}}}]
+    assert _loop()._conformance_ever(rounds) == {"cca_used": False}
+
+
+def test_the_fold_tolerates_missing_and_malformed_round_records():
+    """Checkpoints written before this field existed, and partially-written rounds, must not crash."""
+    assert _loop()._conformance_ever([]) == {}
+    assert _loop()._conformance_ever(None) == {}
+    assert _loop()._conformance_ever([{}, {"conformance": {}}, {"conformance": {"checks": None}}]) == {}
+
+
+def test_the_resume_path_persists_and_restores_the_run_level_view():
+    src = LOOP.read_text()
+    assert '"conformance_ever": dict(_conf_ever)' in src, "the run-level view must be persisted"
+    assert 'st.get("conformance_ever")' in src, "a resume must read it back"
+    assert "_conf_ever.update(_conformance_ever(rounds_summary))" in src, \
+        "and must fall back to re-folding the round records for pre-existing checkpoints"
