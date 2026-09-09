@@ -219,6 +219,18 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "trace_status": (r.get("trace_check") or {}).get("status"),
             "trace_violations": list((r.get("trace_check") or {}).get("violations") or []),
             "tiers": {t: (tiers.get(t) or {}).get("status") for t in tiers},
+            # WHICH TIERS WERE ABANDONED ON TIME, not answered wrongly. A cert the engine ran out of
+            # budget on is not evidence of incorrectness, but the redacted verdict carried only the tier
+            # STATUS -- so "abandoned at 900s" and "produced wrong numbers" were the same `fail` string,
+            # and a reader (and `agg_agentic_results._l3_evidence`) could not separate them. Measured:
+            # six capsules in one batch were abandoned at exactly 900s and counted against the arm's
+            # L3-clean headline as if their lowering were wrong. A BOOLEAN list, never the reason text:
+            # the reason carries absolute paths and engine command lines, and nothing about the corpus
+            # needs to ride here for the distinction to be usable.
+            "tiers_abandoned": sorted(
+                t for t in tiers
+                if (tiers.get(t) or {}).get("status") == "fail"
+                and _abandoned_on_budget((tiers.get(t) or {}).get("reason"))),
             "tier_cycles": {t: (tiers.get(t) or {}).get("cycles") for t in tiers
                             if (tiers.get(t) or {}).get("cycles") is not None},
             # WHICH SIMULATOR ANSWERED EACH TIER. Redaction-safe: an engine name is a harness constant
@@ -254,6 +266,21 @@ def _per_capsule_from_results(runs_root: Path) -> dict[str, dict]:
             "emitted_cost": _emitted_cost(cr),
         }
     return out
+
+
+def _abandoned_on_budget(reason) -> bool:
+    """Did this tier run out of TIME rather than answer wrongly?
+
+    Substring membership over a small vocabulary, matching what the two producers actually write: a
+    subprocess timeout ("Command '[...]' timed out after 900 seconds") and the broker's own budget
+    wording. No regex -- this repo gates `import re` in library code, and a too-narrow pattern silently
+    reclassifies a real abandonment as a defect, which is the failure this whole field exists to fix.
+    """
+    if not isinstance(reason, str):
+        return False
+    low = reason.lower()
+    return any(marker in low for marker in
+               ("timed out", "time budget", "budget exhausted", "out of budget"))
 
 
 def _emitted_cost(capsule_result: Path) -> dict | None:

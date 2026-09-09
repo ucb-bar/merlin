@@ -90,14 +90,100 @@ def _completeness(run_id: str, audit: dict) -> dict | None:
             "first_failure_planes": bk.get("first_failure_planes"), "language": bk.get("language")}
 
 
+#: Which tier certifies. The existing evidence counters above read the same key.
+_CERT_TIER_KEY = "L3"
+#: Cert-tier statuses that mean "this tier did not run", as opposed to "it ran and did not pass".
+_CERT_NOT_RUN = ("pass", "skipped", "not_run", "unavailable", "", None)
+
+# A cert tier that RAN and hit its wall clock is not evidence of incorrectness -- it is evidence that
+# certifying THIS program was unaffordable at the budget offered. The two readings must not share a
+# bucket: measured on a 97-capsule gemmini batch, six abandoned certs (the six heaviest DRAM movers,
+# ~20k movement operations against a median of 10) turned an arm's 93 into an 87 in the headline, and a
+# lowering-COST problem was reported as six numeric defects.
+#
+# Detected STRUCTURALLY from the recorded reason text, never by regex (`check_no_regex.py` gates this
+# repo, and a too-narrow pattern silently mis-buckets a differently-spelled reason -- exactly the defect
+# this fix is about). Substring membership over a small vocabulary of budget-exhaustion phrasings: the
+# spelling that a subprocess timeout produces (`timed out after 900 seconds`), the broker's own
+# abandonment wording, and the redaction-safe forms -- a verdict's `failure_detail` has its digits
+# replaced by `#`, so anything anchored on the number would miss every one of them.
+_BUDGET_MARKERS = (
+    "timed out",          # subprocess.TimeoutExpired: "Command '[...]' timed out after 900 seconds"
+    "timeout",            # the adjectival/status spelling ("state": "timeout")
+    "time budget",        # the broker's own wording: "<sim> exceeded its time budget"
+    "wall clock",
+    "budget exhausted",
+    "out of budget",
+    "killed by",          # a supervisor-killed job is abandonment, not a wrong answer
+)
+
+
+def _budget_abandoned(text) -> bool:
+    """True when ``text`` records a cert that was ABANDONED on time/budget rather than answered wrongly.
+
+    Case-folded substring matching only -- ``str`` operations, no regex. An empty/absent reason is False:
+    an unexplained failure is NOT quietly reclassified as unaffordable, because that would move a real
+    defect out of the failure count, which is the more expensive mistake of the two.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return False          # SILENCE IS NOT EVIDENCE OF UNAFFORDABILITY -- see the docstring
+    low = text.lower()
+    return any(m in low for m in _BUDGET_MARKERS)
+
+
+def _cert_reason(c: dict) -> str:
+    """Every place a capsule record can carry WHY its cert tier did not pass, joined for inspection.
+
+    Two shapes exist on disk and both are read: the grader's tier record (``tiers.L3`` as a dict with a
+    ``reason``, as in ``capsule_result.json``) and the verdict's flattened per-capsule entry (``tiers``
+    as status strings plus ``failure_plane`` / ``failure_category`` / ``failure_detail``). Reading only
+    one of them is how this classification would go silent the next time the verdict shape changes.
+    """
+    parts = []
+    # The verdict's own ABANDONMENT LIST, when qa_check wrote one. This is the only shape that carries
+    # the distinction without the reason text (which holds absolute paths and engine command lines and
+    # is therefore not on the redacted verdict), so it is checked FIRST and is authoritative.
+    if _CERT_TIER_KEY in (c.get("tiers_abandoned") or []):
+        parts.append("tier abandoned on time budget")
+    tier = (c.get("tiers") or {}).get(_CERT_TIER_KEY)
+    if isinstance(tier, dict):
+        for k in ("reason", "detail", "error"):
+            v = tier.get(k)
+            if isinstance(v, str):
+                parts.append(v)
+    for k in ("failure_detail", "failure_reason", "failure_category"):
+        v = c.get(k)
+        if isinstance(v, str):
+            parts.append(v)
+    return " | ".join(parts)
+
+
+def _cert_status(c: dict) -> str:
+    """The cert tier's status, from either record shape (dict tier record or flat status string)."""
+    tier = (c.get("tiers") or {}).get(_CERT_TIER_KEY)
+    if isinstance(tier, dict):
+        tier = tier.get("status")
+    return tier if isinstance(tier, str) else ("" if tier is None else str(tier))
+
+
 def _l3_evidence(run_dir) -> dict:
-    """RTL-backed evidence for a run: how many capsules PASS **and** clear L3, and how many pass the
-    cheap gate while L3 rejects them.
+    """RTL-backed evidence for a run: how many capsules PASS **and** clear L3, how many pass the cheap
+    gate while L3 rejects them, and -- separately -- why each uncertified capsule is uncertified.
 
     Read from the newest verdict's ``per_capsule`` because that is the as-graded record; a capsule with
     ``status == pass`` and ``tiers.L3 != pass`` is an L2-only pass and must never be counted as evidence.
     Returns None values rather than zeros when no verdict exists, so "not measured" cannot read as
     "none found".
+
+    THREE buckets, not two. ``rtl_clean`` keeps exactly its previous meaning (and so does ``l2_only``),
+    and the capsules it excludes are now split by WHY:
+
+    * ``not_certified_budget`` -- the cert tier ran and was abandoned on its wall clock/budget. Not a
+      verdict on the program's correctness; a cost fact about certifying it.
+    * ``not_certified_failed`` -- the cert tier ran and rejected the program. A real L3 failure.
+
+    A caller printing ``rtl_clean`` therefore reports the same quantity it always did, with the
+    breakdown available beside it instead of the two causes being indistinguishable.
     """
     import json as _json
     from pathlib import Path as _Path
@@ -115,11 +201,19 @@ def _l3_evidence(run_dir) -> dict:
                  and (c.get("tiers") or {}).get("L3") == "pass"]
         l2only = [c for c in pc if c.get("status") == "pass"
                   and (c.get("tiers") or {}).get("L3") not in ("pass", None)]
+        # Every capsule whose cert tier RAN and did not pass, split by whether it was abandoned or
+        # rejected. Skipped/absent cert tiers are in neither: nothing ran, so there is nothing to
+        # attribute (they are already visible as gate_passed minus rtl_clean).
+        ran_not_passed = [c for c in pc if _cert_status(c) not in _CERT_NOT_RUN]
+        budget = [c for c in ran_not_passed if _budget_abandoned(_cert_reason(c))]
+        failed = [c for c in ran_not_passed if not _budget_abandoned(_cert_reason(c))]
         return {"rtl_clean": len(clean), "l2_only": len(l2only),
                 "gate_passed": j.get("n_passed"), "n_capsules": j.get("n_capsules"),
-                "l3_source": v.name}
+                "l3_source": v.name,
+                "not_certified_budget": len(budget), "not_certified_failed": len(failed)}
     return {"rtl_clean": None, "l2_only": None, "gate_passed": None,
-            "n_capsules": None, "l3_source": None}
+            "n_capsules": None, "l3_source": None,
+            "not_certified_budget": None, "not_certified_failed": None}
 
 
 def load_run(d: Path, audit: dict) -> dict | None:

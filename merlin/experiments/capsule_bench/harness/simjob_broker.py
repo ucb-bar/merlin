@@ -359,6 +359,100 @@ _LOOP_TIER = None      # resolved in main() from the target's ladder
 _CERT_TIER = None
 _COVER = None   # "grade on whatever tier this target's contract resolves to"
 
+# --- cert-tier time budget: DERIVED from the engine that will actually run --------------------------
+# A cert job's wall clock has to come from the cost law of the engine that serves the cert tier. It used
+# to come from `.oracle_timing.json::verilator_per_capsule_s` -- a VERILATOR measurement -- and the
+# elaborated-RTL launch below did not even use that: every non-verilator engine got a bare 900 s. Since
+# `rtl_engine_policy` ranks `gsim` above `verilator` on cost, and the two engines' laws are ~1000x apart
+# per cycle (measured on this repo's largest corpus: 0.00024 s/cycle over a 41 s floor from 135 samples,
+# against 0.229 s/cycle over a 55 s floor from 34), the mis-derivation was the NORMAL path, not an edge
+# case: the six heaviest DRAM movers in a 97-capsule batch were abandoned at exactly 900 s in every arm,
+# and an abandoned cert reads downstream like a numeric defect.
+#
+# Raising the number alone would be wrong -- that just lets a pathological program burn more budget --
+# so the budget is SIZED from the fit, with both margins stated:
+#   * cycles: predict at 2x the engine's measured maximum cycle count. Sizing past that is
+#     extrapolation, and 2x is the same ceiling `cert_cost.max_cycles_within` already honours.
+#   * seconds: x1.5, because the fit's own leave-one-out error is p90 31% / worst 51%, so a budget at
+#     the predicted value alone abandons capsules that were in fact affordable.
+_CERT_TIMEOUT_FLOOR_S = 900        # never size BELOW what the historical default allowed
+_CERT_TIMEOUT_FALLBACK_S = 1200    # no fit and no measurement on disk: the historical generous default
+_SCREEN_TIMEOUT_S = 900            # the functional screen / contract tier keeps its historical budget
+_CERT_CYCLE_CEILING = 2.0
+_CERT_FIT_MARGIN = 1.5
+
+
+def _rtl_engines() -> tuple[str, ...]:
+    """The elaborated-RTL engines in the policy's own cost order.
+
+    Fail CLOSED to the historical pair when the policy cannot be imported, for the same reason
+    `_allowed_sims` does: an error path must not invent an engine, and it must not silently drop the
+    engines that were always there.
+    """
+    try:
+        from merlin.targetgen.rtl_engine_policy import ENGINE_PRIORITY
+    except Exception:  # noqa: BLE001 -- no policy module: keep the historical ladder
+        return ("vcs", "verilator")
+    return tuple(ENGINE_PRIORITY)
+
+
+def _target_name() -> str:
+    """This run's target, from the harness's own descriptor resolution -- never a literal."""
+    try:
+        import _common as _C
+        return str(_C.TARGET or "")
+    except Exception:  # noqa: BLE001 -- an unreadable descriptor means "size from no history"
+        return ""
+
+
+def _cert_budget_s(target: str) -> "tuple[int | None, str]":
+    """``(seconds, why)`` for one capsule's cert tier, or ``(None, why)`` when nothing supports a number.
+
+    NO AVAILABILITY PROBE HAPPENS HERE. `rtl_engine_policy.select` is the authority on which engine
+    runs, but its probes locate/elaborate simulators and may raise, and this function is called by a
+    broker that holds sim slots and must never die. So the engine is resolved from the two facts already
+    on disk:
+
+      1. ``MERLIN_REQUIRED_RTL_ENGINE`` -- when the experiment PINS an engine that IS the engine, and it
+         is the same pin `_allowed_sims` already honours for the request surface.
+      2. otherwise, the first engine in the policy's order that this target has measured cert samples
+         for. An engine with no samples here has never certified this target, so it is not the engine to
+         size against.
+
+    `cert_cost` refuses rather than guessing, and that refusal is preserved: an unmeasured target
+    returns None and the caller keeps its historical default rather than inventing a cost law.
+    """
+    try:
+        from merlin.targetgen import cert_cost
+    except Exception as exc:  # noqa: BLE001
+        return None, f"cert_cost not importable ({type(exc).__name__}: {exc})"
+    pinned = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip()
+    try:
+        if pinned:
+            engine, why = pinned, "pinned by MERLIN_REQUIRED_RTL_ENGINE"
+            fit = cert_cost.fit_cycles_for(str(target), engine=engine)
+        else:
+            fits = cert_cost.fits_cycles_for(str(target))
+            engine = next((e for e in _rtl_engines() if e in fits), None)
+            why = ("first policy-order engine with measured cert samples" if engine
+                   else "no measured cert samples on any policy engine")
+            fit = fits.get(engine) if engine else None
+    except Exception as exc:  # noqa: BLE001 -- unreadable history is "no fit", never a broker crash
+        return None, f"cert cost history unreadable ({type(exc).__name__}: {exc})"
+    if fit is None:
+        return None, f"{why}: no cycle-cost fit for engine {engine!r} on target {target!r}"
+    cycles = int(fit.cycles_max * _CERT_CYCLE_CEILING)
+    try:
+        secs = cert_cost.predict_seconds_from_cycles(fit, cycles)
+    except Exception as exc:  # noqa: BLE001
+        return None, f"{engine} fit unusable ({type(exc).__name__}: {exc})"
+    if not secs or secs <= 0:
+        return None, f"{engine} fit predicted no positive cost for {cycles} cycles"
+    return int(_CERT_FIT_MARGIN * float(secs)), (
+        f"{engine} ({why}): {fit.intercept_s:.1f}s + {fit.per_cycle_s:.6f}s/cycle x {cycles} cycles "
+        f"(={_CERT_CYCLE_CEILING:g}x the measured max, n={fit.n_samples}, r2={fit.r2:.2f}) "
+        f"x {_CERT_FIT_MARGIN:g} margin")
+
 
 def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
     """Launch one asynchronous simulator check without inheriting the campaign terminal.
@@ -378,13 +472,52 @@ def _spawn_selfcheck(argv, *, cwd, env, job_log, timeout_s):
     )
 
 
+def _per_capsule_timeout(requested: int) -> "tuple[int, str]":
+    """``(seconds, why)``: the per-capsule elaborated-RTL budget this broker will use.
+
+    Order, and each step's reason for existing:
+
+    1. an explicit ``--per-capsule-timeout`` -- an operator overrides derivation, always.
+    2. the cost law of the engine that will actually run (:func:`_cert_budget_s`), FLOORED at
+       :data:`_CERT_TIMEOUT_FLOOR_S` so a cheap fit can never shorten the budget below what the old
+       default already allowed. Derivation is allowed to raise the budget, never to lower it.
+    3. the recorded verilator measurement, i.e. exactly what this used to do -- kept so a target with
+       no cert history behaves as it did rather than losing its budget to the new code path.
+    4. the historical constant, when even that measurement is absent.
+    """
+    if requested and int(requested) > 0:
+        return int(requested), "requested on the command line (--per-capsule-timeout)"
+    derived, why = _cert_budget_s(_target_name())
+    if derived:
+        return max(_CERT_TIMEOUT_FLOOR_S, int(derived)), f"derived from {why}"
+    tf = HERE / ".oracle_timing.json"
+    try:
+        measured = int(2 * json.loads(tf.read_text())["verilator_per_capsule_s"])
+    except Exception:  # noqa: BLE001 -- no measurement either: the historical constant
+        return _CERT_TIMEOUT_FALLBACK_S, f"no engine cost law and no recorded measurement ({why})"
+    return max(_CERT_TIMEOUT_FLOOR_S, measured), (
+        f"no engine cost law ({why}); fell back to the recorded verilator measurement")
+
+
+def _job_timeout_s(sim: str, ncaps: int, vpc: int) -> int:
+    """Wall clock for ONE sim job: the derived per-capsule budget for every elaborated-RTL engine.
+
+    This read ``(vpc * ncaps) if sim == "verilator" else 900``, so the engine `rtl_engine_policy`
+    actually prefers was handed a flat 900 s no matter how large the request or how expensive the
+    engine -- the literal "timed out after 900 seconds" that abandoned the heaviest capsules. The
+    functional screen and the contract sentinel are not elaborated RTL and keep their own budget.
+    """
+    return (max(1, int(vpc)) * max(1, int(ncaps))) if sim in _rtl_engines() else _SCREEN_TIMEOUT_S
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--ws", required=True)
     ap.add_argument("--max-jobs", type=int, default=4)
     ap.add_argument("--veril-slots", type=int, default=2)
     ap.add_argument("--poll", type=float, default=0.5)
-    ap.add_argument("--per-capsule-timeout", type=int, default=0, help="0=read .oracle_timing.json or default")
+    ap.add_argument("--per-capsule-timeout", type=int, default=0,
+                    help="0=derive from the cert engine's own measured cost law")
     a = ap.parse_args(argv)
     ws = Path(a.ws); ch = ws / ".qa_channel"; ch.mkdir(parents=True, exist_ok=True)
 
@@ -398,14 +531,8 @@ def main(argv=None):
     print(f"[promote] loop={_LOOP_TIER} cert={_CERT_TIER} "
           f"cover={len(_COVER) if _COVER is not None else 'all'}", file=sys.stderr, flush=True)
 
-    # verilator per-capsule timeout: measured (Part 3) or a generous default
-    vpc = a.per_capsule_timeout
-    if vpc <= 0:
-        tf = HERE / ".oracle_timing.json"
-        try:
-            vpc = max(900, int(2 * json.loads(tf.read_text())["verilator_per_capsule_s"]))
-        except Exception:
-            vpc = 1200
+    vpc, _budget_why = _per_capsule_timeout(a.per_capsule_timeout)
+    print(f"[budget] per-capsule cert timeout {vpc}s: {_budget_why}", file=sys.stderr, flush=True)
 
     running: dict[str, dict] = {}          # jid -> {proc, slot, resp_tmp, sim}
     # One broker is created per round, but the channel and its queue survive across rounds.  Starting
@@ -534,7 +661,7 @@ def main(argv=None):
                 workers = max(1, min(int(r.get("workers", 1)), 2 if sim == "verilator" else 8))
                 capspec = "all" if caps == ["all"] else ",".join(caps)
                 ncaps = len(_valid_capsules("all") or []) if caps == ["all"] else len(caps)
-                to = (vpc * ncaps) if sim == "verilator" else 900
+                to = _job_timeout_s(sim, ncaps, vpc)
                 resp_tmp = ch / f"simtmp_{jid}.json"
                 argv2 = [PY, str(SELFCHECK), "--submission", str(submission),
                          "--capsules", capspec, "--workers", str(workers),
