@@ -298,7 +298,7 @@ workload_spec:
   # derivation entirely, so the corpus is never built from what it is then said to generalize to.
   # `smolvla` and `lstmnetvit` left this list when they became derivation sources below; counting a
   # model you derived FROM as a model you generalize TO is the circularity the holdout exists to stop.
-  models: [resnet50, tiny_llama]
+  models: [resnet50, tiny_llama, smolvla]
   # THE DERIVATION APPLICATIONS — the exported models this target is FOR, whose real contraction shapes
   # the corpus is built from. Named as bundles in the recapture store rather than as a directory, so the
   # statement is reviewable here instead of depending on which subdirectories a generated tree happens
