@@ -166,3 +166,41 @@ def test_the_whole_record_carries_reference_structure_and_caveats() -> None:
     assert record["structural"]["matches"] is True
     assert record["cycles"]["cycles_above_reference"] == 0
     assert record["caveats"] == ["the anchor is a whole-window average"]
+
+
+# --------------------------------------------------------------------------------------------
+# The shipped ledger must name capsules that EXIST, and external claims must never be targets.
+# A reference whose `capsules:` entry names a capsule that does not exist is invisible to the
+# loop: `find_reference_for_capsule` returns None and the objective reads as "no measured
+# reference" despite a measured number. That happened -- the smolVLA entry named
+# `SY_model_smolvla_flow_denoise` while the capsule is `M4_smolvla_denoise_gemmini`.
+# --------------------------------------------------------------------------------------------
+
+def _capsule_dirs() -> set[str]:
+    root = merlin_dir() / "contract" / "capsules"
+    return {p.name for p in root.rglob("*") if p.is_dir() and (p / "capsule.yaml").exists()}
+
+
+def test_every_ledger_capsule_names_an_existing_capsule() -> None:
+    references = load_references()
+    existing = _capsule_dirs()
+    assert existing, "no capsules found under merlin/contract/capsules"
+    missing = {name: [c for c in (entry.get("capsules") or ()) if c not in existing]
+               for name, entry in references.items()}
+    missing = {k: v for k, v in missing.items() if v}
+    assert not missing, f"ledger names capsules that do not exist: {missing}"
+
+
+def test_external_claims_are_recorded_but_never_selected_as_the_target() -> None:
+    references = load_references()
+    claims = {n for n, e in references.items() if e.get("status") == "external_claim"}
+    assert claims, "the ledger should carry the AutoComp figure as an external claim"
+    for model in {references[n]["model"] for n in claims}:
+        for design in {references[n]["design"] for n in claims if references[n]["model"] == model}:
+            name, _ = find_reference(model, design, references=references)
+            assert name not in claims, f"an external claim was selected as the target: {name}"
+    # and by capsule, too
+    for n in claims:
+        for capsule in references[n].get("capsules") or ():
+            found = find_reference_for_capsule(capsule, references=references)
+            assert found is None or found[0] not in claims

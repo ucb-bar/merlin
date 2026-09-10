@@ -97,7 +97,36 @@ references:
     design: FireSimGemminiRocketConfig
     status: achieved
     how: The only other whole model with a gated whole-model cycle count on this design.
-    capsules:
-      - SY_model_smolvla_flow_denoise
+    # No `capsules:` mapping yet, deliberately. `M4_smolvla_denoise_gemmini` exists but is a
+    # REDUCED denoise slice ("not the 1.2 GB capture", its README), while this number is the FULL
+    # model (235 tasks, 24,275,118,627 host operations). Mapping a slice to a whole-model cycle
+    # count would score its op counts against the wrong denominator. Map it when a whole-model
+    # smolVLA capsule exists, generated from the recapture the way SY_model_resnet50 was.
     measured:
       whole_model_cycles: 33085199302
+
+  # ------------------------------------------------------------------------------------------
+  # EXTERNAL CLAIMS. Numbers we did not measure. Never a `status: achieved` reference -- the
+  # lookups only select achieved entries -- but recorded so the distance to them is visible
+  # to a reader and can be shown beside our own measurements. Cite the source; do not round
+  # up a report into a fact.
+  # ------------------------------------------------------------------------------------------
+  autocomp_resnet50_external_claim:
+    model: resnet50
+    precision: w8a8
+    design: FireSimGemminiRocketConfig
+    status: external_claim
+    how: >-
+      Reported by the project lead on 2026-09-09 as "about 30,000,000 cycles" for AutoComp on
+      this Gemmini configuration. Not measured by this project; the exact design, input, and
+      warm/cold protocol are unverified. Kept as the bar to beat, labelled as a claim.
+    provenance:
+      source: verbal report, 2026-09-09
+    measured:
+      whole_model_cycles: 30000000
+    context:
+      arithmetic_roofline_cycles: 15976562
+      note: >-
+        4.09e9 MACs / 256 MACs per cycle. The claim is 1.9x the roofline, i.e. ~53% of peak --
+        an ordinary well-scheduled result, not an exotic one. Our best achieved is 1.2% of peak.
+
