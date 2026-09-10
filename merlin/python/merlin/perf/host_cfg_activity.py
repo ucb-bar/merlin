@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from math import prod
+from collections.abc import Mapping
 from typing import Any
 
 from xdsl.dialects.builtin import IntegerType, VectorType
@@ -158,6 +159,45 @@ def _constant_loop(header, latch, nodes, predecessors, positions):
             "induction_argument_index": induction_index,
             "other_carried_values": len(header.args) - 1,
             "predicate": predicate}, nodes
+
+
+#: How many distinct block signatures the record keeps, ranked by dynamic operations.
+BLOCK_SIGNATURE_LIMIT = 12
+
+
+def _block_signatures(blocks: Any, index: Mapping[Any, int], multiplicity: Mapping[Any, Any],
+                      *, limit: int = BLOCK_SIGNATURE_LIMIT) -> list[dict[str, Any]]:
+    """Blocks grouped by their operation-name sequence, ranked by dynamic operations.
+
+    Two blocks with the same sequence are the same emitter shape instantiated twice, so the
+    grouping attributes cost to the CODE that emitted it rather than to a source region. Each row
+    carries the sequence itself (`llvm.` prefix dropped), the number of blocks sharing it, their
+    summed trip count, and the dynamic operation split by family -- enough for a reader to see the
+    per-element instruction cost of one emitter shape and name the primitive behind it.
+    """
+    groups: dict[str, dict[str, Any]] = {}
+    for block in blocks:
+        names = tuple(operation.name for operation in block.ops)
+        key = " ".join(name[5:] if name.startswith("llvm.") else name for name in names)
+        count = multiplicity.get(block)
+        group = groups.setdefault(key, {"signature": key, "blocks": 0, "trips": 0,
+                                        "operations_per_trip": len(names),
+                                        "dynamic_operations": {}, "example_block": index[block]})
+        group["blocks"] += 1
+        if isinstance(count, int):
+            group["trips"] += count
+            families = group["dynamic_operations"]
+            for name in names:
+                family = _category(name)
+                families[family] = families.get(family, 0) + count
+    ranked = sorted(groups.values(),
+                    key=lambda row: -sum(row["dynamic_operations"].values()))
+    out = []
+    for row in ranked[:limit]:
+        total = sum(row["dynamic_operations"].values())
+        out.append({**row, "dynamic_total": total,
+                    "dynamic_operations": dict(sorted(row["dynamic_operations"].items()))})
+    return out
 
 
 def analyze_host_cfg_activity(function: Any, *,
@@ -326,6 +366,12 @@ def analyze_host_cfg_activity(function: Any, *,
         "problems": sorted(set(problems)), "loop_count": len(loops),
         "loops": [row for row, _ in loops],
         "blocks": [{"block": index[b], "execution_count": multiplicity[b]} for b in blocks],
+        # The per-block OP SEQUENCE, not only its count. A family total says "67% integer
+        # arithmetic"; it cannot say that 29M of those are `fsub ashr and and xor or` -- a float
+        # max emulated from bit patterns -- or that 701M are a mixed-radix `udiv urem` peel inside
+        # an im2col row loop. Three separate levers hid under one family bucket until the
+        # sequences were read; an authoring loop given only the bucket cannot name any of them.
+        "block_signatures": _block_signatures(blocks, index, multiplicity),
         "static_operations": dict(static), "dynamic_operations": dict(dynamic) if not problems else None,
         "load_payload_bytes": sum(row["load_payload_bytes"] for row in tasks.values()) if payload_known else None,
         "store_payload_bytes": sum(row["store_payload_bytes"] for row in tasks.values()) if payload_known else None,

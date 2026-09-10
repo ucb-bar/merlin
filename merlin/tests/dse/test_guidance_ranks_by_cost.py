@@ -133,3 +133,33 @@ def test_a_declined_lowering_still_outranks_the_biggest_hotspot() -> None:
                                      "declined": {"op": "conv2d", "reason": "over budget"}}
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     assert brief["ranked_actions"][0]["kind"] == "whole_model_lowering_declined"
+
+
+# --------------------------------------------------------------------------------------------
+# Block signatures: the emitter SHAPE behind a cost, not only its family. Three levers worth
+# 10-45% of the host lane each hid under one `integer_arithmetic` bucket until the operation
+# sequences were read; the guidance must carry them so an author can name the primitive.
+# --------------------------------------------------------------------------------------------
+
+def test_dominant_block_signatures_are_ranked_and_carry_their_share() -> None:
+    analysis = _analysis([_task(0, integer=100)])
+    host = analysis["verified_global_plan_emission"]["host_activity"]
+    host["dynamic_operations"] = {"integer_arithmetic": 1000, "floating_arithmetic": 0}
+    host["block_signatures"] = [
+        {"signature": "fsub ashr and and xor or", "blocks": 50, "trips": 100, "operations_per_trip": 6,
+         "dynamic_total": 600, "dynamic_operations": {"integer_arithmetic": 500, "floating_arithmetic": 100}},
+        {"signature": "udiv urem mul add", "blocks": 2, "trips": 100, "operations_per_trip": 4,
+         "dynamic_total": 400, "dynamic_operations": {"integer_arithmetic": 400}},
+    ]
+    brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
+    hot = next(r for r in brief["ranked_actions"] if r["kind"] == "host_memory_hotspot")
+    sigs = hot["evidence"]["dominant_block_signatures"]
+    assert [s["signature"] for s in sigs] == ["fsub ashr and and xor or", "udiv urem mul add"]
+    assert sigs[0]["share_of_host_dynamic_operations"] == 0.6
+    assert sigs[1]["share_of_host_dynamic_operations"] == 0.4
+
+
+def test_block_signatures_absent_yields_an_empty_list_not_a_crash() -> None:
+    brief = _brief([_task(0, integer=100)])
+    hot = next(r for r in brief["ranked_actions"] if r["kind"] == "host_memory_hotspot")
+    assert hot["evidence"]["dominant_block_signatures"] == []

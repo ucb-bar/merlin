@@ -724,6 +724,36 @@ def _host_tasks_by_cost(host_activity: Mapping[str, Any], *, limit: int = 5) -> 
     return [row for _, row in rows[:limit]]
 
 
+def _dominant_signatures(host_activity: Mapping[str, Any], *, limit: int = 6) -> list[dict[str, Any]]:
+    """The top emitter shapes by dynamic operations, each with its share of the host lane.
+
+    A signature is a block's operation-name sequence; blocks sharing one are the same emitter
+    code instantiated at several sites. The share is against the WHOLE host lane so a reader can
+    tell a shape worth 37% from one worth 0.3% without a second lookup.
+    """
+    rows = host_activity.get("block_signatures")
+    families = host_activity.get("dynamic_operations")
+    if not isinstance(rows, list) or not isinstance(families, Mapping):
+        return []
+    whole = sum(v for v in families.values() if isinstance(v, int) and not isinstance(v, bool))
+    out = []
+    for row in rows[:limit]:
+        if not isinstance(row, Mapping):
+            continue
+        total = row.get("dynamic_total")
+        out.append({
+            "signature": row.get("signature"),
+            "blocks": row.get("blocks"),
+            "trips": row.get("trips"),
+            "operations_per_trip": row.get("operations_per_trip"),
+            "dynamic_total": total,
+            "share_of_host_dynamic_operations": (round(total / whole, 6)
+                                                 if whole and isinstance(total, int) else None),
+            "dynamic_operations": row.get("dynamic_operations"),
+        })
+    return out
+
+
 def _host_hotspot_share(host_activity: Mapping[str, Any]) -> float | None:
     """Share of the host lane held by its single largest task, or ``None`` when unmeasurable."""
     ranked = _host_tasks_by_cost(host_activity, limit=1)
@@ -853,7 +883,15 @@ def guidance_for_emission_analysis(
                       "store_payload_bytes": host_activity.get("store_payload_bytes"),
                       "scope": "pre-optimization LLVM scalar payload, not DRAM or CPU cycles; "
                                "static allocation payload is not stack-frame size or live-memory peak",
-                      "cost_ranked_tasks": _host_tasks_by_cost(host_activity)},
+                      "cost_ranked_tasks": _host_tasks_by_cost(host_activity),
+                      # The emitter shapes that dominate, as OPERATION SEQUENCES. This is the
+                      # instrument that turned "67% integer arithmetic" into three named
+                      # primitives -- a float max emulated as `fsub ashr and and xor or`, a
+                      # round-to-even emulated as ten integer ops, an im2col row loop peeling
+                      # coordinates with `udiv urem` -- each of which became a lever worth
+                      # 10-45% of the host lane. Without the sequence an author is told a
+                      # family and a task and must guess the primitive.
+                      "dominant_block_signatures": _dominant_signatures(host_activity)},
             # Class 0, alongside the regressions, and carrying a MEASURED share so it orders ahead
             # of them: this is the only finding in the brief that says how much of the dominant
             # lane it accounts for, and the host lane is >=93% of the measured window on the one
