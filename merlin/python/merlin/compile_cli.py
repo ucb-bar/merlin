@@ -2531,6 +2531,21 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
     rr = runs_root(target, "compile")
 
     # compile-only: build the OOT package (board-free, needs the OOT/clang toolchain).
+    # VALIDATE THE WORKLOAD BEFORE ANYTHING REPORTS SUCCESS. This check used to live below the
+    # `run == "none"` early return, so a compile-only invocation never read `workload` at all: it
+    # built the BACKEND PACKAGE, wrote `status: compiled`, and returned. MEASURED 2026-09-10:
+    # `--workload definitely_not_a_real_workload_xyz --target gemmini --run none` reported
+    # `compiled`, and so did `--workload tiny_llama`, which is a whole MODEL and never was a capsule
+    # (see this function's own docstring). A caller reading that status believed a model had been
+    # compiled for gemmini when nothing of the kind had happened.
+    cap_dir = corpus / workload
+    if not cap_dir.is_dir():
+        out["status"] = "not_run"
+        out["reason"] = (f"no capsule {workload!r} under {corpus} (use a capsule name). This target "
+                         f"compiles CAPSULES, not whole models -- a whole-model bundle is built "
+                         f"through the bundle-pack path, not here.")
+        return out
+
     pkg = oot_runner.load_package(pkg_dir)
     oot_runner.build_package(pkg, timeout=timeout)
     out["status"] = "compiled"
@@ -2538,10 +2553,6 @@ def compile_oot(workload: str, *, target: str, run: str, verify: bool, package: 
         return out
 
     sim = "spike" if run in ("spike", "k1", "run") else run  # gemmini runs on sim, not the K1 SoC
-    cap_dir = corpus / workload
-    if not cap_dir.is_dir():
-        out["status"] = "not_run"; out["reason"] = f"no capsule {workload} under {corpus} (use a capsule name)"
-        return out
     iface = cap_dir / "capsule.interface.mlir"
     res = oot_runner.certify(pkg_dir, iface, runs_root=str(rr), run_id=f"{workload}_{sim}",
                              simulator=sim, timeout=timeout)
