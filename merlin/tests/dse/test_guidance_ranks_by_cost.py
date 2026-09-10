@@ -188,3 +188,28 @@ def test_full_instruction_utilization_raises_no_finding() -> None:
                                               "used": {}, "unused": [], "undeclared_emitted": []}
     brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
     assert not any(r["kind"] == "declared_capability_unused" for r in brief["ranked_actions"])
+
+
+def test_a_refused_capability_becomes_a_finding_naming_the_clause() -> None:
+    """"You never emit this" is weaker than "you were refused, and here is the clause"."""
+    analysis = _analysis([_task(0, integer=100)])
+    analysis["capability_refusals"] = [{
+        "capability": "device_sequencer", "sites_total": 53, "sites_refused": 53,
+        "clauses": [{"clause": "narrow_store_only", "sites": 53,
+                     "example_detail": {"output_dtype": "i32"}}],
+        "first_refusal_only": True,
+        "caveat": "counts are of first refusals; removing the top clause reveals the next",
+    }]
+    brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
+    found = next(r for r in brief["ranked_actions"] if r["kind"] == "declared_capability_refused")
+    assert found["evidence"]["clauses"][0]["clause"] == "narrow_store_only"
+    assert found["evidence"]["first_refusal_only"] is True
+    assert found["magnitude_share"] == 1.0
+
+
+def test_no_refusals_raises_no_refusal_finding() -> None:
+    analysis = _analysis([_task(0, integer=100)])
+    analysis["capability_refusals"] = [{"capability": "c", "sites_total": 3, "sites_refused": 0,
+                                        "clauses": []}]
+    brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
+    assert not any(r["kind"] == "declared_capability_refused" for r in brief["ranked_actions"])

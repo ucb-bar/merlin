@@ -885,6 +885,32 @@ def guidance_for_emission_analysis(
                              and isinstance(used, int) else None),
             magnitude_basis="fraction of the target's declared instructions never emitted")
 
+    # WHY a declared capability is absent, not merely THAT it is. The compiler's own selector
+    # names the deciding clause for every refused site and callers routinely discard it
+    # (`eligible, _reason = select(...)`), which is the only machine-readable statement of what
+    # would have to change. Ranked above the unused-capability finding because it is strictly more
+    # actionable: one says "you never emit this", the other says "you were refused, here is the
+    # clause". The cascade caveat travels with it -- clearing the top clause reveals the next.
+    refusals = analysis.get("capability_refusals")
+    if isinstance(refusals, Sequence) and not isinstance(refusals, (str, bytes)):
+        for entry in refusals:
+            if not isinstance(entry, Mapping) or not entry.get("clauses"):
+                continue
+            refused = entry.get("sites_refused") or 0
+            total = entry.get("sites_total") or 0
+            add("declared_capability_refused",
+                "the compiler's own selector refused a capability the target declares, and named "
+                "the deciding clause; each clause is a stated precondition to change",
+                ("placement", "issue", "movement", "latency_hiding", "tiling"),
+                evidence={"capability": entry.get("capability"),
+                          "sites_refused": refused, "sites_total": total,
+                          "clauses": entry.get("clauses"),
+                          "first_refusal_only": entry.get("first_refusal_only"),
+                          "caveat": entry.get("caveat")},
+                priority=0,
+                magnitude_share=(round(refused / total, 6) if total else None),
+                magnitude_basis="fraction of candidate sites refused this capability")
+
     verified_plan = analysis.get("verified_global_plan_emission")
     verified_plan = verified_plan if isinstance(verified_plan, Mapping) else {}
     host_activity = verified_plan.get("host_activity")
