@@ -198,7 +198,7 @@ grading:
   # `.cohort_admission.json`'s `admitted_name_set_sha256`, recomputed at materialization; read that, not
   # these integers, when the question is whether the cohort is the SAME cohort.
   expected_cohort:
-    source_capsules: 113
+    source_capsules: 115
     admitted_capsules: 97
   hidden_capability_admission:
     source_capsules: 15
@@ -232,6 +232,15 @@ grading:
       - M1_lstmnetvit_gemmini
       - SY_model_resnet50
       - SY_model_tiny_llama
+      # Added 2026-09-10 with source_capsules 113 -> 115. `SY_model_smolvla` and
+      # `M4_smolvla_denoise_gemmini` were committed to the shared corpus while runs were in
+      # flight, and every run on THIS descriptor then failed closed with `source cohort drift:
+      # descriptor expects 113, discovered 115`. They are whole-model rows, so they belong in
+      # the same resource exclusion as the four above rather than in the graded set. Verified
+      # on a scratch copy before applying: admitted_capsules stays 97, so the denominator every
+      # run on this descriptor is compared on does NOT move.
+      - SY_model_smolvla
+      - M4_smolvla_denoise_gemmini
     required_admitted_models:
       - M2_microvit_gemmini
       - M3_host_island_seam_gemmini

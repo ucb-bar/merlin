@@ -38,7 +38,13 @@ grading:
     # denominator the four arms are compared on is unchanged. The upstream `gemmini` descriptor
     # still declares 113 and is NOT touched: bumping it there would move `admitted_capsules`
     # 97 -> 98 and silently change the denominator for every other run on that descriptor.
-    source_capsules: 114
+    #
+    # Reconciled 114 -> 115 on 2026-09-10, same cause and same reasoning: `SY_model_smolvla` and
+    # `M4_smolvla_denoise_gemmini` were committed to the shared corpus while arm-3 was starting,
+    # and arm-3 then spent 2h35m retrying a grade that could never pass. Verified before bumping
+    # that NEITHER name appears in the 97-entry include_capsules allowlist below, so the graded
+    # set and the denominator the four arms are compared on are unchanged.
+    source_capsules: 115
     admitted_capsules: 97
   hidden_capability_admission:
     source_capsules: 15
