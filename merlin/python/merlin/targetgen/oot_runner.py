@@ -141,6 +141,13 @@ class InfraCategory(str, Enum):
     #: The staged capsule cohort is not on disk: never materialized, or collected mid-grade.
     COHORT_NOT_MATERIALIZED = "cohort_not_materialized"
 
+    #: The device readback was REFUSED on structural grounds before any value was compared --
+    #: a whole residue class of words came back exactly zero while the rest carried data, which
+    #: is a transport defect and not an arithmetic result (see
+    #: :mod:`merlin.common.readback_integrity`). The kernel may be perfectly correct; nothing
+    #: about it was measured, because the bytes that came back are not its output.
+    READBACK_TRANSPORT_REFUSED = "readback_transport_refused"
+
     def __str__(self) -> str:
         # The three recorders in this repo serialize a category differently -- `cf.category.value`
         # (oot_runner), `str(cf.category)` (capsule_grade) and a `hasattr(..., "value")` probe

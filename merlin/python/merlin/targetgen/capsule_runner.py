@@ -55,8 +55,9 @@ from .contract import schemas
 from .capsule_common import (NOT_MEASURED_STATUSES, _cat, _flat,  # noqa: F401
                              discover_capsules, load_capsule,
                              make_run_paths, run_entrypoints)
-from .oot_runner import (BackendDeclined, CertFailure, InfraFailure, Package, build_package,
-                         integrity_scan, load_package, run_entrypoint)
+from .oot_runner import (INFRASTRUCTURE_PLANE, BackendDeclined, CertFailure, InfraCategory,
+                         InfraFailure, Package, build_package, integrity_scan, load_package,
+                         run_entrypoint)
 
 SUITE = "gemmini-capsule-bench"
 CONTRACT_VERSION = "0.1"
@@ -364,6 +365,37 @@ def _clip(msg: str, budget: int) -> str:
     head = budget * 2 // 3                                   # bias to the head: that is the diagnosis
     tail = budget - head - 5
     return f"{msg[:head]} […] {msg[-tail:]}" if tail > 0 else msg[:budget]
+
+
+def _readback_refusal(exc: BaseException) -> BaseException | None:
+    """The ``ReadbackIntegrityError`` in ``exc``'s cause/context chain, if any.
+
+    The refusal is raised deep in a target's oracle and re-wrapped on the way out (the muon oracle
+    raises ``MuonError(str(exc)) from exc``; ``oot_runner`` wraps again). Only the TYPE survives that
+    intact, so the chain is walked structurally -- matching the message would break the first time
+    the wording changed, which is exactly the class of defect this whole path exists to stop.
+    """
+    try:
+        from merlin.common.readback_integrity import ReadbackIntegrityError
+    except ImportError:  # pragma: no cover - module always present in this tree
+        return None
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, ReadbackIntegrityError):
+            return cur
+        cur = cur.__cause__ or cur.__context__
+    return None
+
+
+def _is_readback_refusal(exc: BaseException) -> bool:
+    return _readback_refusal(exc) is not None
+
+
+def _readback_refusal_detail(exc: BaseException) -> str:
+    found = _readback_refusal(exc)
+    return str(found) if found is not None else str(exc)
 
 
 def _range_check_bounds(msg: str):
@@ -4394,6 +4426,34 @@ def run_capsule(capsule: dict, package_dir: str | Path, *, runs_root: str | Path
                                          concurrency=concurrency_stamp(workers))
                 continue
             except Exception as e:  # adapter raised — classify: a non-terminating program is the AGENT's
+                # FIFTH CASE, and the only one that runs the OTHER way. The four below all rescue a
+                # verdict that WAS the agent's from an infra-shaped label. This one rescues the agent
+                # from a verdict that was never measured: `readback_integrity` refuses a buffer whose
+                # every Nth word came back exactly zero while the rest carried data -- a transport
+                # defect, not an arithmetic result -- BEFORE any value is compared. The kernel may be
+                # perfectly correct. Recorded as `fail` it reads as a numeric defect the agent must
+                # chase, and MEASURED 2026-09-09 it cost radiance three capsules that had already
+                # passed L2 with zero mismatches, all three landing as `tool_crash` / plane
+                # `verilator` -- naming a simulator that had not crashed.
+                # Detected by walking the exception chain for the refusal type, never by matching its
+                # message: the adapters re-wrap it (`raise MuonError(str(exc)) from exc`, then
+                # `raise ... from e` again), so the TYPE is what survives, not the spelling.
+                if _is_readback_refusal(e):
+                    _detail = _readback_refusal_detail(e)
+                    tiers[tier] = TierResult(
+                        tier, "unavailable", mand,
+                        reason=(f"readback refused before comparison: {_clip(_detail, 300)}"),
+                        derived_from_rtl=tier in cfg.rtl_tiers,
+                        timing=_failed_adapter_timing(),
+                        concurrency=concurrency_stamp(workers))
+                    if mand:
+                        raise InfraFailure(
+                            INFRASTRUCTURE_PLANE, InfraCategory.READBACK_TRANSPORT_REFUSED,
+                            f"the device readback was refused on structural grounds before any value "
+                            f"was compared, so NOTHING about this kernel was measured: {_detail} "
+                            f"This is a transport/harness fault, NOT a defect in the graded "
+                            f"submission -- the kernel may be correct.") from e
+                    continue
                 # bug (it ran to the cycle cap), a TIMEOUT fail, NOT a tool_crash. Mislabeling it
                 # 'tool_crash' read as an infra problem the agent couldn't fix — so it never emitted the
                 # ISA's halt instruction and every round failed identically (the atlas flat-0/11 wall).

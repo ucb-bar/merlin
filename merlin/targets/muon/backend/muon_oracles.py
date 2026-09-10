@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from merlin.common import readback_integrity
+
 from . import muon
 
 
@@ -223,6 +225,22 @@ def _cyclotron_host_dump_plan(
     return (address, byte_length, dump_path), manifest
 
 
+def _refuse_structurally_broken_readback(raw: bytes, *, transport: str) -> None:
+    """Refuse a readback whose STRUCTURE disqualifies it, before any value is compared.
+
+    A tolerance-based comparison cannot see this defect: the tolerance is scaled to the
+    golden's magnitude, so a buffer with a whole residue class of words zeroed passes
+    wherever the golden happens to be small.  Measured on one 7232-element capsule, 5172
+    zeroed elements produced only 988 reported mismatches -- the other 4184 were ACCEPTED,
+    which is a MANDATORY-tier certification of a buffer half of which was never read back.
+    The tier is refused here with a named diagnostic instead.
+    """
+    try:
+        readback_integrity.require_intact(raw, transport=transport)
+    except readback_integrity.ReadbackIntegrityError as exc:
+        raise muon.MuonError(str(exc)) from exc
+
+
 def _cyclotron_host_dump_outputs(
     console: str, dump_path: Path, manifest: dict[str, Any],
 ) -> dict[str, list]:
@@ -241,6 +259,7 @@ def _cyclotron_host_dump_outputs(
         raise muon.MuonUnavailable(
             "Cyclotron evaluator-owned output dump has the wrong size: "
             f"expected {expected_bytes} bytes, got {len(raw)}")
+    _refuse_structurally_broken_readback(raw, transport="cyclotron_host_gmem_dump")
     elements = int(spec["elements"])
     fmt = "f" if spec["dtype"] == "f32" else "i"
     values = list(struct.unpack(f"<{elements}{fmt}", raw))
@@ -341,6 +360,7 @@ def _gsim_host_dump_outputs(
         raise muon.MuonUnavailable(
             "GSIM evaluator-owned output dump has the wrong size: "
             f"expected {expected_bytes} bytes, got {len(raw)}")
+    _refuse_structurally_broken_readback(raw, transport="gsim_evaluator_owned_gmem_dump")
     elements = int(spec["elements"])
     fmt = "f" if spec["dtype"] == "f32" else "i"
     values = list(struct.unpack(f"<{elements}{fmt}", raw))
