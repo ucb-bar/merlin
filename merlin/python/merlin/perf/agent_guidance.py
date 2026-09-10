@@ -860,6 +860,31 @@ def guidance_for_emission_analysis(
                       "double_buffer_eligible_regime": memory_regime.get(
                           "double_buffer_eligible_regime")}, priority=1)
 
+    # A capability the hardware declares and the program never reaches for. This is the finding
+    # that names a STRUCTURAL lever rather than a cheaper spelling of the current one: measured on
+    # a whole-model emission, 8 of 25 declared functs were used, and the 17 unused included the
+    # entire device-side convolution sequencer -- so every convolution's patch generation ran as
+    # host scalar code. No other signal in this brief could have said that: the command buffer was
+    # well formed, the gate passed, and the counters looked busy.
+    utilization = analysis.get("isa_capability_utilization")
+    if isinstance(utilization, Mapping) and utilization.get("unused"):
+        declared = utilization.get("declared_count")
+        used = utilization.get("used_count")
+        add("declared_capability_unused",
+            "the target declares instructions this program never emits; each is a capability the "
+            "compiler does not reach for, and the largest structural levers hide there",
+            ("placement", "issue", "movement", "latency_hiding", "tiling"),
+            evidence={"declared_count": declared, "used_count": used,
+                      "used": utilization.get("used"),
+                      "unused": utilization.get("unused"),
+                      "undeclared_emitted": utilization.get("undeclared_emitted"),
+                      "licence": utilization.get("licence")},
+            priority=0,
+            magnitude_share=(round(1.0 - used / declared, 6)
+                             if isinstance(declared, int) and declared
+                             and isinstance(used, int) else None),
+            magnitude_basis="fraction of the target's declared instructions never emitted")
+
     verified_plan = analysis.get("verified_global_plan_emission")
     verified_plan = verified_plan if isinstance(verified_plan, Mapping) else {}
     host_activity = verified_plan.get("host_activity")

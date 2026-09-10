@@ -163,3 +163,28 @@ def test_block_signatures_absent_yields_an_empty_list_not_a_crash() -> None:
     brief = _brief([_task(0, integer=100)])
     hot = next(r for r in brief["ranked_actions"] if r["kind"] == "host_memory_hotspot")
     assert hot["evidence"]["dominant_block_signatures"] == []
+
+
+def test_unused_declared_instructions_become_a_ranked_finding() -> None:
+    """A capability the hardware offers and the compiler never emits is the structural lever."""
+    analysis = _analysis([_task(0, integer=100)])
+    analysis["isa_capability_utilization"] = {
+        "declared_count": 25, "used_count": 8,
+        "used": {"SEQ": 3787},
+        "unused": [{"funct": 15, "name": "SEQ_CONV"}, {"funct": 24, "name": "SEQ_CONFIG_SLOT"}],
+        "undeclared_emitted": [],
+        "licence": "an unused declared instruction is an OPPORTUNITY, not a defect",
+    }
+    brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
+    found = next(r for r in brief["ranked_actions"] if r["kind"] == "declared_capability_unused")
+    assert [u["name"] for u in found["evidence"]["unused"]] == ["SEQ_CONV", "SEQ_CONFIG_SLOT"]
+    assert found["magnitude_share"] == round(1 - 8 / 25, 6)
+    assert "never emitted" in found["magnitude_basis"]
+
+
+def test_full_instruction_utilization_raises_no_finding() -> None:
+    analysis = _analysis([_task(0, integer=100)])
+    analysis["isa_capability_utilization"] = {"declared_count": 6, "used_count": 6,
+                                              "used": {}, "unused": [], "undeclared_emitted": []}
+    brief = guidance_for_emission_analysis(analysis, EMPTY_INVENTORY)
+    assert not any(r["kind"] == "declared_capability_unused" for r in brief["ranked_actions"])
