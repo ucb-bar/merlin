@@ -676,9 +676,16 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
         "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
         "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
-        "iterate until the complete corpus passes. The harness is already producing the first full baseline: if "
-        "qa/verdict.json is absent, wait for it with await_verdict.py; do not launch `--capsules all` merely to "
-        "create the initial verdict. Use exact capsule directory names for focused checks. Begin now.")
+        "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
+        "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
+        "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
+        "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
+        "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
+        "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
+        "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
+        "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
+        "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
+        "Begin now.")
     run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
                "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is
