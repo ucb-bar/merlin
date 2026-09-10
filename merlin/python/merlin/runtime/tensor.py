@@ -96,6 +96,11 @@ class Tensor:
 
         def _nest(dims, flat):
             """Row-major split of ``flat`` into ``dims``; the data layout is unchanged, only the nesting."""
+            if not dims:
+                # Rank-0: a scalar tensor holds exactly one element and nests to that element, not
+                # to a list. Reached whenever a whole-model entry point takes a scalar argument
+                # (a per-tensor scale broadcast, say); `dims[0]` below would IndexError instead.
+                return flat[0]
             if len(dims) == 1:
                 return list(flat)
             stride = 1

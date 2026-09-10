@@ -100,7 +100,8 @@
               "type": "integer",
               "minimum": 1
             },
-            "minItems": 1
+            "minItems": 0,
+            "description": "Tensor extents, outermost first. The EMPTY list is a rank-0 (scalar) tensor holding exactly one element \u2014 it is legal and must stay legal: command_buffer_abi requires every kernel_abi argument to appear in `tensors`, and a whole-model entry point can take a scalar argument (a per-tensor scale broadcast, for instance). Size is prod(shape), which is 1 for []. Do NOT re-add a rank floor here and do NOT spell a scalar [1]: that is a false rank no cross-check catches, and it diverges from the interface MLIR type."
           },
           "dtype": {
             "type": "string",
