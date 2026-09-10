@@ -21,6 +21,7 @@ from merlin.perf.host_resources import (HostResourcePolicy, HostResourceTripwire
                                         sample_host_memory, summarize_samples, violations)
 from merlin.perf.execution_policy import (FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS,
                                           GLOBAL_AUTHORING_ROUND_MAX_SECONDS)
+from merlin.perf.functional_gate import load_functional_gate_config
 from merlin.targetgen.target_experiment import load_target_experiment
 from run_global_perf_experiment import (FrozenPhase1, GlobalPerfExperiment, configure_global_analysis,
                                         full_model_portfolio_identity,
@@ -551,6 +552,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--probe-profile", choices=("none", "occupancy"), default="none",
                         help="optional minimal joint-busy counters on the isolated primitive only")
     parser.add_argument("--source-worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--functional-gate", type=Path, default=None,
+                        help="OPT-IN per-iteration execution gate: a JSON file "
+                             "(merlin_functional_gate_config_v1) naming the model payload dir, the "
+                             "toolchain (mlir-translate/clang/simulator paths, target triple, "
+                             "march/mabi, simulator ISA/extension), the MERLIN_RESULT expectations "
+                             "and a timeout. Each candidate's emitted program is built, run, and a "
+                             "`failed` verdict excludes it from selection and sealing.")
     parser.add_argument("--min-memory-available-gib", type=int, default=16,
                         help="refuse/stop before host MemAvailable falls below this bound")
     parser.add_argument("--max-swap-used-gib", type=int, default=2,
@@ -725,6 +733,8 @@ def main(argv: list[str] | None = None) -> int:
                                 "--optimization-baseline-reason", args.optimization_baseline_reason))
             if args.edit_contract:
                 command.extend(("--edit-contract", str(args.edit_contract.resolve())))
+            if args.functional_gate:
+                command.extend(("--functional-gate", str(args.functional_gate.resolve())))
             if args.mechanism_catalog:
                 command.extend(_mechanism_catalog_worker_arguments(
                     args.mechanism_catalog, args.mechanism_catalog_sha256))
@@ -868,6 +878,10 @@ def main(argv: list[str] | None = None) -> int:
             codex_binary=codex)
         PAS._write_json(stage_root / "telemetry_preflight.json", telemetry)
         resolved_model = str(telemetry["model_resolution"]["resolved_model"])
+    # Validate the gate config at launch, before any budget is spent, so a bad path or a
+    # malformed expectation fails here rather than as a silent per-iteration `not_run`.
+    functional_gate = (load_functional_gate_config(args.functional_gate)
+                       if args.functional_gate else None)
     experiment = GlobalPerfExperiment(
         baseline=base, baseline_sha256=functional.digest, sentinel=sentinel,
         portfolio_sentinels=portfolio_sentinels,
@@ -885,7 +899,7 @@ def main(argv: list[str] | None = None) -> int:
         source_snapshot_root=PAS.repo_root(),
         source_snapshot_files_sha256=PAS._document_sha256(snapshot_receipt["files"]),
         output=stage_root / "global_iterations", timeout_s=args.iteration_seconds,
-        **fast_experiment_kwargs)
+        functional_gate=functional_gate, **fast_experiment_kwargs)
     if args.analysis_only:
         PAS._write_json(stage_root / "launch.json", {
             "schema": "global_agent_launch_v1", "mode": "analysis_only",
@@ -909,6 +923,7 @@ def main(argv: list[str] | None = None) -> int:
             "external_objective_spec_sha256": args.external_objective_sha256,
             "portfolio_external_objective_spec_sha256": args.portfolio_external_objective_sha256,
             "full_model_simulation_allowed": False, "simulators_enabled": False,
+            "functional_gate": functional_gate.to_dict() if functional_gate else None,
             "static_analysis_seed": ({"path": str(args.static_analysis_seed_checkpoint.resolve()),
                 "sha256": args.static_analysis_seed_sha256}
                 if args.static_analysis_seed_checkpoint else None),
@@ -1033,6 +1048,7 @@ def main(argv: list[str] | None = None) -> int:
         "comparison_candidate_sha256": hash_tree(args.comparison_candidate)["sha256"] if args.comparison_candidate else None,
         "simulators_enabled": not args.semantic_only and (provider is not None or context_provider is not None),
         "full_model_simulation_allowed": False,
+        "functional_gate": functional_gate.to_dict() if functional_gate else None,
         "probe_interface_sha256": provider.short_interface_sha256 if provider else None,
         "probe_runtime_receipt_sha256": provider.runtime_receipt_sha256 if provider else None,
         "probe_adapter_sha256": PAS._sha256_file(Path(provider.adapter.__file__)) if provider else None,

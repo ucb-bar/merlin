@@ -32,6 +32,14 @@ from merlin.perf.execution_policy import (
     GLOBAL_AUTHORING_ROUND_MAX_SECONDS,
     ITERATION_MAX_SECONDS,
 )
+from merlin.perf.functional_gate import (
+    STATUS_NOT_RUN as FUNCTIONAL_GATE_NOT_RUN,
+    FunctionalGateConfig,
+    FunctionalGateResult,
+    gate_result_for_selection,
+    load_functional_gate_config,
+    run_functional_gate,
+)
 from merlin.perf.mechanism_probe import ProbeBinding, ProbeObservation, require_probe_admission
 
 
@@ -361,6 +369,7 @@ _DYNAMIC_EVIDENCE_KEYS = frozenset({
     "relative_semantic_evidence", "global_performance_claim", "global_speedup_proven",
     "full_model_cycles", "elapsed_seconds", "wall_seconds", "build_wall_seconds",
     "run_wall_seconds", "emission_wall_seconds", "observed_analysis_wall_seconds",
+    "functional_gate",
 })
 
 
@@ -1160,7 +1169,9 @@ class GlobalPerfExperiment:
                  fast_evaluation_provider: Callable[..., Mapping[str, Any]] | None = None,
                  fast_evaluation_policy: Any | None = None,
                  quality_budgets: Mapping[str, Any] | None = None,
-                 fast_evaluation_provider_binding: Mapping[str, Any] | None = None):
+                 fast_evaluation_provider_binding: Mapping[str, Any] | None = None,
+                 functional_gate: FunctionalGateConfig | None = None,
+                 functional_gate_runner: Callable[..., FunctionalGateResult] | None = None):
         if not 0 < timeout_s <= FULL_GRAPH_STATIC_ANALYSIS_MAX_SECONDS:
             raise ValueError(
                 "full-graph static analysis must fit the "
@@ -1215,6 +1226,10 @@ class GlobalPerfExperiment:
         self.portfolio_analysis_workers = portfolio_analysis_workers
         self.minimum_memory_available_bytes = minimum_memory_available_bytes
         self.analyzer, self.plan_verifier = analyzer, plan_verifier
+        # Opt-in per-iteration execution of the objective's emitted program. Absent, every
+        # iteration records a visible `not_run` gate: a loop that scores only counters must say so.
+        self.functional_gate = functional_gate
+        self.functional_gate_runner = functional_gate_runner or run_functional_gate
         self.phase1 = phase1
         self.phase1_binding = phase1.verify(baseline) if phase1 is not None else None
         self.host_policy = host_verification_policy_record()
@@ -2919,6 +2934,8 @@ class GlobalPerfExperiment:
             "fast_evaluation": fast_evaluation,
         }
         record["static_comparison"] = self._compare(record)
+        self._apply_functional_gate(record, current_artifacts[self.sentinel.capsule_sha256])
+        readiness = record["readiness"]
         record["portfolio"] = {
             "schema": "full_model_portfolio_iteration_v1",
             "portfolio_sha256": self.portfolio_identity_sha256,
@@ -3182,6 +3199,8 @@ class GlobalPerfExperiment:
         if source.get("static_analysis_bundle") is not None:
             record["static_analysis_bundle"] = copy.deepcopy(source["static_analysis_bundle"])
         record["static_comparison"] = self._compare(record)
+        self._apply_functional_gate(record, current_artifacts, reused_from=source)
+        readiness = record["readiness"]
         record["portfolio"] = {
             "schema": "full_model_portfolio_iteration_v1",
             "portfolio_sha256": self.portfolio_identity_sha256,
@@ -3483,6 +3502,8 @@ class GlobalPerfExperiment:
             "fast_evaluation": fast_evaluation,
         }
         record["static_comparison"] = self._compare(record)
+        self._apply_functional_gate(record, retained)
+        readiness = record["readiness"]
         record["portfolio"] = {
             "schema": "full_model_portfolio_iteration_v1",
             "portfolio_sha256": self.portfolio_identity_sha256,
@@ -3518,6 +3539,108 @@ class GlobalPerfExperiment:
         self._iteration_artifacts[record["iteration"]] = self._artifacts
         self._iteration_portfolio_artifacts[record["iteration"]] = self._portfolio_artifacts
         return copy.deepcopy(record)
+
+    def _apply_functional_gate(self, record: dict[str, Any], artifacts: Mapping[str, Any] | None,
+                               *, reused_from: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        """Execute the objective's emitted program and bind the verdict into this iteration.
+
+        Static counters cannot tell a -40% win from a miscompile, and until this step the loop
+        never executed a candidate at all (`full_model_simulation_allowed` was False at every
+        site). With a gate configured, the objective's retained `lowered_text` is built into the
+        model's whole-model ELF and run on the configured simulator; the harness's own
+        `MERLIN_RESULT` fields are compared to the declared expectations.
+
+        The verdict lands in three places so nothing downstream can miss it: `functional_gate` on
+        the record (the full receipt), `static_comparison.functional_gate` (what the agent reads),
+        and -- only on `failed` -- a `functional_gate_failed` readiness blocker, which is what keeps
+        `best_authored_candidate`, `seal` and every `require_ready` accessor from ever selecting
+        the revision. `not_run` (toolchain absent, timeout, no retained artifact, no gate
+        configured) never blocks and is never success; it is recorded as exactly what it is.
+
+        An exact-reuse iteration inherits its source's verdict: the same bytes produced the same
+        emission, so re-running would only re-measure the same program.
+        """
+        iteration = int(record["iteration"])
+        lowered_sha = ((record.get("analysis") or {}).get("emission") or {}).get(
+            "candidate_lowered_sha256")
+        binding = {"iteration": iteration, "candidate_sha256": record.get("candidate_sha256"),
+                   "candidate_lowered_sha256": lowered_sha}
+        if self.functional_gate is None:
+            gate: dict[str, Any] = {
+                "schema": "merlin_functional_gate_result_v1", "status": FUNCTIONAL_GATE_NOT_RUN,
+                "reason": "no functional gate configured for this run (--functional-gate absent): "
+                          "this iteration was scored on static counters only and its numerics "
+                          "were NOT executed", "stage": "preflight", "configured": False,
+                "simulation_executed": False, "excludes_candidate": False, **binding}
+        elif (reused_from is not None and isinstance(reused_from.get("functional_gate"), Mapping)
+                and reused_from["functional_gate"].get("candidate_lowered_sha256") == lowered_sha):
+            gate = copy.deepcopy(dict(reused_from["functional_gate"]))
+            gate.update(binding)
+            gate["reused_from_iteration"] = reused_from.get("iteration")
+        else:
+            lowered = artifacts.get("lowered_text") if isinstance(artifacts, Mapping) else None
+            buffer = artifacts.get("command_buffer") if isinstance(artifacts, Mapping) else None
+            if not isinstance(lowered, str) or not lowered:
+                gate = {"schema": "merlin_functional_gate_result_v1",
+                        "status": FUNCTIONAL_GATE_NOT_RUN, "stage": "preflight",
+                        "reason": "the objective's emitted artifact was not retained for this "
+                                  "iteration, so there is nothing to build", "configured": True,
+                        "simulation_executed": False, "excludes_candidate": False, **binding}
+            else:
+                config = self.functional_gate
+                workdir = self.output / f"functional_gate_{iteration:04d}"
+                try:
+                    result = self.functional_gate_runner(
+                        lowered, buffer if isinstance(buffer, Mapping) else None,
+                        model_payload_dir=config.model_payload_dir, toolchain=config.toolchain,
+                        gate_spec=config.gate_spec, workdir=workdir,
+                        timeout=config.timeout_seconds, keep_elf=config.keep_elf)
+                    gate = result.to_dict() if isinstance(result, FunctionalGateResult) else dict(result)
+                except Exception as exc:  # a broken gate is `not_run`, visibly -- never a pass
+                    gate = {"schema": "merlin_functional_gate_result_v1",
+                            "status": FUNCTIONAL_GATE_NOT_RUN, "stage": "runner",
+                            "reason": f"gate runner raised {type(exc).__name__}: {exc}",
+                            "simulation_executed": False, "excludes_candidate": False}
+                gate.update(binding)
+                gate["configured"] = True
+                gate["config_sha256"] = config.source_sha256
+                gate["config_path"] = str(config.source_path) if config.source_path else None
+        if gate.get("status") not in ("passed", "failed", FUNCTIONAL_GATE_NOT_RUN):
+            gate = {**gate, "status": FUNCTIONAL_GATE_NOT_RUN,
+                    "reason": f"gate returned an unknown status {gate.get('status')!r}"}
+        excluded, why = gate_result_for_selection(gate)
+        gate["excludes_candidate"] = excluded
+        record["functional_gate"] = gate
+        comparison = record.get("static_comparison")
+        if not isinstance(comparison, dict):
+            comparison = {}
+            record["static_comparison"] = comparison
+        comparison["functional_gate"] = {
+            "status": gate["status"], "reason": gate.get("reason"), "stage": gate.get("stage"),
+            "configured": bool(gate.get("configured")),
+            "simulation_executed": bool(gate.get("simulation_executed")),
+            "excludes_candidate": excluded, "verdict_line": gate.get("verdict_line"),
+            "fields": dict(gate.get("fields") or {}), "expected": gate.get("expected"),
+            "mismatches": [row for row in (gate.get("comparisons") or ())
+                           if isinstance(row, Mapping) and not row.get("ok")],
+            "reading": ("the emitted program EXECUTED and matched the model's gate; the static "
+                        "deltas above describe a numerically valid revision"
+                        if gate["status"] == "passed" else
+                        "the emitted program EXECUTED and did NOT match the model's gate; this "
+                        "revision is excluded from selection regardless of its static deltas"
+                        if excluded else
+                        "the emitted program was NOT executed for this iteration; the static "
+                        "deltas above say nothing about its numerics"),
+        }
+        if excluded:
+            readiness = dict(record.get("readiness") or {})
+            blockers = [str(item) for item in (readiness.get("blockers") or ())]
+            if "functional_gate_failed" not in blockers:
+                blockers.append("functional_gate_failed")
+            readiness.update(status="blocked", blockers=blockers,
+                             functional_gate={"status": "failed", "reason": why})
+            record["readiness"] = readiness
+        return gate
 
     def _compare(self, current: Mapping[str, Any]) -> dict[str, Any]:
         """Compare full-model counters without inventing a total from partial accounting."""
@@ -4919,7 +5042,18 @@ class GlobalPerfExperiment:
         agent's most recent work is preferred when nothing improved.
         """
         ranked: list[tuple[tuple[int, int], int, dict[str, Any]]] = []
+        excluded: list[dict[str, Any]] = []
         for row in self.iterations:
+            # A revision whose emitted program EXECUTED and failed the model's gate is never
+            # "best", whatever its counters say: a -40% host-operation win that miscompiles is
+            # the one outcome this selection must not seal. Checked before readiness so the
+            # exclusion is explicit even when the readiness blocker was not applied.
+            gate_excluded, why = gate_result_for_selection(row.get("functional_gate"))
+            if gate_excluded:
+                excluded.append({"iteration": int(row["iteration"]),
+                                 "candidate_sha256": row.get("candidate_sha256"),
+                                 "reason": why})
+                continue
             if (row.get("readiness") or {}).get("status") != "ready_for_probe_admission":
                 continue
             cost = self.authored_host_cost(row.get("analysis"))
@@ -4940,7 +5074,9 @@ class GlobalPerfExperiment:
         return {"iteration": iteration, "candidate_sha256": row["candidate_sha256"],
                 "snapshot": str(Path(row["submitted_snapshot"]).resolve()),
                 "host_payload_bytes": cost[0], "host_static_allocations": cost[1],
-                "considered": len(ranked)}
+                "considered": len(ranked),
+                "functional_gate": (row.get("functional_gate") or {}).get("status"),
+                "excluded_functional_gate_failures": excluded}
 
     def seal(self, candidate: Path, *, name: str = "global_candidate") -> Path:
         """Seal verified global artifacts, independently of microbenchmark feedback/plateaus."""
@@ -6200,13 +6336,20 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
                 raise ValueError(
                     "round regressed previously verified portfolio members: " + ", ".join(lost))
             ready = row["readiness"]["status"] == "ready_for_probe_admission"
+            # A final revision whose executed program failed the model's gate is not sealable,
+            # but an EARLIER passing revision of this round still is: fall through to the
+            # selection below with the failed row excluded, so the round keeps its best valid
+            # work instead of checkpointing a miscompile or discarding the round.
+            gate_failed = bool((row.get("functional_gate") or {}).get("excludes_candidate"))
             # Seal the BEST authored revision of this campaign, not merely the last one the agent
             # happened to leave in its workspace. The next round resumes from whatever is sealed, so
             # sealing the last revision discards every improvement an agent found and then moved off
             # -- observed on every round of two runs. `seal` resolves its row by CONTENT hash and
             # copies that row's preserved snapshot, so handing it the winning snapshot seals exactly
             # the bytes that earned the analysis.
-            selection = experiment.best_authored_candidate() if ready else None
+            selection = experiment.best_authored_candidate() if (ready or gate_failed) else None
+            if gate_failed and selection is not None:
+                ready = True  # the earlier passing revision is what gets sealed, never `row`
             seal_from = current
             if selection is not None and selection["candidate_sha256"] != row["candidate_sha256"]:
                 seal_from = Path(selection["snapshot"])
@@ -6216,7 +6359,8 @@ def run_global_agent_sequence(experiment: GlobalPerfExperiment, candidate: Path,
                     "selected": selection,
                     "final_revision": {"iteration": row["iteration"],
                                        "candidate_sha256": row["candidate_sha256"],
-                                       "host_cost": experiment.authored_host_cost(row.get("analysis"))},
+                                       "host_cost": experiment.authored_host_cost(row.get("analysis")),
+                                       "functional_gate": row.get("functional_gate")},
                     "cost_metric": "host-lane (load+store) payload bytes, then static allocations",
                 })
             sealed = (experiment.seal(seal_from, name=f"round_{index:04d}_candidate") if ready
@@ -6676,6 +6820,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout-seconds", type=int, default=300)
     parser.add_argument("--hypothesis", required=True)
+    parser.add_argument("--functional-gate", type=Path, default=None,
+                        help="JSON (merlin_functional_gate_config_v1): model payload dir, toolchain "
+                             "paths/ISA strings, MERLIN_RESULT expectations and a timeout; when "
+                             "present the emitted program is built and executed each iteration")
     args = parser.parse_args(argv)
     source = args.model_capsule.resolve()
     descriptor = PAS._mapping_file(source / "capsule.yaml", yaml_file=True)
@@ -6689,9 +6837,13 @@ def main(argv: list[str] | None = None) -> int:
         baseline=args.baseline, baseline_sha256=args.baseline_sha256,
         sentinel=sentinel, target=args.target,
         target_sha256=hashlib.sha256(args.target_descriptor.read_bytes()).hexdigest(),
-        target_descriptor=args.target_descriptor, output=args.output, timeout_s=args.timeout_seconds)
+        target_descriptor=args.target_descriptor, output=args.output, timeout_s=args.timeout_seconds,
+        functional_gate=(load_functional_gate_config(args.functional_gate)
+                         if args.functional_gate else None))
     record = experiment.analyze(args.candidate, hypothesis=args.hypothesis)
     print(json.dumps({"readiness": record["readiness"], "elapsed_seconds": record["elapsed_seconds"],
+                      "functional_gate": {key: record["functional_gate"].get(key)
+                                          for key in ("status", "reason", "stage")},
                       "record": str(args.output / "iteration_0000.json")}, indent=2))
     return 0 if record["readiness"]["status"] == "ready_for_probe_admission" else 2
 
