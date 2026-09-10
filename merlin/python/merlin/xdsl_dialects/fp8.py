@@ -107,13 +107,56 @@ if HAS_XDSL:
         AttrParser._parse_optional_integer_or_float_type = _hooked
         setattr(AttrParser, _PATCH_FLAG, True)
 
+    _CONSTR_FLAG = "_merlin_fp8_float_constraint"
+
+    def register_fp8_float_constraints() -> None:
+        """Let the fp8 element types satisfy ``arith``/``math``'s "is a float" constraints. Idempotent.
+
+        Registering the type with the PARSER is only half the job. ``arith.truncf`` / ``arith.extf``
+        -- the ordinary quantize/dequantize casts -- constrain their operand and result to
+        ``floatingPointLike``, which is ``ContainerOf(AnyFloatConstr)``: an ``AnyOf`` over the six
+        BUILTIN float classes. An fp8 type parses fine and then fails VERIFICATION with
+        ``Unexpected attribute f8E4M3FN``, which reads like a parse error but is not one.
+
+        MEASURED: this made ``arith.truncf %x : f32 to f8E4M3FN`` unreadable, so an ordinary fp8
+        requantize kernel could not be loaded at all -- on a target whose whole datapath is fp8.
+
+        ``AnyFloatConstr`` is captured BY VALUE into ``arith.floatingPointLike`` at import, so
+        rebinding the name would not reach it. The ``AnyOf`` dispatches through a per-class dict, so
+        the fp8 classes are added to that dict IN PLACE on the object the constraint already holds.
+        Nothing else about float verification changes: the six builtin types keep their own entries.
+
+        On xDSL 0.68 ``arith.floatingPointLike`` and ``math.floatingPointLike`` are two
+        ``ContainerOf`` wrappers around THE SAME ``AnyFloatConstr`` instance, so patching either one
+        already fixes both -- verified by identity, not assumed. Both are walked anyway, and the
+        insert is ``setdefault``, so this keeps working if a later xDSL gives them separate objects.
+        """
+        from xdsl.irdl.constraints import BaseAttr
+
+        for module_name in ("arith", "math"):
+            try:
+                module = __import__(f"xdsl.dialects.{module_name}", fromlist=["floatingPointLike"])
+                container = getattr(module, "floatingPointLike")
+                any_of = getattr(container, "elem_constr")
+                based = getattr(any_of, "_based_constrs")  # noqa: SLF001 - documented above
+            except (ImportError, AttributeError):
+                # Fail closed and quietly: an xDSL whose internals moved keeps its own behaviour
+                # rather than getting a half-applied constraint patch.
+                continue
+            for fp8_type in _FP8_BY_NAME.values():
+                based.setdefault(type(fp8_type), BaseAttr(type(fp8_type)))
+
     # Install the hook as a side effect of importing the kit, so any parse path that touches
     # merlin's xDSL dialects (interface load, make_context, roundtrip) can read fp8 capsules.
     register_fp8_types()
+    register_fp8_float_constraints()
 
 else:  # pragma: no cover - exercised only when xDSL is absent
 
     _FP8_BY_NAME = {}
 
     def register_fp8_types() -> None:
+        return
+
+    def register_fp8_float_constraints() -> None:
         return

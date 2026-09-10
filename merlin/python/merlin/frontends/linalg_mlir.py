@@ -82,6 +82,15 @@ def make_context():
     from xdsl.dialects.scf import Scf
     from xdsl.dialects.tensor import Tensor
 
+    # Teach the parser the fp8 element types (and let them satisfy arith/math's float constraints)
+    # BEFORE any parse, exactly as `xdsl_dialects._common.make_context` does. Without this the two
+    # context builders disagree: a capsule spelling `f8E4M3FN` -- or an ordinary `arith.truncf %x :
+    # f32 to f8E4M3FN` requantize -- loads through one reader and fails `type expected` in the other.
+    from ..xdsl_dialects.fp8 import register_fp8_float_constraints, register_fp8_types
+
+    register_fp8_types()
+    register_fp8_float_constraints()
+
     ctx = Context(allow_unregistered=True)
     for d in (Builtin, Func, Arith, Linalg, Tensor, Scf, Math, Cf):
         ctx.load_dialect(d)
