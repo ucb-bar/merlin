@@ -65,7 +65,14 @@ def build_workload(spec: dict, dtype: torch.dtype):
         example = torch.randn(spec["M"], spec["K"], dtype=dtype)
     elif kind == "torchvision":
         from torchvision import models
+        from voyager_compiler.quantization.quantize import get_conv_bn_layers
         module = models.__dict__[spec["name"]](weights=spec.get("weights")).eval()
+        # Voyager's own torchvision harness folds every conv with its batch norm before export
+        # (test/utils/models/torchvision_models.py); without it convs carry no bias and BN stays a
+        # separate op, so the graph Voyager compiles is not the one its flow would.
+        pairs = get_conv_bn_layers(module)
+        if pairs:
+            module = torch.ao.quantization.fuse_modules(module, pairs, inplace=True)
         example = torch.randn(*spec.get("input_shape", (1, 3, 224, 224)), dtype=dtype)
     else:
         raise ValueError(f"unknown workload kind {kind!r}")
@@ -86,6 +93,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="run the model in bf16, as every accelerator-repo codegen scheme does")
     parser.add_argument("--run-lowered", action="store_true",
                         help="also execute the bufferized graph and save its output")
+    parser.add_argument("--conv2d-im2col", action="store_true",
+                        help="Voyager's own replace_conv2d_with_im2col before quantization (its CI "
+                             "flag --conv2d_im2col): small-channel convs become linears")
     args = parser.parse_args(argv)
 
     root = _voyager_root()
@@ -111,6 +121,9 @@ def main(argv: list[str] | None = None) -> int:
                                       **{k: v for k, v in scheme.items() if k != "bias"},
                                       bias=scheme["bias"])
     gm = export_model(module, (example,))
+    if args.conv2d_im2col:
+        from voyager_compiler import replace_conv2d_with_im2col
+        replace_conv2d_with_im2col(gm)  # must precede prepare_pt2e, as in Voyager's harness
     gm = prepare_pt2e(gm, quantizer)
     for _ in range(args.calibration_steps):
         gm(torch.randn_like(example))
@@ -149,6 +162,7 @@ def main(argv: list[str] | None = None) -> int:
         "workload": workload, "config": config_fields, "quant_scheme": args.quant,
         "quant_flags": scheme, "calibration_steps": args.calibration_steps, "seed": args.seed,
         "layout_policy": args.layout_policy, "model_dtype": str(dtype),
+        "conv2d_im2col": args.conv2d_im2col,
         "lowered_output_saved": lowered_output is not None,
     }
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1, default=str))

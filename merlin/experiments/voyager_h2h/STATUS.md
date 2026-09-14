@@ -94,6 +94,16 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   code.stanford.edu without credentials. MobileBERT-tiny SST-2 (a Table 4 row) is therefore the first
   plane B smoke target: its calibration set (GLUE SST-2) is public, unlike the CNNs' gated ImageNet.
 
+- **Stock Voyager cannot compile whole-model ResNet-50 for Gemmini's 256 KiB scratchpad (valid
+  harness).** `whole_model/resnet50_bnfused_stock_20260914T201303Z`: public compiler f9d4c498,
+  torchvision ResNet-50 with conv/BN fused exactly as Voyager's own harness does, default derived
+  config. The tile search succeeds; Voyager's own memory planner then refuses:
+  `scratchpad plan needs 1772624 bytes > scratchpad_size 262144`. The four live buffers are the 7x7
+  stem conv, placed on chip UNTILED -- input `1x1x229x229x3` int8 (157,328 B), weight `1x7x7x3x64`
+  int8 (9,408 B), bias `1x64` int32 (256 B), output `1x1x112x112x64` bf16 (1,605,632 B). This does
+  not depend on our L1 reading: it is the planner's L2 budget, so it holds for any accelerator whose
+  scratchpad is under ~1.77 MB. Voyager's own remedy (`--conv2d_im2col`) and the one-block L1 variant
+  are re-running with the fused harness.
 - **SUPERSEDED -- harness defect, do not cite.** The ResNet-50 runs below were exported WITHOUT the
   conv/batch-norm fusion Voyager's own torchvision harness performs before export
   (`get_conv_bn_layers` + `fuse_modules`), so Voyager compiled a graph its flow would not have given
