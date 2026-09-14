@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from merlin.common.paths import artifacts_dir
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -13,8 +15,9 @@ from matplotlib.patches import Patch
 
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "k1_vla_profile_comparison_20260907.json"
-OUT_PDF = HERE / "k1_vla_profile_comparison.pdf"
-OUT_PNG = HERE / "k1_vla_profile_comparison.png"
+OUT_DIR = artifacts_dir() / "paper-figures" / "k1_overview"
+OUT_PDF = OUT_DIR / "k1_vla_profile_comparison.pdf"
+OUT_PNG = OUT_DIR / "k1_vla_profile_comparison.png"
 
 COLORS = {
     "layout_copy": "#2F75B5",
@@ -136,6 +139,7 @@ def main() -> None:
                  "3 launches, 2 warmup + 5 timed · perturbation-gated operator profiles",
                  ha="center", va="bottom", fontsize=8.8, color="#555555")
         fig.subplots_adjust(left=0.075, right=0.985, top=0.90, bottom=0.25)
+        OUT_DIR.mkdir(parents=True, exist_ok=True)
         fig.savefig(OUT_PDF, format="pdf", bbox_inches="tight", pad_inches=0.06)
         fig.savefig(OUT_PNG, format="png", bbox_inches="tight", pad_inches=0.06)
         plt.close(fig)

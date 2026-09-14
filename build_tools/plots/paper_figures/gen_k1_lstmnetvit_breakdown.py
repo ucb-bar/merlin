@@ -7,7 +7,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 
-from paper_plot_style import COLORS, save_figure
+from paper_plot_style import COLORS, figure_dir, save_figure
 
 
 HERE = Path(__file__).resolve().parent
@@ -46,4 +46,4 @@ ax.set_xlim(0, max(row["ms"] for row in rows) * 1.35)
 ax.text(0.5, 1.01,
         "Instrumented-IR only; release-IR intersection found 39 foldable named-op broadcasts (+2.7%)",
         transform=ax.transAxes, ha="center", va="bottom", fontsize=7.5, color="#555555")
-save_figure(fig, HERE / "k1_lstmnetvit_8core_breakdown.pdf")
+save_figure(fig, figure_dir("k1_overview") / "k1_lstmnetvit_8core_breakdown.pdf")

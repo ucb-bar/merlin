@@ -38,3 +38,15 @@ def save_figure(fig: plt.Figure, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output, format="pdf")
     print(f"saved {output}")
+
+
+def figure_dir(set_name: str) -> Path:
+    """Where a figure set renders: ``out/artifacts/paper-figures/<set_name>/``, created on demand.
+
+    Renders are generated output, so they belong under the single out/ root -- never beside the
+    generator, which is how 33 renders once accumulated in a top-level ``figures/`` directory.
+    """
+    from merlin.common.paths import artifacts_dir  # noqa: PLC0415
+    out = artifacts_dir() / "paper-figures" / set_name
+    out.mkdir(parents=True, exist_ok=True)
+    return out

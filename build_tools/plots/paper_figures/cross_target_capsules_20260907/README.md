@@ -34,7 +34,8 @@ The table counts matched tool calls; Figure 6 shows calls started, including 2 G
 - `fig6_tool_token_profile`: tool mix, logged tool I/O, and client-observed response throughput.
 - `fig7_tier_cost`: L2/L3 adapter-time distributions and fresh-versus-carried L3 evidence.
 
-Each figure is exported as PDF, SVG, and PNG. `cross_target_snapshot.json`, `campaigns.csv`, and
+Each figure is exported as PDF, SVG, and PNG under
+`out/artifacts/paper-figures/cross_target_capsules_20260907/`. `cross_target_snapshot.json`, `campaigns.csv`, and
 `capsules.csv`, and `tools.csv` are the frozen source data.
 
 ## Important limits
@@ -56,8 +57,8 @@ Each figure is exported as PDF, SVG, and PNG. `cross_target_snapshot.json`, `cam
 From the repository root:
 
 ```bash
-.venv/bin/python figures/cross_target_capsules_20260907/extract_cross_target_data.py
-for script in figures/cross_target_capsules_20260907/gen_fig*.py; do
+.venv/bin/python build_tools/plots/paper_figures/cross_target_capsules_20260907/extract_cross_target_data.py
+for script in build_tools/plots/paper_figures/cross_target_capsules_20260907/gen_fig*.py; do
   PYTHONPATH=merlin/python .venv/bin/python "$script"
 done
 ```

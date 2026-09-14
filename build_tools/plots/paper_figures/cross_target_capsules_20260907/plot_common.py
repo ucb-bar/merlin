@@ -5,8 +5,12 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]
-sys.path.insert(0, str(ROOT / "merlin/python"))
+sys.path.insert(0, str(HERE.parents[3] / "merlin/python"))  # for a run without the editable install
+
+from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
+
+ROOT = repo_root()
+OUT = artifacts_dir() / "paper-figures" / HERE.name
 
 from merlin.plotting.merlin_plotstyle import *  # noqa: F401,F403,E402
 
@@ -20,5 +24,6 @@ def load_snapshot():
 
 
 def save_all(fig, stem: str):
+    OUT.mkdir(parents=True, exist_ok=True)
     for suffix, kwargs in (("pdf", {}), ("svg", {}), ("png", {"dpi": 190})):
-        fig.savefig(HERE / f"{stem}.{suffix}", bbox_inches="tight", facecolor=BG, **kwargs)
+        fig.savefig(OUT / f"{stem}.{suffix}", bbox_inches="tight", facecolor=BG, **kwargs)

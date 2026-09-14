@@ -12,7 +12,9 @@ from pathlib import Path
 
 import yaml
 
-ROOT = Path(__file__).resolve().parents[2]
+from merlin.common.paths import repo_root
+
+ROOT = repo_root()
 HERE = Path(__file__).resolve().parent
 
 RUNS = {

@@ -328,7 +328,7 @@ mx_gemmini) segmented by `source_role`, using §8. This is the figure that shows
 hand-authoring.
 
 For all three: the repo's plotting conventions are in `docs/guides/paper-figures.md` and
-`figures/paper_plot_style.py`.
+`build_tools/plots/paper_figures/paper_plot_style.py`.
 
 ---
 

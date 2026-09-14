@@ -15,7 +15,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from merlin.common.paths import repo_root
+from merlin.common.paths import artifacts_dir, repo_root
 from merlin.perf import lane_cost, offload
 from merlin.perf.optimization_ledger import arithmetic_intensity
 
@@ -150,8 +150,10 @@ def render(data: dict, out_stem: Path) -> None:
 
 def main() -> int:
     data = collect()
-    out = Path(__file__).resolve().parent
-    (out / "gemmini_phase2_instruments_20260909.json").write_text(
+    out = artifacts_dir() / "paper-figures" / "gemmini_phase2"
+    out.mkdir(parents=True, exist_ok=True)
+    # the frozen source data stays beside the generator (tracked); only the renders go to out/
+    (Path(__file__).resolve().parent / "gemmini_phase2_instruments_20260909.json").write_text(
         json.dumps(data, indent=1), encoding="utf-8")
     render(data, out / "gemmini_phase2_instruments")
     for row in data["workloads"]:

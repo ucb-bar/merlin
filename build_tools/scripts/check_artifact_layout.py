@@ -32,7 +32,7 @@ from pathlib import Path, PurePosixPath
 GENERATED_EXTS = {".png", ".svg", ".pdf", ".zip", ".jsonl"}
 # Retired top-level generated roots (consolidated under out/) + legacy forbidden locations.
 FORBIDDEN_ROOTS = ("runs/", "artifacts/", "build/", "output/", "results/",
-                   "selfcheck_out/", "mined_knowledge/", "docs/presentation/")
+                   "selfcheck_out/", "mined_knowledge/", "docs/presentation/", "figures/")
 # Generated OUTPUT dirs that must NOT live inside the source tree (runs/ reports/ = experiment
 # output; case_study/ = dse-guidance generated analysis). They belong under artifacts/ or runs/.
 # (Curated INPUT corpora — benchmarks/*/recaptures*, region_maps, methods/, observability/,

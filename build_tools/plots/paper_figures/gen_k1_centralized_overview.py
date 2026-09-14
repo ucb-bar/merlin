@@ -11,6 +11,7 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.patches import FancyBboxPatch, Patch
 
+from merlin.common.paths import artifacts_dir
 from merlin.plotting.merlin_plotstyle import (
     BLUE as ACCENT,
     GOLD,
@@ -304,8 +305,10 @@ fig.text(0.5, 0.087,
 fig.text(0.5, 0.015, MANIFEST["footnote"], ha="center", va="bottom", color="#625D57",
          fontsize=8.8, linespacing=1.35)
 
-pdf = HERE / "k1_centralized_overview.pdf"
-png = HERE / "k1_centralized_overview.png"
+OUT_DIR = artifacts_dir() / "paper-figures" / "k1_overview"
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+pdf = OUT_DIR / "k1_centralized_overview.pdf"
+png = OUT_DIR / "k1_centralized_overview.png"
 fig.savefig(pdf, bbox_inches="tight", pad_inches=0.18)
 fig.savefig(png, dpi=240, bbox_inches="tight", pad_inches=0.18)
 print(f"saved {pdf}")

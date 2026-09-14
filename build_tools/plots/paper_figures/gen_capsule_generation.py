@@ -40,11 +40,12 @@ import matplotlib.pyplot as plt                           # noqa: E402
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
-REPO = HERE.parent
+REPO = HERE.parents[2]                                    # build_tools/plots/paper_figures -> repo
 sys.path.insert(0, str(HERE))                             # sibling paper_plot_style
 sys.path.insert(0, str(REPO / "merlin" / "python"))       # the merlin package, for derivation
 
 from paper_plot_style import COLORS                       # noqa: E402,F401  (rcParams applied on import)
+from paper_plot_style import figure_dir                   # noqa: E402
 
 STEM = "capsule_generation"
 
@@ -376,7 +377,7 @@ def main(argv=None) -> int:
         return 1
     data = json.loads(path.read_text(encoding="utf-8"))
     validate(data)
-    render(data, HERE / STEM)
+    render(data, figure_dir(STEM) / STEM)                  # the sidecar JSON stays beside this script
     return 0
 
 

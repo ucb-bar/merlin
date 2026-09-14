@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from paper_plot_style import COLORS, save_figure
+from paper_plot_style import COLORS, figure_dir, save_figure
 
 
 HERE = Path(__file__).resolve().parent
@@ -145,4 +145,4 @@ for ax in axes:
     ax.grid(axis="x" if ax is axes[1] else "y", color="#dddddd", linewidth=0.6, zorder=0)
     ax.set_axisbelow(True)
 
-save_figure(fig, HERE / "k1_executorch_status.pdf")
+save_figure(fig, figure_dir("k1_overview") / "k1_executorch_status.pdf")
