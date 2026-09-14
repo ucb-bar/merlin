@@ -317,12 +317,12 @@ def fused_arms(pairs, vectorize_epilogue: bool = False) -> str:
             + parallel
             + f'    %{h}t, %{h}l:{n_loops} = transform.structured.tile_using_for {requant_handle} '
             f'tile_sizes {tile} : (!transform.any_op) -> ({loop_types})\n'
-            f'    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op '
+            f'    %{h}cf, %{h}k1 = transform.structured.fuse_into_containing_op '  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
             f'{contraction_handle} '
             f'into %{h}l#{n_loops - 1} : (!transform.any_op, !transform.any_op) -> '
             f'(!transform.any_op, !transform.any_op)\n'
             f'    %{h}ff, %{h}k2 = transform.structured.fuse_into_containing_op {fill_handle} '
-            f'into %{h}k1 : (!transform.any_op, !transform.any_op) -> '
+            f'into %{h}k1 : (!transform.any_op, !transform.any_op) -> '  # target-ok: `k1` is an MLIR value name in emitted IR, not the board
             f'(!transform.any_op, !transform.any_op)\n'
             f'    %{h}ck, %{h}kl = transform.structured.tile_using_for %{h}cf '
             f'tile_sizes {ktile} : (!transform.any_op) -> '

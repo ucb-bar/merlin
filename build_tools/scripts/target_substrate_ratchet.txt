@@ -27,7 +27,6 @@ merlin/python/merlin/compare/study.py  # k1
 merlin/python/merlin/compile_cli.py  # k1
 merlin/python/merlin/llvmlower/opu_shim.py  # k1
 merlin/python/merlin/llvmlower/reduce_vec.py  # k1
-merlin/python/merlin/llvmlower/requant_fuse.py  # k1
 merlin/python/merlin/mining/wholemodel_proposer.py  # k1
 merlin/python/merlin/plotting/cpu_host_beam_figures.py  # k1
 merlin/python/merlin/plotting/cpu_host_experiment_figures.py  # k1
