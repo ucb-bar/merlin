@@ -180,16 +180,42 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     3600 s oracle wall). Voyager rotates two slots through 384/513 K steps, so each load waits for the
     compute still reading the slot it overwrites; merlin gives every block its own scratchpad rows.
     Spike instret ranked these the other way (Voyager fewer instructions) -- instret is not timing.
-    GM0/GM1 for `voyager_bridge_v1` and `v1_la1` are in flight (tag `long2`).
+    The fence-corrected arm confirms it: GM0 27,236 and GM1 38,223 (full table below).
   - **What Voyager's short-capsule edge is.** Hoisting every load ahead of the computes
     (`gemmini_xdsl_rtl_v1_hoist`) is not it: A3 385 -> 384, and C0 1108 -> 1186 (worse). The order
     inside a K step is: the streamed input block before the weight block. `v1_la1` (loads one K step
     ahead of the computes, input then weight) takes A3 to 359, B0 to 326 and C2 to 459, below
-    Voyager's 365, 330 and 469; `v1_grp` (all inputs, then all weights) 363, 328 and 469. C0 and the
-    remaining capsules for `v1_la1` are in flight (tags `order`, `rest`).
+    Voyager's 365, 330 and 469; `v1_grp` (all inputs, then all weights) 363, 328 and 469. The full
+    18-capsule result is below.
   - The remaining A0-class cycle: with the same load order, the weight block's row decides 302 vs
     303 (Voyager places it at 4096, the start of bank 1; merlin at 16368, the end of bank 3).
 
+- **Full 18-capsule L3 table: the fence-corrected Voyager arm vs merlin's schedule variants**
+  (Verilator, cycle-accurate; every run passes the RTL oracle). All variants are the certified
+  reference package with one scheduling change each (packages under
+  `out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v1_*`):
+
+  | capsules | reference | Voyager | v1_l1 | v1_la1 | v1_la1b |
+  |---|---|---|---|---|---|
+  | A0 A2 A5 C5 C6 GS0 | 302 | 302 | 302 | 303 | 302 |
+  | A4 | 269 | 269 | 269 | 271 | 269 |
+  | A3 B1 | 385 | 365 | 385 | 359 | 356 |
+  | B0 B2 | 350 | 330 | 350 | 326 | 323 |
+  | C0 C1 | 1547 | 1113 | 1108 | 1099 | 1097 |
+  | C2 C3 C4 | 471 | 469 | 471 | 459 | 472 |
+  | GM0 | 19649 | 27236 | 19649 | 19541 | 19420 |
+  | GM1 | 27791 | 38223 | 27791 | 26860 | 26860 |
+
+  - Geomean vs Voyager over all 18 (below 1 = merlin faster): `v1_l1` 0.977 (4 wins, 7 ties, 7
+    losses); `v1_la1` 0.956 (11 wins; 7 losses of 1-2 cycles, all single-block capsules); `v1_la1b`
+    0.957 (8 wins, 7 ties; 3 losses, C2-C4 by 3 cycles). The better of la1/la1b per capsule gives
+    0.952 with 11 wins, 7 ties, 0 losses, but that choice is tuned on these capsules: cite it as
+    tuned, never as a policy.
+  - Deep K is merlin's in every variant: 1.40-1.42x fewer cycles than Voyager's schedule.
+  - Placement findings: weights sharing the input's bank cost 3-15% (`v1_la1_pafter`: A0 311,
+    A3 374, C0 1271, C2 519); banks 1, 2 and 3 are identical (`v1_la1_pbank2/3` = `v1_la1b`); the
+    position inside the bank matters (bank end: C2 459, bank start: 472). A fixed rule meant to win
+    both (`v1_la1_pb1off`, weights offset past the inputs' in-bank span) is being graded.
 - **Conv lowering exists and is exact** (`baselines.voyager_schedule.lower_conv`, abcd2847): the
   3x3 s1, 3x3 s2 and 1x1 probes lower bit-exactly against a direct convolution. Faithful to Voyager's
   mapping, the 3x3 layers stream 4-row (s1) and 2-row (s2) computes -- 28,224 per layer, where 16-row

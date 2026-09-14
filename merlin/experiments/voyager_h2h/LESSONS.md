@@ -125,8 +125,13 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
   made C0 7% slower (1,108 -> 1,186), because the loads crowd the queues ahead of the first compute.
   The order is what matters: input block before weight block, one K step ahead (`v1_la1`) takes A3 to
   359, B0 to 326 and C2 to 459, below Voyager's 365, 330 and 469.
-- **Merlin's way.** Make lookahead depth and intra-step operand order knobs of the L1 block-spec
-  pipeline pass, chosen per target by measurement (cycles keyed by kernel digest, lesson L3), not
+- **Over all 18 capsules** (STATUS.md table): `v1_la1` is 4.4% faster than Voyager's schedule
+  (geomean) with 11 wins, but loses the 7 single-block capsules by 1-2 cycles. Placing the weights at a
+  bank boundary (`v1_la1b`) ties those and wins 8, but loses C2-C4 by 3 cycles. So operand PLACEMENT is
+  a second measured knob next to order: weights sharing the input's bank cost 3-15%, and the position
+  inside the other bank moves a capsule by a few cycles.
+- **Merlin's way.** Make lookahead depth, intra-step operand order and bank placement knobs of the
+  L1 block-spec pipeline pass, chosen per target by measurement (cycles keyed by kernel digest, lesson L3), not
   fixed in a backend. The mechanism is target-agnostic; the best order is a measured fact of the
   target.
 
