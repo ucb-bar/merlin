@@ -17,10 +17,10 @@ from .host_source_witness import (bf16_bits, bf16_values, evaluate_pointwise_sou
                                   extract_bounded_gather, extract_generic_reduction,
                                   extract_named_reduction, extract_insert_slice,
                                   extract_pointwise_concat, extract_pointwise_view_chain)
+from merlin.common import digest as _mdigest
 
 
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+_sha = _mdigest.sha256_bytes
 
 
 def cached_host_task_activity(plan: Mapping[str, Any], *, lowered_sha256: str) -> dict[str, Mapping[str, Any]]:

@@ -15,6 +15,7 @@ from pathlib import Path
 import stat
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
+from merlin.common import digest as _mdigest
 
 OBJECTIVE_DIRECTORY = "_external_objective"
 OBJECTIVES_DIRECTORY = "_external_objectives"
@@ -38,8 +39,7 @@ def _pin(value):
              and all(c in "0123456789abcdef" for c in value), "objective pins must be lowercase SHA-256")
 
 
-def _sha(payload):
-    return hashlib.sha256(payload).hexdigest()
+_sha = _mdigest.sha256_bytes
 
 
 def _json(value):

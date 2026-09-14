@@ -15,18 +15,17 @@ from typing import Any
 
 from .harvest import Observation
 from .work_volume import work_from_command_buffer
+from merlin.common import digest as _mdigest
 
 
-def _digest(raw: bytes) -> str:
-    return hashlib.sha256(raw).hexdigest()
+_digest = _mdigest.sha256_bytes
 
 
 def _document_digest(doc: Mapping[str, Any]) -> str:
     return _digest(json.dumps(doc, sort_keys=True, separators=(",", ":"), allow_nan=False).encode())
 
 
-def _sha(value: Any) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+_sha = _mdigest.is_sha256
 
 
 def _object(raw: bytes) -> dict[str, Any]:

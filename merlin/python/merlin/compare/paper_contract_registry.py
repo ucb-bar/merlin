@@ -32,6 +32,8 @@ from .paper_model_object_builder import (
     stage_compiler_input,
 )
 from .paper_toolchain_authority import load_toolchain_authority, verify_build_tool
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 _REGISTRY = MappingProxyType({
     ("merlin_compile", "compiler"): "merlin_compile_v1",
@@ -55,13 +57,11 @@ _EXECUTORCH_BUILD_ARGV = [
     "verify_executorch_sealed_session", "{source:model_object}", "{output}"]
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha = _mdigest.sha256_file
 
 
 def _canonical_sha(value: object) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _closed(value: object, fields: set[str], label: str) -> Mapping[str, Any]:

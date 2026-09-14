@@ -34,6 +34,8 @@ from .paper_session_tracer import (
     render_model_source,
     synthetic_prefill_decode_descriptor,
 )
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 PUBLIC_SCHEMA = "merlin.paper.public-build-bundle/v1"
 AUTHORITY_SCHEMA = "merlin.paper.multi-toolchain-authority/v1"
@@ -63,15 +65,10 @@ _PRIVATE_CONTENT_MARKERS = (
 _BARRIER_SEAL = object()
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-        allow_nan=False,
-    ).encode("ascii")
+_canonical = _mjson.canonical_json
 
 
-def _sha_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
+_sha_bytes = _mdigest.sha256_bytes
 
 
 def _sha_file(path: Path) -> str:
@@ -117,9 +114,7 @@ def _bound_path(root: Path, value: object, where: str) -> Path:
     return resolved
 
 
-def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_canonical(value) + b"\n")
+_write_json = _mjson.write_canonical_json
 
 
 def _load_json(path: Path, where: str) -> Mapping[str, Any]:

@@ -27,6 +27,8 @@ import yaml
 from merlin.benchharness.host_agent import _submission_package_digest
 from merlin.common.paths import artifacts_dir
 from merlin.compare.host_experiment import HostExperimentSpec
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
 _TOKEN_FIELDS = {
@@ -50,19 +52,14 @@ _ARM_LABELS = {
 }
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha256 = _mdigest.sha256_file
 
 
 def _canonical_sha256(value: object) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
-def _is_sha256(value: object) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(character in "0123456789abcdef" for character in value))
+_is_sha256 = _mdigest.is_sha256
 
 
 def _nonnegative(value: object, *, label: str, integer: bool = False) -> float | int:

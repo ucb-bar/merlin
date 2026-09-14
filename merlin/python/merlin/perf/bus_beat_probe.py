@@ -22,20 +22,19 @@ import hashlib
 import json
 from pathlib import Path
 from typing import Any
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
-def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+_sha256 = _mdigest.sha256_bytes
 
 
 def _canonical_sha256(value: Any) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return _sha256(encoded)
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _digest(value: Any) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(char in "0123456789abcdefABCDEF" for char in value))
+    return _mdigest.is_sha256(value, allow_upper=True)
 
 
 def _split_items(text: str) -> tuple[str, ...]:

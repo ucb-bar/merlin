@@ -22,6 +22,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from merlin.common.yaml import load_yaml
+from merlin.common import jsonio as _mjson
 
 
 MAGIC = b"MRLNSES2"
@@ -116,11 +117,7 @@ def _safe_relative(value: object, where: str) -> PurePosixPath:
     return path
 
 
-def _canonical_json(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-        allow_nan=False,
-    ).encode("ascii")
+_canonical_json = _mjson.canonical_json
 
 
 def _strict_json(raw: bytes) -> Mapping[str, Any]:

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import yaml
+from merlin.common import jsonio as _mjson
 
 
 _SHA256_LEN = 64
@@ -33,8 +34,7 @@ def _is_sha(value: object) -> bool:
 
 
 def _canonical_sha(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _study_identity_sha(raw: Mapping[str, Any]) -> str:

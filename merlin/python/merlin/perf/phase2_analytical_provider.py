@@ -37,25 +37,20 @@ from .phase2_portfolio import (
     standard_four_model_quality_schema,
     unavailable_fast_evaluation,
 )
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 CALIBRATION_SCHEMA = "phase2_host_analytical_calibration_v1"
 PROVIDER_BINDING_SCHEMA = "host_fast_analytical_evaluator_binding_v1"
 
 
-def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+_canonical = _mjson.canonical_json
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(_canonical(value)).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
-def _sha256(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
+_sha256 = _mdigest.is_sha256
 
 
 def _mapping(value: Any) -> Mapping[str, Any]:

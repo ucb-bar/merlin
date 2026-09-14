@@ -26,6 +26,7 @@ from .freeze import sha256_paths
 from .paper import MatrixCell, PaperStudySpec, Preflight, validate_paper_result
 from .paper_report import build_paper_report, render_markdown, seal_results_document
 from .session import validate_capture_session, validate_paper_input_binding
+from merlin.common import digest as _mdigest
 
 
 class StudyNotReady(RuntimeError):
@@ -102,9 +103,7 @@ def execution_matrix(spec: PaperStudySpec) -> tuple[MatrixCell, ...]:
     return tuple(ordered)
 
 
-def _is_sha256(value: object) -> bool:
-    text = str(value)
-    return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
+_is_sha256 = _mdigest.is_sha256
 
 
 def _resolve_path(value: str) -> Path:

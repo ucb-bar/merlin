@@ -41,6 +41,8 @@ from .paper_measurement_controller import (
     normalize_receipt,
     produce_receipt,
 )
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
 _PLAN_KIND = "paper_k1_frozen_contract_matrix_v2"
@@ -101,8 +103,7 @@ def _is_safe_unit_name(name: str) -> bool:
     return all(c.isascii() and (c.isalnum() or c in _SAFE_EXTRA) for c in tail)
 
 
-def _sha_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
+_sha_bytes = _mdigest.sha256_bytes
 
 
 def _sha_file(path: Path) -> str:
@@ -113,10 +114,7 @@ def _sha_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _canonical_sha(value: object) -> str:
-    return _sha_bytes(json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-        allow_nan=False).encode("ascii"))
+_canonical_sha = _mjson.canonical_sha256
 
 
 def _atomic_json(path: Path, value: object) -> None:

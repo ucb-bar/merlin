@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.llvmlower.torchao_affine import lower_torchao_affine_quant
 from merlin.xdsl_dialects._common import text as module_text
+from merlin.common import digest as _mdigest
 
 
 class CaptureNormalizationError(RuntimeError):
@@ -46,8 +47,7 @@ _NORMALIZERS = (
 )
 
 
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _opaque_calls(module) -> dict[str, int]:

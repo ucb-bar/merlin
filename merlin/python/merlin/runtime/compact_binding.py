@@ -19,6 +19,7 @@ from merlin.perf.storage_encoding import GroupedAxesStorage
 from merlin.perf.structural_transitions import _element_bytes
 from merlin.runtime.storage_binding import StorageBinding, resolve_storage_bindings
 from merlin.runtime.tensor import Tensor
+from merlin.common import jsonio as _mjson
 
 
 def _require(condition: bool, message: str) -> None:
@@ -31,8 +32,7 @@ def _integer(value: Any, label: str, *, positive: bool = False) -> int:
     return value
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 @dataclass(frozen=True)

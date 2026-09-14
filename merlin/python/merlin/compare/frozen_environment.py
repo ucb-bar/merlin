@@ -26,14 +26,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from merlin.common.paths import repo_root
+from merlin.common import jsonio as _mjson
 
 
 MANIFEST_VERSION = 1
 
 
 def _canonical_json(value: Any) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) +
-            "\n").encode("utf-8")
+    return _mjson.canonical_json(value, trailing_newline=True, allow_nan=True)
 
 
 def sha256_file(path: Path) -> str:

@@ -20,16 +20,15 @@ import yaml
 from .paper_attribution import causal_record as _evidence_causal_record
 
 from .paper import PaperStudySpec, validate_paper_result
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
-def _is_sha256(value: object) -> bool:
-    text = str(value)
-    return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
+_is_sha256 = _mdigest.is_sha256
 
 
 def _canonical_sha256(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _closed(value: object, fields: set[str], label: str) -> Mapping[str, Any]:

@@ -34,6 +34,7 @@ from .execution_policy import (
     WarmComputeReceipt,
     WarmProfileContract,
 )
+from merlin.common import jsonio as _mjson
 
 
 RECEIPT_SCHEMA = "merlin_queued_firesim_receipt_v1"
@@ -56,8 +57,7 @@ class FireSimReceiptError(ValueError):
 
 
 def _canonical_sha256(value: object) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(payload).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 @dataclass(frozen=True)

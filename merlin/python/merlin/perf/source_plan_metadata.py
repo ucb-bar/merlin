@@ -17,6 +17,7 @@ import hashlib
 import json
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
+from merlin.common import jsonio as _mjson
 
 
 SCHEMA = "source_plan_metadata_v1"
@@ -37,9 +38,7 @@ _CLAMP_NARROW = frozenset({
 })
 
 
-def _digest(value: Any) -> str:
-    body = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(body.encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _props(op: Any, key: str) -> Any:

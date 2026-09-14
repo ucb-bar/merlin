@@ -15,10 +15,10 @@ from xdsl.ir.affine import AffineDimExpr
 
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.perf.host_source_witness import _clone_bounded_reduction, evaluate_pointwise_source
+from merlin.common import digest as _mdigest
 
 
-def _sha(text):
-    return hashlib.sha256(text.encode()).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _entry(module, entry):

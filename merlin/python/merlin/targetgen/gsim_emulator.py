@@ -44,6 +44,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from merlin.common import jsonio as _mjson
 
 #: The canonical file names inside ``<build>/rtl_engines/<target>/gsim/``. Fixed names, not a glob: picking "the
 #: newest matching binary" out of a directory is how a stale model gets certified against without anyone
@@ -229,8 +230,7 @@ def _receipt_block(doc: dict[str, Any], path: Path, digest: str) -> dict[str, An
 
 
 def _canonical_sha(value: Any) -> str:
-    payload = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return _mjson.canonical_sha256(value, ensure_ascii=False, allow_nan=True)
 
 
 def _strict_receipt_error(doc: dict[str, Any]) -> str | None:

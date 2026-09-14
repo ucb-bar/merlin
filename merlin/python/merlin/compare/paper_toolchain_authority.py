@@ -14,6 +14,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Mapping
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
 AUTHORITY_KIND = "paper_toolchain_authority_v1"
@@ -21,13 +23,11 @@ TOOL_ROLE = "model_object_c_compiler"
 _HEX = frozenset("0123456789abcdef")
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha = _mdigest.sha256_file
 
 
 def _canonical_sha(value: object) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _is_sha(value: object) -> bool:

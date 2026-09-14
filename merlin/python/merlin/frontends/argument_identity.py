@@ -15,6 +15,7 @@ from pathlib import Path
 
 from .linalg_mlir import parse_mlir_text
 from merlin.xdsl_dialects._common import text as module_text
+from merlin.common import digest as _mdigest
 
 
 @dataclass(frozen=True)
@@ -43,8 +44,7 @@ class ArgumentIdentityBridge:
                 "scope": "entry argument identity/order/type only; not normalization numerical equivalence"}
 
 
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _arguments(module, entry: str):

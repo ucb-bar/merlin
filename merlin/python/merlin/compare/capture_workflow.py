@@ -28,6 +28,7 @@ from .freeze import sha256_paths
 from .host_experiment import HostExperimentSpec
 from .paper import ModelSpec, PaperStudySpec
 from .session import validate_capture_session, validate_paper_input_binding
+from merlin.common import jsonio as _mjson
 
 
 _ENV_PREFIXES = ("M2M_", "VITFLY_", "HF_", "TRANSFORMERS_")
@@ -259,8 +260,7 @@ def _tasks(study: PaperStudySpec, record: dict[str, Any], paper_inputs: Path,
     return tasks, list(dict.fromkeys(errors))
 
 
-def _write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+_write_json = _mjson.write_pretty_json
 
 
 def _validate_output(task: CaptureTask, source: dict[str, Any], elapsed_ns: int) -> dict[str, Any]:

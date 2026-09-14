@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from merlin.common.schemas import validate_or_raise
+from merlin.common import jsonio as _mjson
 
 
 _REQUIRED_ARTIFACT_ROLES = ("contract", "config", "runtime_header", "bitstream")
@@ -31,8 +32,7 @@ class DeploymentAdmissibilityError(ValueError):
 
 
 def _canonical_json(document: Mapping[str, Any]) -> bytes:
-    return (json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-            + "\n").encode("utf-8")
+    return _mjson.canonical_json(document, ensure_ascii=False, trailing_newline=True, allow_nan=True)
 
 
 def _file_sha256(path: Path) -> str:

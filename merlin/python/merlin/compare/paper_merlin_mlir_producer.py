@@ -47,6 +47,8 @@ from .paper_session_abi import (
     encode_request,
 )
 from .paper_session_tracer import ENTRYPOINT, render_runner_source
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 RECIPE_ID = "merlin_mlir_model_object_v1"
 PRODUCER_SCHEMA = "merlin.paper.merlin-mlir-public/v1"
@@ -95,22 +97,10 @@ class MerlinMLIRBuild:
     descriptor: SessionDescriptor
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode("ascii")
+_canonical = _mjson.canonical_json
 
 
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha = _mdigest.sha256_file
 
 
 def _implementation_identity() -> dict[str, str]:
@@ -136,9 +126,7 @@ def _implementation_identity() -> dict[str, str]:
     return {path.relative_to(root).as_posix(): _sha(path) for path in paths}
 
 
-def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_canonical(value) + b"\n")
+_write_json = _mjson.write_canonical_json
 
 
 def _load_json(path: Path, where: str) -> Mapping[str, Any]:

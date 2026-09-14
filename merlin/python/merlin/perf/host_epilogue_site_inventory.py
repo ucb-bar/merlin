@@ -14,6 +14,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+from merlin.common import jsonio as _mjson
 
 
 SCHEMA = "host_epilogue_site_inventory_v1"
@@ -38,9 +39,7 @@ _MEMBER_IDENTITY_FIELDS = frozenset({
 })
 
 
-def _digest(value: Any) -> str:
-    body = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(body.encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _pin(value: Any) -> bool:

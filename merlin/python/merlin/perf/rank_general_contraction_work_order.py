@@ -27,6 +27,7 @@ from typing import Any
 
 from merlin.benchharness import hash_tree
 from merlin.perf.compiler_edit_scope import validate_edit_contract, validate_mechanism_catalog
+from merlin.common import jsonio as _mjson
 
 
 MECHANISM_ID = "t01_02_rank_general_integer_contraction_offload"
@@ -64,9 +65,7 @@ _MECHANISM_SURFACES = _REQUIRED_SURFACES | frozenset({
 })
 
 
-def _digest(value: Any) -> str:
-    body = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-    return hashlib.sha256(body.encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _raw_sha256(data: bytes) -> str:

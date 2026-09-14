@@ -45,6 +45,8 @@ from .paper_toolchain_authority import (
     verify_build_tool,
     write_toolchain_authority,
 )
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 _BACKENDS = ("hand_v0_int8", "merlin_frozen", "merlin_xnnpack", "merlin_openblas")
 _PRODUCER_INPUT_KIND = "paper_merlin_backend_producer_input_v1"
@@ -68,21 +70,13 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"),
-                      ensure_ascii=True, allow_nan=False).encode("ascii")
+_canonical = _mjson.canonical_json
 
 
-def _sha(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(8 * 1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha = _mdigest.sha256_file
 
 
-def _canonical_sha(value: object) -> str:
-    return hashlib.sha256(_canonical(value)).hexdigest()
+_canonical_sha = _mjson.canonical_sha256
 
 
 def _is_sha(value: object) -> bool:
@@ -90,9 +84,7 @@ def _is_sha(value: object) -> bool:
     return len(text) == 64 and all(character in _HEX for character in text)
 
 
-def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_canonical(value) + b"\n")
+_write_json = _mjson.write_canonical_json
 
 
 def _load_json(path: Path, label: str) -> Mapping[str, Any]:

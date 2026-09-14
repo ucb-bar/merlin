@@ -18,10 +18,10 @@ from .compiler_plan_evidence import verify_compiler_global_plan
 from .model_macs import observe_model_macs
 from .source_convolution_witness import extract_source_convolution, evaluate_source_convolution
 from .source_program_pair import bind_source_program_pair, program_plan as _plan, source_owners as _owners
+from merlin.common import digest as _mdigest
 
 
-def _sha(text):
-    return hashlib.sha256(text.encode()).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _digest(value):

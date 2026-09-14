@@ -40,6 +40,7 @@ from .capture_workflow import _render_environment
 from .freeze import sha256_paths
 from .paper import BackendSpec, ModelSpec, PaperStudySpec
 from .session import validate_capture_session
+from merlin.common import jsonio as _mjson
 
 
 _SHA256_HEX = frozenset("0123456789abcdef")
@@ -703,8 +704,7 @@ def _validate_package(task: PackageTask) -> dict[str, Any]:
     }
 
 
-def _write_json(path: Path, value: Any) -> None:
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+_write_json = _mjson.write_pretty_json
 
 
 def _write_json_atomic(path: Path, value: Any) -> None:

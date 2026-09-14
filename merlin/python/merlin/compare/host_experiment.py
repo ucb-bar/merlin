@@ -24,6 +24,7 @@ import yaml
 
 from merlin.common.paths import repo_root
 from merlin.common.schemas import validate_or_raise
+from merlin.common import digest as _mdigest
 
 
 _REQUIRED_TELEMETRY = frozenset({
@@ -89,9 +90,7 @@ def _resolved(value: Any) -> bool:
     return bool(value) and str(value).strip().lower() not in {"unresolved", "none", "null"}
 
 
-def _digest(value: Any) -> bool:
-    text = str(value or "")
-    return len(text) == 64 and all(char in "0123456789abcdef" for char in text)
+_digest = _mdigest.is_sha256
 
 
 def _protocol_design_replacement_valid(

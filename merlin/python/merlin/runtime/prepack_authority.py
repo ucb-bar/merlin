@@ -16,11 +16,10 @@ from merlin.frontends.argument_identity import ArgumentIdentityBridge
 from merlin.frontends.linalg_mlir import parse_mlir_text
 from merlin.perf.storage_encoding import GroupedAxesStorage
 from .captured_constants import CapturedConstant
+from merlin.common import jsonio as _mjson
 
 
-def _digest(value) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                     allow_nan=False).encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 @dataclass(frozen=True)

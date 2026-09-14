@@ -38,12 +38,13 @@ from .paper_session_abi import (
     load_session_descriptor,
 )
 from .paper_toolchain_authority import verify_build_tool
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 _MERLIN_SESSION_PROTOCOL = "MRLNSES2"
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha = _mdigest.sha256_file
 
 
 def _closed(value: object, fields: set[str], label: str) -> Mapping[str, Any]:
@@ -68,8 +69,7 @@ def _frames(payloads: list[bytes]) -> bytes:
 
 
 def _canonical_sha(value: object) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _validate_package_before_private_io(resources: Mapping[str, Mapping[str, str]], *,

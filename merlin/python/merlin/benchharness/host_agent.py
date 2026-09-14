@@ -23,10 +23,10 @@ import yaml
 
 from merlin.common.artifacts import write_all
 from merlin.common.paths import repo_root
+from merlin.common import digest as _mdigest
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha256 = _mdigest.sha256_file
 
 
 def _tree_lock(root: Path, *, excluded: frozenset[str] = frozenset({".git"})) -> dict[str, str]:

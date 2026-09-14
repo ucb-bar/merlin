@@ -20,11 +20,10 @@ from .execution_policy import (
     ITERATION_MAX_SECONDS, SimulationAdmission, SimulationBudget, WarmComputeReceipt, WarmProfileContract,
     admit_reduced_witness, require_probe_execution,
 )
+from merlin.common import jsonio as _mjson
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                     allow_nan=False).encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _sha(value: str, name: str) -> None:

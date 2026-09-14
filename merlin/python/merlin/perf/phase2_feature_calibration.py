@@ -16,6 +16,8 @@ from collections.abc import Mapping, Sequence
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 REQUEST_SCHEMA = "phase2_analytical_feature_calibration_request_v1"
 OBSERVATION_SCHEMA = "phase2_controlled_feature_observation_v1"
@@ -49,20 +51,17 @@ def _sequence(value: Any) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else ()
 
 
-def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+_canonical = _mjson.canonical_json
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(_canonical(value)).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _file_digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _is_sha256(value: Any) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+_is_sha256 = _mdigest.is_sha256
 
 
 def _load_json(source: Mapping[str, Any] | Path) -> tuple[dict[str, Any], str, Path]:

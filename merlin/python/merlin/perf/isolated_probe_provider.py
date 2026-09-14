@@ -17,10 +17,10 @@ from typing import Any
 from .execution_policy import SimulationBudget, WarmComputeReceipt, WarmProfileContract
 from .instruction_motif import initialized_compute_primitives
 from .mechanism_probe import MechanismEvidence, ProbeObservation
+from merlin.common import digest as _mdigest
 
 
-def _sha(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+_sha = _mdigest.sha256_bytes
 
 
 class IsolatedPrimitiveProbeProvider:

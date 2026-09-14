@@ -16,10 +16,11 @@ from typing import Any
 
 from .mechanism_probe import MechanismSignature
 from .reorder_claim import permutation_of
+from merlin.common import jsonio as _mjson
 
 
 def _canonical(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return _mjson.canonical_json(value).decode("ascii")
 
 
 def _operand(value: Any) -> Any:

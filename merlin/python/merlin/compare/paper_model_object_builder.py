@@ -19,6 +19,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 UNIT_TEST_RECIPE = "unit_test_affine_descriptor_v1"
 MERLIN_RECIPE = "merlin_mlir_model_object_v1"
@@ -84,22 +86,13 @@ class ExecuTorchSessionResources:
     session_manifest_sha256: str
 
 
-def _sha(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha = _mdigest.sha256_file
 
 
-def _canonical(value: object) -> bytes:
-    return json.dumps(
-        value,
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=True,
-        allow_nan=False,
-    ).encode("ascii")
+_canonical = _mjson.canonical_json
 
 
-def _is_sha(value: object) -> bool:
-    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+_is_sha = _mdigest.is_sha256
 
 
 def expected_recipe(registry_id: str, target: str) -> str:

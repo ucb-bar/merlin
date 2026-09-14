@@ -19,6 +19,7 @@ from typing import Any
 from merlin.xdsl_dialects.lowering.global_plan import CycleInterval
 
 from .global_planner import OccupancySummary
+from merlin.common import digest as _mdigest
 
 PORTFOLIO_MEMBER_COUNT = 4
 
@@ -73,12 +74,7 @@ def _finite_nonnegative(value: Any, name: str, *, integer: bool = False) -> floa
     return int(value) if integer else float(value)
 
 
-def _is_sha256(value: Any) -> bool:
-    return (
-        isinstance(value, str)
-        and len(value) == 64
-        and all(character in "0123456789abcdef" for character in value)
-    )
+_is_sha256 = _mdigest.is_sha256
 
 
 def _interval(value: CycleInterval | Mapping[str, Any] | None, name: str) -> CycleInterval:

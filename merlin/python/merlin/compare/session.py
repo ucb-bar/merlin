@@ -13,11 +13,10 @@ from merlin.common.schemas import validate_or_raise
 from merlin.common.yaml import load_yaml
 
 from .paper import ModelSpec, SessionSpec
+from merlin.common import digest as _mdigest
 
 
-def _sha256(value: object) -> bool:
-    text = str(value or "")
-    return len(text) == 64 and all(character in "0123456789abcdef" for character in text)
+_sha256 = _mdigest.is_sha256
 
 
 def _sha256_file(path: Path) -> str:

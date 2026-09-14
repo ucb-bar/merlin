@@ -21,6 +21,8 @@ from merlin.frontends.linalg_mlir import make_context, parse_mlir_text
 from merlin.perf.host_cfg_activity import analyze_host_cfg_activity
 from merlin.perf.structural_transitions import StaticStridedLayout
 from merlin.xdsl_dialects.lowering.integer_constant_eval import constant_integer
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 MARKERS = ("merlin.global_transition", "merlin.transition_source", "merlin.transition_buffer")
 
@@ -38,12 +40,11 @@ def _need(condition: bool, message: str, *, unsupported: bool = False) -> None:
         raise (_Unsupported if unsupported else _Refused)(message)
 
 
-def _sha(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _canonical(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return _mjson.canonical_json(value).decode("ascii")
 
 
 def _finalize(result: dict[str, Any]) -> dict[str, Any]:

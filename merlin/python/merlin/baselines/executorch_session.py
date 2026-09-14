@@ -34,6 +34,7 @@ from merlin.baselines.executorch_identity import (
 )
 from merlin.common.paths import repo_root
 from merlin.mining import k1
+from merlin.common import jsonio as _mjson
 
 
 SCHEMA = "merlin.executorch.session/v1"
@@ -230,10 +231,7 @@ class SessionPackage:
     sha256: str | None = None
 
 
-def _canonical_json(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False,
-    ).encode("ascii")
+_canonical_json = _mjson.canonical_json
 
 
 def _file_row(root: Path, path: Path) -> dict[str, object]:

@@ -41,6 +41,8 @@ from .paper_model_object_builder import (
 )
 from .paper_session_abi import decode_request, decode_response, descriptor_from_dict
 from .paper_toolchain_authority import load_toolchain_authority, verify_build_tool
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 CONTROLLER_ID = "merlin.compare.paper_measurement_controller_v2"
 _ISSUANCE_KIND = "paper_controller_issuance_v1"
@@ -198,8 +200,7 @@ def issuance_fingerprint(receipt_path: str | Path) -> str:
         receipt_path, receipt, _sha_file(raw_path), _sha_file(contract_path))
 
 
-def _sha_bytes(value: bytes) -> str:
-    return hashlib.sha256(value).hexdigest()
+_sha_bytes = _mdigest.sha256_bytes
 
 
 def _sha_file(path: Path) -> str:
@@ -207,7 +208,7 @@ def _sha_file(path: Path) -> str:
 
 
 def _canonical_sha(value: object) -> str:
-    return _sha_bytes(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _is_sha(value: object) -> bool:

@@ -10,6 +10,7 @@ from collections import Counter
 from collections.abc import Mapping
 import hashlib
 import json
+from merlin.common import digest as _mdigest
 
 
 def digest(document):
@@ -18,8 +19,7 @@ def digest(document):
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def _sha(text):
-    return hashlib.sha256(text.encode()).hexdigest()
+_sha = _mdigest.sha256_text
 
 
 def _pin(value):

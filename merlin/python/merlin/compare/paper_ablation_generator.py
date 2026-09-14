@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import yaml
+from merlin.common import jsonio as _mjson
 
 
 GENERATOR_ID = "merlin.compare.paper_ablation_summary_v2"
@@ -63,8 +64,7 @@ _OBSERVATION_FIELDS = frozenset({
 
 
 def _canonical_sha(value: object) -> str:
-    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def _path_sha(path: Path) -> str:

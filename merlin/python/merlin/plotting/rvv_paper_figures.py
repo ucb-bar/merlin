@@ -19,6 +19,7 @@ import yaml
 from merlin.common.paths import artifacts_dir
 from merlin.compare.paper import PaperStudySpec
 from merlin.compare.paper_report import build_paper_report, load_issuance_notary
+from merlin.common import digest as _mdigest
 
 
 _BACKEND_ORDER = (
@@ -44,8 +45,7 @@ _MODEL_LABEL = {
 }
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha256 = _mdigest.sha256_file
 
 
 def _load_report(path: Path, study_path: Path,

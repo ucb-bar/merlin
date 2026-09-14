@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .paper_session_abi import SessionDescriptor, descriptor_from_contract
+from merlin.common import digest as _mdigest
 
 ENTRYPOINT = "merlin_paper_session_v1"
 
@@ -242,8 +243,7 @@ int main(int argc, char **argv) {{
 """
 
 
-def _sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+_sha256 = _mdigest.sha256_file
 
 
 def _run(argv: Sequence[str], *, where: str) -> subprocess.CompletedProcess[bytes]:

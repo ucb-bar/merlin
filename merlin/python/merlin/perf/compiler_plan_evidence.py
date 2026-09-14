@@ -11,11 +11,10 @@ import json
 from collections import Counter
 from collections.abc import Mapping
 from typing import Any
+from merlin.common import jsonio as _mjson
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                     allow_nan=False).encode()).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _source_has_multiply_accumulate(op: Any) -> bool:

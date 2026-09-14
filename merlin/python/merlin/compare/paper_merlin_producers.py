@@ -35,6 +35,8 @@ from .paper_merlin_packages import (
 )
 from .paper_session_abi import SessionDescriptor, load_session_descriptor
 from .session import validate_paper_input_binding
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 _CAPABILITY = {
     "hand_v0_int8": (
@@ -79,19 +81,11 @@ class Blocker:
         return {"code": self.code, "detail": self.detail}
 
 
-def _sha(path: Path) -> str:
-    import hashlib
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        while chunk := stream.read(8 * 1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha = _mdigest.sha256_file
 
 
 def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return _mjson.write_pretty_json(path, value, mkdir=True)
 
 
 def _package_cells(study: PaperStudySpec) -> tuple[MatrixCell, ...]:

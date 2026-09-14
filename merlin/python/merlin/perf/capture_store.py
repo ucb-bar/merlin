@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 import hashlib
 import json
+from merlin.common import jsonio as _mjson
 
 __all__ = ["capture_key", "lookup", "store", "store_root", "census"]
 
@@ -56,8 +57,7 @@ def _pin_shas(pins: Mapping[str, Any]) -> dict[str, str]:
 
 
 def _canonical(value: object) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
-                       allow_nan=False) + "\n").encode("utf-8")
+    return _mjson.canonical_json(value, trailing_newline=True)
 
 
 def capture_key(elf_sha256: str, pins: Mapping[str, Any], *,

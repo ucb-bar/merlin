@@ -14,10 +14,11 @@ from .context_probe import extract_queued_movement_context
 from .context_program import slice_context_source
 from .deps.rocc import INHERITS_DESTINATION
 from .fixed_work_context import project_fixed_work_context
+from merlin.common import jsonio as _mjson
 
 
 def _digest(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 class PairedControlledContextProvider:

@@ -13,10 +13,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from .instruction_motif import initialized_compute_primitives
+from merlin.common import jsonio as _mjson
 
 
 def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
 def extract_queued_movement_context(

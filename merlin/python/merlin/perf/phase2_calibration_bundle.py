@@ -24,6 +24,8 @@ from typing import Any
 from merlin.perf import attribution as attribution_lib
 from merlin.perf import counter_harvest, headroom, hw_counters, movement_balance, phase2_feature_calibration
 from merlin.perf.decompose import ResourceKind, Unavailable
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 ADAPTER_SCHEMA = "phase2_host_analytical_calibration_adapter_v1"
 FEATURE_SCHEMA = phase2_feature_calibration.FEATURE_SCHEMA
@@ -37,12 +39,10 @@ class _EvidenceError(ValueError):
         self.integrity = integrity
 
 
-def _canonical(value: Any) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()
+_canonical = _mjson.canonical_json
 
 
-def _digest(value: Any) -> str:
-    return hashlib.sha256(_canonical(value)).hexdigest()
+_digest = _mjson.canonical_sha256
 
 
 def _sha256_bytes(path: Path) -> str:
@@ -57,9 +57,7 @@ def _sequence(value: Any) -> Sequence[Any]:
     return value if isinstance(value, Sequence) and not isinstance(value, (str, bytes)) else ()
 
 
-def _is_sha256(value: Any) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(character in "0123456789abcdef" for character in value))
+_is_sha256 = _mdigest.is_sha256
 
 
 def _number(value: Any, label: str) -> float:

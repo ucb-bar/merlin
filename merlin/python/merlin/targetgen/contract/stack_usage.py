@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+from merlin.common import digest as _mdigest
 
 
 class StackFramePreflightError(ValueError):
@@ -39,12 +40,7 @@ class StackFrameMeasurement:
         return self.max_static_bytes - self.frame_bytes
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        while chunk := stream.read(1024 * 1024):
-            digest.update(chunk)
-    return digest.hexdigest()
+_sha256 = _mdigest.sha256_file
 
 
 def parse_stack_usage(text: str) -> tuple[StackUsageRow, ...]:

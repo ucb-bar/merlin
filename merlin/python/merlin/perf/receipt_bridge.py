@@ -20,6 +20,8 @@ from pathlib import Path
 from typing import Any
 
 from merlin.perf.dma_volume import physical_volume_from_counters
+from merlin.common import digest as _mdigest
+from merlin.common import jsonio as _mjson
 
 
 _SCHEMA = "rtl_roofline_receipt_bridge_v1"
@@ -27,13 +29,10 @@ _CAMPAIGN_SCHEMA = "rtl_calibration_campaign_v1"
 
 
 def _digest(value: Any) -> str:
-    return hashlib.sha256(json.dumps(
-        value, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+    return _mjson.canonical_sha256(value, allow_nan=True)
 
 
-def _is_sha256(value: object) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(character in "0123456789abcdef" for character in value))
+_is_sha256 = _mdigest.is_sha256
 
 
 def _issue(source: str, detail: str, code: str) -> dict[str, str]:
