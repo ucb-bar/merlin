@@ -1123,6 +1123,9 @@ def _host_layer(name: str, events: list, trace: Trace,
                 if copy is None:
                     raise UnsupportedConstruct(f"{call.name}: {key} is on chip but no load feeds it")
                 inputs[key] = copy.src.box.node
+                view = tuple(copy.src.output_shape or ())
+                if view and view != tuple(copy.src.box.shape):
+                    attrs[f"{key}_view"] = view      # the shape the op reads its DRAM tensor as
                 if copy.pad:
                     attrs[f"{key}_pad_before"] = tuple(copy.pad)
                     attrs[f"{key}_pad_value"] = copy.pad_value
@@ -1276,13 +1279,192 @@ def _bf16(values: Any) -> Any:
     return bits.astype(np.uint32).view(np.float32)
 
 
+def _int_range(dtype: str) -> tuple[int, int]:
+    """The value range of an integer dtype name (``int8``, ``uint8``, ``int32``, ...)."""
+    signed = not dtype.startswith("uint")
+    digits = dtype[4:] if not signed else dtype[3:]
+    if not dtype.startswith(("int", "uint")) or not digits.isdigit():
+        raise UnsupportedConstruct(f"{dtype} is not an integer dtype")
+    bits = int(digits)
+    return (-(1 << (bits - 1)), (1 << (bits - 1)) - 1) if signed else (0, (1 << bits) - 1)
+
+
+def _as_dtype(values: Any, dtype: str) -> Any:
+    """A host result in the executor's representation of ``dtype``: an integer tensor as int64
+    (it must already hold integers), bfloat16 as its values in float32, float32 as itself."""
+    import numpy as np
+
+    if dtype == "bfloat16":
+        return _bf16(values)
+    if dtype == "float32":
+        return np.asarray(values, dtype=np.float32)
+    values = np.asarray(values)
+    if values.dtype.kind == "f" and not np.array_equal(values, np.rint(values)):
+        raise UnsupportedConstruct(f"a non-integer result stored as {dtype}")
+    return values.astype(np.int64)
+
+
+def _operand(op: HostOp, tensors: Mapping[str, Any], key: str) -> Any:
+    """``op``'s DRAM operand ``key``, read in the shape the op reads it (the load's view)."""
+    import numpy as np
+
+    values = np.asarray(tensors[op.inputs[key]])
+    view = op.attrs.get(f"{key}_view")
+    return values.reshape(view) if view else values
+
+
+def _host_max_pool2d(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str):
+    """Voyager's ``quantized_ops::max_pool2d``, the NHWC twin of ``aten.max_pool2d``
+    (``ops/layout.py``), read from the tile its load builds: ``async_copy`` fills the tile with the
+    pad value and copies the source in after each dim's leading pad (``bufferize/ops.py``
+    ``async_copy``). Only the load pads; a kernel padding of its own refuses."""
+    import numpy as np
+
+    x = np.asarray(_operand(op, tensors, "input"), dtype=np.float32)
+    a = op.attrs
+    kh, kw = a["kernel_size"]
+    sh, sw = tuple(a.get("stride") or ()) or (kh, kw)
+    dh, dw = a.get("dilation", (1, 1))
+    if a.get("ceil_mode") or tuple(a.get("padding", (0, 0))) != (0, 0) or x.ndim != 4:
+        raise UnsupportedConstruct("max_pool2d with ceil_mode, its own padding, or a non-NHWC input")
+    pad = tuple(a.get("input_pad_before", (0, 0, 0, 0)))
+    fill = a.get("input_pad_value")
+    fill = np.float32(0.0 if fill is None else fill)
+    if pad[0] or pad[3]:
+        raise UnsupportedConstruct("max_pool2d padded along batch or channels")
+    n, oh, ow, c = out_shape
+    th, tw = (oh - 1) * sh + (kh - 1) * dh + 1, (ow - 1) * sw + (kw - 1) * dw + 1
+    tile = np.full((x.shape[0], th, tw, x.shape[3]), fill, dtype=np.float32)
+    rows, cols = min(th, pad[1] + x.shape[1]) - pad[1], min(tw, pad[2] + x.shape[2]) - pad[2]
+    tile[:, pad[1]:pad[1] + rows, pad[2]:pad[2] + cols] = x[:, :rows, :cols]
+    out = np.full((x.shape[0], oh, ow, x.shape[3]), -np.inf, dtype=np.float32)
+    for fy in range(kh):
+        for fx in range(kw):
+            out = np.maximum(out, tile[:, fy * dh:fy * dh + sh * (oh - 1) + 1:sh,
+                                       fx * dw:fx * dw + sw * (ow - 1) + 1:sw])
+    return _as_dtype(out.reshape(out_shape), out_dtype)
+
+
+def _host_adaptive_avg_pool2d(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple,
+                              out_dtype: str):
+    """Voyager's ``quantized_ops::adaptive_avg_pool2d``, the NHWC twin of the aten op
+    (``ops/layout.py``): per output cell, the window [floor(i*H/OH), ceil((i+1)*H/OH)), summed in
+    float32 in row-major order and divided by its size in float32, then stored in the output dtype."""
+    import numpy as np
+
+    x = np.asarray(_operand(op, tensors, "input"), dtype=np.float32)
+    if x.ndim != 4:
+        raise UnsupportedConstruct("adaptive_avg_pool2d on a non-NHWC input")
+    oh, ow = op.attrs["output_size"]
+    n, h, w, c = x.shape
+    out = np.empty((n, oh, ow, c), dtype=np.float32)
+    for i in range(oh):
+        h0, h1 = (i * h) // oh, -(-((i + 1) * h) // oh)
+        for j in range(ow):
+            w0, w1 = (j * w) // ow, -(-((j + 1) * w) // ow)
+            acc = np.zeros((n, c), dtype=np.float32)
+            for y in range(h0, h1):
+                for z in range(w0, w1):
+                    acc = acc + x[:, y, z, :]
+            out[:, i, j, :] = acc / np.float32((h1 - h0) * (w1 - w0))
+    return _as_dtype(out.reshape(out_shape), out_dtype)
+
+
+def _host_quantize(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str):
+    """Voyager's ``quantized_ops::quantize`` for a per-tensor scale: ``input / scale`` in the
+    input's bfloat16 (computed in float32, rounded once; ``ops/quantized.py`` ``quantize``), then the
+    integer table ``get_quantization_map`` builds -- ``clamp(round(v))``, round half to even
+    (``quantization/fake_quantize.py`` ``get_quantization_map``) -- looked up by bit pattern
+    (``ops/quantized.py`` ``vmap``)."""
+    import numpy as np
+
+    if op.attrs.get("zero_point") is not None or op.attrs.get("block_size") is not None:
+        raise UnsupportedConstruct("a zero point or block-wise quantize is not a per-tensor scale")
+    x = np.asarray(_operand(op, tensors, "input"), dtype=np.float32)
+    quotient = _bf16(x / np.float32(op.attrs["scale"]))
+    lo, hi = _int_range(out_dtype)
+    return np.clip(np.rint(quotient), lo, hi).astype(np.int64).reshape(out_shape)
+
+
+def _host_dequantize(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str):
+    """Voyager's ``quantized_ops::dequantize`` for a per-tensor scale: ``input * scale``
+    (``ops/quantized.py`` ``dequantize``). Type promotion casts the integer input to the scale's
+    floating dtype FIRST -- for a bfloat16 scale the integer is rounded to bfloat16 -- then the
+    product is computed in float32 and rounded to the output dtype."""
+    import numpy as np
+
+    if op.attrs.get("zero_point") is not None or op.attrs.get("block_size") is not None:
+        raise UnsupportedConstruct("a zero point or block-wise dequantize is not a per-tensor scale")
+    x = np.asarray(_operand(op, tensors, "input")).astype(np.float32)
+    if out_dtype == "bfloat16":
+        x = _bf16(x)
+    return _as_dtype((x * np.float32(op.attrs["scale"])).reshape(out_shape), out_dtype)
+
+
+def _host_linear(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple, out_dtype: str):
+    """The classifier's ``aten::linear`` as Voyager's graph runs it: bfloat16 operands (int8
+    activations and weights, exact in bfloat16), a float32 accumulation with the bias, one rounding
+    to bfloat16. The products are summed exactly here, which is what float32 accumulation gives
+    while partial sums stay below 2**24; beyond that the order of a library's blocked sum would
+    matter, and a result is refused rather than guessed. The bias is the IR's integer tile, added
+    exactly."""
+    import numpy as np
+
+    x = np.asarray(_operand(op, tensors, "input"), dtype=np.float64)
+    w = np.asarray(_operand(op, tensors, "weight"), dtype=np.float64)
+    total = x @ w.T
+    exact_below = float(1 << (np.finfo(np.float32).nmant + 1))   # float32 holds every integer below
+    if (np.abs(x) @ np.abs(w).T).max(initial=0) >= exact_below:
+        raise UnsupportedConstruct("linear partial sums past float32's exact-integer range")
+    if "bias" in op.inputs:
+        total = total + np.asarray(_operand(op, tensors, "bias"), dtype=np.float64)
+    return _as_dtype(_bf16(total.astype(np.float32)).reshape(out_shape), out_dtype)
+
+
+def host_op_reference(op: HostOp, tensors: Mapping[str, Any], out_shape: tuple,
+                      out_dtype: str) -> Any:
+    """The numpy reference of one host op, as the executor's value of its (single) output.
+
+    ``tensors`` maps DRAM names to arrays (integers as int64, bfloat16 values as float32);
+    ``out_shape``/``out_dtype`` are the output tensor's. Voyager's own ops follow Voyager's reference
+    semantics (checked against its op library by ``merlin/tests/ir/test_voyager_host_ops.py``); the
+    bridge's ops follow the target: ``merlin::requantize`` is the scale unit into int32,
+    ``merlin::dequantize`` a float32 scale, then relu, then the output dtype.
+    """
+    import numpy as np
+
+    target = op.target
+    if target == REQUANTIZE:
+        return _scale_unit(tensors[op.inputs["input"]], op.attrs["scale"], *_INT32)
+    if target == DEQUANTIZE_ACC:
+        values = np.asarray(tensors[op.inputs["input"]]).astype(np.float32)
+        values = values * np.float32(op.attrs["scale"])
+        if op.attrs["relu"]:
+            values = np.maximum(values, np.float32(0))
+        return _bf16(values) if op.attrs["dtype"] == "bfloat16" else values
+    if target == "aten::permute":
+        return np.transpose(tensors[op.inputs["input"]], op.attrs["dims"])
+    handler = _HOST_OPS.get(target)
+    if handler is None:
+        raise UnsupportedConstruct(f"host op {target} has no reference semantics here")
+    return handler(op, tensors, tuple(out_shape), out_dtype)
+
+
+_HOST_OPS = {
+    "quantized_ops::max_pool2d": _host_max_pool2d,
+    "quantized_ops::adaptive_avg_pool2d": _host_adaptive_avg_pool2d,
+    "quantized_ops::quantize": _host_quantize,
+    "quantized_ops::dequantize": _host_dequantize,
+    "aten::linear": _host_linear,
+}
+
+
 def execute_model(layers: list[Layer], tensors: dict[str, Any], trace: Trace) -> dict[str, Any]:
     """Run a lowered model with numpy. ``tensors`` maps DRAM tensor names to arrays in their Voyager
-    shapes (inputs and parameters); results are added under their names and the dict is returned.
+    shapes (inputs and parameters; integers as int64, bfloat16 values as float32); results are added
+    under their names and the dict is returned.
 
-    Accelerator layers run through :func:`execute`; the bridge's own host ops have reference
-    semantics here (requantize: the target's scale unit into int32; dequantize: fp32 scale, then
-    relu, then bfloat16 rounding when the tensor is bf16). Other host ops refuse.
+    Accelerator layers run through :func:`execute`; host ops through :func:`host_op_reference`.
     """
     import numpy as np
 
@@ -1298,20 +1480,12 @@ def execute_model(layers: list[Layer], tensors: dict[str, Any], trace: Trace) ->
             lhs, weight = view.pop("lhs"), view.pop("weight")
             out = execute(program, lhs, weight, **view)
             tensors[program.dram_nodes["out"]] = out.reshape(shape_of(program.dram_nodes["out"]))
-        elif program.target == REQUANTIZE:
-            source = tensors[program.inputs["input"]]
-            tensors[program.outputs["output"]] = _scale_unit(source, program.attrs["scale"], *_INT32)
-        elif program.target == DEQUANTIZE_ACC:
-            values = np.asarray(tensors[program.inputs["input"]]).astype(np.float32)
-            values = values * np.float32(program.attrs["scale"])
-            if program.attrs["relu"]:
-                values = np.maximum(values, np.float32(0))
-            if program.attrs["dtype"] == "bfloat16":
-                values = _bf16(values)
-            tensors[program.outputs["output"]] = values
-        elif program.target == "aten::permute":
-            tensors[program.outputs["output"]] = np.transpose(tensors[program.inputs["input"]],
-                                                              program.attrs["dims"])
-        else:
-            raise UnsupportedConstruct(f"host op {program.target} has no reference semantics here")
+            continue
+        if len(program.outputs) != 1:
+            raise UnsupportedConstruct(f"host op {program.target} writes {len(program.outputs)} "
+                                       "tensors")
+        (out,) = program.outputs.values()
+        box = trace.allocations.get(out.removesuffix("__acc_i32"))
+        dtype = "int32" if out.endswith("__acc_i32") or box is None else box.dtype
+        tensors[out] = host_op_reference(program, tensors, shape_of(out), dtype)
     return tensors

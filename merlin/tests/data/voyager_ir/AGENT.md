@@ -22,6 +22,13 @@ facts of the schedule (grid, slots, guarded loads, split-K chains), never a nume
 
 The conv fixtures' outputs end in a host `aten::permute` (NHWC -> NCHW).
 
+- `host_ops_golden/` — Voyager's OWN outputs for the ops the bridge leaves on the host (quantize,
+  dequantize, max_pool2d on a load-padded tile, adaptive_avg_pool2d, the bf16 classifier linear), on
+  seeded inputs chosen to hit rounding ties, saturation and integers past bf16 precision. Recorded in
+  Voyager's environment by `merlin/experiments/voyager_h2h/scripts/voyager_host_ops_golden.py`; the
+  manifest names the exact call behind every entry. These ARE answer keys for
+  `voyager_schedule.host_op_reference`, but of Voyager's public op library, not of any capsule.
+
 Whole-block fixtures (`voyager_export.py` workload kind `resblock`; batch-norm randomized, then
 folded as Voyager's harness does). Each adds `scales.json`, the per-tensor scale values the program
 references (from Voyager's `dump_tensors` output), so `lower_model` can build the readout:

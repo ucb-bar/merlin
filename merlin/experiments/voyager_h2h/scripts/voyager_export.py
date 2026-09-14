@@ -136,6 +136,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--conv2d-im2col", action="store_true",
                         help="Voyager's own replace_conv2d_with_im2col before quantization (its CI "
                              "flag --conv2d_im2col): small-channel convs become linears")
+    parser.add_argument("--extra-inputs", type=int, default=0,
+                        help="also run N more seeded random inputs through the quantized and the "
+                             "bufferized graph of the same compiled model (saved in io.pt)")
     args = parser.parse_args(argv)
 
     root = _voyager_root()
@@ -169,6 +172,12 @@ def main(argv: list[str] | None = None) -> int:
         gm(torch.randn_like(example))
     convert_pt2e(gm, scheme["bias"])
     quantized_output = gm(example)
+    # Extra inputs draw from their own generator, so the model, its calibration and the main example
+    # are exactly what an export without them produces.
+    generator = torch.Generator().manual_seed(args.seed + 1)
+    extra_inputs = [torch.randn(example.shape, generator=generator).to(example.dtype)
+                    for _ in range(args.extra_inputs)]
+    extra_quantized = [gm(x) for x in extra_inputs]
 
     patterns = test_codegen.VECTOR_PIPELINE
     transform(gm, (example,), patterns=patterns, config=config, skip_op_fusion=True,
@@ -181,13 +190,18 @@ def main(argv: list[str] | None = None) -> int:
     compile(gm, (lowered_input,), config=config, output_dir=str(args.out),
             output_file=workload.get("name", workload["kind"]), dump_tensors=True)
     lowered_output = gm(lowered_input) if args.run_lowered else None
+    extra_lowered_inputs = [preprocess(x) for x in extra_inputs]
+    extra_lowered_outputs = [gm(x) for x in extra_lowered_inputs]
 
     model = voyager_ir_pb2.Model()
     text_format.Parse((args.out / "model.txt").read_text(), model)
     (args.out / "model.json").write_text(json.dumps(
         json_format.MessageToDict(model, preserving_proto_field_name=True), indent=1))
     torch.save({"input": example, "lowered_input": lowered_input,
-                "quantized_output": quantized_output, "lowered_output": lowered_output},
+                "quantized_output": quantized_output, "lowered_output": lowered_output,
+                "extra_inputs": extra_inputs, "extra_lowered_inputs": extra_lowered_inputs,
+                "extra_quantized_outputs": extra_quantized,
+                "extra_lowered_outputs": extra_lowered_outputs},
                args.out / "io.pt")
 
     import torchao
