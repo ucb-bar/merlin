@@ -1,31 +1,104 @@
-"""The single place that resolves capsule-corpus locations the LIBRARY reads (reference-by-location).
+"""The single place that resolves corpus locations the LIBRARY reads (reference-by-location).
 
 No library module should hardcode a corpus path; they call :func:`capsule_corpus_roots` /
-:func:`find_capsule` instead. This is the ONE sanctioned indirection to a corpus that still lives
-under ``experiments/`` (the boundary lint allowlists this module) — see the note below.
+:func:`find_capsule` / :func:`kernel_corpus_root` instead. The locations themselves are DATA — the corpus
+registry ``merlin/contract/corpora.yaml`` — and this module is its one reader, so adding or moving a corpus
+is a registry edit. It is also the ONE sanctioned indirection to a corpus that still lives under
+``experiments/`` (the boundary lint allowlists this module).
 
 Corpora:
-- ``merlin/contract/capsules`` — the frozen graded ABI suite (canonical).
-- ``merlin/experiments/gemmini_perf_bench/kernels`` — the perf-bench corpus. It is *library-consumed*
-  (the RTL checks screen it), so by the consumption-direction rule it is a benchmark input and its
-  proper home is ``merlin/benchmarks/``. Relocating it is DEFERRED: three untracked, concurrently-edited
-  perf-bench scripts still read it in place, and moving it would break that in-flight work. When they
-  land, change the one line below (and repoint the perf harness) — every reader already goes through here.
+- capsule corpora (registry ``capsule_corpora``) — the frozen graded ABI suite (canonical, first) and the
+  perf-bench corpus. The latter is *library-consumed* (the RTL checks screen it), so by the
+  consumption-direction rule it is a benchmark input and its proper home is ``merlin/benchmarks/``.
+  Relocating it is DEFERRED: untracked, concurrently-edited perf-bench scripts still read it in place.
+  When they land, change its registry line (and repoint the perf harness) — every reader goes through here.
+- expert kernel corpora (registry ``kernel_corpora``) — the framework checkouts the kernel-mining layer
+  builds from, keyed by framework, each with the ``kernel.source`` spellings that name it, its layout and
+  where its checkout is found.
 """
 from __future__ import annotations
 
+import os
+from functools import lru_cache
 from pathlib import Path
 
 from merlin.common.paths import merlin_dir
 
+_REGISTRY = ("contract", "corpora.yaml")        # under merlin/
+
+
+@lru_cache(maxsize=None)
+def _load_registry(path: Path) -> dict:
+    from merlin.common.yaml import load_yaml
+    data = load_yaml(path)
+    if not isinstance(data, dict):
+        raise ValueError(f"corpus registry {path} is not a mapping")
+    return data
+
+
+def _registry() -> dict:
+    """The corpus registry. A missing or malformed one RAISES: read as empty, it would make every corpus
+    reader report "nothing to screen", which looks exactly like a clean result."""
+    return _load_registry(merlin_dir().joinpath(*_REGISTRY))
+
 
 def capsule_corpus_roots() -> list[Path]:
     """Existing capsule-corpus roots the library may screen (canonical first)."""
-    roots = [
-        merlin_dir() / "contract" / "capsules",
-        merlin_dir() / "experiments" / "gemmini_perf_bench" / "kernels",  # perf benchmark (to relocate)
-    ]
+    roots = [merlin_dir() / str(rel) for rel in _registry().get("capsule_corpora") or []]
     return [r for r in roots if r.is_dir()]
+
+
+def kernel_corpora() -> dict[str, dict]:
+    """Every expert kernel corpus the registry declares, ``{framework: spec}``, in declaration order."""
+    return {str(k): dict(v or {}) for k, v in (_registry().get("kernel_corpora") or {}).items()}
+
+
+def kernel_corpus_for_source(source: str | None) -> str | None:
+    """The corpus (framework name) a ``kernel.source`` spelling names, matched case-insensitively, or None."""
+    want = (source or "").lower()
+    if not want:
+        return None
+    for name, spec in kernel_corpora().items():
+        if want == name.lower() or want in {str(s).lower() for s in spec.get("sources") or []}:
+            return name
+    return None
+
+
+def kernel_corpus_env(name: str) -> str:
+    """The environment variable pointing at corpus ``name``'s checkout: ``MERLIN_<NAME>_REPO`` -- the
+    convention the kernel-index CLI already reads, derived from the name rather than listed."""
+    return f"MERLIN_{name.upper()}_REPO"
+
+
+def kernel_corpus_root(name: str) -> Path | None:
+    """Root of expert corpus ``name``'s checkout, or None when the registry declares no such corpus.
+
+    Precedence: :func:`kernel_corpus_env` when set; then a local clone at ``<repo>/tmp/kernels/<checkout>``
+    if one is actually there; then the corpus's declared ``ext`` fallback (a directory inside an external
+    checkout this repo already configures, via ``ext_path``) when that is on disk; else the local-clone
+    path, so a fresh checkout's error names the location a clone is expected at rather than someone else's
+    machine.
+    """
+    spec = kernel_corpora().get(name)
+    if spec is None:
+        return None
+    env = os.environ.get(kernel_corpus_env(name))
+    if env:
+        return Path(env)
+    from merlin.common.paths import repo_root
+    local = repo_root() / "tmp" / "kernels" / str(spec.get("checkout") or name)
+    if local.is_dir():
+        return local
+    ext = spec.get("ext") or {}
+    if ext.get("name"):
+        try:
+            from merlin.common.paths import ext_path
+            cand = ext_path(str(ext["name"])) / str(ext.get("subpath") or "")
+            if cand.is_dir():
+                return cand
+        except (KeyError, ImportError):
+            pass
+    return local
 
 
 def capsule_store_targets() -> list[str]:

@@ -150,7 +150,6 @@ entries:
     items:
       - merlin/python/merlin/compile_cli.py
       - merlin/python/merlin/kernels/ceiling_drivers/multishape_compare.py
-      - merlin/python/merlin/kernels/plots.py
       - merlin/python/merlin/targetgen/rtl/circt_introspect.py
       - merlin/python/merlin/targetgen/rtl_checks.py
     why: >-
@@ -176,37 +175,31 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - merlin/python/merlin/kernels/bench_ceiling.py
-      - merlin/python/merlin/kernels/build_asm.py
-      - merlin/python/merlin/kernels/framework_contracts/__init__.py
-      - merlin/python/merlin/kernels/ingest/exo.py
-      - merlin/python/merlin/kernels/markers.py
-      - merlin/python/merlin/targetgen/corpora.py
       - merlin/python/merlin/targetgen/rtl/introspect.py
       - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
     why: >-
-      Read line by line, and these DO decide behaviour. Five kinds: environment-variable names
-      (`MERLIN_SATURN_REPO`, `MERLIN_GEMMINI_SPIKE`); table keys a lookup indexes by
-      (`saturn_opu_mxv256d128` in the OPU id map, `saturn_vec` seeding the backend registry);
-      emitted-symbol patterns a matcher tests against (`gemmini_extended_compute_preloaded`,
-      `replace_gemmini_calls`); elaborated-config names (`GemminiRocketConfig`); and
-      directory/framework identifiers (`gemmini_perf_bench`, `saturn_vectors`).
-      The board table closed on 2026-09-14: it is data (merlin/contract/boards.yaml), and the
-      Verilator/VCS simulator names and override variables it and the heavy oracles used are derived from
-      the board entry and the target contract.
+      Read line by line, and these DO decide behaviour. Two kinds remain: a table key a lookup indexes
+      by (`saturn_opu_mxv256d128` in the OPU id map); and elaborated-config and ISA-file names
+      (`GemminiRocketConfig`, `muon_isa.json`).
       Each has the same shape as an overfit already closed elsewhere in this file — a fact that could
       come from a contract, a manifest or a registry, written as a literal instead. They are grouped
-      because the fix is one mechanism, not fourteen: a per-kind lookup the target resolves.
+      because the fix is one mechanism per kind: a lookup the target resolves.
+      Two former kinds are closed and their modules removed from this list: emitted-symbol patterns (the
+      kernel-mining motif markers and the target -> ISA-family map are data in
+      `kernels/framework_contracts/feature_extraction/<family>.yaml`) and corpus/framework directories
+      (expert-corpus checkouts, their source aliases and the capsule-corpus roots are data in
+      `merlin/contract/corpora.yaml`, resolved only by `merlin.targetgen.corpora`). The board table and
+      the simulator override variables closed on 2026-09-14: boards are data (merlin/contract/boards.yaml),
+      and the Verilator/VCS config names and `MERLIN_<TARGET>_*` variables derive from the board entry and
+      the target contract.
     blocks: >-
-      A second target reaching any of these paths. It cannot set an env var named after another
-      accelerator, appear in a board table keyed by one, or be matched by a symbol pattern written for
-      one. This is the residue that makes "plug in any RTL repo" still cost core edits.
+      A second target reaching any of these paths. It cannot appear in an OPU table keyed by another
+      accelerator, or elaborate a config or read an ISA file named for one. This is the residue that
+      makes "plug in any RTL repo" still cost core edits.
     removal_condition: >-
-      Each kind routes through a resolver keyed on the target: env-var names and config names come from
-      the target's contract or capability manifest, board and OPU tables become registries the target
-      registers into, symbol patterns come from the framework contract the kernel-mining layer already
-      has, and corpus/framework directories resolve through `merlin.common.corpora`. Close them per
-      kind, and delete each path from this list as its kind lands.
+      Each kind routes through a resolver keyed on the target: config and ISA-file names come from the
+      target's contract or capability manifest, and the OPU table becomes a registry the target registers
+      into. Close them per kind, and delete each path from this list as its kind lands.
 
   # ---------------------------------------------------------------- surfaced by the derived roster
   - id: names-surfaced-when-the-target-roster-was-derived

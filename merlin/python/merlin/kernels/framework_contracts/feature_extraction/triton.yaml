@@ -1,6 +1,19 @@
 # Feature-extraction contract for Triton (@triton.jit) GPU kernels.
 family: triton
+# markers.py: the kernel.target spellings that select this family (matched case-insensitively).
+targets: [triton, gpu, cuda]
 # loops.py: Triton names tiling directly (tl.program_id / BLOCK_SIZE grids), an explicit directive.
 loops:
   tiling_is_directive: true
 # rhs_reuse: no family-specific proxy — the extractor's default (packed_constant, value 1) applies.
+# markers.py: block-pointer staging, tl.dot accumulation, masked tails, software pipelining via
+# num_stages. Decisions are explicit in the Python intrinsics. Single-quoted: each string is the regex.
+markers:
+  packed_rhs: ['tl\.make_block_ptr', 'tl\.advance', 'b_ptrs?\s*\+=', '\bBLOCK_SIZE_[KN]\b']
+  accumulator_lifetime: ['tl\.dot\b', '\bacc(?:umulator)?\s*\+=', 'tl\.zeros\b']
+  epilogue_before_commit: ['accumulator\.to\(', '\*\s*scale', 'tl\.sigmoid',
+                           'leaky_relu', '\bmaximum\(', 'tl\.where']
+  tiling_blocking: ['tl\.program_id', 'tl\.arange', '\bBLOCK_SIZE_M\b',
+                    'for\s+\w+\s+in\s+range\([^)]*BLOCK']
+  double_buffering: ['num_stages\s*=\s*[2-9]', 'tl\.async', 'num_stages']
+  intrinsic_lowering: ['\btl\.\w+', '@triton\.jit']

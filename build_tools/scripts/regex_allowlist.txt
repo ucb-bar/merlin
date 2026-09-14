@@ -11,14 +11,11 @@
 #
 # See docs / the plan for the tiering. `# regex-ok:` inline markers override this file per-line.
 
-# ---------------------------------------------------------------- PERMANENT (irreducible)
-merlin/python/merlin/kernels/markers.py                       # motif-evidence table ("heart of extraction"); by design
-
 # ---------------------------------------------------------------- DEFERRED: legacy comparator (needs a validated beam-ranking migration, not a mechanical swap)
 merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)
 merlin/python/merlin/kernels/features/rvv_intrinsics.py       # superseded by decode/clang_ast.py — delete together with compare.py (its only consumer)
 
-# ---------------------------------------------------------------- lexical source-feature extraction (same category as markers.py; regex IS the tool)
+# ---------------------------------------------------------------- lexical source-feature extraction (same category as the motif-marker table; regex IS the tool)
 # These count word-bounded tokens over heterogeneous kernel source (C/Triton-Py/Exo) to derive cheap
 # features. Regex is the right tool for lexical token matching; the structural alternative is a full
 # tree-sitter unification (ast_struct.py already parses C), which is a scoped feature-mining refactor

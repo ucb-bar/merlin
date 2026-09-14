@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import Iterator
 
-from merlin.kernels.framework_contracts import load_contract
+from merlin.kernels.framework_contracts import load_contract, load_feature_contract
 from merlin.kernels.types import NormalizedKernel
 
 log = logging.getLogger("merlin.kernels.ingest.exo")
@@ -89,6 +89,17 @@ def _load_module(path: Path):
     return module
 
 
+def _schedule_directives() -> tuple[str, ...]:
+    """Scheduling directives whose presence marks a ``.py`` spec as a schedule file -- data in the
+    ``exo_schedule`` family's feature-extraction contract, so no platform's directive name lives here.
+    Empty raises: nothing would qualify, and the ingest would report zero schedules as if there were none."""
+    spec = load_feature_contract("exo_schedule").get("schedule_directives") or ()
+    directives = tuple(str(d) for d in spec)
+    if not directives:
+        raise ValueError("feature_extraction/exo_schedule.yaml declares no schedule_directives")
+    return directives
+
+
 def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[NormalizedKernel]:
     """Yield NormalizedKernels from Exo *schedule* ``.py`` files (no compilation).
 
@@ -102,8 +113,7 @@ def ingest_exo_schedules(repo: str, limit: int | None = None) -> Iterator[Normal
     for spec_path in _spec_files(root):
         text = spec_path.read_text(encoding="utf-8", errors="replace")
         # Only schedule files: must invoke at least one scheduling directive.
-        if not any(d in text for d in ("set_memory", "stage_mem", "divide_loop",
-                                       "replace_all", "replace_gemmini_calls", "tile_outer_loops")):
+        if not any(d in text for d in _schedule_directives()):
             continue
         try:
             rel = str(spec_path.relative_to(root))

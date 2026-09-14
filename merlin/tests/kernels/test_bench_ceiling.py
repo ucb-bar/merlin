@@ -12,7 +12,7 @@ import pytest
 from merlin.kernels import bench_ceiling as bc
 from merlin.kernels.compare import RvvFingerprint
 
-_HAVE_SPIKE = bc.saturn_available()
+_HAVE_SPIKE = bc.corpus_available("saturn")
 _needs_spike = pytest.mark.skipif(
     not _HAVE_SPIKE,
     reason="spike/riscv-gcc/saturn-corpus/encoding.h unavailable (set MERLIN_CHIPYARD)")

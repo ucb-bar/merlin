@@ -27,16 +27,12 @@ build_tools/scripts/setup_atlas.py                           # atlas external-re
 build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle probe script (reference target)
 
 # ---------------------------------------------------------------- reference-target REGISTRY / catalog (the in-tree target catalog OV11 replaces with MERLIN_TARGET_PATH discovery)
-merlin/python/merlin/kernels/markers.py                      # ISA-family motif table (also regex-allowlisted); names reference families
-merlin/python/merlin/kernels/framework_contracts/__init__.py # saturn source->framework map (reference ingest source)
 merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
 merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
 merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetalC corroboration report path (reference tool)
-merlin/python/merlin/kernels/bench_ceiling.py                # saturn-only kernel-ceiling bench (only saturn corpus wired)
-merlin/python/merlin/kernels/build_asm.py                    # saturn-vectors build path (reference corpus)
 merlin/python/merlin/targetgen/publish.py                    # payload/gate/README shaping branches on the package FAMILY (`if target == "rvv"`, _payload_*); not just README text
 
 # ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)

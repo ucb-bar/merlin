@@ -70,7 +70,9 @@ def _build(driver: Path, incs: list[Path], out: Path, *, timeout: int = 300) -> 
     """Build one expert driver ELF; return None on success, else the error text (blocker)."""
     from ...runtime.backends import spike
     gcc = spike.gcc_path()
-    sat = bench_ceiling.build_asm.saturn_root() / "benchmarks"
+    sat = bench_ceiling.build_asm.benchmarks_dir()
+    if sat is None:
+        return "no standalone-benchmark corpus registered (merlin/contract/corpora.yaml)"
     enc = bench_ceiling._encoding_include_dir()
     if enc is None:
         return "encoding.h not found (set MERLIN_CHIPYARD)"

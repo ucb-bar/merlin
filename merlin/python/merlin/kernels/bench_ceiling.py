@@ -376,7 +376,7 @@ def _parse_sgemm(console: str, M: int, N: int, K: int) -> CycleReading:
             instructions = _named_counter(line, "minstret")
     if cycles is not None:
         return CycleReading(_PARSED, cycles, instructions,
-                            note="saturn setStats counter dump ('mcycle = N' / 'minstret = N')")
+                            note="setStats counter dump ('mcycle = N' / 'minstret = N')")
     for line in console.splitlines():
         legacy = _colon_cycles(line)
         if legacy is not None:
@@ -407,16 +407,19 @@ def _encoding_include_dir() -> Path | None:
     return None
 
 
-def saturn_available() -> bool:
-    """True when the riscv gcc + spike + the saturn corpus + an encoding.h are all present."""
+def corpus_available(source: str | None = None) -> bool:
+    """True when the riscv gcc + spike + the standalone-benchmark corpus ``source`` names (default: the
+    registry's first) + an encoding.h are all present."""
     from ..runtime.backends import spike
-    root = build_asm.saturn_root() / "benchmarks"
-    return (spike.available() and root.is_dir()
+    root = build_asm.benchmarks_dir(source)
+    return (spike.available() and root is not None and root.is_dir()
             and _encoding_include_dir() is not None)
 
 
-def _build_saturn_elf(bench: str, workdir: Path, *, timeout: int = 300) -> Path | None:
-    """Build a saturn benchmark to a spike ELF, mirroring the bench Makefile recipe.
+def _build_bench_elf(bench: str, workdir: Path, source: str | None = None, *,
+                     timeout: int = 300) -> Path | None:
+    """Build a benchmark of the standalone corpus ``source`` names to a spike ELF, mirroring the bench
+    Makefile recipe.
 
     Returns the ELF path, or ``None`` on any failure (missing toolchain, bench, or a
     compile/link error) — never raises for an ordinary build failure.
@@ -425,7 +428,9 @@ def _build_saturn_elf(bench: str, workdir: Path, *, timeout: int = 300) -> Path 
     gcc = spike.gcc_path()
     if not gcc.is_file():
         return None
-    benchmarks = build_asm.saturn_root() / "benchmarks"
+    benchmarks = build_asm.benchmarks_dir(source)
+    if benchmarks is None:
+        return None
     bench_dir = benchmarks / bench
     common = benchmarks / "common"
     if not bench_dir.is_dir() or not common.is_dir():
@@ -455,9 +460,9 @@ def _build_saturn_elf(bench: str, workdir: Path, *, timeout: int = 300) -> Path 
     return elf
 
 
-def _run_saturn_elf(elf: Path, *, isa: str = DEFAULT_ISA, harts: int = 4,
-                    timeout: int = 300) -> str | None:
-    """Run a saturn ELF on spike and return console text, or None on failure."""
+def _run_bench_elf(elf: Path, *, isa: str = DEFAULT_ISA, harts: int = 4,
+                   timeout: int = 300) -> str | None:
+    """Run a benchmark ELF on spike and return console text, or None on failure."""
     from ..runtime.backends import spike
     cmd = [str(spike.spike_path()), f"--isa={isa}", f"-p{harts}", SPIKE_MEM, str(elf)]
     try:
@@ -491,8 +496,8 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
     """
     if target != "spike":
         return None
-    src = (source or "").lower()
-    if src not in ("saturn", "saturn-vectors", "saturn_vectors"):
+    corpus = build_asm.benchmark_source(source or "")
+    if corpus is None:                                # not a registered standalone-benchmark corpus
         return None
     if "vopacc" in (kernel_ref or "").lower():       # mining-contract exclusion
         return None
@@ -505,15 +510,15 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
     op = spec.op if kernel_ref in SATURN_BENCHES else (op or spec.op)
     dtype = spec.dtype if kernel_ref in SATURN_BENCHES else (dtype or spec.dtype)
 
-    if not saturn_available():
+    if not corpus_available(corpus):
         return None
 
     M, N, K = (int(x) for x in MNK)
     with tempfile.TemporaryDirectory(prefix="merlin_ceiling_") as tmp:
-        elf = _build_saturn_elf(spec.bench, Path(tmp), timeout=timeout)
+        elf = _build_bench_elf(spec.bench, Path(tmp), corpus, timeout=timeout)
         if elf is None:
             return None
-        console = _run_saturn_elf(elf, isa=isa, timeout=timeout)
+        console = _run_bench_elf(elf, isa=isa, timeout=timeout)
     if console is None:
         return None
     reading = spec.parse(console, M, N, K)
@@ -531,11 +536,11 @@ def run_kernel_ceiling(source: str, kernel_ref: str, op: str, dtype: str,
     regime = shape_regime(op, M, N, K)
     row = {
         "op": op, "dtype": dtype, "M": M, "N": N, "K": K,
-        "shape_regime": regime, "source": "saturn", "target": target,
+        "shape_regime": regime, "source": corpus, "target": target,
         "bench": spec.bench, "kernel_ref": spec.kernel_ref,
         "cycles": int(cycles), "isa": isa,
         "fingerprint_key": fingerprint_key(op, dtype, regime),
-        "note": f"saturn {spec.bench} on spike; read {reading.note}",
+        "note": f"{corpus} {spec.bench} on spike; read {reading.note}",
     }
     if instr is not None:
         row["instructions"] = int(instr)
@@ -615,10 +620,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="kernel-bench",
         description="Measure a curated kernel's spike cycle ceiling (S4.2).")
-    ap.add_argument("--source", default="saturn",
-                    help="curated corpus (only 'saturn' is wired today)")
+    default_corpus = build_asm.benchmark_source()
+    ap.add_argument("--source", default=default_corpus,
+                    help=f"curated standalone-benchmark corpus (default: {default_corpus})")
     ap.add_argument("--bench", required=True,
-                    help=f"saturn benchmark, one of: {', '.join(sorted(SATURN_BENCHES))}")
+                    help=f"{default_corpus} benchmark, one of: {', '.join(sorted(SATURN_BENCHES))}")
     ap.add_argument("-M", type=int, required=True)
     ap.add_argument("-N", type=int, required=True)
     ap.add_argument("-K", type=int, required=True)
@@ -633,9 +639,11 @@ def main(argv: list[str] | None = None) -> int:
                     help="measure + print only; do not write the jsonl")
     args = ap.parse_args(argv)
 
-    if not saturn_available():
-        print("kernel-bench: spike/riscv-gcc/saturn-corpus/encoding.h unavailable; "
-              "cannot measure a ceiling (set MERLIN_CHIPYARD / MERLIN_SATURN_REPO).")
+    if not corpus_available(args.source):
+        from ..targetgen.corpora import kernel_corpus_env
+        corpus = build_asm.benchmark_source(args.source) or str(args.source)
+        print(f"kernel-bench: spike/riscv-gcc/{corpus}-corpus/encoding.h unavailable; "
+              f"cannot measure a ceiling (set MERLIN_CHIPYARD / {kernel_corpus_env(corpus)}).")
         return 2
 
     diagnostics: list[str] = []

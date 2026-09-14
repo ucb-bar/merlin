@@ -120,21 +120,32 @@ def plot_promotion_funnel(plt, records, stats, promo, validation, out_dir, paths
     _save(fig, out_dir, "promotion_funnel", paths)
 
 
+def _reuse_axis_label(families) -> str:
+    """X-axis label naming how each plotted family's reuse count is measured: the ``rhs_reuse.label`` of
+    each family's feature-extraction contract, for the families actually on the plot."""
+    from merlin.kernels.framework_contracts import load_feature_contract
+    how = [f"{fam}: {label}" for fam in sorted(families)
+           if (label := (load_feature_contract(fam).get("rhs_reuse") or {}).get("label"))]
+    return "measured rhs reuse count" + (f" ({'; '.join(how)})" if how else "")
+
+
 def plot_reuse_distribution(plt, records, out_dir, paths):
+    from merlin.kernels.markers import target_family
     by_source: dict[str, list[int]] = collections.defaultdict(list)
+    families: set[str] = set()
     for r in records:
         rc = ((r.get("features", {}) or {}).get("memory_behavior", {})
               .get("rhs", {}).get("reuse_count"))
         if rc and rc > 0:
             by_source[r.get("source", "?")].append(rc)
+            families.add(target_family(r.get("target", "")))
     if not by_source:
         return
     fig, ax = plt.subplots(figsize=(7, 3.2))
     for src, vals in sorted(by_source.items()):
         ax.hist(vals, bins=range(1, max(max(vals) + 2, 10)), alpha=0.55,
                 label=f"{src} (n={len(vals)})")
-    ax.set_xlabel("measured rhs reuse count (RVV: register-block MR; "
-                  "Gemmini: compute per weight load)")
+    ax.set_xlabel(_reuse_axis_label(families))
     ax.set_ylabel("kernels")
     ax.set_title("Measured RHS reuse — the L2 evidence behind resident_packed_tensor",
                  fontsize=10)

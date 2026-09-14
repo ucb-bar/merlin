@@ -13,13 +13,15 @@ from merlin.kernels.types import NormalizedKernel
 _HAVE_TOOLCHAIN = B.asm_toolchain_available()
 # The CORPUS is a second, independent precondition. Guarding only on the toolchain made an ABSENT
 # corpus report as "vec-dotprod should compile standalone with the riscv toolchain" -- a failure
-# blaming the compiler for a checkout that is not on disk. `saturn_benchmark_asm` returns None for
+# blaming the compiler for a checkout that is not on disk. `benchmark_asm` returns None for
 # both "missing bench" and "did not compile", so the test cannot tell them apart; the guard has to.
-_HAVE_SATURN = (B.saturn_root() / "benchmarks").is_dir()
+_CORPUS = "saturn"   # the standalone-benchmark corpus the vec-* benches below belong to
+_SATURN_BENCHMARKS = B.benchmarks_dir(_CORPUS)
+_HAVE_SATURN = _SATURN_BENCHMARKS is not None and _SATURN_BENCHMARKS.is_dir()
 _needs_tc = pytest.mark.skipif(
     not (_HAVE_TOOLCHAIN and _HAVE_SATURN),
     reason=("riscv gcc/objdump unavailable (set MERLIN_CHIPYARD)" if not _HAVE_TOOLCHAIN
-            else f"saturn-vectors corpus absent at {B.saturn_root()} (set MERLIN_SATURN_REPO)"))
+            else f"saturn-vectors corpus absent at {B.corpus_root(_CORPUS)} (set MERLIN_SATURN_REPO)"))
 
 # A small, real objdump -d excerpt (column layout: addr<TAB>hex<TAB>mnemonic ...). This is
 # the contract build_kernel_asm emits and RvvFingerprint.from_objdump consumes — no toolchain.
@@ -47,7 +49,7 @@ def test_bogus_path_returns_none():
 
 def test_vopacc_excluded():
     # the mining contract excludes VOPACC benches by name (never even attempts a build)
-    assert B.saturn_benchmark_asm("vec-VOPACC-whatever") is None
+    assert B.benchmark_asm("vec-VOPACC-whatever", _CORPUS) is None
 
 
 def test_parse_captured_objdump_histogram():
@@ -80,7 +82,7 @@ def test_dossier_asm_routes_unknown_source_to_none():
 # --------------------------------------------------------------------------- toolchain-gated
 @_needs_tc
 def test_saturn_dotprod_builds_rvv():
-    asm = B.saturn_benchmark_asm("vec-dotprod")
+    asm = B.benchmark_asm("vec-dotprod", _CORPUS)
     assert asm is not None, "vec-dotprod should compile standalone with the riscv toolchain"
     mnem = {m for m, _ in B.top_mnemonics(asm, 30)}
     # the disassembly must actually contain RVV instructions, not scalar-only code
@@ -94,7 +96,7 @@ def test_saturn_dotprod_builds_rvv():
 
 @_needs_tc
 def test_saturn_igemm_builds_rvv():
-    asm = B.saturn_benchmark_asm("vec-igemm")
+    asm = B.benchmark_asm("vec-igemm", _CORPUS)
     assert asm is not None
     assert any(m.startswith("vsetvl") for m, _ in B.top_mnemonics(asm, 30))
 
@@ -102,7 +104,7 @@ def test_saturn_igemm_builds_rvv():
 @_needs_tc
 def test_dossier_with_asm_sets_has_asm():
     from pathlib import Path
-    tu = B.saturn_root() / "benchmarks/vec-dotprod/dotproduct.c"
+    tu = _SATURN_BENCHMARKS / "vec-dotprod/dotproduct.c"
     nk = NormalizedKernel(
         source="saturn", target="rvv",
         path="saturn-vectors/benchmarks/vec-dotprod/dotproduct.c",
