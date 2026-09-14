@@ -1,4 +1,5 @@
 """TargetGen pipeline: ingest -> extract -> plan -> generate -> validate.
 
-Scaffold package. No real logic yet.
+Onboards a hardware target from its own sources: RTL facts and capability derivation, capsule corpora,
+grading and oracles, tier policy, and publishing the generated compiler package.
 """

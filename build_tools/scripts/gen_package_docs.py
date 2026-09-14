@@ -83,6 +83,16 @@ def _check_agent_md(errors: list[str]) -> None:
         for ph in STALE_PHRASES:
             if ph in low:
                 errors.append(f"package {label}: stale AGENT.md phrase {ph!r}")
+        # The package docstring is what the generated module index publishes, so the same phrases must
+        # not survive there either. Until 2026-09-14 only AGENT.md was read, and two packages with dozens
+        # of importers still told every reader of the index "Scaffold package. No real logic yet."
+        try:
+            doc = (ast.get_docstring(ast.parse(init.read_text(encoding="utf-8"))) or "").lower()
+        except SyntaxError:
+            doc = ""
+        for ph in STALE_PHRASES:
+            if ph in doc:
+                errors.append(f"package {label}: stale __init__ docstring phrase {ph!r}")
 
 
 def main(argv: list[str]) -> int:

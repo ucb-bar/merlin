@@ -13,13 +13,13 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.common` | Shared utilities: schema loading/validation, IO, common types. |
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.cost_model` | Standalone Gemmini hardware cost model + calibration (GemminiCostModel, calibrate CLI). |
-| `merlin.design_pressure` | Design-pressure analysis: cutpoints -> metrics -> emit. |
-| `merlin.design_pressure.cutpoints` | Compiler cut points for analysis. |
-| `merlin.design_pressure.emit` | Emit design_pressure / candidate_contracts artifacts. |
+| `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
+| `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, |
+| `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts |
 | `merlin.design_pressure.ingest` | Ingest workload regions from external frontends (e.g. model2MLIR linalg-on-tensors). |
-| `merlin.design_pressure.metrics` | Design-pressure metrics. |
+| `merlin.design_pressure.metrics` | Design-pressure metrics: per-axis pressures computed over a region's cut points -- compute/shapes, |
 | `merlin.design_pressure.workloads` | Synthetic, parameterized workload-region builders for design-pressure experiments. |
-| `merlin.dse` | Design-space exploration. |
+| `merlin.dse` | Design-space exploration: search the hardware and interface space a design-pressure report opens. |
 | `merlin.dse.pipelines` | xDSL pass registry + pipeline builder. A compilation strategy's lowering_pipeline string is assembled here from named passes (MLIR --pass-pipeline style). |
 | `merlin.dse.search` | Search layer over candidate compiler artifacts. Three methods only: grid (explicit sweeps), evolutionary (improve a candidate), MAP-Elites (keep many good families). Orchestration/experiment logic — NOT a dialect. |
 | `merlin.dse_guidance` | DSE guidance: turn a flat workload capture into grounded DSE-axis guidance. |
