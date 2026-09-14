@@ -1,7 +1,8 @@
 """Target-agnostic comparison SPEC — the single source of truth a ``merlin-compare`` run is driven by.
 
 A spec names the comparison POINTS (``configs``), the ``workloads`` (whole-model names and/or
-isolated GEMM shapes), the ``target`` (``k1`` implemented; ``spike``/``gemmini``/``npu`` are seams),
+isolated GEMM shapes), the ``target`` (the board substrate the ingest layer measures is implemented;
+``spike``/``npu`` and every registry-discovered dialect target are seams),
 and the measurement ``metric``/``reps``. Nothing here is RVV-specific; the RVV/K1 mapping lives in
 the ingest layer. Parsing is total and validating so a malformed spec fails loud, not silent.
 """
@@ -26,10 +27,30 @@ _BASELINE = "baseline"
 # Platform execution SUBSTRATES that are not dialect targets under merlin/targets/ (a board or a
 # simulator seam, not a registered dialect) — kept first-class so existing callers keep working. The
 # dialect targets are DISCOVERED from the target registry and unioned in at parse time, so a newly
-# registered dialect (e.g. gemmini) becomes comparable with no edit here. Only k1 is implemented in
-# v1; every other known target is a declared seam.
-_PLATFORM_TARGETS = ("k1", "spike", "npu")
-_IMPLEMENTED_TARGETS = ("k1",)
+# registered dialect becomes comparable with no edit here. Only the substrate the ingest layer can
+# measure is implemented (see :func:`implemented_targets`); every other known target is a seam.
+_SEAM_SUBSTRATES = ("spike", "npu")
+
+
+def implemented_targets() -> tuple[str, ...]:
+    """The substrates this comparison can actually measure: exactly the ones its ingest path drives.
+
+    Live measurement (``empirical.prime_board_cache``) and the cached tables it ingests both come from
+    the board adapter :mod:`merlin.mining.k1`, so the implemented set is that adapter's declared
+    substrate label -- read from it rather than restated, so a spec can never name a target the ingest
+    layer would then measure on a different device."""
+    from merlin.mining import k1 as board
+    return (board.SUBSTRATE,)
+
+
+def default_target() -> str:
+    """The target a spec that names none compares on: the one implemented substrate. With more than
+    one implemented there is no honest default, so the spec must name its target."""
+    implemented = implemented_targets()
+    if len(implemented) != 1:
+        raise ValueError(f"spec names no target and {len(implemented)} are implemented "
+                         f"({implemented}); name one")
+    return implemented[0]
 
 
 def _known_targets() -> tuple[str, ...]:
@@ -42,7 +63,7 @@ def _known_targets() -> tuple[str, ...]:
         discovered = tuple(all_targets())
     except Exception:
         discovered = ()
-    return tuple(sorted(set(_PLATFORM_TARGETS) | set(discovered)))
+    return tuple(sorted(set(implemented_targets()) | set(_SEAM_SUBSTRATES) | set(discovered)))
 
 _METRICS = ("wall", "instret")
 
@@ -115,7 +136,7 @@ class Workload:
 class Spec:
     configs: tuple[Config, ...]
     workloads: tuple[Workload, ...]
-    target: str = "k1"
+    target: str = field(default_factory=default_target)
     metric: str = "wall"
     reps: int = 5
     label: str = "compare"
@@ -132,14 +153,15 @@ class Spec:
             raise ValueError("spec must list at least one 'configs' entry")
         if not wls:
             raise ValueError("spec must list at least one 'workloads' entry")
-        target = raw.get("target", "k1")
+        target = raw["target"] if "target" in raw else default_target()
         known = _known_targets()
         if target not in known:
             raise ValueError(f"unknown target '{target}'; known: {known}")
-        if target not in _IMPLEMENTED_TARGETS:
+        implemented = implemented_targets()
+        if target not in implemented:
             raise ValueError(
                 f"target '{target}' is a declared seam but not implemented in v1 "
-                f"(implemented: {_IMPLEMENTED_TARGETS})")
+                f"(implemented: {implemented})")
         metric = raw.get("metric", "wall")
         if metric not in _METRICS:
             raise ValueError(f"unknown metric '{metric}'; known: {_METRICS}")

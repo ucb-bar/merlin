@@ -23,6 +23,11 @@ from typing import Any
 
 from ..common.paths import repo_root
 from ..common.yaml import write_yaml
+from . import k1 as k1mod
+
+#: What the beam measures on when a caller names nothing: the board leg alone, because the beam ranks
+#: forks on measured board wall time. The label is the board adapter's own, not restated here.
+DEFAULT_TARGETS: tuple[str, ...] = (k1mod.SUBSTRATE,)
 
 
 def lift_expert_cca(objdump_path: str | Path, op: str):
@@ -56,7 +61,7 @@ def _node_summary(node: dict) -> dict:
 def run_instrumented_beam(
     *, seed_pkg: str | Path, model_dir: str | Path, expert_objdump: str | Path,
     op: str = "matmul", dtype: str = "f32", shape_regime: str = "square",
-    targets: tuple[str, ...] = ("k1",), width: int = 3, depth: int = 2, top_k: int = 2,
+    targets: tuple[str, ...] = DEFAULT_TARGETS, width: int = 3, depth: int = 2, top_k: int = 2,
     max_workers: int | None = None, curated_text: str | None = None,
     certify_fn=None, sweep_fn=None, expert_wall_ns: float | None = None,
     validate_model_dir: str | Path | None = None, validate_fn=None,
@@ -105,7 +110,7 @@ def run_instrumented_beam(
         compare_fn = teacher_compare_fn(dtype=dtype, families=fams, record=teacher_audit)
     curated = curated_text if curated_text is not None else Path(expert_objdump).read_text()
     # a K1 target defaults to serial (max_workers=1) — the board can't run concurrent forks.
-    if max_workers is None and "k1" in targets:
+    if max_workers is None and k1mod.SUBSTRATE in targets:
         max_workers = 1
 
     suite = f"beam/{op}"
@@ -261,12 +266,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--op", default="matmul")
     ap.add_argument("--dtype", default="f32")
     ap.add_argument("--shape-regime", default="square")
-    ap.add_argument("--targets", default="k1", help="comma-separated (e.g. 'k1' or 'spike,k1')")
+    ap.add_argument("--targets", default=",".join(DEFAULT_TARGETS),
+                    help=f"comma-separated (e.g. '{k1mod.SUBSTRATE}' or 'spike,{k1mod.SUBSTRATE}')")
     ap.add_argument("--width", type=int, default=3)
     ap.add_argument("--depth", type=int, default=2)
     ap.add_argument("--top-k", type=int, default=2)
     ap.add_argument("--max-workers", type=int, default=None,
-                    help="sweep concurrency (default: 1 for a k1 target, board-safe)")
+                    help=f"sweep concurrency (default: 1 for a {k1mod.SUBSTRATE} target, board-safe)")
     args = ap.parse_args(argv)
 
     # Default seed = the FROZEN hand_v0 baseline. A from-scratch beam run rediscovers the winning

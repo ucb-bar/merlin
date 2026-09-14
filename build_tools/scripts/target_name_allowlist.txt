@@ -36,7 +36,6 @@ merlin/python/merlin/targetgen/baremetalc_corroborate.py     # gemmini bareMetal
 merlin/python/merlin/targetgen/publish.py                    # payload/gate/README shaping branches on the package FAMILY (`if target == "rvv"`, _payload_*); not just README text
 
 # ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)
-merlin/python/merlin/compare/cli.py                          # gemmini named only in --target help ("spike/gemmini/npu are seams"); default is k1
 merlin/python/merlin/kernels/regions.py                      # "(gemmini etc.)" in a registry-entry description
 merlin/python/merlin/targetgen/agent/gemmini_kernel_slot.py  # gemmini's own agent slot: libgemmini C API text + its TARGET; geometry derived from RTL facts
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py             # OPU target-id map (saturn_opu_* config ids) and the muon ISA json path; the SIMT introspect now comes from plugin.simt_introspect

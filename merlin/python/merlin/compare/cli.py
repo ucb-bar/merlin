@@ -17,7 +17,7 @@ from pathlib import Path
 import yaml
 
 from .driver import run
-from .spec import Spec
+from .spec import Spec, default_target, implemented_targets
 
 
 def _build_spec(args) -> Spec:
@@ -50,7 +50,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--spec", type=Path, help="YAML spec file")
     ap.add_argument("--configs", help="comma list, e.g. baseline,ours_wholemodel,xnnpack,openblas")
     ap.add_argument("--workloads", help="comma list, e.g. openvla,rdt2,bitvla,gemm:64")
-    ap.add_argument("--target", default="k1", help="k1 (impl); spike/gemmini/npu are seams")
+    ap.add_argument("--target", default=default_target(),
+                    help=f"{', '.join(implemented_targets())} (impl); every other known target "
+                         f"is a declared seam")
     ap.add_argument("--metric", default="wall", choices=["wall", "instret"])
     ap.add_argument("--reps", type=int, default=5)
     ap.add_argument("--label", default="compare")
@@ -85,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
                 ap.error("--freeze requires --toolchain-authority")
             from merlin.common.artifacts import new_product
             from merlin.common.paths import merlin_dir
+            from merlin.mining import k1 as board
             from .freeze import freeze_study
             product = None
             frozen_out = args.frozen_out
@@ -96,7 +99,8 @@ def main(argv: list[str] | None = None) -> int:
                 merlin_dir() / "runtime",
                 merlin_dir() / "python" / "merlin" / "runtime",
                 merlin_dir() / "python" / "merlin" / "llvmlower" / "c_runtime.py",
-                merlin_dir() / "python" / "merlin" / "mining" / "k1.py",
+                # the board adapter the implemented substrate is measured through
+                merlin_dir() / "python" / Path(*board.__name__.split(".")).with_suffix(".py"),
             ]
             frozen = freeze_study(
                 spec, policy_path=args.policy, runtime_paths=runtime_paths,

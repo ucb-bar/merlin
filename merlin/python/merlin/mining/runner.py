@@ -86,9 +86,15 @@ def _baseline_results(baseline_run_dir: Path | None, workload: str) -> dict | No
 _CERTIFY_WARMUP = 2
 _CERTIFY_ITERS = 5
 
+#: The measuring legs this runner implements, which is what it runs when a caller names none: the
+#: spike leg (correctness gate + functional cycles) and the board leg (wall time), each labelled with
+#: the substrate that produced it. The rvv target's contract declares the same pair as its
+#: measurement authority (cycles_from / wall_from); test_substrate_names_derived holds them together.
+DEFAULT_TARGETS: tuple[str, ...] = ("spike", k1mod.SUBSTRATE)
+
 
 def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: str | Path,
-                run_id: str, targets: tuple[str, ...] = ("spike", "k1"),
+                run_id: str, targets: tuple[str, ...] = DEFAULT_TARGETS,
                 baseline_run_dir: str | Path | None = None, harts: int = 2,
                 iters: int = _CERTIFY_ITERS, warmup: int = _CERTIFY_WARMUP,
                 timeout: int = 3600) -> dict[str, Any]:
@@ -195,7 +201,7 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
         ladder["K3"] = "not_run"
 
     # K5 — K1 cycles (real silicon). not_run when board/toolchain unavailable.
-    if "k1" in targets:
+    if k1mod.SUBSTRATE in targets:
         if k1mod.available():
             try:
                 kr = k1mod.run_on_k1(model_dir, gen, pkg, timeout=timeout,
@@ -205,7 +211,7 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                 # derived from the delegated `rdtime` timebase (cycle_accurate=False); the raw
                 # timebase ticks + wall ns are the real-silicon ground truth. spike/FireSim stay
                 # the cycle-accurate authorities; K1 is the fast real-hardware wall measurement.
-                rec["measurement"].append({"target": "k1", "cycle_accurate": False,
+                rec["measurement"].append({"target": k1mod.SUBSTRATE, "cycle_accurate": False,
                                            "cycles": m.get("cycles"),
                                            "time_ticks": m.get("time_ticks"),
                                            "wall_ns": m.get("wall_ns"),
@@ -249,7 +255,7 @@ def certify_rvv(package_dir: str | Path, model_dir: str | Path, *, runs_root: st
                         "fp32_rel": kg.get("fp32_rel"), "fp32_argmax": kg.get("fp32_argmax"),
                         "fp32_max_rel": kg.get("fp32_max_rel"),
                         "w8a8_cos": kg.get("w8a8_cos"), "w8a8_rel": kg.get("w8a8_rel"),
-                        "source": "k1"}
+                        "source": k1mod.SUBSTRATE}
                 ladder["K5"] = "pass"
             except Exception as e:
                 ladder["K5"] = "not_run"
@@ -301,7 +307,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--workload", required=True, help="workload bundle dir (model.mlir+inputs+golden)")
     ap.add_argument("--run-id", default=None, help="run id (default: <pkg>_<workload>)")
     ap.add_argument("--runs-root", default="out/runs/rvv_experiment")
-    ap.add_argument("--targets", default="spike,k1", help="comma list: spike,k1,firesim")
+    ap.add_argument("--targets", default=",".join(DEFAULT_TARGETS),
+                    help=f"comma list: {','.join(DEFAULT_TARGETS)},firesim")
     ap.add_argument("--baseline-run-dir", default=None, help="baseline run dir for delta")
     ap.add_argument("--harts", type=int, default=2)
     ap.add_argument("--timeout", type=int, default=3600)

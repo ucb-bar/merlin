@@ -137,7 +137,7 @@ def _manual_best(model: str) -> dict:
 
 def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> dict:
     from merlin.mining.baseline import ExpertBaseline
-    from merlin.mining.beam_cli import run_instrumented_beam
+    from merlin.mining.beam_cli import DEFAULT_TARGETS, run_instrumented_beam
     from merlin.mining.wholemodel_proposer import propose_wholemodel_levers
     bundle = _bundle_for(dtype, model)
     obj = _EXPERT_OBJDUMP.get(dtype)
@@ -172,7 +172,7 @@ def run_cell(dtype: str, model: str, *, width: int, depth: int, top_k: int) -> d
     try:
         res = run_instrumented_beam(
             seed_pkg="out/artifacts/targets/rvv/hand_v0", model_dir=bundle,
-            expert_objdump=obj, op="matmul", dtype=dtype, targets=("k1",),
+            expert_objdump=obj, op="matmul", dtype=dtype, targets=DEFAULT_TARGETS,
             width=width, depth=depth, top_k=top_k, expert_wall_ns=xnn,
             proposer=propose_wholemodel_levers)
     except Exception as e:  # noqa: BLE001

@@ -74,13 +74,13 @@ def run_cell(cell: OpCell, *, width: int = 3, depth: int = 2, top_k: int = 2,
              beam_fn: Callable | None = None) -> CellResult:
     """Run the beam for ONE cell, targeting XNNPACK's wall, and scalar-gate the winner."""
     from ..common.paths import repo_root
-    from .beam_cli import run_instrumented_beam
+    from .beam_cli import DEFAULT_TARGETS, run_instrumented_beam
     beam_fn = beam_fn or run_instrumented_beam
 
     seed = str(cell.seed_pkg or _default_seed(repo_root()))
     res = beam_fn(seed_pkg=seed, model_dir=str(cell.workload_dir),
                   expert_objdump=str(cell.expert_objdump), op=cell.op, dtype=cell.dtype,
-                  shape_regime=cell.shape_regime, targets=("k1",), width=width, depth=depth,
+                  shape_regime=cell.shape_regime, targets=DEFAULT_TARGETS, width=width, depth=depth,
                   top_k=top_k, expert_wall_ns=cell.expert_wall_ns)
     best = res.get("best") or {}
     # scalar gate on the winner's emitted objdump (never credit a scalar kernel).

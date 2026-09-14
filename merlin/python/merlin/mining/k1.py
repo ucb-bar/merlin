@@ -122,6 +122,12 @@ def codegen_march(march: str | None = None, vlen: int | None = None) -> str:
     return m if f"zvl{v}b" in m else f"{m}_zvl{v}b"
 
 
+#: The measurement-substrate label this adapter records its numbers under. Target contracts name the
+#: same label as a measurement authority (``measurement.wall_from``) and
+#: :func:`merlin.kernels.measurement.pick` matches measurements on it, so the certify runner, the beam
+#: and the comparison spec read it from here instead of each restating it.
+SUBSTRATE = "k1"
+
 # This Bianbu kernel does NOT delegate the userspace `cycle` CSR — `rdcycle` traps as an illegal
 # instruction. The `time` CSR IS delegated, so the harness times with `rdtime` (a fixed-frequency
 # platform counter, NOT core cycles) + wall-clock, and derives an estimated core-cycle count from
