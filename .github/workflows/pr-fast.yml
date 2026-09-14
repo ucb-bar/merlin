@@ -13,6 +13,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          # full history: the ratchet gate diffs every ledger against the PR base / previous push,
+          # and the docs-freshness ratchet dates code_refs by `git log` (a shallow clone grafts every
+          # path onto one commit, so every doc would read as drifted)
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
       - uses: actions/setup-python@v5
         with:
@@ -36,6 +41,24 @@ jobs:
         run: uv run python build_tools/scripts/check_overfit_register.py
       - name: semantic-coverage gate (generalization debt may only shrink)
         run: uv run python build_tools/scripts/check_semantic_coverage.py
+      # Every *_ratchet.txt / *_allowlist.txt claims to be may-only-shrink; this is the step that holds
+      # them to it (three had grown with nothing able to notice).
+      - name: ratchet gate (every ledger may only shrink)
+        run: uv run python build_tools/scripts/check_ratchets_shrink.py --base "${{ github.event.pull_request.base.sha || github.event.before }}"
+      - name: docs freshness ratchet (no NEW drift behind code_refs)
+        run: uv run python build_tools/scripts/check_docs_freshness.py --ratchet
+      # These three existed with their own ledgers but ran nowhere.
+      - name: route-partition gate
+        run: uv run python build_tools/scripts/check_route_partition.py --fail-on-violation
+      # Not --strict: three targets are undecidable until certified, and the remedy for that is
+      # certification, not a weaker gate.
+      - name: phase-split gate
+        run: uv run python build_tools/scripts/check_phase_split.py
+      # Advisory: CI has no RTL fact bundles, so under-declaration is undeterminable here; only an
+      # over-declared capability is decidable, and today's four are not yet ratcheted.
+      - name: capability-drift report (advisory; no RTL facts in CI)
+        continue-on-error: true
+        run: uv run python build_tools/scripts/check_capability_drift.py --fail-on-over-declared
       - name: docs anti-drift gate
         run: uv run python build_tools/scripts/check_docs.py
       # REPORTING ONLY, deliberately. The gate's own verdict for exercise and verification is

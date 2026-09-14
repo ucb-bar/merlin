@@ -25,6 +25,10 @@ echo "[pre-commit] no-assumed-constants (staged)…"
 echo "[pre-commit] overfit register (tree)…"
 "$PY" build_tools/scripts/check_overfit_register.py
 
+# Every *_ratchet.txt / *_allowlist.txt is a may-only-shrink ledger; compare the STAGED ledgers to HEAD.
+echo "[pre-commit] ratchets may only shrink (staged)…"
+"$PY" build_tools/scripts/check_ratchets_shrink.py --staged
+
 # Whole-tree: the claim is that ONE definition of the command-buffer epilogue vocabulary reaches the
 # validator, both ABI documents and the dialect verifiers. A commit that edits any one of them must fail
 # even when the drift arrives from a file it did not stage. ~0.2 s.
