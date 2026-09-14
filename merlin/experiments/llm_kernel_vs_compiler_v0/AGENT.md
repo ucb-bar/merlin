@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/llm_kernel_vs_compiler_v0
 
+Status: active — developed on `feat/kernel-vs-compiler`; this copy tracks that branch.
+
 ## Purpose
 
 Study of where two ways of bringing workloads to a new accelerator (Radiance) cross over: repeatedly

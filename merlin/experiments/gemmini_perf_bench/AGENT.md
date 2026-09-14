@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/gemmini_perf_bench
 
+Status: active
+
 Cross-approach **Gemmini perf benchmark**: runs the kernel corpus through backends (golden /
 generated / IREE-dialect) and reports cycles/GFLOPs. Consumes merlin (`scripts/run_perf_bench.py`
 imports `merlin.targetgen`).

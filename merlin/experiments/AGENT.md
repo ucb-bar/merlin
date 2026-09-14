@@ -11,6 +11,14 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 - Cross-compiler studies: `llm_kernel_vs_compiler_v0/`, `voyager_h2h/` (merlin vs the Voyager
   compiler, same-hardware and home-turf planes).
 
+## Status (enforced)
+Every experiment's AGENT.md carries a `Status:` line in its first 15 lines: `active`, `frozen`
+(finished; its results are in `FINDINGS.md`, which must exist) or `reference` (a scaffold other
+experiments copy, with no runs of its own). `check_structure.py` "experiment status" enforces it.
+There is no `retired` status: retiring an experiment means deleting its directory, and git history is
+the archive. Decide by citation, not commit age -- a quiet experiment a guide still cites is frozen,
+not abandoned.
+
 ## What lives here (curated inputs only)
 - Task specs, `input_bundles/`, method specs, per-target guides, and the harness drivers that run them.
 - Kernel/capsule corpora that are experiment-specific inputs.

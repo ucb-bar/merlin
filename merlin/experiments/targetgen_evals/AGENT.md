@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/targetgen_evals
 
+Status: active
+
 Self-contained, **import-isolated** LLM eval project: measures whether structured pipelines
 (evidence grounding, schema planning, deterministic emission) beat unconstrained LLM editing at
 generating the Gemmini MLIR target dialect. It has its own `pyproject.toml` and **imports zero

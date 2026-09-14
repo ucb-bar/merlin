@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/cpu_host_compiler_v0
 
+Status: active
+
 ## Purpose
 
 Four-arm agentic experiment for producing a reusable CPU-host compiler with scalar and RVV paths.  The

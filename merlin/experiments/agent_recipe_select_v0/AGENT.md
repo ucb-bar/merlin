@@ -1,5 +1,7 @@
 # AGENT.md — agent_recipe_select_v0
 
+Status: active
+
 ## Purpose
 
 The complementary half of merlin's performance story. The established path is *agent **builds** the

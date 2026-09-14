@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/performance_contract
 
+Status: active
+
 ## Purpose
 The task register and working notes for the **performance layer**: deriving what a target's legal
 choices *cost*, alongside the existing machinery that derives what it *permits*. Spine target is

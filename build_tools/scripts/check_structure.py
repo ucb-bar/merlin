@@ -150,6 +150,40 @@ def check_agent_md(errors):
                     require(f"merlin/{area}/{sub}")
 
 
+EXPERIMENT_STATUSES = ("active", "frozen", "reference")
+
+
+def check_experiment_status(errors):
+    """Every experiment says where it stands, so "dormant" is a stated fact rather than a guess.
+
+    Measured 2026-09-14: an audit classed experiments as abandoned from commit age alone; two were cited
+    by live guides and one was under development on another branch. A ``Status:`` line in the first 15
+    lines of the experiment's AGENT.md says which: ``active``, ``frozen`` (finished; results in its
+    FINDINGS.md, which must exist) or ``reference`` (a scaffold others copy, with no runs of its own).
+    Retiring an experiment means deleting it -- git history is the archive -- so no status names that.
+    """
+    exp = os.path.join(ROOT, "merlin", "experiments")
+    if not os.path.isdir(exp):
+        return
+    for sub in sorted(os.listdir(exp)):
+        sp = os.path.join(exp, sub)
+        md = os.path.join(sp, "AGENT.md")
+        if not os.path.isdir(sp) or sub in SKIP_DIRS or not os.path.isfile(md):
+            continue  # a missing AGENT.md is check_agent_md's finding, not this one
+        with open(md, encoding="utf-8") as fh:
+            head = [next(fh, "") for _ in range(15)]
+        declared = [ln[len("Status:"):].strip() for ln in head if ln.startswith("Status:")]
+        if not declared or not declared[0]:
+            errors.append(f"experiment declares no `Status:` in its AGENT.md: merlin/experiments/{sub}")
+            continue
+        word = declared[0].split()[0]
+        if word not in EXPERIMENT_STATUSES:
+            errors.append(f"experiment status {word!r} is not one of {list(EXPERIMENT_STATUSES)}: "
+                          f"merlin/experiments/{sub}")
+        elif word == "frozen" and not os.path.isfile(os.path.join(sp, "FINDINGS.md")):
+            errors.append(f"frozen experiment has no FINDINGS.md: merlin/experiments/{sub}")
+
+
 def check_schemas(errors):
     for s in REQUIRED_SCHEMAS:
         p = os.path.join(ROOT, "merlin", "schemas", f"{s}.schema.yaml")
@@ -352,6 +386,7 @@ def main():
     checks = [
         ("required directories", check_required_dirs),
         ("AGENT.md coverage", check_agent_md),
+        ("experiment status", check_experiment_status),
         ("schema usage", check_schema_usage),
         ("library boundary", check_library_boundary),
         ("root docs", check_root_docs),

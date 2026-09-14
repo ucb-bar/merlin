@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/capsule_bench
 
+Status: active
+
 ## Purpose
 The capsule benchmark: give a coding agent a hardware target it has never seen, let it build a
 compiler backend, and grade what it produces against an independent oracle. One harness, six targets,

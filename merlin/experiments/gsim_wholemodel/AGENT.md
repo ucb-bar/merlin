@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/gsim_wholemodel
 
+Status: active
+
 ## Purpose
 
 Run a whole-model image on a GSIM-simulated SoC. GSIM re-roots the circuit at `ChipTop`, dropping the

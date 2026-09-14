@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/agentic_report
 
+Status: active — the report driver over `merlin.agentreport` for the functional and performance benches.
+
 ## Purpose
 Turn the agentic run directories into a regenerable report: an index, a facts file, a figure kit and
 the written update. It reads BOTH benches (functional and performance), which is why it sits here
