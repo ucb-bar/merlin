@@ -11,12 +11,15 @@ value carries the fact it came from, and a field that cannot be derived is refus
 Where Voyager's machine model has a structure the target does not (a per-PE L1 input or weight buffer),
 the mapping is a DERIVATION with a stated rule, not a tuning knob:
 
-* ``weight_buffer_size`` = array rows. A weight-stationary array holds exactly one array-sized weight
-  block in its PEs, so the resident-weight capacity per output column is one element per PE row. A
-  mapping that needs more (a 3x3 convolution keeps nine blocks) has no equivalent on the target, and
-  Voyager's own tiler refusing it is the honest result.
 * ``input_buffer_size`` = scratchpad rows. The array streams activations straight from the scratchpad
   on every compute, so the scratchpad IS the input-side L1.
+* ``weight_buffer_size`` = scratchpad rows (``weight_residency="scratchpad"``, the default). Weights
+  also reach the array from the scratchpad (a preload), so by the same rule the scratchpad is the
+  weight-side L1. The one array-sized block the PEs hold is Voyager's interstellar LEVEL 0 (the PE
+  partition), which its model already carries -- counting it again as L1 was the first reading here,
+  and it made every 3x3 convolution unmappable (nine resident blocks against one). That reading is
+  kept as ``weight_residency="pe_block"``, a named sensitivity variant, never the default: the
+  comparison must not let a machine-model choice of ours decide that Voyager fails.
 * ``accum_buffer_size`` = accumulator rows. One accumulator row holds one array-edge of partial sums.
 
 Voyager's own scheduling choices (double-buffering the L2, its runtime tolerance) are left at its
@@ -55,13 +58,22 @@ def _need(value: Any, what: str, target: str) -> Any:
     return value
 
 
-def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None) -> DerivedConfig:
+WEIGHT_RESIDENCY = ("scratchpad", "pe_block")
+
+
+def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None,
+                           weight_residency: str = "scratchpad") -> DerivedConfig:
     """Derive Voyager's ``AcceleratorConfig`` for ``target`` from its address space.
 
     ``facts`` overrides the facts artifact (for tests); otherwise it is read through
-    ``load_facts(target)``. Raises :class:`VoyagerConfigError` if any required field is UNKNOWN.
+    ``load_facts(target)``. ``weight_residency`` selects the reading of the weight-side L1 (see the
+    module docstring); only the default is a headline configuration. Raises
+    :class:`VoyagerConfigError` if any required field is UNKNOWN.
     """
     from ..targetgen.address_space import derive_address_space
+
+    if weight_residency not in WEIGHT_RESIDENCY:
+        raise VoyagerConfigError(f"weight_residency {weight_residency!r} not in {WEIGHT_RESIDENCY}")
 
     space = derive_address_space(target, facts=facts)
     rows = _need(getattr(space, "array_rows", None), "the array row count", target)
@@ -83,7 +95,8 @@ def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None) 
         "num_banks": int(_need(spad.banks, "scratchpad bank count", target)),
         "bank_width": int(_need(spad.row_bytes, "scratchpad row width", target)),
         "input_buffer_size": int(_need(spad.total_rows, "scratchpad row count", target)),
-        "weight_buffer_size": int(rows),
+        "weight_buffer_size": (int(spad.total_rows) if weight_residency == "scratchpad"
+                               else int(rows)),
         "accum_buffer_size": int(_need(acc.total_rows, "accumulator row count", target)),
     }
     sources = {
@@ -93,7 +106,11 @@ def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None) 
         "num_banks": "store 'scratchpad'.banks = total_rows / per-bank depth",
         "bank_width": f"store 'scratchpad'.row_bytes ({spad.sources.get('row_bytes', '?')})",
         "input_buffer_size": "store 'scratchpad'.total_rows: activations stream from the scratchpad",
-        "weight_buffer_size": "array rows: the PE array holds one array-sized weight block",
+        "weight_buffer_size": ("store 'scratchpad'.total_rows: weights are preloaded from the "
+                               "scratchpad (weight_residency=scratchpad)"
+                               if weight_residency == "scratchpad" else
+                               "array rows: only the PE-resident block counts as L1 "
+                               "(weight_residency=pe_block, sensitivity variant)"),
         "accum_buffer_size": "store 'accumulator'.total_rows: one row = one array edge of partials",
     }
     not_modelled = {

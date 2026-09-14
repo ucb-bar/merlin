@@ -64,6 +64,18 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   `out/build/external/voyager-compiler-cac504ef`; plane A keeps the latest compiler. Both revisions
   are named in every cell.
 
+- **How plane B must reproduce the paper's numbers (from the release's own flow).** `codegen.mk` runs
+  the paired compiler's `test_codegen.py` to `model.txt`; `test/compiler/run_tiler.py` turns that into
+  `tilings.txtpb` and **imports interstellar** (the SSH-only submodule). The public copy vendored by the
+  latest compiler exposes every name run_tiler uses (`le`, `Layer`, `Resource`, `Schedule`,
+  `optimizer`, `cost_model`, `extract_input`, `utils`, `loop_*` mapping fields), so it is the
+  substitute -- disclosed in every cell, and checked at run time. `run_regression.py --uniquify_layers`
+  keeps one instance of each identical layer and multiplies its runtime by the count; RTL runs only
+  `min(L2 tiles, MAX_TILES)` tiles of a layer. A citable reproduction therefore sets `MAX_TILES` to at
+  least the largest L2 tile count, and still reports a per-layer sum, not one timed invocation.
+  The flow writes `build/`, `test/compiler/networks/` and `regression_results/` into its tree, so it runs
+  in a separate work tree (`out/build/external/voyager-accelerator-work`), never the pinned checkout.
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
