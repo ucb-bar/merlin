@@ -87,6 +87,48 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   with access to that dataset -- or a disclosed substitute calibration set, which would change the
   scales and must then be reported as a deviation.
 
+- **The release's model assets are LFS objects, and they are anonymously pullable.** `models/**`
+  (e.g. `mobilebert-tiny-sst2-bf16/config.json`, a 33 MB `model.safetensors`) are Git LFS pointers in
+  a plain clone, so codegen fails with "config file ... is not a valid JSON file" until they are
+  fetched. With `git-lfs` 3.8.0 added to the plane B env, `git lfs pull --include` fetched them from
+  code.stanford.edu without credentials. MobileBERT-tiny SST-2 (a Table 4 row) is therefore the first
+  plane B smoke target: its calibration set (GLUE SST-2) is public, unlike the CNNs' gated ImageNet.
+
+- **SUPERSEDED -- harness defect, do not cite.** The ResNet-50 runs below were exported WITHOUT the
+  conv/batch-norm fusion Voyager's own torchvision harness performs before export
+  (`get_conv_bn_layers` + `fuse_modules`), so Voyager compiled a graph its flow would not have given
+  it (convs with no bias, BN as separate ops). Found when Voyager's `replace_conv2d_with_im2col` hit a
+  `None` bias; `voyager_export.py` now fuses as the harness does, and the runs are being redone as
+  `whole_model/resnet50_bnfused_*`. Kept below as the record of what was run.
+- ~~Stock Voyager does not compile whole-model ResNet-50 for Gemmini's 256 KiB scratchpad -- under
+  either reading of its L1.~~ Public compiler f9d4c498, torchvision ResNet-50 (random init: this is a
+  compile-feasibility question), config from `accelerator_config_for`:
+  - `weight_residency="pe_block"`: the tile search refuses at `layer1_0_conv2` ("no tiling fits on
+    chip" -- a 3x3 conv keeps 9 weight blocks resident, the reading allows 1).
+  - default (`scratchpad`): the tile search succeeds, then Voyager's own memory planner refuses: the
+    7x7 stem conv is placed on chip UNTILED -- its whole padded 229x229x3 int8 input (157,328 B) and
+    whole 112x112x64 bf16 output (1,605,632 B) -- 1,772,624 B against 262,144 B. That fits Voyager's
+    2 MiB CI scratchpads and nothing under ~1.77 MB, whatever the accelerator.
+  Variants in flight, each a Voyager knob rather than ours: `double_buffered_l2=False`, and Voyager's
+  own `--conv2d_im2col` (its CI's remedy for small-channel convs). Runs under
+  `out/runs/gemmini/voyager-h2h/whole_model/`.
+
+- **Plane B toolchain substitutions (version skew, disclosed; Voyager's source untouched).** Building
+  the release's SystemC harness with Catapult 2023.1's bundled gcc 10.3 needs two include-path fixes,
+  both passed through the Makefile's own `BASE_FLAGS`:
+  1. `-isystem /usr/include/x86_64-linux-gnu`: the bundled gcc does not search the host's multiarch
+     directory, so `<asm/errno.h>` is not found (`fatal error: asm/errno.h`).
+  2. ONE missing header, appended after Catapult's own (`-idirafter`): `src/datatypes/StdFloatTypes.h`
+     includes `ac_math/ac_gelu_pwl.h`, which Catapult 2023.1 does not ship (upstream tests 2024.2).
+     Only that file is taken, from `hlslibs/ac_math` `1fde1dd` (Apache-2.0); Catapult 2023.1's own
+     `ac_types` 4.6 stays in use. Putting the whole public `ac_types` HEAD first was tried and fails:
+     Voyager's exponent-only scale type `UFloat<8,8>` (`src/datatypes/ScaleTypes.h`) instantiates
+     `ac_int<0>` through `ac_std_float::to_float`, which that `ac_types` rejects (`log2_ceil<0>` has no
+     `val`). Tagged `ac_types` 4.8.0 / 4.9.0 are staged if a later step needs a newer 4.x.
+  3. `-B/usr/lib/x86_64-linux-gnu` in `LDFLAGS`: the bundled gcc links without the host's multiarch
+     C runtime start files (`cannot find crt1.o / crti.o`).
+  Every plane B result produced this way is labelled with these three deviations.
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
