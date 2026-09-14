@@ -7,7 +7,8 @@ those masks and sets the env to find them, PARAMETERIZED BY THE DESCRIPTOR — n
   * UNIVERSAL tools (venv python, LLVM/MLIR-23, clang-23, the libidn compat shim, DNS) — every target.
   * SIM-FAMILY tools — routed by the descriptor's ``toolchain.sim_via`` through :data:`SIM_TOOLCHAINS`
     (a DECLARATIVE table, no ``if target ==``). ``chipyard`` binds the conda build env + the built
-    verilator RTL sim; ``cyclotron`` (SIMT perf-model path) needs no extra binaries beyond the venv.
+    verilator RTL sim. A bespoke engine a target contributes through its own plugin (``plugin.sim_oracle``)
+    that needs nothing beyond the universal set has no row: it resolves to the empty family.
   * The CURATED baremetal C harness — bound + exported iff the descriptor declares one.
 
 The compute-unit ``kind`` (resolved from the capability manifest via :mod:`merlin.targetgen.families`)
@@ -91,12 +92,13 @@ def _chipyard() -> SimToolchain:
     )
 
 
-# sim_via string -> the toolchain family it selects. Additive: a new sim backend registers one entry.
+# sim_via string -> the toolchain family it selects. Additive: a sim engine that needs HOST BINARIES
+# bound into the sandbox registers one entry. An engine a target contributes through its own plugin
+# (plugin.sim_oracle) whose oracle and simulator are importable from the workspace package needs
+# nothing beyond the universal set, so it has no row and resolves to the empty family -- core names no
+# target's simulator.
 SIM_TOOLCHAINS: dict[str, SimToolchain] = {
     "chipyard": _chipyard(),
-    # SIMT perf-model path (radiance/cyclotron): the muon oracle + sim are pure-Python (importable from
-    # the workspace merlin pkg on PYTHONPATH); no extra host binaries to bind.
-    "cyclotron": SimToolchain(),
     "": SimToolchain(),
 }
 
@@ -109,6 +111,7 @@ UNIVERSAL_PROBES: tuple[ToolProbe, ...] = (
 
 
 def _sim(te: TargetExperiment) -> SimToolchain:
+    """The descriptor's sim family, or the empty (universal-only) family for an engine with no row."""
     return SIM_TOOLCHAINS.get(te.sim_via, SIM_TOOLCHAINS[""])
 
 
@@ -206,5 +209,5 @@ def sandbox_env(te: TargetExperiment, ws: Path) -> str:
 def required_tool_probes(te: TargetExperiment) -> list[ToolProbe]:
     """The tools THIS target's sandbox must provide = universal + its sim family's probes. (The compute-
     unit kind cross-checks this: a systolic target's chipyard family carries the RTL-sim probes; a SIMT
-    target's cyclotron family carries none beyond the universal set.)"""
+    target's plugin-contributed simulator carries none beyond the universal set.)"""
     return [*UNIVERSAL_PROBES, *_sim(te).probes]

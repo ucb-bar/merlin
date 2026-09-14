@@ -52,3 +52,32 @@ def test_compare_refuses_a_default_when_the_implemented_set_is_ambiguous(monkeyp
     monkeypatch.setattr(spec, "implemented_targets", lambda: ("a", "b"))
     with pytest.raises(ValueError, match="name one"):
         spec.Spec.parse({"configs": ["baseline"], "workloads": ["openvla"]})
+
+
+def test_l2_engine_label_is_the_simulator_the_target_declares(monkeypatch):
+    """An L2 engine binding is labelled with the target's DECLARED simulator, and a target that declares
+    none fails closed instead of inheriting some other engine's name."""
+    from merlin.targetgen import capsule_runner
+    from merlin.targetgen import evaluation_cohort as EC
+
+    monkeypatch.setattr(capsule_runner, "_bespoke_sim_via", {"t": "engine_x"}.get)
+    assert EC._declared_l2_engine("t") == "engine_x"
+    with pytest.raises(ValueError, match="declares no bespoke simulator"):
+        EC._declared_l2_engine("u")
+    wrong = {"schema": "configured_executable_binding_v1", "engine": "other", "target": "t"}
+    with pytest.raises(ValueError, match="no valid"):
+        EC._validate_l2_engine_binding(wrong, target="t")
+    right = dict(wrong, engine="engine_x", binding_sha256="0" * 64)
+    with pytest.raises(ValueError, match="digest mismatch"):  # got past the engine check
+        EC._validate_l2_engine_binding(right, target="t")
+
+
+def test_a_plugin_contributed_simulator_binds_only_the_universal_toolchain():
+    """A bespoke engine with no SIM_TOOLCHAINS row (its oracle is importable Python) needs nothing
+    beyond the universal set, so core carries no row naming it."""
+    from types import SimpleNamespace
+
+    from merlin.targetgen.sandbox import toolchain as TC
+
+    te = SimpleNamespace(sim_via="engine_x", curated_harness="", target="t")
+    assert TC.required_tool_probes(te) == list(TC.UNIVERSAL_PROBES)

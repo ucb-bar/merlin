@@ -120,6 +120,19 @@ def configured_executable_binding(
     return binding
 
 
+def _declared_l2_engine(target: str) -> str:
+    """The simulator ``target`` declares as its bespoke engine -- the contract's ``runner.sim_via``,
+    else the descriptor's ``toolchain.sim_via`` -- read through the same lookup the oracle router uses,
+    so the label an L2 binding carries is the engine the target is actually graded on. Fails closed: a
+    target that declares no simulator has no engine an L2 binding could be attributed to."""
+    from .capsule_runner import _bespoke_sim_via
+    engine = _bespoke_sim_via(target)
+    if not engine:
+        raise ValueError(f"{target!r} declares no bespoke simulator (runner.sim_via / toolchain.sim_via), "
+                         f"so no L2 engine binding can be attributed to it")
+    return engine
+
+
 def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
     """Resolve the exact Cyclotron executable/config identity used by the Muon L2 adapter."""
     from merlin.runtime.backends.base import get_backend
@@ -133,7 +146,7 @@ def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
     # config_tree is the directory the runtime actually links into each work directory.
     source = binary.parent.parent.parent if binary.parent.name == "release" else backend.cyclotron_root()
     binding = configured_executable_binding(
-        engine="cyclotron",
+        engine=_declared_l2_engine(target),
         binary=binary,
         source=source,
         config=backend.config_path(),
@@ -148,7 +161,7 @@ def cyclotron_l2_engine_binding(target: str) -> dict[str, Any]:
 def _validate_l2_engine_binding(binding: Any, *, target: str) -> dict[str, Any]:
     if (not isinstance(binding, dict)
             or binding.get("schema") != "configured_executable_binding_v1"
-            or binding.get("engine") != "cyclotron"
+            or binding.get("engine") != _declared_l2_engine(target)
             or binding.get("target") != target):
         raise ValueError("search score has no valid Cyclotron L2 engine binding")
     expected_sha = binding.get("binding_sha256")

@@ -34,10 +34,8 @@ merlin/python/merlin/plotting/cpu_host_experiment_figures.py  # k1
 merlin/python/merlin/plotting/rvv_paper_figures.py  # k1
 merlin/python/merlin/targetgen/capsule_grade.py  # cyclotron
 merlin/python/merlin/targetgen/capsule_runner.py  # cyclotron
-merlin/python/merlin/targetgen/evaluation_cohort.py  # cyclotron
 merlin/python/merlin/targetgen/families.py  # opu
 merlin/python/merlin/targetgen/publish.py  # k1
 merlin/python/merlin/targetgen/rtl/facts.py  # opu
 merlin/python/merlin/targetgen/rtl/mlc_bridge.py  # opu
 merlin/python/merlin/targetgen/rtl/spatial_introspect.py  # opu
-merlin/python/merlin/targetgen/sandbox/toolchain.py  # cyclotron
