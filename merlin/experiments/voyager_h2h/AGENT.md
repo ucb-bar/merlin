@@ -60,6 +60,8 @@ Gate the Voyager arm against its reference with the contract's float tolerance, 
   per-plane matrix runners. Reusable pieces (the IR reader, the bridge) live in the library
   (`merlin/python/merlin/baselines/`), not here.
 - `STATUS.md` — what is verified now, with artifact paths.
+- `LESSONS.md` — what merlin should adopt from Voyager (restated target-agnostically, mapped to the
+  plan's workstreams) and what it should not.
 
 ## Provenance
 
