@@ -10,7 +10,11 @@ Fails (exit 1) if any of:
   * a TRACKED file has a generated extension (.png/.svg/.pdf/.zip/.jsonl) outside out/artifacts/
     (and not allowlisted);
   * a versioned product dir out/artifacts/<topic>/v*/<leaf>/ is missing manifest.yaml;
-  * a `latest` symlink under out/artifacts/ is absolute or dangling.
+  * a `latest` symlink under out/artifacts/ is absolute or dangling;
+  * (--staged) a newly ADDED file under out/ that .gitignore would ignore, i.e. one that only got
+    in via `git add -f`. A gitignore rule cannot stop a force-add, so this is the only guard for
+    the class: ~1,500 raw run dumps (~200 MB) were force-added under out/artifacts/ in one week
+    before it existed. Track a product by adding a reviewed negation, never by forcing.
 
 Usage:
   check_artifact_layout.py             # full working tree (tracked files)
@@ -125,10 +129,29 @@ def _tracked(root: Path, staged: bool) -> list[str]:
     return [ln for ln in out.splitlines() if ln.strip()]
 
 
+def _force_added_into_ignored(root: Path) -> list[str]:
+    """Staged ADDITIONS under out/ that the ignore rules would reject if they were not already in
+    the index. `--no-index` asks the rules alone; `check-ignore` exits 1 when nothing is ignored and
+    128 on a real error, so only the latter is a failure to look."""
+    added = subprocess.run(["git", "diff", "--cached", "--name-only", "--diff-filter=A", "--", "out/"],
+                           cwd=root, capture_output=True, text=True, check=True).stdout
+    paths = [ln for ln in added.splitlines() if ln.strip()]
+    if not paths:
+        return []
+    got = subprocess.run(["git", "check-ignore", "--no-index", "--stdin"], cwd=root,
+                         input="\n".join(paths) + "\n", capture_output=True, text=True)
+    if got.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(got.returncode, got.args, got.stdout, got.stderr)
+    return [f"force-added into an ignored out/ subtree (add a reviewed .gitignore negation instead): {ln}"
+            for ln in got.stdout.splitlines() if ln.strip()]
+
+
 def check(root: Path, staged: bool) -> list[str]:
     violations: list[str] = []
     tracked = _tracked(root, staged)
     violations.extend(_stale_path_literals(root, tracked))
+    if staged:
+        violations.extend(_force_added_into_ignored(root))
     for rel in tracked:
         if any(rel.startswith(s) for s in SKIP_PREFIXES):
             continue

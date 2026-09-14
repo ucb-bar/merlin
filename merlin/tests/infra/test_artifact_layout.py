@@ -104,6 +104,56 @@ def test_linter_flags_generated_output_inside_merlin(tmp_path):
     assert "recaptures" not in out  # curated input corpus is allowed to stay
 
 
+def _init_out_repo(tmp_path):
+    _run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "config", "user.email", "t@t"], cwd=tmp_path)
+    _run(["git", "config", "user.name", "t"], cwd=tmp_path)
+    (tmp_path / ".gitignore").write_text(
+        "/out/**\n!/out/\n!/out/**/\n!/out/artifacts/concern/*\n/out/artifacts/concern/*/**\n")
+    _run(["git", "add", ".gitignore"], cwd=tmp_path)
+    _run(["git", "commit", "-qm", "ignore"], cwd=tmp_path)
+
+
+def test_linter_staged_rejects_force_added_file_under_ignored_out(tmp_path):
+    # A gitignore rule cannot stop `git add -f`; the staged gate must. The dump lives one level
+    # below the concern root, exactly the shape of the ~1,500-file leak this guards against.
+    _init_out_repo(tmp_path)
+    dump = tmp_path / "out/artifacts/concern/run_1/receipt.json"
+    dump.parent.mkdir(parents=True)
+    dump.write_text("{}")
+    _run(["git", "add", "-f", str(dump)], cwd=tmp_path)
+    r = _run([sys.executable, str(LINT), "--staged"], cwd=tmp_path)
+    out = r.stdout + r.stderr
+    assert r.returncode == 1 and "force-added" in out and "run_1/receipt.json" in out
+
+
+def test_linter_staged_accepts_negated_curated_file(tmp_path):
+    # The concern's own top-level file is negated: tracking it is the reviewed path, not a force.
+    _init_out_repo(tmp_path)
+    story = tmp_path / "out/artifacts/concern/summary.md"
+    story.parent.mkdir(parents=True)
+    story.write_text("# story\n")
+    _run(["git", "add", str(story)], cwd=tmp_path)
+    r = _run([sys.executable, str(LINT), "--staged"], cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_linter_staged_still_flags_modified_tracked_dump_only_as_stale_literal_free(tmp_path):
+    # A MODIFICATION to an already-tracked ignored file is not a force-add (the debt is untracking,
+    # handled separately); the guard must look only at additions so it cannot block every edit
+    # to legacy tracked dumps.
+    _init_out_repo(tmp_path)
+    dump = tmp_path / "out/artifacts/concern/run_1/receipt.json"
+    dump.parent.mkdir(parents=True)
+    dump.write_text("{}")
+    _run(["git", "add", "-f", str(dump)], cwd=tmp_path)
+    _run(["git", "commit", "-qm", "legacy"], cwd=tmp_path)
+    dump.write_text('{"n": 1}')
+    _run(["git", "add", str(dump)], cwd=tmp_path)
+    r = _run([sys.executable, str(LINT), "--staged"], cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
 # ----------------------------------------------------------------- guard hook
 
 
