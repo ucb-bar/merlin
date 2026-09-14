@@ -88,14 +88,22 @@ def test_weights_are_preloaded_once_per_resident_block_and_every_compute_is_prec
     assert len(computes) == chunks == 512 * len(commits)
 
 
-def test_a_bias_operand_is_refused_rather_than_dropped() -> None:
-    with pytest.raises(UnsupportedConstruct, match="bias"):
-        lower_gemm(_trace("lin64"), GEOMETRY)
+def test_a_gemm_bias_is_loaded_into_the_accumulator_exactly() -> None:
+    schedule = lower_gemm(_trace("lin64"), GEOMETRY)
+    assert schedule.shapes["bias"] == (1, 64)
+    rng = np.random.default_rng(1)
+    lhs = rng.integers(-128, 128, size=schedule.shapes["lhs"], dtype=np.int64)
+    weight = rng.integers(-128, 128, size=schedule.shapes["weight"], dtype=np.int64)
+    bias = rng.integers(-2**20, 2**20, size=schedule.shapes["bias"], dtype=np.int64)
+    expected = (lhs @ weight + bias).astype(np.int32)
+    assert np.array_equal(execute(schedule, lhs, weight, bias=bias), expected)
+    no_bias = replace(schedule, ops=[op for op in schedule.ops if not isinstance(op, AccMvin)])
+    assert not np.array_equal(execute(no_bias, lhs, weight, bias=bias), expected)
 
 
 def test_an_output_tile_the_accumulator_cannot_hold_is_refused() -> None:
-    small = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=256)
-    with pytest.raises(UnsupportedConstruct, match="accumulator"):
+    small = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=16)
+    with pytest.raises(UnsupportedConstruct, match="larger than the accumulator"):
         lower_gemm(_trace("split_k_256x512x256"), small)
 
 
@@ -172,10 +180,18 @@ def test_conv_weights_change_once_per_voyager_residency_and_runs_follow_its_stre
     assert {c.rows for c in computes} == {rows}
 
 
-def test_a_conv_output_ring_the_accumulator_cannot_hold_is_refused() -> None:
+def test_an_output_ring_deeper_than_the_accumulator_is_made_shallower_exactly() -> None:
+    # Two 392-row output tiles do not fit 512 accumulator rows: one region, and each tile's store is
+    # issued before the next tile first writes it (C7). A tile larger than the accumulator refuses.
+    name = "conv3x3_s1_28x28x64x64"
     small = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=512)
-    with pytest.raises(UnsupportedConstruct, match="accumulator"):
-        lower_conv(_trace("conv3x3_s1_28x28x64x64"), small)
+    schedule = lower_conv(_trace(name), small)
+    (lhs, weight, bias), expected = _conv_case(name)
+    assert np.array_equal(execute(schedule, lhs, weight, bias=bias), expected)
+    assert any("C7" in note for note in schedule.notes)
+    tiny = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=256)
+    with pytest.raises(UnsupportedConstruct, match="larger than the accumulator"):
+        lower_conv(_trace(name), tiny)
 
 
 def test_a_gemm_trace_is_not_lowered_as_a_convolution() -> None:

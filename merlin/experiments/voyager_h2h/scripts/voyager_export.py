@@ -80,6 +80,29 @@ def build_workload(spec: dict, dtype: torch.dtype):
                        spec.get("padding", spec["k"] // 2), spec.get("bias", True),
                        spec.get("relu", True))
         example = torch.randn(1, spec["Cin"], spec["H"], spec["W"], dtype=dtype)
+    elif kind == "resblock":
+        # One torchvision residual block (BasicBlock, or Bottleneck with "bottleneck": true), with a
+        # 1x1 downsample when the shape changes: the smallest graph that carries every ResNet
+        # construct (bias, residual epilogue, split K). Batch-norm statistics are randomized so the
+        # fused biases are not zero, then folded into the convs as Voyager's harness does.
+        from torchvision.models.resnet import BasicBlock, Bottleneck
+        from voyager_compiler.quantization.quantize import get_conv_bn_layers
+        block = Bottleneck if spec.get("bottleneck") else BasicBlock
+        cin, planes, stride = spec["Cin"], spec["planes"], spec.get("stride", 1)
+        cout = planes * block.expansion
+        downsample = None
+        if stride != 1 or cin != cout:
+            downsample = torch.nn.Sequential(
+                torch.nn.Conv2d(cin, cout, 1, stride=stride, bias=False),
+                torch.nn.BatchNorm2d(cout))
+        module = block(cin, planes, stride=stride, downsample=downsample).eval()
+        for bn in (m for m in module.modules() if isinstance(m, torch.nn.BatchNorm2d)):
+            bn.weight.data.uniform_(0.5, 1.5)
+            bn.bias.data.normal_(0.0, 0.5)
+            bn.running_mean.normal_(0.0, 0.5)
+            bn.running_var.uniform_(0.5, 1.5)
+        module = torch.ao.quantization.fuse_modules(module, get_conv_bn_layers(module), inplace=True)
+        example = torch.randn(1, cin, spec["H"], spec["W"], dtype=dtype)
     elif kind == "torchvision":
         from torchvision import models
         from voyager_compiler.quantization.quantize import get_conv_bn_layers

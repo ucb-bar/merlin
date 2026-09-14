@@ -181,6 +181,7 @@ class Trace:
     allocations: dict[str, Box]
     events: list[Copy | Wait | FusedCompute | TensorOp]
     semaphores: dict[tuple[str, int], int]
+    layers: list[tuple[str, int, int]] = field(default_factory=list)  # (loop, first, end) events
 
     def of(self, kind: type) -> list:
         return [event for event in self.events if isinstance(event, kind)]
@@ -477,12 +478,44 @@ class _Replayer:
             self.signal(post, 1)
 
 
+def _layer_starts(ops: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Indices of the top-level operations that open a layer.
+
+    Voyager emits each layer as a flat run of top-level operations: its allocations, a prologue copy,
+    ONE top-level loop over the layer's grid, then the waits and conditionals that drain the last
+    tiles. So a layer is exactly one top-level loop together with the operations around it, and the
+    next layer opens at the first allocation after a loop has been seen.
+    """
+    starts, seen_loop = [0], False
+    for index, op in enumerate(ops):
+        if "loop" in op:
+            seen_loop = True
+        elif seen_loop and op.get("prim", {}).get("target") == "voyager::alloc":
+            starts.append(index)
+            seen_loop = False
+    return starts
+
+
 def replay(model: Mapping[str, Any], *, check_semaphores: bool = True) -> Trace:
-    """Evaluate ``model`` (the JSON form of ``voyager.Model``) and return its event trace."""
+    """Evaluate ``model`` (the JSON form of ``voyager.Model``) and return its event trace.
+
+    ``Trace.layers`` gives, per layer (see :func:`_layer_starts`), the name of its top-level loop and
+    the half-open range of ``Trace.events`` it produced.
+    """
     replayer = _Replayer(model, check_semaphores)
-    replayer.run(model.get("ops", ()))
+    ops = list(model.get("ops", ()))
+    starts = _layer_starts(ops) + [len(ops)]
+    layers: list[tuple[str, int, int]] = []
+    for begin, end in zip(starts, starts[1:]):
+        first = len(replayer.events)
+        replayer.run(ops[begin:end])
+        loops = [str(op["name"]) for op in ops[begin:end] if "loop" in op]
+        if len(replayer.events) > first:
+            layers.append((loops[0] if loops else str(ops[begin]["name"]), first,
+                           len(replayer.events)))
     boxes = replayer.allocations
     return Trace(inputs=tuple(_box(b) for b in model.get("inputs", ())),
                  parameters=tuple(_box(b) for b in model.get("parameters", ())),
                  outputs=tuple(_box(b) for b in model.get("outputs", ())),
-                 allocations=boxes, events=replayer.events, semaphores=replayer.semaphores)
+                 allocations=boxes, events=replayer.events, semaphores=replayer.semaphores,
+                 layers=layers)
