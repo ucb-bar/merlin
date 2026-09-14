@@ -1139,6 +1139,13 @@ def _run_cyclotron(
     config dir (keeps the chipyard tree clean; perf logs land in the workdir).
     """
     work = elf.parent
+    # Cyclotron writes ``performance_logs/run_*`` and the config symlink into its cwd, i.e. into
+    # ``work``. An ELF sitting at the repository root (or above it) would turn the checkout into a
+    # simulator scratch dir -- measured once: ``performance_logs/`` appeared at the repo root.
+    from merlin.common.paths import repo_root  # noqa: PLC0415
+    checkout = Path(repo_root()).resolve()
+    if work.resolve() == checkout or checkout.is_relative_to(work.resolve()):
+        raise MuonError(f"refusing to run cyclotron with the repository checkout as its work dir: {work}")
     cfg_link = work / "config"
     if not cfg_link.exists():
         try:
