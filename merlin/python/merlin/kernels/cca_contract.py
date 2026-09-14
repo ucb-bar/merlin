@@ -359,10 +359,6 @@ KNOWN_OPEN: dict[str, dict[str, tuple[str, ...]]] = {
     # core. With the backend registered the bijection is CLEAN (no allowlisted gaps); the remaining work
     # is to make those routes forkable_now (the target's OOT codegen threads the derived opts), a
     # forkable-status gap surfaced by seam_location/escalation_ladder, NOT a bijection break.
-    "gemmini": {
-        "orphan_fields": (),
-        "orphan_routes": (),
-    },
 }
 
 
