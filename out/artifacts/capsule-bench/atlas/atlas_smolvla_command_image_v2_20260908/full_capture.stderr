@@ -1,1 +1,0 @@
-atlas-opt: error: declined model workload: whole-model f32 graph exceeds the current Atlas device lowering
