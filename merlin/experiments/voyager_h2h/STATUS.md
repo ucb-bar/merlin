@@ -139,6 +139,19 @@ What is verified right now. Each line names its evidence; nothing here is a perf
      C runtime start files (`cannot find crt1.o / crti.o`).
   Every plane B result produced this way is labelled with these three deviations.
 
+- **Plane B functional flow runs end to end on this host.** Voyager's own
+  `run_regression.py --sims fast-systemc --uniquify_layers` on `mobilebert_encoder`, INT8, 16x16
+  (paired compiler `cac504ef`, accelerator `e3a725db`, the three disclosed toolchain deviations, plus
+  the variables upstream's `env.sh` sets: `PROJECT_ROOT`, `CODEGEN_DIR`, and a loader path that puts
+  the env's libstdc++ before Catapult's): **14/14 non-skipped layers pass against Voyager's gold model
+  with error count 0.** The one failure, `slice_tensor` ("Slice indices for the last dimension must be
+  multiples of OC_DIMENSION!"), is a layer Voyager's own `ci_skip_rules.json` skips for this model in
+  every sim type. SystemC is functional only (upstream says so); cycles come from the RTL flow next.
+- **With its own `--conv2d_im2col`, stock Voyager compiles whole-model ResNet-50 for Gemmini's derived
+  machine model** (`whole_model/resnet50_bnfused_im2col_20260914T201309Z`, 58 layers, 3.3 MB IR). So
+  the Voyager arm has a legitimate whole-model program; lowering it onto Gemmini needs the bridge to
+  grow convolution, bias and the vector-unit ops (still open).
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.

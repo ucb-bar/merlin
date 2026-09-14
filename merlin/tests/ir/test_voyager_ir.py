@@ -69,6 +69,35 @@ def test_every_wait_and_commit_is_matched_by_an_earlier_signal() -> None:
         assert all(count == 0 for count in trace.semaphores.values()), (name, trace.semaphores)
 
 
+def test_a_loop_bound_at_the_enum_default_decodes_as_fx() -> None:
+    # proto3 JSON drops an enum field at its default value, and LOOP_FX is 0: a convolution's FX
+    # bound arrives with no "loop" key. Found on whole-model ResNet-50, where the replay crashed.
+    model = load_model(FIXTURES / "lin64" / "model.json")
+    edited = copy.deepcopy(model)
+
+    def first_tiling(ops):
+        for op in ops:
+            if "tiling" in op:
+                return op["tiling"]
+            for key in ("loop", "cond", "async", "fused"):
+                inner = op.get(key)
+                if not isinstance(inner, dict):
+                    continue
+                for region in (inner.get("for_loop", {}).get("body"), inner.get("body"),
+                               inner.get("true_region")):
+                    if isinstance(region, dict):
+                        found = first_tiling(region.get("ops", ()))
+                        if found:
+                            return found
+        return None
+
+    tiling = first_tiling(edited["ops"])
+    assert tiling is not None
+    tiling["level_tilings"][0]["loop_bounds"].insert(0, {"bound": 3})
+    compute = replay(edited).of(FusedCompute)[0]
+    assert compute.tiling[0][0] == ("LOOP_FX", 3)
+
+
 def test_an_unmodelled_scalar_operation_is_refused_not_skipped() -> None:
     model = load_model(FIXTURES / "lin64" / "model.json")
     broken = copy.deepcopy(model)

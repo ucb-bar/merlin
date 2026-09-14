@@ -34,6 +34,7 @@ __all__ = [
 #: proto3 JSON omits a field at its default. For ``Memory.level`` the default enum value is IMMEDIATE,
 #: and for every integer it is 0; both have to be restored rather than read as "absent".
 _DEFAULT_LEVEL = "MEMORY_LEVEL_IMMEDIATE"
+_DEFAULT_LOOP = "LOOP_FX"  # LoopIndex value 0
 _LEVEL_PREFIX = "MEMORY_LEVEL_"
 
 
@@ -395,8 +396,11 @@ class _Replayer:
             raise UnsupportedConstruct(f"fused operation {name!r} has an empty op_list")
         destinations = tuple(self.ref(out["destination"]) for out in op.get("outputs", ())
                              if "destination" in out)
+        # proto3 JSON omits an enum at its default: `LoopIndex` value 0 is LOOP_FX, so an FX bound
+        # arrives with no "loop" key at all (same trap as Memory.level, restored in `_box`).
         tiling = tuple(
-            tuple((str(b["loop"]), int(b["bound"])) for b in level.get("loop_bounds", ()))
+            tuple((str(b.get("loop", _DEFAULT_LOOP)), int(b.get("bound", 0)))
+                  for b in level.get("loop_bounds", ()))
             for level in (op.get("tiling") or {}).get("level_tilings", ()))
         self.events.append(FusedCompute(name=name, chain=chain, destinations=destinations,
                                         tiling=tiling, commit=commit, dependencies=dependencies,
