@@ -102,8 +102,10 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   stem conv, placed on chip UNTILED -- input `1x1x229x229x3` int8 (157,328 B), weight `1x7x7x3x64`
   int8 (9,408 B), bias `1x64` int32 (256 B), output `1x1x112x112x64` bf16 (1,605,632 B). This does
   not depend on our L1 reading: it is the planner's L2 budget, so it holds for any accelerator whose
-  scratchpad is under ~1.77 MB. Voyager's own remedy (`--conv2d_im2col`) and the one-block L1 variant
-  are re-running with the fused harness.
+  scratchpad is under ~1.77 MB. Under the one-block L1 sensitivity reading
+  (`whole_model/resnet50_bnfused_peblock_20260914T202255Z`, same fused harness) it fails earlier, in
+  the tile search: `layer1_0_conv2: no tiling fits on chip` (a 3x3 conv keeps nine weight blocks
+  resident; that reading allows one). With Voyager's own `--conv2d_im2col` it compiles (below).
 - **SUPERSEDED -- harness defect, do not cite.** The ResNet-50 runs below were exported WITHOUT the
   conv/batch-norm fusion Voyager's own torchvision harness performs before export
   (`get_conv_bn_layers` + `fuse_modules`), so Voyager compiled a graph its flow would not have given
