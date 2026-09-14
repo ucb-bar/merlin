@@ -29,6 +29,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 from pathlib import Path
+from merlin.common.facts_view import interface as _facts_interface
 
 # --- encoding constants: DERIVED from the SINGLE source — the readout bits + RTL-code->class map +
 # config subtype from the manifest's encoding block, and the mesh DIM from the CIRCT-extracted facts
@@ -58,7 +59,7 @@ def _load_isa(target: str) -> dict:
     # decoder then does not filter by major opcode (see _parse_insn). funct3 is the RoCC xd/xs1/xs2
     # register-usage field — it VARIES per instruction (e.g. a result-returning op sets xd=1), so it is
     # NOT an identity constraint; instruction identity is func7 (-> FUNCT_CLASS).
-    fdt = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
+    fdt = _facts_interface(facts, "funct_decode_table") or {}
     layouts = next((i.get("bundles", {}) for i in facts.get("interfaces", [])
                     if i.get("name") == "register_bundle_layouts"), {})
     custom_opcode = fdt.get("custom_opcode")

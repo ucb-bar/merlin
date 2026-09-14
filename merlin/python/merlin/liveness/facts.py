@@ -13,6 +13,7 @@ import dataclasses
 from typing import Any
 
 from merlin.targetgen.rtl.facts import load_facts
+from merlin.common.facts_view import interface as _facts_interface
 
 
 @dataclasses.dataclass
@@ -129,7 +130,7 @@ def silicon_facts(target: str) -> SiliconFacts:
         # ``depth`` is per-bank and would under-count a multi-bank accumulator.
         out.accumulator_rows = _rows_from_bytes(out.accumulator_bytes, out.mesh_cols, acc_bits)
 
-    ft = next((i for i in f.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
+    ft = _facts_interface(f, "funct_decode_table")
     if ft:
         out.legal_funct = ft.get("legal_funct")
         out.custom_opcode = ft.get("custom_opcode")

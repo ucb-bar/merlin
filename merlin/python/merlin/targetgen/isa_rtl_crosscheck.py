@@ -310,7 +310,7 @@ def decode_table(target: str) -> dict[str, Any]:
     an assumption about the encoding."""
     try:
         from .rtl import facts as _facts
-        body = (_facts.load_facts(target) or {}).get("facts") or {}
+        body = _facts.body_if_present(target)
     except Exception:                              # noqa: BLE001 — no bundle is an absence, not an error
         return {}
     for itf in body.get("interfaces") or ():

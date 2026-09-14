@@ -38,6 +38,7 @@ from . import rtl_checks as RC
 from .rtl.facts import load_facts
 from .corpora import capsule_corpus_roots
 from merlin.common.paths import ext_path, repo_root
+from merlin.common.facts_view import interface as _facts_interface
 
 _REPO = repo_root()
 # RTL facts are the generated artifact (regenerated from the RTL on demand by load_facts); the
@@ -157,7 +158,7 @@ def _legal_opcodes(facts_rec: dict) -> tuple[set[int], int] | None:
     legality test compares the emitted instruction's low-``width`` bits — the field the hardware decoder
     actually matches. No target literals: the set + width both come from the discovered facts."""
     facts = facts_rec.get("facts", facts_rec)
-    dt = next((i for i in (facts.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    dt = _facts_interface(facts, "funct_decode_table")
     vals = set((dt or {}).get("legal_funct") or [])
     if not vals:
         return None

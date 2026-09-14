@@ -56,7 +56,7 @@ def _triples_from_facts(device_name: str) -> tuple[tuple[str, str, str], ...]:
     """
     try:
         from merlin.targetgen.rtl import facts as _f
-        body = (_f.load_facts(device_name) or {}).get("facts") or {}
+        body = _f.body_if_present(device_name)
     except Exception:            # noqa: BLE001 -- ungrounded facts are a real answer
         return ()
     by_name = {str(d.get("name")): str(d.get("dtype")) for d in (body.get("datapaths") or ())

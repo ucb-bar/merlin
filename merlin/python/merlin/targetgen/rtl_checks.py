@@ -51,6 +51,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any
+from merlin.common.facts_view import interface as _facts_interface
 
 SCHEMA = "rtl_checks/v0"  # advisory artifact tag — deliberately NOT a frozen merlin/contract schema
 
@@ -129,7 +130,7 @@ def load_default_facts(target: str) -> dict[str, Any]:
             # The base RTL facts remain useful on a target whose address-space/ISA contract cannot be
             # derived. Leave only these optional fields UNKNOWN; do not erase mesh/decode facts.
             pass
-        ft = next((i for i in f.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
+        ft = _facts_interface(f, "funct_decode_table")
         if ft:
             facts["legal_funct"] = ft.get("legal_funct")
             facts["custom_opcode"] = ft.get("custom_opcode")
@@ -139,8 +140,7 @@ def load_default_facts(target: str) -> dict[str, Any]:
         mvout_layout = layouts.get("ConfigMvoutRs1") if isinstance(layouts, dict) else None
         if isinstance(mvout_layout, dict):
             facts["config_mvout_fields"] = sorted((mvout_layout.get("fields") or {}).keys())
-        build_features = next((i for i in f.get("interfaces", [])
-                               if i.get("name") == "elaborated_rtl_features"), {})
+        build_features = _facts_interface(f, "elaborated_rtl_features") or {}
         max_pool = (build_features.get("features") or {}).get("max_pool")
         if isinstance(max_pool, bool) and build_features.get("status") == "derived":
             facts["max_pool_supported"] = max_pool

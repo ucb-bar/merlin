@@ -152,7 +152,7 @@ def _accumulate_from_rtl_datapaths(target: str) -> list[tuple[str, str]]:
     """
     try:
         from merlin.targetgen.rtl import facts as _facts
-        body = (_facts.load_facts(target) or {}).get("facts") or {}
+        body = _facts.body_if_present(target)
     except Exception:  # noqa: BLE001 - no facts bundle is an absence of evidence, not an error here
         return []
     by_name = {str(d.get("name")): str(d.get("dtype") or "") for d in body.get("datapaths") or []

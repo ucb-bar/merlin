@@ -28,6 +28,7 @@ from typing import Any
 
 from merlin.kernels import roles as _roles
 from merlin.kernels.decode.opu import UNKNOWN_MNEMONIC, _word_of
+from merlin.common.facts_view import interface as _facts_interface
 
 __all__ = ["RoccAudit", "RoccInsn", "audit", "decode_stream", "digest", "fields_of", "funct_table_for"]
 
@@ -60,8 +61,8 @@ def funct_table_for(target: str) -> dict[str, Any]:
     report that it decoded nothing, not decode against a guess.
     """
     from merlin.targetgen.rtl import facts as _F
-    body = (_F.load_facts(target) or {}).get("facts") or {}
-    return next((i for i in body.get("interfaces", ()) if i.get("name") == "funct_decode_table"), {})
+    body = _F.body_if_present(target)
+    return _facts_interface(body, "funct_decode_table") or {}
 
 
 @dataclass(frozen=True)

@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from . import rtl_checks as RC  # reuse _declared_output_shape / _mesh / _declared_op
+from merlin.common.facts_view import interface as _facts_interface
 
 RENDER_SCHEMA = "rtl-trace-render/v0"
 _COMPUTE_OPS = {"matmul", "resident_reuse", "conv2d", "conv", "matmul_resident"}
@@ -97,8 +98,7 @@ def _facts_to_rc(facts_rec: dict) -> dict:
     mvout_layout = layouts.get("ConfigMvoutRs1") if isinstance(layouts, dict) else None
     if isinstance(mvout_layout, dict):
         out["config_mvout_fields"] = sorted((mvout_layout.get("fields") or {}).keys())
-    build_features = next((i for i in facts.get("interfaces", [])
-                           if i.get("name") == "elaborated_rtl_features"), {})
+    build_features = _facts_interface(facts, "elaborated_rtl_features") or {}
     max_pool = (build_features.get("features") or {}).get("max_pool")
     if isinstance(max_pool, bool) and build_features.get("status") == "derived":
         out["max_pool_supported"] = max_pool
@@ -150,7 +150,7 @@ def _decode_table(facts_rec: dict) -> dict | None:
     is the DERIVED signal that this target speaks the RoCC command ISA the dialect/trace checks assume —
     a SIMT/program-MMIO target has none, and those checks are dropped rather than emitted meaninglessly."""
     facts = facts_rec.get("facts", facts_rec)
-    return next((i for i in (facts.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    return _facts_interface(facts, "funct_decode_table")
 
 
 def _provenance(facts_rec: dict, capsule: dict, target: str) -> dict[str, Any]:

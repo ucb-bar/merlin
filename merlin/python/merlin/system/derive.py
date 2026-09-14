@@ -63,7 +63,7 @@ def _facts(target: str) -> dict[str, Any]:
     """The target's RTL facts body, or ``{}`` when the extractor never grounded them."""
     try:
         from merlin.targetgen.rtl import facts as _f
-        return (_f.load_facts(target) or {}).get("facts") or {}
+        return _f.body_if_present(target)
     except Exception:            # noqa: BLE001 -- absent facts are a real answer, not an error
         return {}
 

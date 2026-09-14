@@ -109,7 +109,7 @@ def _derived_names(target: str, block: dict) -> tuple[set[str], str]:
     source = str(enc.get("source") or "")
     if source == "rtl_facts":
         from merlin.targetgen.rtl import facts as _F
-        body = (_F.load_facts(target) or {}).get("facts") or {}
+        body = _F.body_if_present(target)
         table = next((i for i in body.get("interfaces", ())
                       if i.get("name") == enc.get("table")), {})
         return set((table.get(enc.get("names_from") or "names") or {}).values()), "rtl_facts"

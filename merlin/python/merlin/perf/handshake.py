@@ -172,7 +172,7 @@ def measure_fill_depth(target: str, *, law: str | None = "systolic_2d",
     names: dict[str, str] = {}
     try:
         from merlin.targetgen.rtl import facts as _facts
-        arrays = ((_facts.load_facts(target) or {}).get("facts") or {}).get("arrays") or ()
+        arrays = (_facts.body_if_present(target)).get("arrays") or ()
         discovered = arrays[0] if arrays else {}
         if discovered.get("container"):
             names["mesh_module"] = str(discovered["container"])

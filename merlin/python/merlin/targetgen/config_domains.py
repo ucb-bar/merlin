@@ -80,7 +80,7 @@ def derive_domains(target: str) -> dict[str, Domain]:
     """Every value domain this target's facts fix, keyed by ``<resource>.<unit>``."""
     from .rtl import facts as _facts
 
-    f = (_facts.load_facts(target) or {}).get("facts") or {}
+    f = _facts.body_if_present(target)
     out: dict[str, Domain] = {}
 
     for mem in f.get("memories") or []:
@@ -130,7 +130,7 @@ def undecidable(target: str) -> list[str]:
     checker's coverage rather than read silence as approval."""
     from .rtl import facts as _facts
 
-    f = (_facts.load_facts(target) or {}).get("facts") or {}
+    f = _facts.body_if_present(target)
     gaps: list[str] = []
     for mem in f.get("memories") or []:
         n = mem.get("name") or "?"

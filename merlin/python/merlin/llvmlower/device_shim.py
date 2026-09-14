@@ -281,7 +281,7 @@ def tile_edge_for(device: str) -> int | None:
     """
     try:
         from merlin.targetgen.rtl import facts as _f
-        body = (_f.load_facts(device) or {}).get("facts") or {}
+        body = _f.body_if_present(device)
     except Exception:            # noqa: BLE001
         return None
     for arr in (body.get("arrays") or ()):

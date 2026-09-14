@@ -39,6 +39,7 @@ from typing import Any, Iterable
 
 from . import introspect as V1
 from .facts import rtl_cache_dir
+from merlin.common.facts_view import interface as _facts_interface
 
 _REPO = repo_root()  # the repo root (contains merlin/)
 
@@ -1130,7 +1131,7 @@ def validate(facts_rec: dict, contract: dict | None = None,
             agree.append("contract: RTL datapaths covered by declared compute_units")
 
     if rocc_funct_class is not None:
-        funct = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), None)
+        funct = _facts_interface(facts, "funct_decode_table")
         if funct:
             legal = set(funct["legal_funct"])
             classifier = set(int(k) for k in rocc_funct_class)
@@ -1157,7 +1158,7 @@ def main(argv: list[str] | None = None) -> int:
     rec = dump_facts(out, target=a.target, hw_path=(Path(a.hw) if a.hw else None))
     facts = rec["facts"]
     acc = next((m for m in facts.get("memories", []) if m.get("name") == "accumulator"), {})
-    funct = next((i for i in facts.get("interfaces", []) if i.get("name") == "funct_decode_table"), {})
+    funct = _facts_interface(facts, "funct_decode_table") or {}
     print(f"wrote {out}")
     print(f"  accumulator: depth={acc.get('depth')} bytes={acc.get('bytes')} "
           f"addr_width={acc.get('addr_width')}")

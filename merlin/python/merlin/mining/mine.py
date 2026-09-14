@@ -202,7 +202,7 @@ def _geometry_for(target: str) -> dict:
     """
     try:
         from merlin.targetgen.rtl import facts as _F
-        body = (_F.load_facts(target) or {}).get("facts") or {}
+        body = _F.body_if_present(target)
     except Exception:  # noqa: BLE001
         return {}
     mesh = next((a for a in (body.get("arrays") or ()) if a.get("name") == "mesh"), {})

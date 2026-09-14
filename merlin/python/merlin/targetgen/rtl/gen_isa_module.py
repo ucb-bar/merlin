@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 
 from .facts import decode_body, load_facts
+from merlin.common.facts_view import interface as _facts_interface
 
 _HEADER = '''"""GENERATED from RTL facts by merlin.targetgen.rtl.gen_isa_module — DO NOT hand-edit the tables.
 
@@ -47,7 +48,7 @@ class NotARoccTarget(ValueError):
 
 def generate(facts: dict, encoding: dict | None = None) -> str:
     f = decode_body(facts, str(facts.get("target") or "target"), needs="a funct-legality encoder")
-    fd = next((i for i in (f.get("interfaces") or []) if i.get("name") == "funct_decode_table"), None)
+    fd = _facts_interface(f, "funct_decode_table")
     if fd is None:
         raise NotARoccTarget(
             "target facts carry no RoCC funct_decode_table interface (endpoint is not a RoCC command "
