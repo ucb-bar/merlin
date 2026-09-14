@@ -218,6 +218,36 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **Quantization-accuracy parity (G3b), first milestone** (`merlin/experiments/dataset_accuracy/`,
+  commit 1fddadde). Voyager's own quantizer and recipe, BERT-base on the FULL SST-2 validation split
+  (872 sentences), against the paper's Table 3 and the accelerator repo's own gold table:
+  FP32 93.23 (paper 93.2), BF16 93.23 (93.0), Posit8 92.89 (92.8), MXINT8 93.12 (93.1) -- four cells
+  within +-0.3; E4M3 92.66 (93.1) and INT8 91.28 (92.4) are low. Re-running INT8 with Voyager's other
+  calibration recipe moves it to 91.86, so calibration count explains about half; the rest is that
+  the paper scored the C++ bit-accurate tester over the LOWERED graph under the paired compiler,
+  while this arm scores the quantized graph under f9d4c498.
+  - **Protocol finding that changes the parity criterion:** Table 3's ImageNet cells come from
+    `run_accuracy` over the FIRST 1000 images of the timm validation stream, not 50k. So +-0.3 is
+    +-3 images there and only meaningful on those exact images (a different 1000-draw carries ~1.4
+    points of standard error). The accelerator repo also ships a second gold table that disagrees
+    with the paper by up to 2.0 points (ResNet-18 INT8 69.5 vs 71.5); cite both.
+  - **Voyager's own `--evaluate` path does not run at the pinned revision** without four minimal
+    fixes (fp32 images into a bf16 model; an fp32 attention mask for a bf16-traced graph; the GLUE
+    loader under huggingface_hub 1.x; a forced 32-thread setting), each recorded in the artifacts.
+  - ImageNet is blocked on gated access (the user is requesting it); the harness is a drop-in and was
+    smoke-tested end to end. MobileBERT-tiny's SST-2 checkpoint is an unfetched LFS pointer here.
+- **Proposed replacement for the paper's Voyager row** (`06_evaluation.tex`, marked PENDING there;
+  not edited yet). Old, unreproducible: "L3; 18 exact matched capsules; Voyager uses 3.28% fewer
+  cycles (0.967)". Clean-room, same 18 capsules, same Verilator binary, fence-corrected bridge:
+  - vs the certified agent-built backend (`gemmini_xdsl_rtl_v0`): Voyager/Merlin geomean **0.986**
+    (Voyager uses 1.4% fewer cycles; Merlin wins 2, ties 7, loses 9; Merlin 1.38-1.39x faster on
+    the two deep-K GEMMs, 0.946 over the 16 short capsules);
+  - with one Voyager-inspired change (`v1_l1`, load each input block once): **1.023** (Merlin uses
+    2.3% fewer); with the lookahead order (`v1_la1`): **1.046** (4.6% fewer). These are
+    hand-applied lessons on the certified package, not the agent's output, and must be labelled so.
+  - Suggested cell: "L3, clean-room bridge; 18 exact matched capsules & Voyager uses 1.4% fewer
+    cycles than the certified backend (0.986); Merlin 1.38x faster on deep-K GEMMs; applying
+    Voyager's load-once lesson reverses it (Merlin 2.3% fewer)". FireSim column pending.
 - **Verification mutation study** (`scripts/mutation_study.py`, e21dfb4f; product
   `compare_gemmini_v1_20260914T222217Z_ada9e07`). 64 faults were seeded into Voyager's own compiled
   programs (4 workloads). Each faulty program was judged by Voyager's checks (its own code at
@@ -241,16 +271,28 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   mapping, the 3x3 layers stream 4-row (s1) and 2-row (s2) computes -- 28,224 per layer, where 16-row
   runs would need a quarter or an eighth as many. Voyager's mapper has no notion of a target that
   streams contiguous rows; its own hardware addresses a window per pixel.
-- **What whole-model ResNet-50 (im2col export) still needs from the bridge.** 1,560 fused computes:
-  476 convs with a residual epilogue (`dequantize(res), dequantize(acc), add_, relu_[, quantize]`,
-  C5), 64 standalone residual adds anchored on `dequantize`, 98 biased linears (the im2col'd stem),
-  and host ops: 28 max-pools, 1 average pool, the fc as 63 bf16 `aten::linear` tiles, 16
-  quantize/dequantize (C6). Plus per-layer segmentation of the trace.
+- **Whole-model ResNet-50 lowers, and has an exact executable reference.**
+  - `lower_model` (58edbd65) lowers all 59 layers of the stock im2col export into 52 conv
+    schedules, 1 GEMM (the stem), 16 host requantizes, 2 host dequantizes and 7 Voyager host ops;
+    nothing is refused. The segmentation is one Voyager top-level loop per layer, and matches
+    Voyager's own `layers.txt` 59/59. Residual epilogues (476 convs) and the 64 standalone residual
+    adds lower through C5; 16 layers whose tile exceeds the accumulator run in passes (C7).
+  - `execute_model` (154bb69b) runs it end to end. Every host op reproduces Voyager's own op library
+    bit for bit against a recorded golden (quantize, dequantize, max-pool, average pool, bf16 fc),
+    each with a failing control. Against Voyager's own lowered output on 4 inputs: cosine
+    0.99984-0.99986, max abs diff 1.26-1.94 of 114, top-1 agrees (random weights, so top-1 barely
+    discriminates). Layer by layer on Voyager's dumped inputs: host ops exact; all 51 int8 conv
+    outputs within one int8 step (95-98% equal), the C1/C5 readout rounding; no layer shows a larger
+    local error.
+  - What remains for a timed whole-model Voyager arm: the C translation of the schedule (in
+    progress), then Spike, then FireSim.
 
 ## Open
 
-- Whole-model plane A: residual epilogue (C5), vector and host ops (C6), per-layer segmentation, then
-  the C translation, Spike, and FireSim.
-- FireSim: our own queue, only while the FPGA is idle (user, 2026-09-14). Blocker: no
-  `FireSimGemminiRocketConfig` driver or workload in our chipyard yet.
-- Plane B RTL cycle runs (Catapult + VCS) in flight.
+- Whole-model plane A: the C translation of lowered schedules (in progress), then Spike, then
+  FireSim. Lowering and the exact whole-model reference are done (above).
+- FireSim: the existing submit tool, approved as-is by the user (2026-09-14), submitting only while
+  the FPGA is idle; the capsule batch (`scripts/firesim_h2h.py`) is in flight.
+- Plane B: the release's own flow runs every layer about 2x slower than the paper claims
+  (MobileBERT 13.63M cycles at 49.7% vs 7.71M at 95.1%; details in `PLANE_B.md`); the root cause is
+  under investigation. ResNet-50 waits on gated ImageNet access, which the user is requesting.
