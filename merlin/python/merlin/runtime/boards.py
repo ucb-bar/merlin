@@ -25,7 +25,10 @@ them has a failure mode if it is wrong rather than a performance cost:
 """
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 #: Console driver families we know how to configure.
 CONSOLE_HTIF = "htif"
@@ -136,6 +139,16 @@ class Board:
     loader_baud: int = 921_600
     #: bytes to reserve for code+stack before the weights blob in a baremetal layout
     code_reserve: int = 64 * 1024 * 1024
+    #: The merlin target whose RTL this board elaborates, when one is registered. Per-target environment
+    #: names derive from it (``common.paths.target_env_name``) -- the Verilator binary override is
+    #: MERLIN_<TARGET>_VERILATOR -- so the board, not shared code, says whose variable applies.
+    target: str | None = None
+    #: The chipyard harness config that elaborates THIS board's SoC, i.e. its RTL simulator is
+    #: ``simulator-chipyard.harness-<rtl_sim_config>``. None = no elaborated simulator is declared.
+    rtl_sim_config: str | None = None
+    #: For a FireSim board: the hardware config (bitstream) its measurements were taken on, so a result
+    #: quoted from FireSim names its hardware from the registry rather than from a literal where it is quoted.
+    bitstream: str | None = None
     notes: str = ""
 
     @property
@@ -181,184 +194,126 @@ class Board:
         return int(self.vlen or 128)
 
 
-#: Boards we can target. Facts are derived from each board's own repo, not assumed:
-#:
-#: * ``chipyard_kodiak`` — `boards/chipyard/kodiak/` on the `kodiak` branch of ucb-bar/zephyr-chipyard-sw.
-#:   Its DTS declares `&ram0` as 256 MB and `CONFIG_MP_MAX_NUM_CPUS=2`, but the silicon has **512 MB and
-#:   3 working Saturn-vector cores**, so those are what we build for (merlin emits the `&ram0` overlay).
-#:   Console is HTIF (`CONFIG_UART_HTIF=y`, the SiFive UART driver is off) and `zephyr,console = &htif`.
-#:   Its defconfig sets `CONFIG_FPU_SHARING=y`, which we deliberately override — see the class doc.
-#:   No VLEN is declared anywhere in its DT (`riscv,isa = "rv64gc"`, V comes only from Kconfig), so it
-#:   is left None until someone measures `vlenb` on the chip.
-#: * ``spike_riscv64`` / ``chipyard_riscv64`` — the substrates we already validate on, described here so
-#:   the same code path serves them.
-BOARDS: dict[str, Board] = {
-    "spike_riscv64": Board(
-        name="spike_riscv64", dram_bytes=1 << 31, harts=8, console=CONSOLE_HTIF,
-        notes="functional simulator; DRAM is whatever `-m` says, VLEN comes from the ISA string"),
-    "chipyard_riscv64": Board(
-        name="chipyard_riscv64", dram_bytes=256 * 1024 * 1024, harts=4, vlen=256,
-        console=CONSOLE_HTIF, notes="Verilator/FireSim multi-Saturn SoC"),
-    # The FPGA TARGET is its own board, not the DTS default. `chipyard_riscv64` keeps ram0's 256 MB
-    # because that is what a Verilator/spike run of that config has; the FireSim dual-Saturn target has
-    # WithExtMemSize = 16 GB at 0x80000000 (see zephyr_model.DRAM_END, and the whole-model TinyLlama
-    # run whose 482 MB of weights could not otherwise have been linked). Conflating the two is what
-    # made whisper_tiny -- 464 MB of region -- look like it did not fit on a 16 GB target.
-    "firesim_dual_saturn": Board(
-        name="firesim_dual_saturn", zephyr_board="chipyard_riscv64",
-        dram_bytes=16 * 1024 * 1024 * 1024, harts=2, vlen=256, console=CONSOLE_HTIF,
-        notes="FireSim alveo_u250_firesim_dual_saturn_v256d128: 2 Shuttle tiles each with a Saturn "
-              "unit at vLen=256/dLen=128, 25 MHz fpga_frequency (~24.9 MHz effective measured), "
-              "16 GB target DRAM."),
-    # VLEN=512 is CONFIRMED by the chip's owner (2026-08-05), which retires the earlier inference: the
-    # DTS says `riscv,isa = "rv64gc"` with no `v` at all, and the samples' CONFIG_RISCV_VECTOR_MAX_LEN
-    # only sizes Zephyr's save area, so nothing in the repo stated the real width. Building for 128 on
-    # a 512-bit unit is the documented K1 trap (a fixed-width kernel lands at a lower LMUL and leaves
-    # three quarters of the datapath idle), so the fact matters even though our vector code is scalable.
-    "chipyard_kodiak": Board(
-        name="chipyard_kodiak", dram_bytes=512 * 1024 * 1024, harts=3, vector_harts=2, vlen=512,
-        console=CONSOLE_HTIF,
-        # These two flags used to read `fpu_sharing=True, zephyr_vector_ext=False`, on the reasoning
-        # that this board's Zephyr lacks RISCV_V_KERNEL_ONLY and routes isr.S's
-        # `z_riscv_vstate_save`/`_restore` through fpu.c/fpu.S, which only compile under FPU_SHARING --
-        # so V without FPU_SHARING would not link. That was true of the submodule the `kodiak` BRANCH
-        # pins (5a06eb0d) and false of the tree we actually build: ZEPHYR_BASE resolves to the `dev`
-        # pin (852bb170), two commits later, which includes "riscv: decouple V/F save-restore + add
-        # RISCV_V_KERNEL_ONLY (Saturn fork)". There, arch/riscv/core/CMakeLists.txt compiles v.c under
-        # CONFIG_RISCV_ISA_EXT_V *independently of* CONFIG_FPU_SHARING, and says so in a comment.
-        #
-        # Carrying the stale pair cost a delivery round. Without RISCV_ISA_EXT_V no thread's mstatus
-        # carries VS, so the OpenMP master loses vector state the moment pool creation switches it out;
-        # with FPU_SHARING=y the resulting V illegal-instruction trap is mis-routed into the FP retry
-        # path and the image hangs with no fault printed. Single-hart passed, every multi-hart image
-        # failed. The chip's own known-working RVV+SMP sample (origin/kodiak:samples/q8_gemm_minmax,
-        # which ships a ref-out) uses RISCV_ISA_EXT_V=y, RISCV_VECTOR_MAX_LEN=512, FPU_SHARING=n --
-        # the settings below, and the only place in that repo the real VLEN is written down.
-        fpu_sharing=False, zephyr_vector_ext=True, tick_hz=100,
-        # The loader line this board's own scripts/run_experiments.py uses. pyuartsi sends PROGBITS
-        # sections, not MemSiz, and 57600 is 16x slower than the 921600 our old fixed 92 KB/s assumed --
-        # two errors in opposite directions that between them made every upload estimate we shipped
-        # wrong, including the one that had whisper looking like a hang rather than an unfinished load.
-        loader=LOADER_PYUARTSI, loader_baud=57_600,
-        notes="Kodiak tapeout. DTS says ram0=256MB and MP_MAX_NUM_CPUS=2; the chip has 512MB and 3 "
-              "working cores, 2 of them vector. Vector config matches the chip's own q8_gemm_minmax "
-              "sample: Zephyr-managed V state, no FPU_SHARING."),
-    # The SAME Zephyr port, describing a DIFFERENT elaborated SoC: the two-core configuration that puts
-    # a matrix unit on BOTH cores. It is its own descriptor rather than an override of the one above
-    # because three of the facts differ and each has its own failure mode -- the core count (an image
-    # that starts a CPU the design does not have hangs in z_smp_init with nothing printed), the DRAM
-    # (that configuration declares four times as much, and a region larger than the design has dies
-    # before main), and which harts carry vectors (here all of them, where the tapeout chip has one
-    # scalar core). `zephyr_board` keeps the port: the Zephyr side is unchanged, so the image is built
-    # against the same board files, and only the facts we pass it move.
-    #
-    # It is deliberately NOT called a chip. No bitstream of this configuration exists -- it does not
-    # route on the U250 -- so nothing built for it has been executed on hardware of this shape, and the
-    # delivery README has to say so rather than inheriting the confidence of the one-core builds.
-    "kodiak_opu_2core": Board(
-        name="kodiak_opu_2core", zephyr_board="chipyard_kodiak",
-        dram_bytes=4 * 1024 * 1024 * 1024, harts=2, vlen=512, console=CONSOLE_HTIF,
-        fpu_sharing=False, zephyr_vector_ext=True, tick_hz=100,
-        loader=LOADER_PYUARTSI, loader_baud=57_600,
-        notes="Two-core Kodiak configuration with a matrix unit on each core: 2 vector-capable harts, "
-              "4 GB of DRAM at 0x80000000, vLen=512 (so the unit's logical tile edge is VLMAX at "
-              "SEW=8, i.e. 64 -- the same edge as the one-core configuration). Built against the "
-              "chipyard_kodiak Zephyr port, whose facts (HTIF console, Zephyr-managed vector state, "
-              "no FPU_SHARING, pyuartsi loader) this configuration shares. No bitstream of it exists."),
-    # The FireSim elaboration of Kodiak+OPU that actually has a bitstream: ONE Shuttle core.
-    #
-    # Its own descriptor rather than a reuse of firesim_dual_saturn (16 GB, 2 harts, vLen 256) because
-    # two facts differ and each is load-bearing. The DRAM is FireSim's, not Kodiak's: WithFireSimDesignTweaks
-    # carries WithExtMemSize(16 GiB), which OVERRIDES the 4 GB the Kodiak base declares -- so an image built
-    # against the 512 MB tapeout descriptor or the 256 MB chipyard_riscv64 DTS is refused by the region check
-    # for a part that in fact has 16 GiB. And the hart count is ONE: the two-core KodiakOPUConfig does not
-    # route on the U250 (86.36% LUT, 23,531 unroutable signals), so every FireSim measurement of this design
-    # is single-core, and asking Zephyr to start a second CPU the elaboration lacks hangs in z_smp_init with
-    # nothing printed. Multicore for this unit is reachable on the taped-out part, which has two vector harts
-    # AND the outer-product unit -- not here.
-    "firesim_kodiak_opu": Board(
-        name="firesim_kodiak_opu", zephyr_board="chipyard_riscv64",
-        dram_bytes=16 * 1024 * 1024 * 1024, harts=1, vlen=512, console=CONSOLE_HTIF,
-        notes="FireSim alveo_u250_firesim_kodiak_opu_1core: single Shuttle core with the outer-product "
-              "unit, vLen=512/dLen=256 (logical tile edge = VLMAX at SEW=8 = 64), 16 GiB of FireSim DRAM "
-              "rather than Kodiak's own 4 GB. Host-assisted HTIF console, serviced by the FireSim driver."),
-    # gemmelos: NOT a Zephyr target. github.com/Rakanic/gemmelos-bringup is a fork of
-    # ucb-bar/Baremetal-IDE -- a bare-metal CMake SDK with no RTOS (grep -ri zephyr returns nothing) --
-    # covering two chips selected by -DCHIP=. Facts below come from its platform/<chip>/*.ld and
-    # chip_config.h. Its default linker script declares 256 MB of DRAM; the silicon has 1 GB, which is
-    # what we build for.
-    #
-    # VLEN=256, and this was WRONG here (128) until the chip itself answered. Its own OPE kernel says
-    # "VLEN=128/LMUL=4 gives VLMAX=16" while their spike runs use 256, so the tree was ambiguous and 128
-    # was the cautious-looking pick. `vlen_probe.elf` on the silicon reports `vlenb 32`, `vlmax_e8 32`,
-    # `vlmax_e32 8` -- three mutually consistent readings of the hardware CSR, i.e. VLEN=256. A comment
-    # in a vendor kernel is not a fact about the part; a `csrr vlenb` on the part is. Under-declaring it
-    # is not merely slow: see `zephyr_model._vector_max_len_bits` for the kernel-memory corruption it
-    # caused, and note that no simulator gate can catch it, because spike is given the VLEN we declare.
-    # Console is UART0 @115200 8N2 for
-    # PLATFORM=CHIP builds and HTIF for PLATFORM=SIMS; our bare-metal harness speaks HTIF, which is what
-    # the uart_tsi/FESVR link carries.
-    "gemmelos_bearly25": Board(
-        name="gemmelos_bearly25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
-        console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
-        flow=FLOW_BAREMETAL,
-        notes="Bearly ML 25 via Baremetal-IDE (-DCHIP=bearly25). 2 harts, hart 1 idles in wfi until "
-              "dispatched; -march=rv64gcv_zfh -mabi=lp64d -mcmodel=medany; entry _start resumed at "
-              "0x80000000. NOT Zephyr. Console is the chip's own UART0 (facts derived from its SDK "
-              "headers): PLATFORM=CHIP builds have no host to service HTIF, so an HTIF image hangs in "
-              "its first print. PLL raised to 500 MHz, the frequency their own demos run at."),
-    # The SAME chip through Zephyr rather than bare metal, which is the only way to get RVV MULTICORE
-    # there: on bare metal hart 1 waits in wfi for their own thread-lib to dispatch it, while Zephyr
-    # SMP + merlin's OpenMP shim drives both harts the way every other multicore image here does.
-    # Facts from platform/bearly25/chip_config.h: SYS_CLK_FREQ 50 MHz, MTIME_FREQ 50 kHz (hence the
-    # tick override -- a 50 kHz timebase against a default 10 kHz tick rate is the Kodiak pathology
-    # again), CLINT at 0x02000000, DRAM at 0x80000000. TWO harts, confirmed by the chip's owner; their
-    # tree is ambiguous about it (thread-lib/hthread.h says 2, four other lib copies say 4) and
-    # guessing high would be a silent SMP-boot hang, so this is a fact worth having been told.
-    "gemmelos_bearly25_zephyr": Board(
-        name="gemmelos_bearly25_zephyr", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
-        console=CONSOLE_UART, sdk_chip="bearly25",
-        flow=FLOW_ZEPHYR, tick_hz=100,
-        notes="Bearly ML 25 via the GENERIC chipyard Zephyr board (their SDK has no Zephyr port). "
-              "50 MHz core, 50 kHz CLINT timebase, CLINT 0x02000000, DRAM 0x80000000 (1 GB real, "
-              "256 MB in their .ld). 2 harts (confirmed by the chip's owner). Console is the chip's "
-              "own UART: that board's defconfig selects UART_HTIF, which needs a host servicing "
-              "tohost and hangs on silicon, and the generic chipyard DT already describes this SoC's "
-              "UART at the address the SDK headers give. No PLL programming on this path -- the chip "
-              "stays on its 50 MHz reset clock and the baud divisor matches it; cycle counts are "
-              "unaffected. See gemmelos_bearly25_zephyr_500mhz for the variant that raises it."),
-    # The same board, with the chip's PLL raised to the frequency the vendor's own demos run at.
-    #
-    # Split into a second descriptor rather than made the default, deliberately. The upside is large --
-    # 10x, on the one thing the chip's owner actually wants to do, and their own whisper demo decodes in
-    # about fifteen seconds at this clock while ours had no reason to be at a tenth of it. The downside
-    # is that programming a PLL wrong does not fail quietly into "no output": it garbles the console,
-    # which reads as a corrupt program. So the 50 MHz set stays the one to run first, and this ships
-    # beside it. If both come back, we learn the clock AND the correctness in one round trip; if only
-    # the slow one does, we have still moved forward.
-    #
-    # The sequence itself is derived, not written: runtime.sdk_facts parses the PLL base, register
-    # offsets, clock-selector map and reset clock out of the chip's own headers, and
-    # runtime/c/merlin_socinit_zephyr.c replays their bmark-lib `init_test` order against it.
-    "gemmelos_bearly25_zephyr_500mhz": Board(
-        name="gemmelos_bearly25_zephyr_500mhz", zephyr_board="chipyard_riscv64",
-        dram_bytes=1024 * 1024 * 1024, harts=2, vlen=256,
-        console=CONSOLE_UART, sdk_chip="bearly25", chip_freq_hz=500_000_000,
-        flow=FLOW_ZEPHYR, tick_hz=100,
-        notes="Bearly ML 25 through the generic chipyard Zephyr port, with the PLL raised to 500 MHz "
-              "before the console driver's divisor is applied (SYS_INIT at "
-              "CONFIG_SERIAL_INIT_PRIORITY+1, so the driver cannot overwrite it). Identical "
-              "computation to gemmelos_bearly25_zephyr; only the clock differs."),
-    "gemmelos_dsp25": Board(
-        name="gemmelos_dsp25", dram_bytes=1024 * 1024 * 1024, harts=2, vlen=128,
-        console=CONSOLE_UART, sdk_chip="dsp25", chip_freq_hz=500_000_000,
-        flow=FLOW_BAREMETAL,
-        notes="DSP 25 via Baremetal-IDE (-DCHIP=dsp25). Same ABI/entry as bearly25; NOT Zephyr. "
-              "Console is UART0, derived from its own platform/dsp25 headers -- where the clock "
-              "selector sits at RCC_BASE+0x30000 rather than at RCC_BASE, which is why that address "
-              "is derived from the SDK's RCC_CLOCK_SELECTOR define and not assumed."),
+#: Where the board registry lives: ``merlin/contract/boards.yaml`` (bundled into the wheel with the rest of
+#: the contract tree). The boards are DATA, so targeting a new board is an entry there, not an edit here --
+#: and the per-board reasoning (why each fact is what it is, and what it cost when it was wrong) sits
+#: beside the entry it explains.
+BOARDS_FILE: tuple[str, ...] = ("contract", "boards.yaml")
+_SCHEMA_VERSION = 1
+
+#: The closed vocabularies a registry entry may use, by field. An unknown value is refused at load: a
+#: console or loader nobody wrote a driver for would otherwise surface as a silent hang on the board.
+_ENUMS: dict[str, tuple[str, ...]] = {
+    "console": (CONSOLE_HTIF, CONSOLE_UART),
+    "flow": (FLOW_ZEPHYR, FLOW_BAREMETAL),
+    "loader": (LOADER_UART_TSI, LOADER_PYUARTSI),
 }
+#: Fields written as byte sizes, which the registry may spell "<n> KiB|MiB|GiB" for legibility.
+_SIZE_FIELDS = frozenset({"dram_bytes", "code_reserve"})
+_SIZE_UNITS = {"KiB": 1 << 10, "MiB": 1 << 20, "GiB": 1 << 30}
+
+
+class BoardRegistryError(ValueError):
+    """The board registry is malformed. Raised when it is loaded -- never papered over with a default,
+    because a board fact that silently fell back is exactly the wrong-DRAM / wrong-hart-count image that
+    hangs on the chip with nothing printed."""
+
+
+def _byte_size(value: Any, where: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        number, _, unit = value.strip().partition(" ")
+        unit = unit.strip()
+        if number.isdigit() and unit in _SIZE_UNITS:
+            return int(number) * _SIZE_UNITS[unit]
+    raise BoardRegistryError(f"{where}: {value!r} is not a byte size (an integer, or "
+                             f"'<n> {'|'.join(_SIZE_UNITS)}')")
+
+
+def _coerce(key: str, value: Any, ftype: str, where: str) -> Any:
+    """Check one registry value against the ``Board`` field it fills.
+
+    The field's declared type is read from the dataclass itself (``int``, ``str | None``,
+    ``tuple[int, ...] | None``), so a field added to ``Board`` is loadable with no edit here.
+    """
+    alternatives = [t.strip() for t in ftype.split("|")]
+    if value is None:
+        if "None" in alternatives:
+            return None
+        raise BoardRegistryError(f"{where}: may not be null")
+    base = alternatives[0]
+    if key in _SIZE_FIELDS:
+        return _byte_size(value, where)
+    if base == "bool":
+        if not isinstance(value, bool):
+            raise BoardRegistryError(f"{where}: {value!r} is not a boolean")
+        return value
+    if base == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise BoardRegistryError(f"{where}: {value!r} is not an integer")
+        return value
+    if base == "str":
+        if not isinstance(value, str):
+            raise BoardRegistryError(f"{where}: {value!r} is not a string")
+        allowed = _ENUMS.get(key)
+        if allowed is not None and value not in allowed:
+            raise BoardRegistryError(f"{where}: {value!r} is not one of {list(allowed)}")
+        return value
+    if base.startswith("tuple"):
+        if not isinstance(value, list) or not all(
+                isinstance(v, int) and not isinstance(v, bool) for v in value):
+            raise BoardRegistryError(f"{where}: {value!r} is not a list of integers")
+        return tuple(value)
+    raise BoardRegistryError(f"{where}: Board field type {ftype!r} has no registry spelling")
+
+
+def load_boards(path: str | Path | None = None) -> dict[str, Board]:
+    """Read the board registry into ``{name: Board}``.
+
+    Fails closed: a missing file, an unknown field, a value of the wrong type or outside its vocabulary,
+    or a missing required fact (``dram_bytes``, ``harts``) raises :class:`BoardRegistryError` naming the
+    board and the field. ``path`` defaults to :data:`BOARDS_FILE` resolved through
+    ``common.paths.data_path`` (the checkout's tree, else the copy bundled in the wheel).
+    """
+    import yaml
+
+    from ..common.paths import data_path
+
+    p = Path(path) if path is not None else data_path(*BOARDS_FILE)
+    if not p.is_file():
+        raise BoardRegistryError(f"no board registry at {p}; boards are declared in "
+                                 f"merlin/{'/'.join(BOARDS_FILE)}")
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict) or not isinstance(raw.get("boards"), dict):
+        raise BoardRegistryError(f"{p}: expected a mapping with a `boards:` mapping of name -> facts")
+    if raw.get("schema_version") != _SCHEMA_VERSION:
+        raise BoardRegistryError(f"{p}: schema_version {raw.get('schema_version')!r}, this loader reads "
+                                 f"{_SCHEMA_VERSION}")
+    fields = {f.name: f for f in dataclasses.fields(Board)}
+    out: dict[str, Board] = {}
+    for name, entry in raw["boards"].items():
+        where = f"{p}: board {name!r}"
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            raise BoardRegistryError(f"{where}: an entry is `<name>: {{field: value, ...}}`")
+        unknown = sorted(set(entry) - set(fields))
+        if unknown:
+            raise BoardRegistryError(f"{where}: unknown field(s) {unknown}; a Board has {sorted(fields)}")
+        if entry.get("name", name) != name:
+            raise BoardRegistryError(f"{where}: `name: {entry['name']}` disagrees with its key")
+        kwargs = {key: _coerce(key, value, str(fields[key].type), f"{where}, field {key!r}")
+                  for key, value in entry.items() if key != "name"}
+        required = [f.name for f in fields.values() if f.name != "name"
+                    and f.default is dataclasses.MISSING and f.default_factory is dataclasses.MISSING]
+        missing = [key for key in required if key not in kwargs]
+        if missing:
+            raise BoardRegistryError(f"{where}: missing required fact(s) {missing}")
+        out[name] = Board(name=name, **kwargs)
+    return out
+
+
+#: Boards we can target, as declared in the registry file (see :data:`BOARDS_FILE`).
+BOARDS: dict[str, Board] = load_boards()
 
 
 def board(name: str, **overrides) -> Board:

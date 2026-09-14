@@ -1409,7 +1409,7 @@ static void merlin_worker(void *a, void *b, void *c) {{
    * That trap is not hypothetical: the lowered model's entry function begins with `csrr a0, vlenb`
    * (LLVM sizing a VLEN-scaled stack frame for scalable vectors), so the image dies in the prologue
    * of forward() with mcause=2 before computing anything. It was reported from a tapeout that
-   * enforces VS; spike and the Saturn RTL do not enforce it, which is why every simulated run passed.
+   * enforces VS; spike and the vector RTL we simulate do not, which is why every simulated run passed.
    *
    * `libomp_zephyr.c::omp_enable_vector()` already does this for each OpenMP worker, for exactly this
    * reason -- but a single-hart image has no pool, so nothing enabled it. Setting FS too keeps the FP
@@ -1812,7 +1812,7 @@ CONFIG_FPU=y
 CONFIG_FLOAT_HARD=y
 # FPU_SHARING=y mis-routes V-illegal-instruction traps to the FP path, which
 # silently retries forever (a hang with NO fault printed) — the FireSim
-# Saturn-tile hang. Keep it off so traps surface, and so single-COOP-worker FP
+# vector-tile hang. Keep it off so traps surface, and so single-COOP-worker FP
 # context stays eager. (merlin_hetero_runner.)
 CONFIG_FPU_SHARING={fpu_sharing}
 
@@ -2443,39 +2443,56 @@ def run_on_spike(elf: str | Path, *, harts: int = 2, isa: str = DEFAULT_SPIKE_IS
     return _parse_console(console, proc.returncode)
 
 
-# The chipyard Verilator sim for a multicore Saturn SoC. Built from the config added in
-# generators/chipyard/src/main/scala/config/MerlinSaturnConfigs.scala; every stock Saturn
-# config is single-core and the only 2-tile SoC puts a vector unit on one tile only, so
-# neither can host a multi-hart RVV image.
-DEFAULT_SATURN_SIM_CONFIG = "MultiSaturnV256D128ShuttleConfig"
+# The Zephyr board whose images the chipyard Verilator harness runs by default: the generic chipyard
+# board, whose HTIF console is what the harness speaks. WHICH SoC config elaborates it, and which
+# target's variable locates a prebuilt binary, are facts of that board's registry entry
+# (`rtl_sim_config`, `target` in merlin/contract/boards.yaml), not constants of this module -- a
+# multicore vector SoC needs a config of its own, and naming one here welded this path to one target.
+VERILATOR_BOARD = "chipyard_riscv64"
 
 
-def verilator_sim(config: str = DEFAULT_SATURN_SIM_CONFIG) -> Path | None:
-    """Path to the chipyard Verilator sim for ``config``, or None when it is not built.
+def _verilator_facts(board: str, config: str | None) -> tuple[str | None, str | None]:
+    """``(config, env_name)`` for ``board``'s Verilator sim: the SoC config (``config`` if given, else the
+    board's declared ``rtl_sim_config``) and the binary override ``MERLIN_<TARGET>_VERILATOR`` derived from
+    the board's ``target``. Either is None when the registry does not declare it -- never a default."""
+    from ..boards import board as _board_desc
+    from ...common.paths import target_env_name
+    desc = _board_desc(board)
+    cfg = config or desc.rtl_sim_config
+    env_name = target_env_name(desc.target, "VERILATOR") if desc.target else None
+    return cfg, env_name
 
-    Resolution order: ``MERLIN_SATURN_VERILATOR`` (an explicit binary), then the standard
-    chipyard build location under ``$MERLIN_CHIPYARD/sims/verilator``. Returns None rather
-    than raising so callers record an honest ``not_run``.
+
+def verilator_sim(config: str | None = None, *, board: str = VERILATOR_BOARD) -> Path | None:
+    """Path to the chipyard Verilator sim for ``board`` (or an explicit ``config``), or None when it is
+    not built.
+
+    Resolution order: the board target's ``MERLIN_<TARGET>_VERILATOR`` (an explicit binary), then the
+    standard chipyard build location ``$MERLIN_CHIPYARD/sims/verilator/simulator-chipyard.harness-<cfg>``,
+    where ``cfg`` is ``config`` or else the board's declared ``rtl_sim_config``. Returns None rather than
+    raising so callers record an honest ``not_run`` -- also when the registry declares neither fact.
     """
     from ...common.paths import env as _env
-    explicit = _env("MERLIN_SATURN_VERILATOR")
+    cfg, env_name = _verilator_facts(board, config)
+    explicit = _env(env_name) if env_name else None
     if explicit and Path(explicit).is_file():
         return Path(explicit)
     cy = _env("MERLIN_CHIPYARD")
-    if not cy:
+    if not cy or not cfg:
         return None
-    sim = Path(cy) / "sims" / "verilator" / f"simulator-chipyard.harness-{config}"
+    sim = Path(cy) / "sims" / "verilator" / f"simulator-chipyard.harness-{cfg}"
     return sim if sim.is_file() else None
 
 
-def run_on_verilator(elf: str | Path, *, config: str = DEFAULT_SATURN_SIM_CONFIG,
+def run_on_verilator(elf: str | Path, *, board: str = VERILATOR_BOARD, config: str | None = None,
                      timeout: int = 7200, references: dict | None = None,
                      reference: np.ndarray | None = None) -> dict[str, Any]:
-    """Run a ``chipyard_riscv64`` Zephyr ELF on the chipyard Verilator sim.
+    """Run a Zephyr ELF built for ``board`` on the chipyard Verilator sim of that board's SoC.
 
     The Zephyr chipyard board's console is HTIF (``zephyr,console = &htif``), which is what
     the Rocket-chip emulator harness speaks, so the ELF runs unmodified and the SAME
-    OUT/ARGMAX/METRIC/DONE parser is reused.
+    OUT/ARGMAX/METRIC/DONE parser is reused. The SoC config is ``config``, else the board's
+    declared ``rtl_sim_config`` (see :func:`verilator_sim`).
 
     SCOPE — this is cycle-accurate RTL, i.e. roughly 10^4 simulated cycles/second. A whole
     22-layer TinyLlama inference is ~10^10 cycles and is NOT feasible here; that is a
@@ -2483,16 +2500,19 @@ def run_on_verilator(elf: str | Path, *, config: str = DEFAULT_SATURN_SIM_CONFIG
     multicore-RVV MECHANISM (a GEMM micro-benchmark, or a 1-2 layer slice) and take
     whole-model functional truth from spike and whole-model cycle truth from the K1 board.
     """
-    sim = verilator_sim(config)
+    cfg, env_name = _verilator_facts(board, config)
+    sim = verilator_sim(config, board=board)
     if sim is None:
-        raise ZephyrModelError(
-            f"no Verilator sim for {config!r} (set MERLIN_SATURN_VERILATOR, or build it: "
-            f"make -C $MERLIN_CHIPYARD/sims/verilator CONFIG={config})")
+        how = [f"set {env_name}"] if env_name else []
+        how.append(f"build it: make -C $MERLIN_CHIPYARD/sims/verilator CONFIG={cfg}" if cfg else
+                   f"declare `rtl_sim_config` for {board!r} in the board registry, or pass config=")
+        raise ZephyrModelError(f"no Verilator sim for board {board!r} (config {cfg!r}); "
+                               + ", or ".join(how))
     proc = subprocess.run([str(sim), str(elf)], capture_output=True, text=True,
                           timeout=timeout)
     res = _parse_console(proc.stdout + proc.stderr, proc.returncode)
     res["sim"] = str(sim)
-    res["sim_config"] = config
+    res["sim_config"] = cfg
     refs = references if references is not None else reference
     if refs is not None:
         res.update(_gate(res["prefix"], refs))

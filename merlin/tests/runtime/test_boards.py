@@ -549,3 +549,35 @@ def test_a_second_configuration_of_a_board_keeps_the_port_and_states_its_own_fac
     # No image may declare a CPU this design does not have.
     assert zm.image_cpus(two, 1) == 2
     assert zm.image_cpus(two, 3) == 2
+
+
+def test_the_board_table_is_the_registry_file_not_code(tmp_path):
+    """BOARDS is loaded from the registry file, so a new board is an entry there, not a shared-code edit."""
+    from merlin.common.paths import data_path
+
+    path = data_path(*boards.BOARDS_FILE)
+    assert path.is_file()
+    assert boards.load_boards(path) == boards.BOARDS
+    reg = tmp_path / "boards.yaml"
+    reg.write_text("schema_version: 1\nboards:\n  a_new_tapeout:\n    dram_bytes: 1 GiB\n    harts: 3\n"
+                   "    vlen: 256\n    console: uart\n    vector_hart_ids: [0, 2]\n", encoding="utf-8")
+    b = boards.load_boards(reg)["a_new_tapeout"]
+    assert b.dram_bytes == 1 << 30 and b.harts == 3
+    assert b.vector_hart_ids == (0, 2) and b.hart_ids_for("rvv") == (0, 2)
+    assert b.console == boards.CONSOLE_UART
+
+
+@pytest.mark.parametrize("entry, needle", [
+    ("dram_bytes: 1 GiB\n    harts: 2\n    dram_mb: 5\n", "unknown field"),
+    ("dram_bytes: 1 GiB\n    harts: 2\n    console: jtag\n", "not one of"),
+    ("dram_bytes: 1 GiB\n", "missing required"),
+    ("dram_bytes: 1 GB\n    harts: 2\n", "byte size"),
+    ("dram_bytes: 1 GiB\n    harts: two\n", "not an integer"),
+])
+def test_a_malformed_board_entry_is_refused_rather_than_defaulted(tmp_path, entry, needle):
+    """A board fact that silently fell back is the wrong-DRAM / wrong-hart-count image that hangs on the
+    chip with nothing printed, so the registry refuses what it cannot read instead of guessing."""
+    reg = tmp_path / "boards.yaml"
+    reg.write_text(f"schema_version: 1\nboards:\n  b:\n    {entry}", encoding="utf-8")
+    with pytest.raises(boards.BoardRegistryError, match=needle):
+        boards.load_boards(reg)

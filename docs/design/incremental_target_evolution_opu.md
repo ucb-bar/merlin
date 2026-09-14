@@ -947,7 +947,7 @@ workload's leftover binary and reports nothing unusual. Guarded now in
 is the only record of what it actually loaded.
 
 Kodiak *the board entry* still has no OPU: `boards.board("chipyard_kodiak")` is 3 harts / 2 vector harts
-/ VLEN 512, with no OPU anywhere in `runtime/boards.py`, and it describes the delivered chip. The
+/ VLEN 512, with no OPU anywhere in the board registry (`merlin/contract/boards.yaml`), and it describes the delivered chip. The
 bitstream of §5.3 is a different thing with a similar name — Kodiak's SoC and vector geometry rebuilt
 *with* the unit and with one Shuttle core instead of two, which is why it can run this example and the
 board cannot. Do not read a result on one as a statement about the other.
