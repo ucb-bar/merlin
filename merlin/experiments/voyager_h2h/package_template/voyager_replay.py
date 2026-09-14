@@ -73,7 +73,9 @@ def _voyager_matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name:
                                      _tile_word(readout | ACC_ACCUMULATE | acc_row, cols, rows)))
         else:
             raise ValueError(f"unknown schedule op {kind!r} in {key}")
-    trace.append(Instruction("FENCE"))
+    # No trailing FENCE: the reference package's resident-matmul lowering ends without one (the
+    # kernel's own closing fence retires the work), and a fence the reference does not pay would
+    # cost this arm cycles that are packing, not Voyager's schedule.
     return trace
 
 

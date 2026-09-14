@@ -62,13 +62,16 @@ def _lowered_in_bridge(package: Path) -> list[str]:
 
 
 def _run(arm: str, package: Path, capsule: str, interface: Path, simulator: str,
-         runs_root: Path, timeout: int, env: dict) -> dict:
-    run_id = f"{arm}__{capsule}__{simulator}"
+         runs_root: Path, timeout: int, env: dict, tag: str = "") -> dict:
+    run_id = f"{arm}__{capsule}__{simulator}" + (f"__{tag}" if tag else "")
+    # The runner's own oracle wall (--timeout, default 600 s) is what a long RTL simulation hits;
+    # forward ours to it and keep the process limit above it, so a slow capsule is measured rather
+    # than reported as a "tool_crash" at the default wall.
     cmd = [sys.executable, "-m", "merlin.targetgen.oot_runner", "--package", str(package),
            "--input", str(interface), "--run-id", run_id, "--simulator", simulator,
-           "--runs-root", str(runs_root)]
+           "--runs-root", str(runs_root), "--timeout", str(timeout)]
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 900, env=env)
     except subprocess.TimeoutExpired:
         return {"arm": arm, "capsule": capsule, "status": "timeout", "run_id": run_id}
     try:
@@ -94,7 +97,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--from-bridge", type=Path, help="grade the capsules this bridge lowered")
     parser.add_argument("--profile")
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--timeout", type=int, default=1800,
+                        help="oracle wall per run, forwarded to oot_runner --timeout")
+    parser.add_argument("--tag", default="",
+                        help="suffix for run ids, so a rerun never reuses an earlier run's dir")
     args = parser.parse_args(argv)
 
     arms = dict(a.split("=", 1) for a in args.arm)
@@ -112,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     jobs = [(arm, pkg, cap, path) for cap, path in inputs.items() for arm, pkg in arms.items()]
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         results = list(pool.map(lambda j: _run(j[0], j[1], j[2], j[3], args.simulator, runs_root,
-                                               args.timeout, env), jobs))
+                                               args.timeout, env, args.tag), jobs))
 
     by = {(r["arm"], r["capsule"]): r for r in results}
     arm_names = list(arms)
@@ -145,6 +151,10 @@ def main(argv: list[str] | None = None) -> int:
             "passes": sum(1 for c in inputs if by[(arm, c)]["status"] == "pass")}
     summary[base] = {"passes": sum(1 for c in inputs if by[(base, c)]["status"] == "pass")}
 
+    # Locate the Voyager checkout the way the builder does, so its pin is verified rather than
+    # reported unlocatable; the schedules themselves carry the build-time record (below).
+    os.environ.setdefault("MERLIN_EXT_VOYAGER_COMPILER",
+                          str(merlin_dir().parent / "out" / "build" / "external" / "voyager-compiler"))
     pins = {}
     for name in ("gemmini_rtl", "voyager_compiler"):
         try:
@@ -160,13 +170,21 @@ def main(argv: list[str] | None = None) -> int:
         sim_binaries["verilator"] = Path(chipyard) / "sims" / "verilator" / \
             f"simulator-chipyard.harness-{cfg}"
     record = provenance.record(pins=pins, artifacts=sim_binaries)
-    packages = {arm: {"path": str(pkg), "manifest_sha256": _sha256(pkg / "manifest.yaml"),
-                      "schedules_sha256": _sha256(pkg / "mlir_oot" / "lowering"
-                                                  / "voyager_schedules.json")}
-                for arm, pkg in arms.items()}
+    packages = {}
+    for arm, pkg in arms.items():
+        schedules = pkg / "mlir_oot" / "lowering" / "voyager_schedules.json"
+        entry = {"path": str(pkg), "manifest_sha256": _sha256(pkg / "manifest.yaml"),
+                 "schedules_sha256": _sha256(schedules)}
+        if schedules.is_file():
+            # The provenance of what PRODUCED the schedules: the compiler pin as verified when the
+            # bridge package was built, embedded in the package itself.
+            entry["voyager_compiler_at_build"] = json.loads(schedules.read_text()).get(
+                "voyager_compiler")
+        packages[arm] = entry
 
     product = new_product("compare", version=1, target=args.target,
-                          notes=f"voyager_h2h capsule head-to-head on {args.simulator}")
+                          notes=f"voyager_h2h capsule head-to-head on {args.simulator}"
+                                + (f" [{args.tag}]" if args.tag else ""))
     doc = {"target": args.target, "simulator": args.simulator, "arms": packages,
            "baseline_arm": base, "summary": summary, "rows": rows, "runs": results,
            "provenance": record}

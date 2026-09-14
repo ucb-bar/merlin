@@ -50,6 +50,9 @@ def schedule_key(m: int, k: int, n: int, epilogue: list[str], out_dtype: str) ->
 
 def _serialize(op) -> list:
     if isinstance(op, Mvin):
+        if op.row_step != 1 or op.role == "zero":
+            # The replay template packs every load at the operand's own row stride.
+            raise ValueError(f"a {op.role} load with row step {op.row_step} has no packing here")
         return ["mvin", op.role, op.dram_row, op.dram_col, op.rows, op.cols, op.spad_row]
     if isinstance(op, Preload):
         return ["preload", op.weight_row, op.acc_row, op.accumulate, op.rows, op.cols]
