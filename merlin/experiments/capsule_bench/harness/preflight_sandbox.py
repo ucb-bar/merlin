@@ -10,7 +10,7 @@ network, no claude invocation — just the agent's tool environment.
                                 clang, cmake>=3.20, ninja, make, spike, riscv64-unknown-elf-gcc, verilator L3
   END-TO-END:                   agent_selfcheck.py --sim spike on one capsule actually runs
 
-Usage: test_sandbox.py [--arm merlin_rtlchecks|merlin|baseline]
+Usage: preflight_sandbox.py [--arm merlin_rtlchecks|merlin|baseline]
 """
 from __future__ import annotations
 import argparse

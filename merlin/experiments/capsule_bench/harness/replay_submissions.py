@@ -3,7 +3,7 @@
 
 Why this exists
 ---------------
-The offline gates we run before a campaign (`readiness_check`, `preflight`, `test_sandbox`) all
+The offline gates we run before a campaign (`readiness_check`, `preflight`, `preflight_sandbox`) all
 exercise the harness against a package that is either CORRECT (the reference backend), ABSENT
 (missing manifest), EMPTY, or DELIBERATELY CHEATING (a forbidden import). None of them exercise a
 package that is present, schema-valid, and semantically WRONG -- which is what every real agent

@@ -218,7 +218,7 @@ to 20/20 public capsules.
 
 ```bash
 S=merlin/experiments/capsule_bench/targets/gemmini/scripts
-.venv/bin/python $S/test_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
+.venv/bin/python $S/preflight_sandbox.py --arm merlin_rtlchecks   # MANDATORY pre-spend gate (21/21 GO)
 .venv/bin/python $S/verify_no_cheat.py                        # static cheat-clean gate
 .venv/bin/python $S/launch_ab_batch.py --tag <tag> --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks --mode sequential
 .venv/bin/python merlin/experiments/gemmini_cert/run.py --simulators spike,verilator   # RTL conformance C0-C5

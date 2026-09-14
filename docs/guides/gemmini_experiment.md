@@ -67,9 +67,9 @@ first, then `check_repro_env.py` to confirm the Gemmini capabilities (`gemmini_s
 
 ```bash
 # every legit tool works + every answer is masked, per arm. Exit 0 only if all green. No agent, no $.
-.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm merlin_rtlchecks
-.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm raw_baseline
-.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/test_sandbox.py --arm merlin
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm merlin_rtlchecks
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm raw_baseline
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm merlin
 # static cheat-clean gate: no answer content in any shipped tool/prompt (grep over source)
 .venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/verify_no_cheat.py
 ```

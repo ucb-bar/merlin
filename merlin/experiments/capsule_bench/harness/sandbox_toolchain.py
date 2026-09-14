@@ -3,7 +3,7 @@
 The real logic now lives in :mod:`merlin.targetgen.sandbox` (target-agnostic, routed by compute-unit
 kind / sim family — a new target gets a correct sandbox from its ``target_experiment.yaml`` with no
 copied scripts). This module resolves THIS experiment's descriptor and re-exports the toolchain surface
-the local harness scripts (``run_baseline_qa_loop``, ``test_sandbox``, ``run_rtlchecks_qa_loop``) import,
+the local harness scripts (``run_baseline_qa_loop``, ``preflight_sandbox``, ``run_rtlchecks_qa_loop``) import,
 so their call sites are unchanged. It binds the LEGIT tools back over the /scratch* masks and binds NO
 answer surface.
 """

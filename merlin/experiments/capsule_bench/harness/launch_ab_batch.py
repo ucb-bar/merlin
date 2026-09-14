@@ -351,7 +351,7 @@ def main(argv=None):
     ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
                     help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
                          "— only granted bundle files + the legit toolchain visible, all answers masked "
-                         "(proven by test_sandbox.py per arm). 'none' = legacy reachable-fs + audit.")
+                         "(proven by preflight_sandbox.py per arm). 'none' = legacy reachable-fs + audit.")
     ap.add_argument("--preflight", action="store_true",
                     help="make host answer surfaces owner-only + dry-run + assert cheat-clean BEFORE "
                          "any spend; bwrap masks them from the agent; launches NOTHING.")
