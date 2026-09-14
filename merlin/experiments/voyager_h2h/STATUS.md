@@ -218,6 +218,24 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **Plane B: the 2x per-layer gap is Voyager's own, and one line recovers it** (2feb9db6; details and
+  evidence in `PLANE_B.md`, runs under `out/runs/voyager_accel/plane_b/`).
+  - `src/MatrixProcessor.h:24` sizes the accumulate-to-writeback FIFO `SUPPORT_MX ? 8 : 1`, so every
+    INT8/E4M3/posit build gets depth 1. A `Connections::Fifo` at depth 1 cannot enqueue in the cycle
+    it dequeues, so the matrix path (94% of MobileBERT's cycles) is capped at one item per two
+    cycles. Stall traces show `MatrixProcessor` alternating on every port while every producer holds
+    valid and the consumer holds ready; the testbench memory model never stalls.
+  - **None of our deviations contributes:** Voyager's pre-HLS SystemC model (no Catapult, no VCS, no
+    RTL) reproduces the same cycles (dense 328,275 vs 328,380 ns), and the Connections 1.4-vs-2.2.0
+    diff carries no timing change.
+  - **A/B, FIFO depth 1 -> 2 and nothing else** (patched copy; the pinned checkout untouched), all
+    layers still matching the gold model: MobileBERT **13,631,970 -> 7,380,207 cycles**, utilization
+    **0.497 -> 0.918** (matrix 0.974). That is 0.96x the paper's Table 4 cycle count, against 1.77x
+    before. The residual is mostly the vector port width (128-bit port vs bf16 16-lane data).
+  - **Consequence for the head-to-head:** Table 4's 95.1% cannot have been measured on the public
+    release as shipped for non-MX datatypes. Building a merlin backend against the shipped RTL would
+    credit merlin with a 2x that belongs to a FIFO depth: build BOTH sides patched, or report the cap
+    in the cell.
 - **Quantization-accuracy parity (G3b), first milestone** (`merlin/experiments/dataset_accuracy/`,
   commit 1fddadde). Voyager's own quantizer and recipe, BERT-base on the FULL SST-2 validation split
   (872 sentences), against the paper's Table 3 and the accelerator repo's own gold table:
@@ -293,6 +311,9 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   FireSim. Lowering and the exact whole-model reference are done (above).
 - FireSim: the existing submit tool, approved as-is by the user (2026-09-14), submitting only while
   the FPGA is idle; the capsule batch (`scripts/firesim_h2h.py`) is in flight.
-- Plane B: the release's own flow runs every layer about 2x slower than the paper claims
-  (MobileBERT 13.63M cycles at 49.7% vs 7.71M at 95.1%; details in `PLANE_B.md`); the root cause is
-  under investigation. ResNet-50 waits on gated ImageNet access, which the user is requesting.
+- Plane B: the 2x is explained and recovered by one line of Voyager's source (above), so the
+  reproduction now lands within 4% of Table 4. Next: decide the arm shape (both sides patched, or the
+  shipped cap reported in the cell), then build a merlin backend for that RTL. ResNet-50 still waits
+  on gated ImageNet access, which the user is requesting.
+- Outward-facing, needs the user's decision: whether to report the depth-1 FIFO to the Voyager
+  authors, and whether to invite them to review the bridge (plan item).

@@ -228,6 +228,7 @@ What merlin should take from it:
 | A local pre-push diff against its own previous `model.txt` | Independent goldens; a tier that did not run is `incomplete`, never `pass`. Measured: the diff fails all 9 legal rewrites and passes all 8 scale faults (`model.txt` names constants, not their values) |
 | Whole-model RTL cycles as per-layer, tile-extrapolated sums (`run_regression.py` `MAX_TILES`) | One timed invocation on RTL, FPGA or silicon, with provenance |
 | Latest compiler no longer targets the public hardware release (legacy `param.proto` retired) | Pinned revisions per result; a target is a descriptor, not a fork |
+| The public release ships a configuration 2x off its own paper: one FIFO is depth 1 for every non-MX datatype, halving matrix throughput (STATUS.md, plane B) | Every claim is regenerated from the artifact under test, never inherited from a paper. Reproduce first, and when the reproduction misses, find the line before comparing anything |
 
 ## Mapping to the plan
 
