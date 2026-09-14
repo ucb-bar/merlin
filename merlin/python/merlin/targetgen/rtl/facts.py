@@ -598,6 +598,15 @@ class FactsDowngrade(RuntimeError):
     """
 
 
+def body_if_present(target: str) -> dict[str, Any]:
+    """``target``'s facts body, or ``{}`` when there is none -- the LAX reader, named so it can be found.
+
+    Twenty-odd consumers spelled this inline as ``(load_facts(t) or {}).get("facts") or {}``. A consumer
+    that must not proceed on missing facts should call :func:`facts_body` instead, which refuses with the
+    reason; this one is for code whose own logic already treats an empty body as "nothing derived"."""
+    return (load_facts(target) or {}).get("facts") or {}
+
+
 def hollowed_facts(old: dict, new: dict) -> list[str]:
     """Facts present-and-populated in ``old`` that ``new`` empties or drops. Pure; no I/O.
 
