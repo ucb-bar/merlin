@@ -126,6 +126,7 @@ testpaths = ["merlin/tests"]
 markers = [
     "slow: long-running tests (heavy builds/sims); deselect with -m 'not slow'",
     "integration: end-to-end tests spanning multiple subsystems or external tools",
+    "target(name): the test's SUBJECT is one named target; select or deselect them with -m 'target' / -m 'not target'",
 ]
 # Per-test wall-clock ceiling (pytest-timeout, in [dev]). A test that blocks in a subprocess
 # (compile/sim/board that never returns when its external toolchain is mis/unconfigured) FAILS at

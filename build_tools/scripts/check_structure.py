@@ -184,6 +184,55 @@ def check_experiment_status(errors):
             errors.append(f"frozen experiment has no FINDINGS.md: merlin/experiments/{sub}")
 
 
+TARGET_MARKER_RATCHET = os.path.join(ROOT, "build_tools", "scripts", "test_target_marker_ratchet.txt")
+TARGET_HEAVY_LITERALS = 5
+
+
+def _quoted_target_literals(text, names):
+    return sum(text.count(f'"{n}"') + text.count(f"'{n}'") for n in names)
+
+
+def check_test_target_marker(errors):
+    """A test in a SUBSYSTEM bucket whose subject is one target must say so with ``pytest.mark.target``.
+
+    Buckets name subsystems, not targets; measured 2026-09-14, 120 test files in the generic buckets name
+    a target five or more times and none said so, so "the infra suite passes" silently meant "passes on
+    the targets these files hardcode". The marker makes that selectable (``-m 'not target'``). Existing
+    files are recorded in test_target_marker_ratchet.txt, which may only shrink; a NEW target-heavy test
+    must carry the marker. Target names come from the derived roster (build_tools/scripts/_target_roster).
+    """
+    sys.path.insert(0, os.path.join(ROOT, "build_tools", "scripts"))
+    try:
+        import _target_roster
+        names = sorted(_target_roster.target_names(ROOT))
+    except Exception as exc:  # noqa: BLE001 -- no roster, nothing to measure against: say so
+        errors.append(f"test target marker: target roster unreadable ({exc})")
+        return
+    ratchet = set()
+    if os.path.isfile(TARGET_MARKER_RATCHET):
+        with open(TARGET_MARKER_RATCHET, encoding="utf-8") as fh:
+            ratchet = {ln.split("#", 1)[0].strip() for ln in fh if ln.split("#", 1)[0].strip()}
+    tests = os.path.join(ROOT, "merlin", "tests")
+    if not os.path.isdir(tests):
+        return
+    for bucket in sorted(os.listdir(tests)):
+        bp = os.path.join(tests, bucket)
+        # A bucket NAMED after a target (by the same derived roster) is about that target by construction.
+        if not os.path.isdir(bp) or bucket in names or bucket in SKIP_DIRS \
+                or bucket in ("fixtures", "data"):
+            continue
+        for fn in sorted(os.listdir(bp)):
+            if not (fn.startswith("test_") and fn.endswith(".py")):
+                continue
+            rel = f"merlin/tests/{bucket}/{fn}"
+            with open(os.path.join(bp, fn), encoding="utf-8", errors="replace") as fh:
+                text = fh.read()
+            if _quoted_target_literals(text, names) < TARGET_HEAVY_LITERALS or "mark.target(" in text \
+                    or rel in ratchet:
+                continue
+            errors.append(f"target-heavy test without `pytestmark = pytest.mark.target(...)`: {rel}")
+
+
 def check_schemas(errors):
     for s in REQUIRED_SCHEMAS:
         p = os.path.join(ROOT, "merlin", "schemas", f"{s}.schema.yaml")
@@ -400,6 +449,7 @@ def main():
         ("docs freshness", check_docs_freshness),
         ("doc paths", check_doc_paths),
         ("test layout", check_test_layout),
+        ("test target marker", check_test_target_marker),
     ]
     for label, fn in checks:
         before = len(errors)
