@@ -30,6 +30,7 @@ from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
 from ..boards import CONSOLE_HTIF, CONSOLE_UART
 from . import spike as _spike  # toolchain paths (gcc/spike/objdump)
+from merlin.common import proc as _proc
 
 RVV_CFLAGS = ["-march=rv64gcv", "-mabi=lp64d", "-mcmodel=medany", "-O2",
               "-ffreestanding", "-fno-builtin"]
@@ -62,15 +63,9 @@ _SPIKE_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or 
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    kw.setdefault("timeout", _SPIKE_CMD_TIMEOUT_S or None)
-    try:
-        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    except subprocess.TimeoutExpired:
-        raise SpikeModelError(f"command timed out after {_SPIKE_CMD_TIMEOUT_S}s "
-                              f"(pathological compile): {' '.join(map(str, cmd))}")
-    if proc.returncode != 0:
-        raise SpikeModelError(f"command failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
-    return proc
+    timeout = kw.pop("timeout", _SPIKE_CMD_TIMEOUT_S or None)
+    return _proc.run_checked(cmd, error=SpikeModelError, timeout=timeout,
+                             timeout_hint=" (pathological compile)", **kw)
 
 
 ARENA_BASE = 0xC0000000           # arena lives here (literal-addressed, in -m memory)  # derived-ok: address chosen by this backend's own -m map, not read from a target

@@ -8,6 +8,7 @@ from merlin.common.paths import runtime_dir
 
 from ..common.paths import repo_root
 from .toolchain import clang
+from merlin.common import proc as _proc
 
 # A bounded per-compile wall clock. A pathological schedule (e.g. an outer-product contraction at a
 # large square regime) can make clang -O2 blow up and spin for many minutes on one object file; in a
@@ -36,14 +37,8 @@ class CodegenError(RuntimeError):
 
 
 def _run(cmd: list[str]) -> None:
-    try:
-        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True,
-                              timeout=(_COMPILE_TIMEOUT_S or None))
-    except subprocess.TimeoutExpired:
-        raise CodegenError(f"clang timed out after {_COMPILE_TIMEOUT_S}s (pathological compile): "
-                           f"{' '.join(map(str, cmd))}")
-    if proc.returncode != 0:
-        raise CodegenError(f"clang failed: {' '.join(map(str, cmd))}\n{proc.stderr}")
+    _proc.run_checked(cmd, error=CodegenError, timeout=(_COMPILE_TIMEOUT_S or None),
+                      timeout_hint=" (pathological compile)")
 
 
 def compile_ll(ll_path: str | Path, out_obj: str | Path, target: str = "riscv", *,

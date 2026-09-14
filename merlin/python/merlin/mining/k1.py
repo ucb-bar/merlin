@@ -34,6 +34,7 @@ from functools import wraps
 from pathlib import Path
 from merlin.common.paths import env, repo_root, runtime_dir
 from typing import Any
+from merlin.common import proc as _proc
 
 # Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
 # Read through paths.env (os.environ -> .env -> default) so a repo-local .env configures the board +
@@ -774,17 +775,9 @@ def _whole_cell_deadline(function):
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    kw.setdefault("timeout", _K1_CMD_TIMEOUT_S or None)
-    kw["timeout"] = _bounded_timeout(kw["timeout"])
-    try:
-        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    except subprocess.TimeoutExpired:
-        raise K1Error(f"command timed out within the bounded compile/cell deadline: "
-                      f"{' '.join(map(str, cmd))}")
-    if proc.returncode != 0:
-        raise K1Error(
-            f"command failed: {' '.join(map(str, cmd))}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
-    return proc
+    timeout = _bounded_timeout(kw.pop("timeout", _K1_CMD_TIMEOUT_S or None))
+    return _proc.run_checked(cmd, error=K1Error, timeout=timeout,
+                             timeout_hint=" within the bounded compile/cell deadline", **kw)
 
 
 def _model_compile_flags(pkg, features, model_opt: list[str], *,

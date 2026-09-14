@@ -46,6 +46,7 @@ from ...common.paths import repo_root
 from ...llvmlower import c_runtime, toolchain
 from ...llvmlower.lower import lower_model_file
 from . import spike as _spike
+from merlin.common import proc as _proc
 
 # clang flags for the model object. medany keeps it position-tolerant;
 # -ffreestanding/-fno-builtin so it needs only the symbols mlir_runtime.c + libc(picolibc)
@@ -180,16 +181,9 @@ _BUILD_CMD_TIMEOUT_S = int(os.environ.get("MERLIN_COMPILE_TIMEOUT_S", "900") or 
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    kw.setdefault("timeout", _BUILD_CMD_TIMEOUT_S or None)
-    try:
-        proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    except subprocess.TimeoutExpired:
-        raise ZephyrModelError(f"command timed out after {_BUILD_CMD_TIMEOUT_S}s "
-                               f"(pathological compile): {' '.join(map(str, cmd))}")
-    if proc.returncode != 0:
-        raise ZephyrModelError(
-            f"command failed: {' '.join(map(str, cmd))}\n{proc.stdout[-2000:]}\n{proc.stderr[-2000:]}")
-    return proc
+    timeout = kw.pop("timeout", _BUILD_CMD_TIMEOUT_S or None)
+    return _proc.run_checked(cmd, error=ZephyrModelError, timeout=timeout,
+                             timeout_hint=" (pathological compile)", **kw)
 
 
 #: Innermost lane count the per-rank bounded vectorize uses; the tagging predicate and the

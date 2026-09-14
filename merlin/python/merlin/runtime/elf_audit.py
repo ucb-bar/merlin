@@ -29,6 +29,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from merlin.common import proc as _proc
 
 #: Fallback UART-TSI throughput, bytes/second, for a caller with no board descriptor. 921600 baud 8N1
 #: carries 10 bits per byte ≈ 92 KB/s. Prefer `Board.loader_bytes_per_s`, which derives this from the
@@ -129,10 +130,7 @@ def _tool(name: str) -> str | None:
 
 
 def _run(cmd: list[str]) -> str:
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-    if proc.returncode != 0:
-        raise ElfAuditError(f"{cmd[0]} failed: {proc.stderr[-500:]}")
-    return proc.stdout
+    return _proc.run_checked(cmd, error=ElfAuditError, timeout=300, wrap_timeout=False, tail=500).stdout
 
 
 def read_elf(elf: str | Path) -> tuple[int, list[Segment], dict[str, tuple[int, int, str]]]:

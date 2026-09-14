@@ -24,6 +24,7 @@ from merlin.common.paths import runtime_dir
 
 from .backends import spike as _spike
 from .backends.spike_model import RVV_CFLAGS
+from merlin.common import proc as _proc
 
 # Inputs are emitted as C initializers, so a large tensor becomes a pathological source file long
 # before it becomes a memory problem. Refuse early with a clear cause.
@@ -139,9 +140,7 @@ def _element_of(dtype: str):
 
 
 def _run(cmd: list, timeout: int = 900) -> None:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, timeout=timeout)
-    if proc.returncode != 0:
-        raise KernelSpikeError(f"{cmd[0]} failed:\n{proc.stdout}\n{proc.stderr}")
+    _proc.run_checked(cmd, error=KernelSpikeError, timeout=timeout, wrap_timeout=False)
 
 
 def build(module, inputs: list[np.ndarray], workdir: str | Path, *, vectorize: bool = True,

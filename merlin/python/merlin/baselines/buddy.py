@@ -43,6 +43,7 @@ from merlin.baselines.contract import BaselineResult, RegionProfile, ScalarFallb
 from merlin.common import artifacts
 from merlin.common.paths import build_dir, repo_root, runtime_dir
 from merlin.mining import k1
+from merlin.common import proc as _proc
 
 FRAMEWORK = "buddy"
 
@@ -288,12 +289,7 @@ class BuddyError(RuntimeError):
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    if proc.returncode != 0:
-        raise BuddyError(
-            f"command failed: {' '.join(map(str, cmd))[:400]}\n"
-            f"STDOUT:{proc.stdout[-1500:]}\nSTDERR:{proc.stderr[-1500:]}")
-    return proc
+    return _proc.run_checked(cmd, error=BuddyError, wrap_timeout=False, tail=1500, **kw)
 
 
 def prepare_model_mlir(bundle: _bundle.CaptureBundle, work: Path) -> Path:

@@ -57,6 +57,7 @@ from merlin.baselines.executorch_identity import (
 from merlin.common import artifacts
 from merlin.common.paths import build_dir, repo_root
 from merlin.mining import k1
+from merlin.common import proc as _proc
 
 FRAMEWORK = "executorch"
 
@@ -180,12 +181,7 @@ class ExecuTorchError(RuntimeError):
 
 
 def _run(cmd: list, **kw) -> subprocess.CompletedProcess:
-    proc = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kw)
-    if proc.returncode != 0:
-        raise ExecuTorchError(
-            f"command failed: {' '.join(map(str, cmd))[:400]}\n"
-            f"STDOUT:{proc.stdout[-2000:]}\nSTDERR:{proc.stderr[-2000:]}")
-    return proc
+    return _proc.run_checked(cmd, error=ExecuTorchError, wrap_timeout=False, tail=2000, **kw)
 
 
 # --- capture-bundle resolution (legacy fp32 LLM dir names, like buddy) --------------------------
