@@ -219,6 +219,9 @@ _BINARY = {
     "and_": lambda a, b: bool(a) and bool(b), "or_": lambda a, b: bool(a) or bool(b),
     "sym_max": max, "sym_min": min,
 }
+#: Operand keyword pairs a binary scalar op may carry: ATen-style ``input``/``other``, or the
+#: ``a``/``b`` the emitter writes for the sym_* ops.
+_BINARY_OPERANDS = (("input", "other"), ("a", "b"))
 _UNARY = {"not_": lambda a: not a, "neg": lambda a: -a}
 _DECLARATIONS = {"voyager::alloc", "voyager::zeros", "voyager::fill"}
 
@@ -336,10 +339,16 @@ class _Replayer:
                             self.semaphores[(box.node, slot)] = value
             return
         if target in _BINARY:
-            self._bind(outputs, _BINARY[target](self.scalar(kwargs["input"]["scalar"]),
-                                                self.scalar(kwargs["other"]["scalar"])))
+            # ATen-style ops name their operands input/other; the sym_* ops the emitter writes name
+            # them a/b. Anything else is refused, never guessed.
+            names = next((pair for pair in _BINARY_OPERANDS if all(k in kwargs for k in pair)), None)
+            if names is None:
+                raise UnsupportedConstruct(f"{target} with operands {sorted(kwargs)}")
+            self._bind(outputs, _BINARY[target](*(self.scalar(kwargs[k]["scalar"]) for k in names)))
             return
         if target in _UNARY:
+            if "input" not in kwargs:
+                raise UnsupportedConstruct(f"{target} with operands {sorted(kwargs)}")
             self._bind(outputs, _UNARY[target](self.scalar(kwargs["input"]["scalar"])))
             return
         if target == "sym_ite":

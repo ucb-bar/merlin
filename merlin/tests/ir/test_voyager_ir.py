@@ -109,6 +109,30 @@ def test_an_unmodelled_scalar_operation_is_refused_not_skipped() -> None:
         replay(broken)
 
 
+def _renamed_scalar_operands(first: str, second: str) -> dict:
+    model = copy.deepcopy(load_model(FIXTURES / "lin64" / "model.json"))
+    loop = next(op for op in model["ops"] if "loop" in op)
+    scalar_op = next(op for op in loop["loop"]["for_loop"]["body"]["ops"]
+                     if op.get("prim", {}).get("target") == "add")
+    kwargs = scalar_op["prim"]["kwargs"]
+    kwargs[first], kwargs[second] = kwargs.pop("input"), kwargs.pop("other")
+    return model
+
+
+def test_sym_style_operand_names_replay_like_aten_style_ones() -> None:
+    # The emitter writes sym_min/sym_max operands as a/b; the replay once read only input/other and
+    # crashed with a KeyError (found by the mutation study).
+    reference = _trace("lin64")
+    renamed = replay(_renamed_scalar_operands("a", "b"))
+    assert [(type(e).__name__, getattr(e, "indices", None)) for e in renamed.events] == \
+           [(type(e).__name__, getattr(e, "indices", None)) for e in reference.events]
+
+
+def test_a_binary_operation_with_unknown_operand_names_is_refused() -> None:
+    with pytest.raises(UnsupportedConstruct, match="operands"):
+        replay(_renamed_scalar_operands("lhs", "rhs"))
+
+
 def test_a_wait_with_no_prior_signal_is_a_violation() -> None:
     model = load_model(FIXTURES / "lin64" / "model.json")
     broken = copy.deepcopy(model)
