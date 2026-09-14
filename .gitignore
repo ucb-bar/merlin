@@ -125,6 +125,20 @@ selfcheck_out/
 # The leave-one-family-out split definitions NAME held-out capsules (7 of them), so unlike the other
 # aggregated ledgers in this concern root they are an answer key, not part of the results story.
 /out/artifacts/capsule-bench/gemmini/leave_one_family_out.json
+# --- per-run archive subtrees under ANY concern root are raw dumps (agent workspaces, vendored
+#     compiler trees, .o/.elf/.gz), never the curated story. Measured 2026-09-13: ~1,500 files /
+#     ~200 MB force-added under capsule-bench/{atlas,radiance} and perf-bench/gemmini/<run>/ on
+#     09-02..09-08. The concern's OWN top-level files stay negatable above; everything one level
+#     deeper is re-ignored here (a later match than the depth-unbounded README/AGENT negations, so
+#     stray skeleton files inside a dump stay ignored too). Two run dirs are pytest FIXTURES read by
+#     hard asserts and are re-included by name; a new fixture needs its own reviewed line. ---
+/out/artifacts/capsule-bench/*/*/**
+/out/artifacts/perf-bench/*/*/**
+# read by merlin/tests/targetgen/test_radiance_application_family_audit.py (coverage.json etc.)
+!/out/artifacts/capsule-bench/radiance/application_family_coverage_v2_20260908/**
+# read by merlin/tests/runtime/test_gsim_result_page.py (only the verifier; the cases/ dumps stay out)
+!/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/verify.py
+!/out/artifacts/capsule-bench/radiance/l3_result_page_v2_20260908/README.md
 
 # --- dse-guidance case_study GOLDEN: the committed reference the tests + --consume/--meta read.
 #     It's generated analysis (regenerable via `merlin-dse-guidance --case-study`) but tracked as
@@ -167,6 +181,8 @@ selfcheck_out/
 !/out/artifacts/targets/radiance/hand_v0/**
 !/out/artifacts/targets/saturn_vec/hand_v0/**
 !/out/artifacts/targets/muon/reference_v0/**
+# the frozen OOT backend that certified 33/33 (a promoted champion; tests skipif on its gemmini_opt.py)
+!/out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0/**
 # hand-owned capability RESIDUAL side-inputs (the intent+prose the RTL facts can't ground) that
 # capability_manifests.manifest_for derives each target's contract from — the source of truth for the
 # discovered manifest set (rvv/mx_gemmini/radiance/atlas). Tracked; the generated target_contract.yaml
@@ -175,6 +191,16 @@ selfcheck_out/
 # never track compiled OOT build trees or bytecode even under a negated baseline (these win: last match)
 /out/artifacts/targets/**/mlir_oot/build/
 /out/artifacts/targets/**/__pycache__/
+# a vendored xdsl checkout inside a codegen package is a build INPUT (450 files, re-installable),
+# never a product; measured tracked once under gemmini_xdsl_rtl_v0/mlir_oot/xdsl/.
+/out/**/mlir_oot/xdsl/**
+/out/**/vendor/xdsl/**
+# compiled / archived outputs never belong in the curated story (no negated tree carried any of
+# these when this was added; a fixture that needs one must negate it explicitly BELOW this block).
+/out/**/*.gz
+/out/**/*.o
+/out/**/*.elf
+/out/**/*.bin
 
 # --- RTL facts are a GENERATED artifact, never hand-tracked. Our CIRCT/mlc tooling EXTRACTS them
 #     from the target's RTL on demand (merlin.targetgen.rtl.facts.ensure_facts ->
