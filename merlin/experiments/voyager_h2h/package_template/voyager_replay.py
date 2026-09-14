@@ -46,14 +46,13 @@ def _voyager_matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name:
     elem = {role: _elem_bytes(spec.dtype) for role, spec in specs.items()}
     readout = ACC_BASE | (ACC_FULL if out.dtype == "i32" else 0)
     trace = [_config_ex(weight_stationary=True), _config_st(strides["out"], attrs, out.dtype)]
-    configured = None
     for op in entry["ops"]:
         kind = op[0]
         if kind == "mvin":
             _, role, row, col, rows, cols, spad_row = op
-            if configured != role:
-                trace.append(_config_ld(strides[role], channel=0))
-                configured = role
+            # Packed exactly as the reference package packs a load -- a CONFIG_LD before every MVIN --
+            # so the arms differ only in the schedule Voyager chose, never in instruction packing.
+            trace.append(_config_ld(strides[role], channel=0))
             trace.append(Instruction("MVIN", Address(names[role], row * strides[role]
                                                      + col * elem[role]),
                                      _tile_word(spad_row, cols, rows)))

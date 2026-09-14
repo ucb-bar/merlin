@@ -42,6 +42,14 @@ DAC 2026 / arXiv 2509.15205). It answers two questions separately and never mixe
 | C2 | A K split is combined by a second commit `linear -> dequantize -> aten::add` into the first partial, in **bf16** | Partial sums accumulate in the int32 accumulator (ACC_ACCUM readout bit) | Both arms: the bridge keeps the output tile resident in the accumulator across K splits and accumulates in int32 -- exact, so it can only differ from Voyager's bf16 sum in Gemmini's favour numerically; the tile order and every load stay Voyager's | 256x512x256 probe: the only one whose lowered output differs from the quantized reference (max abs 0.0156) |
 | C3 | Voyager's model has per-PE L1 input / weight / accumulation buffers (`*_buffer_size` elements per array edge) | No L1 input or weight buffer: A streams from the scratchpad each compute, and the PE array holds exactly one DIM x DIM weight block; the accumulator is the L1 accumulation buffer | Derived, not a choice: `weight_buffer_size = array rows` (one resident block), `input_buffer_size = scratchpad rows`, `accum_buffer_size = accumulator rows` (`merlin.baselines.voyager.accelerator_config_for`). A mapping that needs more resident weights (a 3x3 conv keeps 9 blocks) has no Gemmini equivalent and the stock arm reports Voyager's own refusal | Voyager `hardware_config.py` / `tiler.py` capacity model vs the target's derived address space |
 
+**Packing rule (not a concession, a control).** Voyager specifies no target instructions, so every
+packing choice the bridge makes is the bridge's, not Voyager's. The bridge therefore packs each op
+exactly as the reference package does (same config words, a `CONFIG_LD` before every `MVIN`, the same
+fences), so the two arms differ only in the schedule: which blocks move when, where they sit, and the
+order weights become resident and rows stream. A first build that re-issued `CONFIG_LD` only on an
+operand change retired 13-19% fewer instructions on multi-tile capsules for reasons that were not
+Voyager's; it was discarded before any cycle-accurate run was cited.
+
 Voyager's numerics are bf16-based (the dequantized value is rounded through a 65,536-entry bf16
 table before the next quantize), so no Gemmini execution is bit-identical to Voyager's own reference.
 Gate the Voyager arm against its reference with the contract's float tolerance, and say so.
