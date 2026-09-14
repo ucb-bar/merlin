@@ -9,7 +9,8 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
   harness), `agent_bench/` (target-agnostic reference scaffold), `gemmini_perf_bench/`,
   `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated; 0 real runs — do not cite it).
 - Cross-compiler studies: `llm_kernel_vs_compiler_v0/`, `voyager_h2h/` (merlin vs the Voyager
-  compiler, same-hardware and home-turf planes).
+  compiler, same-hardware and home-turf planes), `dataset_accuracy/` (full-validation-set accuracy;
+  first milestone reproduces Voyager's Table 3 ImageNet cells with Voyager's own quantizer).
 
 ## Status (enforced)
 Every experiment's AGENT.md carries a `Status:` line in its first 15 lines: `active`, `frozen`
