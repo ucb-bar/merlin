@@ -36,14 +36,15 @@ def test_a_float_format_token_does_not_concatenate_its_digit_runs():
     instead of 65536. Asserted on the arithmetic, since which store a float target declares is a
     separate question (see the module docstring)."""
     assert _dtype_bits("fp8_e4m3") == 8
-    from merlin.compile_cli import _operand_store_capacity_elems
-    import merlin.compile_cli as cc
-    real = cc._operand_store_bytes
+    # Stand in for the store where `_operand_store_capacity_elems` looks it up: merlin.compile.capacity
+    # defines both. The name merlin.compile_cli re-exports is a separate binding the function never reads.
+    from merlin.compile import capacity
+    real = capacity._operand_store_bytes
     try:
-        cc._operand_store_bytes = lambda _t: 65536
-        assert _operand_store_capacity_elems("any", "fp8_e4m3") == 65536
+        capacity._operand_store_bytes = lambda _t: 65536
+        assert capacity._operand_store_capacity_elems("any", "fp8_e4m3") == 65536
     finally:
-        cc._operand_store_bytes = real
+        capacity._operand_store_bytes = real
 
 
 def test_a_sub_byte_format_is_counted_in_bits():
@@ -110,12 +111,13 @@ def test_run_paths_do_not_depend_on_the_process_cwd(tmp_path, monkeypatch):
 def _probe(monkeypatch, target, dtype, m, k, n):
     """Run one layer through the mesh entry point with every real oracle path stubbed to 'declined', so
     the assertion is about what the CALLER records, not about any simulator being present."""
-    import merlin.compile_cli as cc
+    # Patched in merlin.compile.mesh, which defines `run_matmul_on_mesh` and the three paths it calls.
+    from merlin.compile import mesh
     for fn in ("_matmul_via_oot_cert", "_matmul_via_program_oracle", "_matmul_via_bespoke_sim"):
-        monkeypatch.setattr(cc, fn, lambda *a, **kw: None, raising=True)
+        monkeypatch.setattr(mesh, fn, lambda *a, **kw: None, raising=True)
     obs: dict = {}
-    cc.run_matmul_on_mesh(target, [[0.0] * k for _ in range(m)], [[0.0] * n for _ in range(k)],
-                          operand_dtype=dtype, timeout=5, observed=obs)
+    mesh.run_matmul_on_mesh(target, [[0.0] * k for _ in range(m)], [[0.0] * n for _ in range(k)],
+                            operand_dtype=dtype, timeout=5, observed=obs)
     return obs
 
 
@@ -159,8 +161,8 @@ def test_an_oversized_layer_is_blocked_and_charged(monkeypatch, target, dtype, e
 def test_an_undecidable_obligation_says_so_instead_of_going_quiet(monkeypatch):
     """`holds: None` is the correct answer for a target that declares no capacity -- and a silent None
     is how a whole class of residency failures came to be reported as an unreachable oracle."""
-    import merlin.compile_cli as cc
-    monkeypatch.setattr(cc, "_operand_store_bytes", lambda _t: None, raising=True)
+    from merlin.compile import capacity
+    monkeypatch.setattr(capacity, "_operand_store_bytes", lambda _t: None, raising=True)
     obs = _probe(monkeypatch, "gemmini", "int8", 32, 512, 512)
     if obs.get("path") is None:
         pytest.skip("no reachable mesh path in this checkout")

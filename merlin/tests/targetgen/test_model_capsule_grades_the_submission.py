@@ -34,7 +34,7 @@ def _fn_src(path, name: str) -> str:
 
 
 _RUNNER = merlin_dir() / "python/merlin/targetgen/capsule_runner.py"
-_CLI = merlin_dir() / "python/merlin/compile_cli.py"
+_MESH = merlin_dir() / "python/merlin/compile/mesh.py"
 
 
 def test_model_grading_accepts_the_package_under_test():
@@ -60,14 +60,14 @@ def test_run_capsule_passes_the_package_to_the_model_path():
 
 
 def test_a_padded_tile_records_the_layer_extent_it_did_not_certify():
-    seg = _fn_src(_CLI, "_mesh_verify")
+    seg = _fn_src(_MESH, "_mesh_verify")
     assert "declared_layer_extent" in seg, "the layer's own extent must survive the rounding"
     assert "padded_to_mesh_edge" in seg
     assert "evidence_note" in seg
 
 
 def test_the_padding_note_states_the_weaker_claim():
-    seg = _fn_src(_CLI, "_mesh_verify")
+    seg = _fn_src(_MESH, "_mesh_verify")
     assert "PADDED shape runs" in seg, (
         "a padded tile proves the padded shape runs, not the layer's own extent -- say so where a "
         "reader of the record will see it")

@@ -18,7 +18,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from merlin import compile_cli as CC
+# The module that DEFINES `run_matmul_on_mesh` and every helper patched below. merlin.compile_cli
+# re-exports these names, but a re-export is a separate binding the function never reads.
+from merlin.compile import mesh as CC
 
 
 @pytest.fixture(autouse=True)

@@ -14,6 +14,10 @@ import pytest
 from merlin.targetgen import capsule_source as CSrc
 from merlin.targetgen import routing as R
 
+# `_mesh_verify` and `run_matmul_on_mesh` resolve `_default_oot_package` in merlin.compile.mesh, where it
+# is defined, so a stand-in package goes there; the name merlin.compile_cli re-exports is never read.
+from merlin.compile import mesh as MESH
+
 _LINALG = (
     "builtin.module {\n"
     "  func.func @forward(%0: tensor<16x16xf32>, %1: tensor<16x16xf32>) -> tensor<16x16xf32> {\n"
@@ -237,7 +241,7 @@ def test_mesh_verify_unavailable_is_fail_closed(monkeypatch):
 def test_mesh_verify_no_default_package_is_not_run(monkeypatch):
     """No default OOT backend + no override -> honest not_run (never a fabricated mesh result)."""
     import merlin.compile_cli as CC
-    monkeypatch.setattr(CC, "_default_oot_package", lambda t: None)
+    monkeypatch.setattr(MESH, "_default_oot_package", lambda t: None)
     plan = {"mesh": [R.RouteResult(R.OpDemand("matmul", "int8", "int8"), "systolic_mesh", None, None)]}
     res = CC._mesh_verify(plan, target="gemmini", package=None, timeout=60)
     assert res["status"] == "not_run" and res["n_tiles"] == 0 and "package" in res["reason"]
@@ -282,7 +286,7 @@ def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
         seen["mlir"] = iface.read_text(encoding="utf-8")
         return {"status": "pass", "oracle_outputs": {"Y0": [[42, 0], [0, 42]]}}
 
-    monkeypatch.setattr(CC, "_default_oot_package", lambda t: "/pkg")
+    monkeypatch.setattr(MESH, "_default_oot_package", lambda t: "/pkg")
     monkeypatch.setattr(oot_runner, "certify", fake_certify)
     A = [[1, 2], [3, 4]]
     W = [[5, 6], [7, 8]]
@@ -316,7 +320,7 @@ def test_run_matmul_on_mesh_injects_real_operands(monkeypatch):
 def test_run_matmul_on_mesh_none_without_package(monkeypatch):
     """No OOT backend package -> None (never a fabricated result)."""
     import merlin.compile_cli as CC
-    monkeypatch.setattr(CC, "_default_oot_package", lambda t: None)
+    monkeypatch.setattr(MESH, "_default_oot_package", lambda t: None)
     assert CC.run_matmul_on_mesh("gemmini", [[1]], [[1]]) is None
 
 

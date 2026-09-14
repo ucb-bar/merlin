@@ -87,12 +87,14 @@ def test_an_unpinned_lane_warns_rather_than_refusing():
     """The registry is opt-in per lane. Requiring a pin nobody has written yet would break every dtype
     that has one package and no declaration, so an undeclared lane is a warning -- a DIFFERENT thing
     from a lane that is pinned and has drifted, which is refused."""
-    import merlin.compile_cli as cc
+    # `default_package` reaches the pin name through `_verified_against_the_pinned_lane`, and both resolve
+    # it in merlin.compile.host_lane -- the module that defines it, and so the one to patch.
+    from merlin.compile import host_lane
 
     monkey = pytest.MonkeyPatch()
     try:
-        monkey.setattr(cc, "host_lane_pin_name", lambda strategy: "rvv_host_lane_not_declared_at_all")
-        pkg = cc.default_package("fp32")
+        monkey.setattr(host_lane, "host_lane_pin_name", lambda strategy: "rvv_host_lane_not_declared_at_all")
+        pkg = host_lane.default_package("fp32")
         assert pkg, "an unpinned lane must still resolve"
     finally:
         monkey.undo()
