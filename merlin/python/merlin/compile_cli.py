@@ -2568,15 +2568,17 @@ def main(argv: list[str] | None = None) -> int:
                     "everything else handled in the background.")
     ap.add_argument("--workload", required=True,
                     help="rvv: a captured model name (bitvla, openvla, rdt2, …); "
-                         "gemmini: a capsule name (A2_single_tile_matmul, …)")
+                         "an OOT target: a capsule name (A2_single_tile_matmul, …)")
     # --target choices = rvv (whole-model) + every registered OOT target, auto-discovered via the
     # target registry (in-tree references + MERLIN_TARGET_PATH). Registering a dialect package makes
     # `--target=<name>` work with no code change here.
     try:
         from .targetgen.target_registry import all_targets
-        _oot_targets = sorted(set(all_targets()) | {"gemmini"})
-    except Exception:  # noqa: BLE001 — registry unreadable → fall back to the in-tree reference
-        _oot_targets = ["gemmini"]
+        _oot_targets = sorted(all_targets())
+    except Exception as exc:  # noqa: BLE001 — an unreadable registry offers no OOT target, and says so
+        print(f"[merlin-compile] target registry unreadable ({type(exc).__name__}: {exc}); only "
+              f"--target rvv is available", file=sys.stderr)
+        _oot_targets = []
     ap.add_argument("--target", choices=["rvv", *_oot_targets], default="rvv",
                     help="rvv (whole-model) or any registered OOT target (auto-discovered)")
     ap.add_argument("--dtype", choices=list(_RVV_DTYPES), default="fp32", help="rvv only")
@@ -2589,7 +2591,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="rvv: untimed warmup iterations before the timed ones")
     ap.add_argument("--run", choices=["none", "host", "k1", "spike", "zephyr", "verilator"],
                     default=None,
-                    help="where to run after compiling (default: rvv→k1, gemmini→spike; 'none' = compile only)")
+                    help="where to run after compiling (default: rvv→k1, an OOT target→spike; 'none' = compile only)")
     ap.add_argument("--verify", dest="verify", action="store_true", default=True,
                     help="gate the run output vs the golden (default on)")
     ap.add_argument("--no-verify", dest="verify", action="store_false")
