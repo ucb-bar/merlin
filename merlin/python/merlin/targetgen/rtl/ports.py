@@ -480,13 +480,15 @@ def fir_path_for(target: str) -> Path | None:
         from merlin.targetgen.rtl.facts import load_facts
         body = (load_facts(target) or {}).get("facts") or {}
         name = ((body.get("source") or {}).get("fir") or "").strip()
+        config = ((body.get("source") or {}).get("config") or "").strip()
     except Exception:                                          # noqa: BLE001
         return None
     if not name:
         return None
     try:
         from merlin.targetgen.rtl.introspect import find_artifacts
-        found = find_artifacts()
+        # the elaboration the SAME facts record they were read from (source.config); none -> skip this step
+        found = find_artifacts(None, config) if config else None
         for cand in (found or {}).values() if isinstance(found, dict) else ():
             p = Path(str(cand))
             if p.name == name and p.is_file():

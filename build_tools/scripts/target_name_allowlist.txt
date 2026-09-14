@@ -28,11 +28,9 @@ build_tools/scripts/probe_gemmini_oracle.py                  # gemmini oracle pr
 merlin/python/merlin/kernels/cca_contract.py                 # CCA applicable-backend vocabulary + orphan registry (reference set)
 
 # ---------------------------------------------------------------- reference-target FACTS / package fallback in dev CLIs (gemmini is the reference; the CLI still takes --target)
-merlin/python/merlin/targetgen/rtl/introspect.py             # legacy chipyard-grep gemmini fallback introspector
 merlin/python/merlin/targetgen/capsule_runner.py             # gemmini-capsule-bench SUITE identity (npu_model model_ext fallback removed — model_ext now required from the contract)
 merlin/python/merlin/targetgen/publish.py                    # payload/gate/README shaping branches on the package FAMILY (`if target == "rvv"`, _payload_*); not just README text
 
 # ---------------------------------------------------------------- target named only as EXAMPLE help/description text (no control flow)
 merlin/python/merlin/kernels/regions.py                      # "(gemmini etc.)" in a registry-entry description
 merlin/python/merlin/targetgen/agent/gemmini_kernel_slot.py  # gemmini's own agent slot: libgemmini C API text + its TARGET; geometry derived from RTL facts
-merlin/python/merlin/targetgen/rtl/mlc_bridge.py             # OPU target-id map (saturn_opu_* config ids) and the muon ISA json path; the SIMT introspect now comes from plugin.simt_introspect

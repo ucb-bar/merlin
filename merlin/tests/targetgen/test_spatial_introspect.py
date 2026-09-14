@@ -92,7 +92,7 @@ def test_fact_bundle_for_routes_by_kind(monkeypatch):
 
 
 def test_resolve_kind_maps_opu_targets_without_a_manifest():
-    # the OPU arc targets carry no in-tree capability manifest yet -> resolved via the arc-target map.
+    # the OPU arc targets carry no in-tree capability manifest yet -> resolved via the arc-model registry.
     assert B._resolve_kind("saturn_opu_mxv256d128") == "spatial"
     assert B._resolve_kind("saturn_opu_v128d64") == "spatial"
 

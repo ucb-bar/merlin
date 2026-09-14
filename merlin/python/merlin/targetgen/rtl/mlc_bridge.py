@@ -149,18 +149,99 @@ def core_hw_mlir(target: str) -> Path | None:
     return next((p for p in cands if p.exists() and ".generic." not in p.name), None)
 
 
-def isa_encoding_for(target: str) -> dict | None:
-    """The mlc-derived instruction-ENCODING fact (``{inst_width, fields, opcodes, provenance}``) for a
-    target, from ``runs/circt-arc/<arc_target>/outputs/muon_isa.json`` — the field bit-ranges + opcode table
-    the mlc ``isa_encoding`` pass recovers from the target's RTL decoder. Uses the ORACLE-path arc alias
-    (:func:`_arc_target`) because the encoding is the aliased CORE's own ISA (a SIMT SoC's decoder is the
-    embedded core's), unlike structural geometry. Returns the parsed fact, or None when mlc / the cache is
-    absent — an honest fallback the caller degrades on, never a guessed encoding."""
+#: Where the mlc arc-model registry lives: ``merlin/contract/arc_models.yaml`` (bundled with the rest of
+#: the contract tree). What merlin knows about each model mlc builds -- the kind of a model with no
+#: capability manifest, the file its encoding fact is written to -- is DATA there, keyed by the arc key.
+ARC_MODELS_FILE: tuple[str, ...] = ("contract", "arc_models.yaml")
+_ARC_MODELS_SCHEMA_VERSION = 1
+_ARC_MODEL_FIELDS = frozenset({"kind", "isa_encoding"})
+
+
+class ArcModelRegistryError(RuntimeError):
+    """The arc-model registry is missing or malformed. Raised, never read as empty: an empty registry
+    would make every model look like one with no kind and no encoding fact, which reads as a finding."""
+
+
+_ARC_MODELS_CACHE: dict[str, dict[str, dict]] = {}
+
+
+def load_arc_models(path: str | Path | None = None) -> dict[str, dict]:
+    """The arc-model registry as ``{arc_key: {field: value}}``.
+
+    Fails closed on a missing file, a wrong ``schema_version``, an unknown field, a ``kind`` no family
+    profile declares, or an ``isa_encoding`` that is not a bare file name. ``path`` defaults to
+    :data:`ARC_MODELS_FILE` resolved through ``common.paths.data_path`` (the checkout's tree, else the copy
+    bundled in the wheel)."""
+    from ...common.paths import data_path
+    p = Path(path) if path is not None else data_path(*ARC_MODELS_FILE)
+    key = str(p)
+    if key in _ARC_MODELS_CACHE:
+        return _ARC_MODELS_CACHE[key]
+    if not p.is_file():
+        raise ArcModelRegistryError(f"no arc-model registry at {p}; mlc arc models are declared in "
+                                    f"merlin/{'/'.join(ARC_MODELS_FILE)}")
+    import yaml
+    raw = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict) or not isinstance(raw.get("arc_models"), dict):
+        raise ArcModelRegistryError(f"{p}: expected a mapping with an `arc_models:` mapping of key -> fields")
+    if raw.get("schema_version") != _ARC_MODELS_SCHEMA_VERSION:
+        raise ArcModelRegistryError(f"{p}: schema_version {raw.get('schema_version')!r}, this loader reads "
+                                    f"{_ARC_MODELS_SCHEMA_VERSION}")
+    from ..families import known_kinds
+    out: dict[str, dict] = {}
+    for name, entry in raw["arc_models"].items():
+        where = f"{p}: arc model {name!r}"
+        if not isinstance(name, str) or not isinstance(entry, dict):
+            raise ArcModelRegistryError(f"{where}: an entry is `<arc key>: {{field: value, ...}}`")
+        unknown = sorted(set(entry) - _ARC_MODEL_FIELDS)
+        if unknown:
+            raise ArcModelRegistryError(f"{where}: unknown field(s) {unknown}; known: "
+                                        f"{sorted(_ARC_MODEL_FIELDS)}")
+        kind = entry.get("kind")
+        if kind is not None and kind not in known_kinds():
+            raise ArcModelRegistryError(f"{where}: kind {kind!r} is not a known compute-unit kind "
+                                        f"{sorted(known_kinds())}")
+        isa = entry.get("isa_encoding")
+        if isa is not None and (not isinstance(isa, str) or not isa or Path(isa).name != isa):
+            raise ArcModelRegistryError(f"{where}: isa_encoding {isa!r} must be a bare file name under the "
+                                        f"model's arc outputs directory")
+        out[name] = dict(entry)
+    _ARC_MODELS_CACHE[key] = out
+    return out
+
+
+def arc_model(arc_key: str) -> dict:
+    """The registry entry for one mlc arc key, or ``{}`` when the registry does not list it."""
+    return dict(load_arc_models().get(arc_key) or {})
+
+
+def isa_encoding_artifact(target: str) -> tuple[Path | None, str]:
+    """``(path, reason)`` for the encoding-fact file ``target``'s arc model declares.
+
+    The file lives under ``runs/circt-arc/<arc key>/outputs/`` and its name comes from the model's
+    ``isa_encoding`` entry in the arc-model registry. The arc key is the ORACLE-path alias
+    (:func:`_arc_target`), because the encoding is the aliased CORE's own ISA (a SIMT SoC's decoder is the
+    embedded core's), unlike structural geometry. ``path`` is None, with ``reason`` naming what is missing,
+    when mlc is unresolvable or the model declares no encoding fact: no file name is ever guessed."""
     d = mlc_dir()
     if d is None:
-        return None
-    p = d / "runs" / "circt-arc" / _arc_target(target) / "outputs" / "muon_isa.json"
-    if not p.is_file():
+        return None, "MERLIN_MLC_DIR unset/invalid (no mlc/ package), so no arc outputs are resolvable"
+    key = _arc_target(target)
+    name = arc_model(key).get("isa_encoding")
+    if not name:
+        return None, (f"arc model {key!r} declares no `isa_encoding` in merlin/{'/'.join(ARC_MODELS_FILE)}, "
+                      f"so {target!r} has no encoding fact to read")
+    return d / "runs" / "circt-arc" / key / "outputs" / str(name), "declared"
+
+
+def isa_encoding_for(target: str) -> dict | None:
+    """The mlc-derived instruction-ENCODING fact (``{inst_width, fields, opcodes, provenance}``) for a
+    target: the field bit-ranges + opcode table the mlc ``isa_encoding`` pass recovers from the target's
+    RTL decoder, read from the file :func:`isa_encoding_artifact` resolves. Returns the parsed fact, or
+    None when mlc / the declaration / the cache is absent — an honest fallback the caller degrades on,
+    never a guessed encoding."""
+    p, _why = isa_encoding_artifact(target)
+    if p is None or not p.is_file():
         return None
     try:
         import json
@@ -1107,25 +1188,24 @@ def crosscheck_op_categories(target: str) -> list[str]:
     return disagreements
 
 
-# mlc arc targets merlin has no committed capability manifest for yet (their facts come from the arc
-# artifacts, not an in-tree contract): map target id -> compute-unit kind so fact_bundle_for can route
-# them by KIND without a per-target branch in the dispatch itself. Additive; never consulted for a
-# target that has a manifest (that wins).
-_ARC_TARGET_KINDS: dict[str, str] = {
-    "saturn_opu_mxv256d128": "spatial",
-    "saturn_opu_v128d64": "spatial",
-}
+def _arc_model_kind(target: str) -> str | None:
+    """The kind the arc-model registry declares for a model merlin reaches under ``target``'s own name.
+
+    Consulted only for a target with no capability manifest (an arc-only target, whose facts come from
+    the arc artifacts rather than an in-tree contract), so fact_bundle_for can route it by KIND without a
+    per-target branch. None when the registry lists no kind for it."""
+    return arc_model(target).get("kind")
 
 
 def _resolve_kind(target: str) -> str | None:
     """The compute-unit ``kind`` for ``target``: its capability manifest's kind when one is committed/
-    regenerated, else the known arc-target map, else None (caller defaults to the systolic static path).
-    Never fabricates a kind."""
+    regenerated, else the kind the arc-model registry declares for it, else None (caller defaults to the
+    systolic static path). Never fabricates a kind."""
     try:
         from ..target_experiment import load_capability_manifest
         return load_capability_manifest(target).kind
     except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ fall through
-        return _ARC_TARGET_KINDS.get(target)
+        return _arc_model_kind(target)
 
 
 def fact_bundle_for(target: str) -> dict:
@@ -1181,7 +1261,7 @@ def _resolve_kinds(target: str) -> tuple[str, ...]:
         from .. import compute_units as _cu
         units = _cu.compute_units(load_capability_manifest(target).contract)
     except Exception:  # noqa: BLE001 — no manifest yet (fresh/arc-only target) ⇒ the arc-declared kind
-        k = _ARC_TARGET_KINDS.get(target)
+        k = _arc_model_kind(target)
         return (k,) if k else ()
     if not units:
         return ()

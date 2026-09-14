@@ -66,7 +66,6 @@ entries:
     owner: targetgen
     items:
       - merlin/python/merlin/targetgen/oot_runner.py
-      - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
     why: >-
       The inputs to oracle selection are already declarative — endpoint_kind and sim_via come from the
       capability manifest and the contract — but the DISPATCH on them is a hardcoded if-chain that
@@ -166,38 +165,6 @@ entries:
       Human-facing text carries the RUN's target rather than a literal — messages and report templates
       interpolate the resolved target name. Cheap per site and worth doing when each file is next
       touched; not worth a sweep of its own, which is why this is one entry rather than eight.
-
-  # ---------------------------------------------------------------- operative names, not yet routed
-  - id: operative-target-names-in-generic-modules
-    kind: target_coupling
-    status: triaged
-    owner: targetgen
-    items:
-      - merlin/python/merlin/targetgen/rtl/introspect.py
-      - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
-    why: >-
-      Read line by line, and these DO decide behaviour. Two kinds remain: a table key a lookup indexes
-      by (`saturn_opu_mxv256d128` in the OPU id map); and elaborated-config and ISA-file names
-      (`GemminiRocketConfig`, `muon_isa.json`).
-      Each has the same shape as an overfit already closed elsewhere in this file — a fact that could
-      come from a contract, a manifest or a registry, written as a literal instead. They are grouped
-      because the fix is one mechanism per kind: a lookup the target resolves.
-      Two former kinds are closed and their modules removed from this list: emitted-symbol patterns (the
-      kernel-mining motif markers and the target -> ISA-family map are data in
-      `kernels/framework_contracts/feature_extraction/<family>.yaml`) and corpus/framework directories
-      (expert-corpus checkouts, their source aliases and the capsule-corpus roots are data in
-      `merlin/contract/corpora.yaml`, resolved only by `merlin.targetgen.corpora`). The board table and
-      the simulator override variables closed on 2026-09-14: boards are data (merlin/contract/boards.yaml),
-      and the Verilator/VCS config names and `MERLIN_<TARGET>_*` variables derive from the board entry and
-      the target contract.
-    blocks: >-
-      A second target reaching any of these paths. It cannot appear in an OPU table keyed by another
-      accelerator, or elaborate a config or read an ISA file named for one. This is the residue that
-      makes "plug in any RTL repo" still cost core edits.
-    removal_condition: >-
-      Each kind routes through a resolver keyed on the target: config and ISA-file names come from the
-      target's contract or capability manifest, and the OPU table becomes a registry the target registers
-      into. Close them per kind, and delete each path from this list as its kind lands.
 
   # ---------------------------------------------------------------- surfaced by the derived roster
   - id: names-surfaced-when-the-target-roster-was-derived

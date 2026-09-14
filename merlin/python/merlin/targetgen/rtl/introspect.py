@@ -32,8 +32,10 @@ facts, read directly by consumers, so there is nothing left to cross-check for t
 
 WHERE the elaboration lives is never a table in this module: it is read from the TARGET'S OWN
 declaration (:func:`declared_rtl_source`) — an ``rtl_source:`` block in its contract, or an
-``rtl.elaboration:`` block in its experiment descriptor. A target that declares none is reported as
-undeclared; nothing here guesses a config name.
+``rtl.elaboration:`` block in its experiment descriptor. The role-anchored reader of a chipyard
+simulator's own elaboration (:func:`sim_elaboration_facts`) takes its config from the harness config the
+target's contract declares for its simulators (``runtime.rtl_sim_config``). A target that declares none is
+reported as undeclared; nothing here guesses a config name.
 """
 from __future__ import annotations
 
@@ -44,8 +46,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from merlin.common.paths import ext_path
-
-CONFIG = "GemminiRocketConfig"
 
 # FIRRTL surface tokens. These are the FIRRTL LANGUAGE's own keywords and the RISC-V co-processor
 # ABI's own field names — a spec vocabulary shared by every design the format can express, not a
@@ -70,8 +70,13 @@ def default_chipyard() -> str:
     return f"{ext_path('chipyard')}"
 
 
-def find_artifacts(chipyard_root: str | Path | None = None,
-                   config: str = CONFIG) -> dict[str, Path]:
+def find_artifacts(chipyard_root: str | Path | None, config: str) -> dict[str, Path]:
+    """``{fir, hierarchy}`` of the chipyard TestHarness elaboration of ``config`` under ``chipyard_root``
+    (the external checkout when None). ``config`` is required: which elaboration is meant is a fact about
+    the target (:func:`sim_config` / :func:`declared_rtl_source`), never a default here."""
+    if not config:
+        raise RtlSourceUndeclared("find_artifacts needs the elaborated config; none was given, and "
+                                  "picking one would be a guess about the hardware")
     chipyard_root = default_chipyard() if chipyard_root is None else chipyard_root
     base = Path(chipyard_root) / "sims/verilator/generated-src" / \
         f"chipyard.harness.TestHarness.{config}"
@@ -195,6 +200,38 @@ def declared_rtl_source(target: str) -> RtlSource:
         f"{target}: no file of this target's declares an elaborated-RTL source. Add an `rtl_source:` "
         f"block (ext_root / config / generator) to its contract, or an `rtl.elaboration:` block to its "
         f"experiment descriptor. Files consulted: {seen or 'none found'}")
+
+
+def sim_config(target: str) -> str:
+    """The chipyard harness config ``target``'s simulators are built from, from the target's own contract.
+
+    Read through :func:`merlin.targetgen.runtime_build.rtl_sim_config` (capability manifest
+    ``runtime.rtl_sim_config``), the one reader of that key: it names the elaborated design every chipyard
+    simulator of the target is built from, so it is the elaboration those simulators' ``generated-src``
+    holds. Raises :class:`RtlSourceUndeclared` when the target declares none -- a gap in its contract,
+    never a config this module picks."""
+    from ..runtime_build import rtl_sim_config
+    cfg = rtl_sim_config(target)
+    if not cfg:
+        raise RtlSourceUndeclared(
+            f"{target}: its contract declares no `runtime.rtl_sim_config`, so which chipyard elaboration "
+            f"its simulators are built from is not resolvable. Declare it in the target's contract.")
+    return str(cfg)
+
+
+def sim_elaboration_facts(target: str, chipyard_root: str | Path | None = None
+                          ) -> tuple[dict[str, Path], dict[str, Any]]:
+    """``(artifacts, facts)`` from the role-anchored probes over ``target``'s simulator elaboration.
+
+    The config is :func:`sim_config` (the target's own declaration); the checkout is ``chipyard_root``,
+    else the external one. The census is NOT scoped to the target here -- this is the reader that predates
+    it, and its callers publish exactly what the probes found -- so ``target`` is recorded, not used as a
+    generator scope."""
+    cfg = sim_config(target)
+    arts = find_artifacts(chipyard_root, cfg)
+    facts = extract_facts(arts["fir"], arts["hierarchy"], config=cfg)
+    facts["target"] = target
+    return arts, facts
 
 
 def artifacts_for(target: str) -> dict[str, Any]:
@@ -644,15 +681,15 @@ def extract_facts(fir: str | Path, hierarchy: str | Path, *, target: str | None 
     KIND the probes left empty — so a design those probes do not recognize stops yielding an empty
     bundle, and a design they do recognize is untouched.
 
-    ``config``/``target`` are recorded in ``source`` so ports/provenance readers can find the exact
-    elaboration these facts came from; both default to the historical gemmini pin only when the caller
-    supplies nothing, which is the one call shape that predates the parameters.
+    ``config``/``target`` are recorded as given so ports/provenance readers can find the exact
+    elaboration these facts came from. A caller that supplies neither records neither: no config or
+    target is assumed here.
     """
     fir, hierarchy = Path(fir), Path(hierarchy)
     generator = generator or target
     facts: dict[str, Any] = {
-        "target": target or "gemmini",
-        "source": {"kind": "firrtl", "config": config or CONFIG, "fir": fir.name,
+        "target": target,
+        "source": {"kind": "firrtl", "config": config, "fir": fir.name,
                    "hierarchy": hierarchy.name, "fir_path": str(fir)},
         "arrays": [], "memories": [], "datapaths": [], "interfaces": []}
     if generator:
@@ -798,15 +835,26 @@ def _src_sha(path: str) -> str:
     return proc.stdout.strip() or "unknown"
 
 
-def dump_facts(out_path: str | Path, *, chipyard_root: str | Path | None = None,
-               config: str = CONFIG) -> dict[str, Any]:
+def dump_facts(out_path: str | Path, *, target: str | None = None,
+               chipyard_root: str | Path | None = None, config: str | None = None) -> dict[str, Any]:
     """Extract facts and write a REPRODUCIBLE rtl_facts.yaml (facts + generator version + source
     SHAs + extraction method). This makes RTL-fact extraction a recorded, attributable input —
-    the thing an agent_spec target-generation experiment consumes."""
+    the thing an agent_spec target-generation experiment consumes.
+
+    Addressed by ``target`` (its simulator elaboration, :func:`sim_elaboration_facts`) or by an explicit
+    ``config``. One of the two is required; neither is assumed."""
     import yaml
-    arts = find_artifacts(chipyard_root, config)
-    facts = extract_facts(arts["fir"], arts["hierarchy"])
+    if target is not None and config is None:
+        arts, facts = sim_elaboration_facts(target, chipyard_root)
+    else:
+        arts = find_artifacts(chipyard_root, config)
+        facts = extract_facts(arts["fir"], arts["hierarchy"], config=config)
+        facts["target"] = target
     cy = str(chipyard_root)
+    shas = {"chipyard": _src_sha(cy)}
+    if target is not None:
+        # the target's generator tree, by the chipyard `generators/<t>` convention isa_scala_path uses
+        shas[target] = _src_sha(f"{cy}/generators/{target}")
     record = {
         "schema_version": "1.0",
         "generator": {
@@ -815,8 +863,7 @@ def dump_facts(out_path: str | Path, *, chipyard_root: str | Path | None = None,
             "method": "grep/regex over firtool-produced FIRRTL + hierarchy JSON "
                       "(NOT yet a CIRCT hw/seq MLIR pass)",
         },
-        "source_shas": {"chipyard": _src_sha(cy),
-                        "gemmini": _src_sha(cy + "/generators/gemmini")},
+        "source_shas": shas,
         "facts": facts,
     }
     out = Path(out_path)
@@ -963,7 +1010,9 @@ def main() -> int:
     ap.add_argument("--out", default="rtl_facts.yaml")
     ap.add_argument("--chipyard", default=None,
                     help="external sim checkout (default: resolved from .env when needed)")
-    ap.add_argument("--config", default=CONFIG)
+    ap.add_argument("--config", default=None,
+                    help="without --target: the elaborated chipyard config to read (required; no config "
+                         "is assumed)")
     ap.add_argument("--target", default=None,
                     help="extract from the elaboration THIS TARGET declares (rtl_source / "
                          "rtl.elaboration) and write the schema-2.0 JSON bundle")
@@ -983,6 +1032,8 @@ def main() -> int:
               f"{len(body.get('interfaces', []))} interfaces "
               f"[{rec['generator']['version']}]")
         return 0
+    if not args.config:
+        ap.error("pass --target, or --config naming the elaborated chipyard config to read")
     rec = dump_facts(args.out, chipyard_root=args.chipyard, config=args.config)
     print(f"wrote {args.out}: {len(rec['facts'].get('arrays', []))} arrays, "
           f"{len(rec['facts'].get('memories', []))} memories, "

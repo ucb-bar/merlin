@@ -54,7 +54,7 @@ def test_packages_declare_honest_authoring_mode():
         assert man["reproducibility"]["certified_execution_reproducible"] is True
 
 
-_ART = introspect.find_artifacts()
+_ART = introspect.find_artifacts(None, introspect.sim_config("gemmini"))
 _HAVE_FIRRTL = _ART["fir"].is_file() and _ART["hierarchy"].is_file()
 
 
@@ -62,7 +62,7 @@ _HAVE_FIRRTL = _ART["fir"].is_file() and _ART["hierarchy"].is_file()
 def test_dump_facts_is_reproducible_record(tmp_path):
     """dump_facts writes a recorded, attributable rtl_facts.yaml: generator version + source SHAs
     + facts. This is the recorded INPUT an RTL-derived target-gen experiment consumes."""
-    rec = introspect.dump_facts(tmp_path / "rtl_facts.yaml")
+    rec = introspect.dump_facts(tmp_path / "rtl_facts.yaml", target="gemmini")
     assert (tmp_path / "rtl_facts.yaml").is_file()
     assert rec["generator"]["version"] == introspect.GENERATOR_VERSION
     assert "grep" in rec["generator"]["method"].lower()        # honest: NOT a CIRCT pass yet

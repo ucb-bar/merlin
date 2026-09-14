@@ -997,9 +997,9 @@ def build_facts(hw_path: Path | str | None = None, isa_path: Path | str | None =
     v1: dict[str, Any] = {}
     if isa_path.is_file():   # a chipyard target with a Chisel ISA source -> legacy FIRRTL grep + HW-port
         try:
-            arts = V1.find_artifacts(chipyard_root)
+            # the elaboration the target's own simulators are built from (runtime.rtl_sim_config)
+            arts, v1 = V1.sim_elaboration_facts(target, chipyard_root)
             elaborated_fir = Path(arts["fir"])
-            v1 = V1.extract_facts(arts["fir"], arts["hierarchy"])
             hw_text = hw_path.read_text(errors="replace") if hw_path.is_file() else ""
             acc = extract_accumulator(hw_text) if hw_text else None
             mems = [m for m in v1.get("memories", []) if m.get("name") != "accumulator"]
