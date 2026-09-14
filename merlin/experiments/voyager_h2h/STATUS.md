@@ -76,6 +76,17 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   The flow writes `build/`, `test/compiler/networks/` and `regression_results/` into its tree, so it runs
   in a separate work tree (`out/build/external/voyager-accelerator-work`), never the pinned checkout.
 
+- **Plane B environment built.** `out/build/voyager-accel-env` (mamba, Python 3.10, torch 2.6.0,
+  libprotobuf/protoc 29.3) with the paired compiler `cac504ef` installed editable. Python protobuf
+  resolves to 7.36.1 through pip dependencies; the legacy `param_pb2` imports under it. The
+  interstellar substitute resolves through `out/build/external/voyager-interstellar-shim` (only that
+  package on the path, so the latest compiler cannot shadow the paired one); `le.IC/OC/OX` resolve.
+- **Plane B data dependency.** The release's CNN codegen calibrates on `timm/imagenet-1k-wds`
+  (Hugging Face, gated) through `load_dataset(..., streaming=True)`; the accelerator ships no data
+  (`data/` holds a README only). Reproducing the paper's INT8 calibration needs a Hugging Face token
+  with access to that dataset -- or a disclosed substitute calibration set, which would change the
+  scales and must then be reported as a deviation.
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
