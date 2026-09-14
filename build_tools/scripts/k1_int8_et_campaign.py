@@ -51,6 +51,9 @@ from merlin.common import provenance as _prov          # noqa: E402
 from merlin.common.artifacts import new_product, utc_stamp  # noqa: E402
 from merlin.common.paths import build_dir, repo_root    # noqa: E402
 from merlin.compare import et_campaign as ec            # noqa: E402
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import _dirty, _write_manifest  # noqa: E402  (helpers shared by the k1 drivers)
 
 #: The diverse set the headline table is claimed over, cheapest-first so a session that dies late
 #: still holds the cells that were affordable. A CLI default, overridable with ``--models``; the
@@ -117,41 +120,6 @@ def model_features(model: str, a) -> str | None:
             raise SystemExit(f"--model-features {item!r}: expected MODEL:f1,f2")
         overrides[name.strip()] = feats.strip()
     return overrides.get(model, a.features)
-
-
-def _dirty(paths) -> list:
-    out = []
-    for rel in paths:
-        got = subprocess.run(["git", "status", "--porcelain", "--", rel],
-                             cwd=str(repo_root()), capture_output=True, text=True)
-        if got.stdout.strip():
-            out.append(rel)
-    return sorted(out)
-
-
-def _write_manifest(outdir: Path, product) -> None:
-    """Keep manifest.yaml current in BOTH the fresh and the resumed case.
-
-    A product dir under out/artifacts/<topic>/v*/ without a manifest fails the layout gate for
-    everyone on the tree, so it is rewritten after every cell rather than once at the end. On a
-    resume the existing manifest's identity fields (run_id / timestamp / git_sha) are PRESERVED --
-    they name the campaign, and re-stamping them would silently re-date somebody's cited result.
-    """
-    from merlin.common.yaml import dump_yaml, load_yaml
-
-    files = sorted(p.name for p in outdir.iterdir() if p.is_file() and p.name != "manifest.yaml")
-    cells = sorted(f"cells/{p.name}" for p in (outdir / "cells").iterdir()) \
-        if (outdir / "cells").is_dir() else []
-    mf = outdir / "manifest.yaml"
-    if mf.is_file():
-        existing = load_yaml(mf) or {}
-        if isinstance(existing, dict):
-            existing["artifacts"] = files + cells
-            mf.write_text(dump_yaml(existing), encoding="utf-8")
-            return
-    if product is not None:
-        product._artifacts = files + cells
-        product.write_manifest()
 
 
 def _write_summary(outdir: Path, ledger: Path, product) -> dict:

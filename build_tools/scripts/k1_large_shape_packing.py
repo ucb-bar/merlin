@@ -25,7 +25,7 @@ the blocker for anything that won't build / run / verify; never a fabricated tic
 """
 from __future__ import annotations
 
-import argparse, json, subprocess, tempfile
+import argparse, json, subprocess, sys, tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -34,6 +34,9 @@ from merlin.common.driver_output import int_after
 from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import _cc  # noqa: E402  (helpers shared by the k1 drivers)
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -47,13 +50,6 @@ OURS_FORKS = (
     ("ours_baseline", []),
     ("ours_tiled", ["fused_vfmacc_tiled"]),
 )
-
-
-def _cc() -> Path:
-    cc = k1.toolchain_cc()
-    if cc is None:
-        raise RuntimeError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
-    return cc
 
 
 def _deploy_run(binary: Path, tag: str, *, timeout: int = 600) -> tuple[str | None, str]:

@@ -44,6 +44,9 @@ from merlin.llvmlower import toolchain
 from merlin.llvmlower.reduce_vec import FEATURE
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import run_paddings  # noqa: E402  (helpers shared by the k1 drivers)
 
 #: libm symbols the quantization path can reach. `fabsf` is the one this feature removes; the others
 #: are listed so the report shows whether removing it moved anything else (it should not).
@@ -118,46 +121,6 @@ def build(bundle: Path, pkg, features: list[str], work: Path,
     return k1.build_k1_binary(bundle, work, replace(pkg, compiler_features=sorted(features)),
                               fallback_policy="forbid",
                               max_session_steps=max_session_steps)
-
-
-def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
-                 iters: int, timeout: int) -> list[dict]:
-    """Run the ALREADY-BUILT ELF on the board once per environment padding; a row per padding.
-
-    Through `k1.run_binary_on_k1`, which deploys and runs a given binary under an explicit
-    environment and takes the board lock around deploy+run only. Building once and running many
-    times is the point: rebuilding per padding would put a different object under each measurement
-    and make the comparison unattributable.
-
-    The padding is a single environment variable whose length doubles each step. It changes nothing
-    the program reads -- only the size of the environment block the kernel copies above the initial
-    stack pointer, and therefore the alignment and absolute address of every stack object. A digest
-    that moves across these has an address dependence, which for a rewrite claimed EXACT is a defect
-    no cosine gate would catch.
-    """
-    rows = []
-    for i in range(n_paddings):
-        pad = "X" * (1 << (6 + i))                 # 64 B, 128 B, ... doubling per padding
-        env = {"MERLIN_AB_PAD": pad, "MERLIN_ITERS": str(iters)}
-        try:
-            res = k1.run_binary_on_k1(bundle, bwork, pkg, elf, env=env, timeout=timeout)
-        except Exception as e:                                       # noqa: BLE001
-            rows.append({"padding_bytes": len(pad), "error": f"{type(e).__name__}: {e}"})
-            continue
-        # The harness prints its own digest over the output bytes; recompute host-side over the
-        # parsed values as an independent check, and REPORT BOTH. A single digest that the same code
-        # both produces and checks cannot detect a harness-side bug.
-        outputs = res.get("outputs")
-        host = (hashlib.sha256(
-            b"".join(float(v).hex().encode() for v in outputs)).hexdigest()
-            if outputs else None)
-        walls = res.get("iter_wall_ns") or []
-        rows.append({"padding_bytes": len(pad),
-                     "board_out_hash": res.get("out_hash"),
-                     "host_digest_over_parsed_outputs": host,
-                     "n_outputs": len(outputs) if outputs else 0,
-                     "wall_ns_min": min(walls) if walls else None})
-    return rows
 
 
 def verdict(base_rows: list[dict], feat_rows: list[dict]) -> dict:

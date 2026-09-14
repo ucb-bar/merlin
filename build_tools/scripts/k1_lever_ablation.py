@@ -74,6 +74,9 @@ from merlin.common import provenance as _prov              # noqa: E402
 from merlin.common.artifacts import new_product, utc_stamp  # noqa: E402
 from merlin.common.paths import repo_root                   # noqa: E402
 from merlin.compare import et_campaign as ec                # noqa: E402
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import _dirty, _write_manifest  # noqa: E402  (helpers shared by the k1 drivers)
 
 #: The K1's measured noise band (noise floor >= 1.9%, band 2.6%). A contribution inside it is not a
 #: result; see the `k1-measurement-noise` note and `k1_int8_fair_compare.session_drift`.
@@ -470,37 +473,6 @@ def ledger_row(plan, cell: AblationCell, record: dict | None, *, refusal: str = 
     else:
         row["refusal"] = refusal or v.get("reason") or "the instrument recorded no verdict"
     return row
-
-
-def _dirty(paths) -> list:
-    out = []
-    for rel in paths:
-        got = subprocess.run(["git", "status", "--porcelain", "--", rel],
-                             cwd=str(repo_root()), capture_output=True, text=True)
-        if got.stdout.strip():
-            out.append(rel)
-    return sorted(out)
-
-
-def _write_manifest(outdir: Path, product) -> None:
-    """Keep manifest.yaml current in BOTH the fresh and the resumed case: a product dir without one
-    fails the layout gate for everyone on this shared tree. On a resume the identity fields are
-    PRESERVED -- re-stamping them would re-date somebody's cited result."""
-    from merlin.common.yaml import dump_yaml, load_yaml
-
-    files = sorted(p.name for p in outdir.iterdir() if p.is_file() and p.name != "manifest.yaml")
-    cells = sorted(f"cells/{p.name}" for p in (outdir / "cells").iterdir()) \
-        if (outdir / "cells").is_dir() else []
-    mf = outdir / "manifest.yaml"
-    if mf.is_file():
-        existing = load_yaml(mf) or {}
-        if isinstance(existing, dict):
-            existing["artifacts"] = files + cells
-            mf.write_text(dump_yaml(existing), encoding="utf-8")
-            return
-    if product is not None:
-        product._artifacts = files + cells
-        product.write_manifest()
 
 
 def write_summary(outdir: Path, ledger: Path, product, models, features) -> dict:

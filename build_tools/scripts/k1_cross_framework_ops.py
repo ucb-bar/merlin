@@ -30,7 +30,7 @@ blocker — never a fabricated number. Board left clean (binaries rm'd after eac
 """
 from __future__ import annotations
 
-import argparse, json, subprocess, tempfile
+import argparse, json, subprocess, sys, tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -38,6 +38,9 @@ from merlin.common.paths import repo_root
 from merlin.common.driver_output import int_after, int_field
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import _cc  # noqa: E402  (helpers shared by the k1 drivers)
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -46,13 +49,6 @@ REPO = Path(repo_root())
 
 _K1_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
               "-O3", "-ffast-math", "-DNDEBUG", "-std=gnu99", "-Wno-implicit-function-declaration"]
-
-
-def _cc() -> Path:
-    cc = k1.toolchain_cc()
-    if cc is None:
-        raise RuntimeError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
-    return cc
 
 
 def _deploy_run(binary: Path, tag: str, *, timeout: int = 300,

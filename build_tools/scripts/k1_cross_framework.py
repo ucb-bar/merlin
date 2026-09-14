@@ -19,7 +19,7 @@ won't build/run on K1; never a fabricated number.
 """
 from __future__ import annotations
 
-import argparse, json, subprocess, tempfile
+import argparse, json, subprocess, sys, tempfile
 from dataclasses import replace
 from pathlib import Path
 
@@ -29,6 +29,9 @@ from merlin.kernels.ceiling_drivers import run_expert_gemm as expert
 from merlin.kernels import bench_ceiling
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import _cc, _deploy_run  # noqa: E402  (helpers shared by the k1 drivers)
 
 HERE = Path(repo_root()) / "merlin/python/merlin/kernels/ceiling_drivers"
 K1H = HERE / "k1_harness"
@@ -46,35 +49,6 @@ OURS_FORKS = (
 # intrinsics come from the SpacemiT clang. -ffast-math to match the spike experts' -O3 -ffast-math.
 _K1_CFLAGS = ["--target=riscv64-unknown-linux-gnu", "-march=rv64gcv", "-mabi=lp64d",
               "-O3", "-ffast-math", "-DNDEBUG", "-std=gnu99", "-Wno-implicit-function-declaration"]
-
-
-def _cc() -> Path:
-    cc = k1.toolchain_cc()
-    if cc is None:
-        raise RuntimeError("SpacemiT toolchain not found (set MERLIN_K1_TOOLCHAIN)")
-    return cc
-
-
-def _deploy_run(binary: Path, tag: str, *, timeout: int = 300) -> tuple[str | None, str]:
-    """scp the binary to the board, run it, return (stdout-or-None, detail)."""
-    remote = f"/tmp/k1ceil_{tag}"
-    try:
-        subprocess.run(["scp", "-i", k1.K1_SSH_KEY, "-o", "BatchMode=yes",
-                        "-o", "StrictHostKeyChecking=no", str(binary), f"{k1.K1_HOST}:{remote}"],
-                       capture_output=True, text=True, timeout=120, check=True)
-    except subprocess.CalledProcessError as e:
-        return None, f"scp failed: {e.stderr[-200:] if e.stderr else e}"
-    try:
-        k1._ssh(f"chmod +x {remote}", timeout=30)
-        p = k1._ssh(remote, timeout=timeout)
-    finally:
-        try:
-            k1._ssh(f"rm -f {remote}", timeout=30)
-        except Exception:  # noqa: BLE001
-            pass
-    if p.returncode != 0:
-        return None, f"run rc={p.returncode}; stderr: {p.stderr.strip()[-200:]}; stdout: {p.stdout.strip()[-200:]}"
-    return p.stdout, "ok"
 
 
 def _parse(base: dict, console: str | None, detail: str) -> dict:

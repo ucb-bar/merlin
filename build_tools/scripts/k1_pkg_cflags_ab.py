@@ -42,6 +42,9 @@ from merlin.common.artifacts import new_product
 from merlin.mining import k1
 from merlin.mining.registry import load_rvv_package
 from merlin.llvmlower import toolchain
+if str(Path(__file__).resolve().parent) not in sys.path:  # loaded by path, not run as a file
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _k1_common import run_paddings  # noqa: E402  (helpers shared by the k1 drivers)
 
 #: Instruction families the report breaks out by name. Chosen because each answers a different
 #: question about WHOSE vectorizer produced the code: the reduce family is the max-reduction idiom
@@ -133,32 +136,6 @@ def build(bundle: Path, pkg, work: Path, honor: bool, max_session_steps: int | N
     return k1.build_k1_binary(bundle, work, pkg, fallback_policy="forbid",
                               max_session_steps=max_session_steps,
                               honor_pkg_cflags=honor)
-
-
-def run_paddings(bundle: Path, bwork: Path, pkg, elf: Path, n_paddings: int,
-                 iters: int, timeout: int) -> list[dict]:
-    """Run the ALREADY-BUILT ELF once per environment padding. The padding changes nothing the
-    program reads -- only the size of the environment block above the initial stack pointer, hence
-    every stack-derived address. A digest that moves across paddings has an address dependence,
-    which no cosine gate would catch."""
-    rows = []
-    for i in range(n_paddings):
-        pad = "X" * (1 << (6 + i))
-        env = {"MERLIN_AB_PAD": pad, "MERLIN_ITERS": str(iters)}
-        try:
-            res = k1.run_binary_on_k1(bundle, bwork, pkg, elf, env=env, timeout=timeout)
-        except Exception as e:                                       # noqa: BLE001
-            rows.append({"padding_bytes": len(pad), "error": f"{type(e).__name__}: {e}"})
-            continue
-        outputs = res.get("outputs")
-        host = (hashlib.sha256(b"".join(float(v).hex().encode() for v in outputs)).hexdigest()
-                if outputs else None)
-        walls = res.get("iter_wall_ns") or []
-        rows.append({"padding_bytes": len(pad), "board_out_hash": res.get("out_hash"),
-                     "host_digest_over_parsed_outputs": host,
-                     "n_outputs": len(outputs) if outputs else 0,
-                     "wall_ns_min": min(walls) if walls else None})
-    return rows
 
 
 def main(argv=None) -> int:
