@@ -18,6 +18,10 @@ family: tensor_resident
 # self-registers "gemmini" with zero env — the core no longer contains a gemmini reference backend.
 plugin:
   backend: backend
+  # The bareMetalC reference-program corroboration tool: the upstream mvin_mvout test and the library
+  # tiled_matmul_auto, built with this backend's toolchain and compared to merlin's Tensor goldens. It is
+  # target-owned; shared callers load it through this key (plugins.load_declared) and never by name.
+  reference_programs: tools/baremetalc_corroborate.py
 # Codegen endpoint + grading knobs the shared RunnerConfig reads (rtl_tiers + the rocc_insn trace gate
 # ride the systolic family default; declared here only where they differ from it). Fork-free .insn on
 # stock LLVM — no gemmini-forked toolchain.

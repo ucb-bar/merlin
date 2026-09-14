@@ -1,4 +1,4 @@
-"""P1 — corroborate capsule goldens against REAL Gemmini reference programs.
+"""Corroborate capsule goldens against REAL Gemmini reference programs.
 
 Closes the "our goldens are only our own engine" gap. We build + run, on the SAME
 `spike --extension=gemmini` + verilator we use everywhere, reference programs that exercise the
@@ -17,6 +17,12 @@ K-accumulation, relu, and acc_scale→i8.
 Build flags / toolchain are reused verbatim from ``contract.compile.link_elf`` via the
 gemmini backend's helpers (resolved through the registry, ``base.get_backend("gemmini")``),
 so the reference ELF runs on the identical simulators.
+
+This module lives in the gemmini target package because every fact in it belongs to that target: the
+C programs include its test utilities and call its library, the anchors are its capsules, and the build
+line is its bareMetalC Makefile. Shared code never names it. The contract declares it as
+``plugin.reference_programs`` and callers load it with
+``merlin.targetgen.plugins.load_declared(target, "reference_programs")``.
 """
 from __future__ import annotations
 
@@ -283,10 +289,6 @@ def main(argv: list[str] | None = None) -> int:
               + " ".join(f"{s}={r['results'].get(s,{}).get('match')}" for s in sims))
     print(f"wrote {a.report}")
     return 0 if all(r["status"] == "pass" for r in rows) else 1
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
 
 
 if __name__ == "__main__":

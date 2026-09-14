@@ -67,6 +67,13 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
         "the package's own registered backend exposing TARGET + build_facts(). rtl.mlc_bridge registers it "
         "when no introspect is registered, so core names no SIMT target and nothing is imported twice.",
         consumed=True, expects="attr"),
+    "reference_programs": PluginKey(
+        "reference_programs",
+        "The package's own reference-program corroboration tool: it builds the target's upstream "
+        "reference programs with its backend's toolchain, runs them on its simulators and compares the "
+        "output to the Tensor goldens. Loaded by load_declared (capsule-bench preflight, experiment "
+        "drivers). A target that declares none has no such table; it never borrows another target's.",
+        consumed=True, expects="path"),
     "path": PluginKey(
         "path",
         "Injected by target_registry for external packages — the package root. Not authored by hand.",
@@ -192,3 +199,28 @@ def load_object(root: str | Path, reference: str, *, package_name: str) -> Any:
         return getattr(module, attr)
     except AttributeError as exc:
         raise PluginError(f"{module_ref!r} has no attribute {attr!r}") from exc
+
+
+def load_declared(target: str, key: str):
+    """Import the module that ``target``'s own contract declares under ``plugin.<key>``.
+
+    Shared code uses this to reach a target-owned tool without naming the target. The caller passes the
+    target it was given and the key it needs, and the package's contract names the file. Fails closed,
+    with the reason, when the key is not a loadable one, the target cannot be resolved, or its contract
+    declares nothing under the key. A target without the tool gets no tool, never a borrowed one.
+    """
+    spec = PLUGIN_KEYS.get(key)
+    if spec is None or not spec.consumed or key == "path":
+        raise PluginError(f"plugin.{key}: not a loadable plugin key (known: {sorted(PLUGIN_KEYS)})")
+    from merlin.targetgen import target_registry   # lazy: resolution reads contracts from disk
+    try:
+        info = target_registry.resolve(target)
+        block = info.plugin()
+    except Exception as exc:                                  # noqa: BLE001 — carry which target and why
+        raise PluginError(f"{target!r}: cannot read its contract's plugin block "
+                          f"({type(exc).__name__}: {exc})") from exc
+    reference = block.get(key)
+    if not isinstance(reference, str) or not reference:
+        raise PluginError(f"{target!r} declares no plugin.{key} in {info.contract_path}")
+    root = block.get("path") or str(info.base)
+    return load_module(root, reference, package_name=target)

@@ -27,7 +27,6 @@ from merlin.targetgen import trace_check as TCK  # noqa: E402
 from merlin.targetgen.rocc import decode as RD  # noqa: E402  (was targetgen.rocc_decode before the move)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
-from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402
 from merlin.targetgen.contract import schemas as S  # noqa: E402
 from merlin.targetgen.sandbox import bwrap  # noqa: E402  (grant resolution shared with the binder)
 
@@ -516,7 +515,18 @@ def check_real_tokens() -> dict:
 
 
 def baremetalc_table() -> list[dict]:
+    """The ACTIVE target's reference-program anchors, each with its golden hash.
+
+    The anchors come from the target's own package, declared as ``plugin.reference_programs`` in its
+    contract. A target that declares none gets one unavailable row saying why. It is never shown
+    another target's anchors as though they were its own.
+    """
     import hashlib
+    from merlin.targetgen import plugins
+    try:
+        BMC = plugins.load_declared(TARGET, "reference_programs")
+    except plugins.PluginError as exc:
+        return [{"unavailable": True, "reason": str(exc)}]
     rows = []
     for anc in BMC._anchors():
         gh = hashlib.sha256(json.dumps(anc["golden"]).encode()).hexdigest()[:16]
@@ -673,6 +683,7 @@ def main() -> int:
     tokens_ok = R["tokens"].get("available") is True
     oracle_ok = R["oracle"].get("available") is True
     unsandboxed_demo = bool(R["canary"]["unsandboxed_leaks"])  # leaks WITHOUT bwrap → proves bwrap needed
+    bmc_na = next((r["reason"] for r in R["baremetalc"] if r.get("unavailable")), None)
 
     checklist = [
         ("bwrap available + isolates (canaries invisible in both agent bundles)", canary_ok),
@@ -695,7 +706,8 @@ def main() -> int:
         (f"descriptor-declared capability probes are operation-grounded and behaviorally verified "
          f"({R['oracle'].get('capability_smokes', {}).get('reason')})",
          R["oracle"].get("capability_smokes", {}).get("ok", True)),
-        ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted", True),
+        ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted"
+         if bmc_na is None else f"reference-program corroboration n/a ({bmc_na})", True),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]
     blocking = [name for name, ok in checklist if not ok]
@@ -749,6 +761,9 @@ def main() -> int:
           "| anchor | capsule | feature | source | golden sha256 | spike | verilator |",
           "|---|---|---|---|---|---|---|"]
     for r in R["baremetalc"]:
+        if r.get("unavailable"):
+            L.append(f"| — | — | — | UNAVAILABLE: {r['reason']} | — | — | — |")
+            continue
         L.append(f"| {r['anchor']} | {r['capsule']} | {r['feature']} | {r['source']} | "
                  f"{r['golden_sha256']} | {r['spike']} | {r['verilator']} |")
     L += ["", "## G. Descriptor-declared capability probes", "",

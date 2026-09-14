@@ -66,7 +66,6 @@ entries:
     owner: targetgen
     items:
       - merlin/python/merlin/targetgen/oot_runner.py
-      - merlin/python/merlin/targetgen/baremetalc_corroborate.py
       - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
     why: >-
       The inputs to oracle selection are already declarative — endpoint_kind and sim_via come from the

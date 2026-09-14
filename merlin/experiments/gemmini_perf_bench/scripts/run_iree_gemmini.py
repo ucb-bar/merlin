@@ -32,8 +32,12 @@ import yaml
 
 import _pbcommon as PB
 from merlin.common import stimulus as STIM  # noqa: E402  (one source of truth for leaf data)
-from merlin.targetgen import baremetalc_corroborate as BMC  # noqa: E402  (build flags + run reuse)
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
+from merlin.targetgen import plugins as _plugins  # noqa: E402
+
+# Build flags + run reuse: the bench target's reference-program tool, declared by its own contract
+# (plugin.reference_programs) and loaded from its package.
+BMC = _plugins.load_declared(PB.TARGET, "reference_programs")
 
 IREE = Path("/path/to/merlin-iree/build/host-merlin-release/tools/iree-compile")
 # link-embedded=FALSE -> a standard system_elf relocatable .o (objdump-readable, objcopy-globalizable),

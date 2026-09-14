@@ -13,6 +13,8 @@ out of general machinery.
   `.gitkeep`/`AGENT.md` (real codegen products go to `artifacts/targets/<target>/`, not here).
 - `docs/` *(when there's content)* — architecture/isa/runtime reference notes.
 - `examples/` *(when there's content)* — small `.mlir` inputs.
+- `tools/` *(when there's content)* — target-owned tools that shared code reaches only through a
+  `plugin.<key>` entry in the contract (`merlin.targetgen.plugins.load_declared`), never by name.
 - `contracts/rtl_facts/facts.json` *(RTL-grounded targets, e.g. gemmini)* — the **promoted pin** of a
   `circt_introspect` run (the run is the source of truth; the pin is the offline/CI fallback).
 

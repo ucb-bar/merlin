@@ -30,7 +30,11 @@ sys.path.insert(0, str(REPO / "merlin" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import _track as T                                                    # noqa: E402
-from merlin.targetgen import baremetalc_corroborate as BC             # noqa: E402
+from merlin.targetgen import plugins as _plugins                      # noqa: E402
+
+#: The study target's reference-program tool (seed template, bareMetalC build, run, golden). It lives in
+#: the target's own package and is resolved through that package's contract (plugin.reference_programs).
+BC = _plugins.load_declared(T.TARGET, "reference_programs")
 
 
 #: THE AUTOCOMP GEMMINI DIALECT. Its ISA prompt (`agents/gemmini/prompts/isa_prompt_conv.py`)
