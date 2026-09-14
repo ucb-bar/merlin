@@ -135,6 +135,21 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
   fixed in a backend. The mechanism is target-agnostic; the best order is a measured fact of the
   target.
 
+### L11. Check the memory plan's address invariant directly — measured
+
+- **Voyager.** Its planner checks that no two live buffers overlap (`memory_planning.py:682-744`),
+  though it only warns and exempts buffers in the same bank group.
+- **What it bought.** In the mutation study it is the one Voyager check that sees an address fault.
+  Its eager executor gives every buffer its own tensor, so an overlapping plan changes no output at
+  all. It caught the cross-bank-group overlap that merlin's exact check missed: merlin's lowering
+  keeps partials and outputs in the accumulator, so that overlap never reaches a planned address it
+  executes.
+- **Merlin's way.** Put a static address/liveness checker beside the exact executor: scratchpad and
+  accumulator row intervals per slot, live ranges from the op stream, and a hard failure (not a
+  warning) on any write into a live region. The executor proves the arithmetic; the checker proves
+  no live data is overwritten, including hazards an in-order executor cannot see (the study's 8
+  concurrency hazards were invisible to both sides).
+
 ## Generalization: can Voyager's compiler target merlin's other accelerators?
 
 Checked the only way that does not presume the answer: ask merlin's target-agnostic derivation
@@ -209,8 +224,8 @@ What merlin should take from it:
 | Voyager practice | Why merlin keeps its own |
 |---|---|
 | Hardware constants measured on one SoC, baked in the tiler (`BANK_SWITCH_CYCLES=8`, `SPMM_ROW_CYCLES=8`, "Sphinx") | Merlin derives every value from the target's facts or refuses (`check_no_assumed_constants`) |
-| Numerics tolerance of 5%, warn-only, checked before tiling for CNN/BERT/ViT | Bit-exact integer gates at L0-L3 on the lowered program, with mutation controls |
-| CI gates on a text diff of its own previous `model.txt` | Independent goldens; a tier that did not run is `incomplete`, never `pass` |
+| Numerics checked with an elementwise `assert_close(rtol=5e-2, atol=1e-4)`, warn-only, and for CNN/BERT/ViT/MobileBERT before `compile()` (tiling, bufferization) | Bit-exact integer gates on the lowered program, with mutation controls. Measured (mutation study, STATUS.md): Voyager's pre-tiling check sees 0/28 seeded schedule faults; the same criterion after bufferization warns on all 28 but also on 3 of 4 CORRECT programs (bf16 reassociation); merlin's exact check flags 24/28, refuses 4, and flags no correct program |
+| A local pre-push diff against its own previous `model.txt` | Independent goldens; a tier that did not run is `incomplete`, never `pass`. Measured: the diff fails all 9 legal rewrites and passes all 8 scale faults (`model.txt` names constants, not their values) |
 | Whole-model RTL cycles as per-layer, tile-extrapolated sums (`run_regression.py` `MAX_TILES`) | One timed invocation on RTL, FPGA or silicon, with provenance |
 | Latest compiler no longer targets the public hardware release (legacy `param.proto` retired) | Pinned revisions per result; a target is a descriptor, not a fork |
 
@@ -228,6 +243,7 @@ What merlin should take from it:
 | L8 | G6 |
 | L9 | G4 |
 | L10 | G2 (lookahead depth and operand order as measured knobs of the pipeline pass) |
+| L11 | verification layer (static address/liveness checker beside the exact executor) |
 
 L1 goes first. It is the one lesson already measured on our own hardware, and the reference backend
 can adopt it without any new infrastructure.

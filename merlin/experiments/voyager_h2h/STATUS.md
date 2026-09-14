@@ -214,8 +214,28 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   - Deep K is merlin's in every variant: 1.40-1.42x fewer cycles than Voyager's schedule.
   - Placement findings: weights sharing the input's bank cost 3-15% (`v1_la1_pafter`: A0 311,
     A3 374, C0 1271, C2 519); banks 1, 2 and 3 are identical (`v1_la1_pbank2/3` = `v1_la1b`); the
-    position inside the bank matters (bank end: C2 459, bank start: 472). A fixed rule meant to win
-    both (`v1_la1_pb1off`, weights offset past the inputs' in-bank span) is being graded.
+    position inside the bank matters (bank end: C2 459, bank start: 472). No fixed rule tried wins
+    both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
+    on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
+    per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **Verification mutation study** (`scripts/mutation_study.py`, e21dfb4f; product
+  `compare_gemmini_v1_20260914T222217Z_ada9e07`). 64 faults were seeded into Voyager's own compiled
+  programs (4 workloads). Each faulty program was judged by Voyager's checks (its own code at
+  f9d4c498) and by merlin's replay -> lower -> exact execution:
+  - **Schedule faults (28):** Voyager's CNN/BERT/ViT check runs before `compile()` and sees 0. The
+    same elementwise `rtol 5e-2 / atol 1e-4` criterion applied after bufferization warns on all 28,
+    but also on 3 of 4 correct programs (split reductions reassociate in bf16), and it never gates.
+    merlin flags 24 bit-exactly and refuses 4 (pad value 1, a dropped conv partial); it flags no
+    correct program.
+  - **Memory-plan faults (7):** Voyager's eager run changes no output element (each buffer is its
+    own tensor). Its planner's overlap check (warn-only, exempts one bank group) catches 3; merlin
+    catches 4, and misses the cross-group case because its outputs live in the accumulator.
+  - **`model.txt` diff** (`run_ci.py`, a local pre-push script): fails all 9 legal rewrites, passes
+    all 8 scale faults.
+  - **merlin's gaps, to state in the paper:** concurrency hazards (8) are invisible to any in-order
+    executor, merlin's included; scale faults (8) are outside its integer-accumulator check by
+    construction. `voyager_ir.replay` raised KeyError on a `sym_min` (operands `a`/`b`) instead of
+    refusing; fixed below.
 - **Conv lowering exists and is exact** (`baselines.voyager_schedule.lower_conv`, abcd2847): the
   3x3 s1, 3x3 s2 and 1x1 probes lower bit-exactly against a direct convolution. Faithful to Voyager's
   mapping, the 3x3 layers stream 4-row (s1) and 2-row (s2) computes -- 28,224 per layer, where 16-row
