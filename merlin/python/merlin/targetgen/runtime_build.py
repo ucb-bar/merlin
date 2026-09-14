@@ -20,9 +20,11 @@ import tempfile
 from pathlib import Path
 
 
-def _chipyard_config(target: str) -> str | None:
-    """The declared verilator harness config for ``target`` (capability manifest ``runtime.rtl_sim_config``)
-    — a per-target FACT read from the registry, not a hardcoded constant."""
+def rtl_sim_config(target: str) -> str | None:
+    """The declared chipyard harness config for ``target`` (capability manifest ``runtime.rtl_sim_config``)
+    — a per-target FACT read from the registry, not a hardcoded constant. It names the elaborated design
+    every chipyard simulator of the target is built from (``simulator-``/``simv-chipyard.harness-<cfg>``).
+    None when the target declares none or its manifest cannot be read."""
     try:
         from .target_experiment import load_capability_manifest
         return (load_capability_manifest(target).contract.get("runtime") or {}).get("rtl_sim_config")
@@ -35,7 +37,7 @@ def _chipyard_dram_base(target: str) -> int | None:
     largest ``memory@`` region in the generated ``<config>.memmap.json``. The chipyard location is a setup
     fact (``MERLIN_CHIPYARD`` / ``.env`` / ``ext_path``); the config is a manifest fact. Returns None if the
     build/memmap is absent (the caller uses a documented fallback), never a baked address."""
-    cfg = _chipyard_config(target)
+    cfg = rtl_sim_config(target)
     if not cfg:
         return None
     from merlin.common.paths import env as _env, ext_path as _ext_path

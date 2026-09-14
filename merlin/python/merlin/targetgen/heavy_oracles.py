@@ -17,24 +17,45 @@ from typing import Any, Callable
 
 from .capsule_runner import OracleUnavailable
 from .contract import compile as oot_compile
-from merlin.common.paths import ext_path
-
-# Default Gemmini VCS sim (overridable via MERLIN_GEMMINI_SIMV / MERLIN_SATURN_SIMV).
-_DEFAULT_VCS = f"{ext_path("chipyard")}/sims/vcs/simv-chipyard.harness-RadianceGemminiOnlyConfig"
+from merlin.common.paths import ext_path, target_env_name
 
 
-def gemmini_simv() -> Path | None:
-    for env in ("MERLIN_GEMMINI_SIMV", "MERLIN_SATURN_SIMV"):
-        v = os.environ.get(env)
-        if v and Path(v).is_file():
-            return Path(v)
-    p = Path(_DEFAULT_VCS)
-    return p if p.is_file() else None
+def simv_env_name(target: str) -> str:
+    """The variable that points at ``target``'s prebuilt VCS simv: ``MERLIN_<TARGET>_SIMV``.
+
+    DERIVED from the target name, so each target's existing variable keeps working and a newly registered
+    target gets its own with no edit here -- and a target is never handed the simv another one's variable
+    names.
+    """
+    return target_env_name(target, "SIMV")
+
+
+def vcs_simv(target: str) -> Path | None:
+    """``target``'s VCS simv, or None when none is reachable (the caller reports unavailable).
+
+    Resolution: ``MERLIN_<TARGET>_SIMV`` (an explicit binary), then the chipyard VCS build of the design
+    the target DECLARES -- its capability manifest's ``runtime.rtl_sim_config`` --
+    at ``<chipyard>/sims/vcs/simv-chipyard.harness-<config>``. A target that declares no config and sets
+    no variable has no simv; no default SoC config is substituted.
+    """
+    explicit = os.environ.get(simv_env_name(target))
+    if explicit and Path(explicit).is_file():
+        return Path(explicit)
+    from .runtime_build import rtl_sim_config
+    cfg = rtl_sim_config(target)
+    if not cfg:
+        return None
+    try:
+        chipyard = ext_path("chipyard")
+    except KeyError:                    # no chipyard checkout configured: nothing to find, not an error
+        return None
+    simv = chipyard / "sims" / "vcs" / f"simv-chipyard.harness-{cfg}"
+    return simv if simv.is_file() else None
 
 
 # ------------------------------------------------------------------ L4 VCS
-def vcs_available() -> bool:
-    return gemmini_simv() is not None
+def vcs_available(target: str) -> bool:
+    return vcs_simv(target) is not None
 
 
 def vcs_adapter(target: str) -> Callable:
@@ -44,9 +65,11 @@ def vcs_adapter(target: str) -> Callable:
         import time
         from merlin.runtime.backends import base as _bk
         gem = _bk.get_backend("gemmini")  # target-ok: reference RoCC/VCS oracle reuses gemmini ELF-build + parse_output
-        simv = gemmini_simv()
+        simv = vcs_simv(target)
         if simv is None:
-            raise OracleUnavailable("VCS simv not found (set MERLIN_GEMMINI_SIMV)")
+            raise OracleUnavailable(
+                f"VCS simv not found for {target!r} (set {simv_env_name(target)}, or build the chipyard "
+                f"VCS sim of its declared runtime.rtl_sim_config)")
         _t0 = time.perf_counter()
         elf = oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
         _t1 = time.perf_counter()
@@ -69,7 +92,7 @@ def vcs_adapter(target: str) -> Callable:
         # environment, not a backend defect -> honest unavailable (never a fabricated pass).
         if proc.returncode != 0 or "DONE" not in console:
             raise OracleUnavailable(
-                f"VCS simv ({simv.name}) incompatible with the bare-metal Gemmini ELF "
+                f"VCS simv ({simv.name}) incompatible with the bare-metal {target} ELF "
                 f"(rc={proc.returncode}); ELF is L2/L3-validated. stderr/stdout tail: "
                 f"{(proc.stderr or console)[-300:]}")
         return {"outputs": outputs, "raw_metrics": raw, "cycles": raw.get("cycles"),
@@ -87,7 +110,7 @@ def run_vcs_parallel(capsules: list[dict], package_dir: str | Path, *, runs_root
     ``target`` is required and threaded into each per-capsule run so the grade uses that target's config
     (no silent gemmini default)."""
     from . import capsule_runner as CR
-    if not vcs_available():
+    if not vcs_available(target):
         return [{"capsule": c["name"], "status": "incomplete",
                  "failure": {"plane": "vcs", "category": "NOT_RUN_IS_NOT_PASS",
                              "detail": "VCS simv unavailable"}} for c in capsules]
@@ -128,7 +151,7 @@ def firesim_adapter(target: str) -> Callable:
         # ELF is environment-specific and gated. Until a verified bare-metal FireSim replay hook is
         # wired, report unavailable rather than fabricate a result.
         oot_compile.compile_lowered_to_elf(cb, llvm_text, workdir, target=target)
-        raise OracleUnavailable("FireSim bare-metal Gemmini replay hook not wired in this env")
+        raise OracleUnavailable(f"FireSim bare-metal {target} replay hook not wired in this env")
     return run
 
 

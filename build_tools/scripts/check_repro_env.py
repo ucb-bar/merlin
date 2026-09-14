@@ -121,7 +121,7 @@ def _backend_probe(target: str, backend: str) -> tuple[str, str]:
             return ("available", "pure-Python model (merlin.runtime.simulator)")
         if backend == "vcs":
             ho = importlib.import_module("merlin.targetgen.heavy_oracles")
-            return ("available" if ho.vcs_available() else "unavailable", "")
+            return ("available" if ho.vcs_available(target) else "unavailable", "")
         if backend == "zephyr":
             zm = importlib.import_module("merlin.runtime.backends.zephyr_model")
             return ("available" if zm.available() else "unavailable", "")
