@@ -206,14 +206,11 @@ def cost_model_artifact(target: str) -> Path | None:
     """A target's calibrated coefficients, resolved BY NAME rather than hardcoded per target.
 
     Adding a second target is then a calibration file, not a code edit -- which is the seam this
-    module is required to go through.
+    module is required to go through (:func:`merlin.perf.linear_cost.cost_model_artifact`).
     """
-    from merlin.common.paths import merlin_dir  # noqa: PLC0415
+    from merlin.perf.linear_cost import cost_model_artifact as _artifact  # noqa: PLC0415
 
-    if not target:
-        return None
-    candidate = merlin_dir() / "python" / "merlin" / "cost_model" / f"{target}_cost_coeffs.json"
-    return candidate if candidate.is_file() else None
+    return _artifact(target)
 
 
 def _serial_ceiling(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
@@ -227,7 +224,7 @@ def _serial_ceiling(target: str, buffer: Mapping[str, Any]) -> dict[str, Any]:
     if artifact is None:
         return {"status": UNAVAILABLE, "reason": f"no calibrated cost model for target {target!r}"}
     try:
-        from merlin.cost_model.linear import LinearCostModel  # noqa: PLC0415
+        from merlin.perf.linear_cost import LinearCostModel  # noqa: PLC0415
         model = LinearCostModel.load(artifact)
         cycles, spread = model.predict_with_band(events)
     except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so

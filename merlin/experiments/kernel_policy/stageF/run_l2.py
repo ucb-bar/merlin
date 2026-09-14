@@ -24,7 +24,7 @@ import tempfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-# the ablation .c kernels are a library-consumed benchmark input (compiled by cost_model.calibrate too),
+# the ablation .c kernels are a library-consumed benchmark input (compiled by the target cost-model calibrator too),
 # so they live under merlin/benchmarks/cost_calib/. HERE=stageF -> parents[2]=merlin/.
 CALIB_SRC = HERE.parents[2] / "benchmarks" / "cost_calib"
 FUNCT_NAMES = {0: "config", 1: "mvin2_B", 2: "mvin_A", 3: "mvout", 4: "compute_preloaded",

@@ -2532,7 +2532,7 @@ def _calibrated_estimate(target: str, buffer: Mapping[str, Any]) -> dict[str, An
                 "reason": "the buffer declares a command outside the calibrated vocabulary, so its "
                           "event histogram is incomplete and pricing it would understate this arm"}
     try:
-        from merlin.cost_model.linear import LinearCostModel                # noqa: PLC0415
+        from merlin.perf.linear_cost import LinearCostModel                 # noqa: PLC0415
         model = LinearCostModel.load(_cost_model_artifact(target))
         cycles, band = model.predict_with_band(events)
     except Exception as exc:  # noqa: BLE001 - an uncalibrated target screens nothing, and says so
@@ -2545,9 +2545,8 @@ def _calibrated_estimate(target: str, buffer: Mapping[str, Any]) -> dict[str, An
 
 def _cost_model_artifact(target: str) -> Path | None:
     """The target's calibrated coefficients, resolved by NAME rather than hardcoded per target."""
-    from merlin.common.paths import merlin_dir                              # noqa: PLC0415
-    candidate = merlin_dir() / "python" / "merlin" / "cost_model" / f"{target}_cost_coeffs.json"
-    return candidate if candidate.is_file() else None
+    from merlin.perf.linear_cost import cost_model_artifact                 # noqa: PLC0415
+    return cost_model_artifact(target)
 
 
 def analyze_command_buffers(baseline_json: Path, candidate_json: Path, *,

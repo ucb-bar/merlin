@@ -1,0 +1,7 @@
+{
+ "description": "Command vocabulary of this target's linear cost model, in summation order. preload is not a regressor: it is issued 1:1 with compute in weight-stationary code, so its cost is inside compute's coefficient. mvin3_bias (a bias load into the accumulator) is the same transfer as an input mvin but moves accumulator-width elements, so it folds onto mvin_A scaled by the accumulator/input datapath width ratio taken from the RTL facts.",
+ "events": ["config", "mvin_A", "mvin2_B", "compute", "mvout", "fence"],
+ "folds": {
+  "mvin3_bias": {"into": "mvin_A", "scale": {"datapath_bits_ratio": ["accumulator", "input"]}}
+ }
+}

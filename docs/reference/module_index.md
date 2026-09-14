@@ -13,7 +13,6 @@ module docstring. **Do not edit by hand** — run the generator (it's `--check`e
 | `merlin.common` | Shared utilities: schema loading/validation, IO, common types. |
 | `merlin.compare` | merlin.compare — unified, spec-driven, versioned comparison driver. |
 | `merlin.compile` | Compile machinery behind ``merlin-compile``: bundles, the host lane, capacity, and mesh execution. |
-| `merlin.cost_model` | Standalone Gemmini hardware cost model + calibration (GemminiCostModel, calibrate CLI). |
 | `merlin.design_pressure` | Design-pressure analysis: workload region -> cutpoints -> pressure metrics -> emitted reports. |
 | `merlin.design_pressure.cutpoints` | Compiler cut points for analysis: the IR levels a workload region is observed at (graph, linalg, |
 | `merlin.design_pressure.emit` | Emit the schema-validated design-pressure artifacts: the design_pressure report, the candidate_contracts |

@@ -76,7 +76,7 @@ argument for a single central resolver.
 
 `llvmlower/toolchain.py:17,22,29,36` (m2m/clang/mlir-translate); `runtime/backends/gemmini.py:46-76`,
 `spike.py:39-50`, `muon.py:68-106`, `zephyr_model.py:100,619`, `vcs.py:21`;
-`kernels/build_asm.py:173-219`; `mining/k1.py:27-65`; `cost_model/calibrate.py:39`;
+`kernels/build_asm.py:173-219`; `mining/k1.py:27-65`;
 `targetgen/rtl/muon_introspect.py:30-34`. All have `MERLIN_*` defaults; document as optional extras.
 
 ### 1c. Output writes — Phase P4, not a hard blocker

@@ -7,7 +7,7 @@ counts follow in closed form from the loop nest in the frozen lowering.
 
 WHAT THIS CAN AND CANNOT SEE, stated up front because it decides which levers need a simulator:
 
-* :class:`~merlin.cost_model.gemmini.GemminiCostModel` is ``const + sum(coeff[e] * n_e)`` over
+* the target's :class:`~merlin.perf.linear_cost.LinearCostModel` is ``const + sum(coeff[e] * n_e)`` over
   ``(config, mvin_A, mvin2_B, compute, mvout, fence)`` and its own metadata calls it
   "L2.5 calibrated (linear, serial; no overlap)". So it prices a recipe ONLY through command COUNTS.
 * Therefore ``activation_residency`` and ``config_policy`` are model-VISIBLE: they delete MVINs and
@@ -49,7 +49,7 @@ def _repo_root() -> Path:
 REPO = _repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.cost_model.gemmini import GemminiCostModel          # noqa: E402
+from merlin.perf.linear_cost import LinearCostModel, cost_model_artifact  # noqa: E402
 from merlin.common.artifacts import new_product                 # noqa: E402
 from merlin.common import provenance as PROV                    # noqa: E402
 
@@ -174,7 +174,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
 
     dim, spad_rows = machine_facts(args.target)
-    model = GemminiCostModel.load()
+    model = LinearCostModel.for_target(args.target)
     band_pct = 100.0 * model.error.get("mape", 0.0)
 
     dims = WAVE_A_PLUS
@@ -268,7 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     # formulas are stale and the CSV is wrong while still looking right.
     frozen_isa = (REPO / "out/artifacts/targets" / args.target
                   / "gemmini_xdsl_rtl_v0/mlir_oot/lowering/isa.py")
-    sources = [p for p in (frozen_isa, Path(GemminiCostModel.DEFAULT_ARTIFACT), Path(__file__))
+    coefficients = cost_model_artifact(args.target)
+    sources = [p for p in (frozen_isa, coefficients, coefficients.with_name("vocabulary.json"),
+                           Path(__file__))
                if p.exists()]
     pins = {}
     try:

@@ -1,15 +1,23 @@
-"""Calibrate the Gemmini cost model against the cycle-exact Verilator sim, then validate.
+"""Calibrate this target's linear cost model against its cycle-exact Verilator sim, then validate.
+
+This is the TARGET-OWNED half of the cost model: the calibration microbenchmarks, the toolchain and
+simulator this target is built with, and the analytic event counts of its own harnesses. The
+regressor it fits is the target-agnostic :class:`merlin.perf.linear_cost.LinearCostModel`; the
+priced vocabulary and folds are read from ``vocabulary.json`` next to this file, and the fitted
+coefficients are written to ``coefficients.json`` beside it, where
+:func:`merlin.perf.linear_cost.cost_model_artifact` resolves them by target name.
 
 Flow:
   1. Build + run the calibration microbenchmarks (calib/gemmini_costmodel_calib.c) under
      Verilator; each isolates one command class, rdcycle measures the region only.
-  2. Least-squares fit  cycles = const + Σ coeff[e]·n_e  over the analytic event counts.
+  2. Least-squares fit  cycles = const + sum coeff[e] * n_e  over the analytic event counts.
   3. Validate on the Stage-F slate harnesses (separate from the fit set): predict region
      cycles from each variant's events, run the same harness under Verilator, report error
      AND confirm the cost model preserves each insight's act/park decision.
 
-Env: MERLIN_CHIPYARD (default /path/to/chipyard). Verilator binary must be built
-for a Gemmini config (GemminiRocketConfig). Slow: ~tens of seconds per RTL run.
+Run: ``python merlin/targets/gemmini/cost_model/calibrate.py``. Env: MERLIN_CHIPYARD (default
+/path/to/chipyard). The Verilator binary must be built for this target's config. Slow: ~tens of
+seconds per RTL run.
 """
 from __future__ import annotations
 
@@ -22,16 +30,28 @@ from pathlib import Path
 
 import numpy as np
 
-from merlin.cost_model.gemmini import EVENTS, GemminiCostModel
+from merlin.common.artifacts import cache_dir
+from merlin.common.driver_output import int_after as _int_after
+from merlin.common.paths import bench_dir
+from merlin.perf.linear_cost import LinearCostModel, fit_linear
 
 HERE = Path(__file__).resolve().parent
+#: This file lives in ``merlin/targets/<target>/cost_model/``; the target is read off that path.
+TARGET = HERE.parent.name
 CALIB_SRC = HERE / "calib" / "gemmini_costmodel_calib.c"
-# The cost-calibration ablation kernels are a LIBRARY-consumed benchmark input (this module compiles
-# them), so they live under merlin/benchmarks/, not experiments/. HERE=cost_model -> parents[2]=merlin/.
-STAGEF = HERE.parents[2] / "benchmarks" / "cost_calib"
-from merlin.common.driver_output import int_after as _int_after
+COEFFICIENTS = HERE / "coefficients.json"
+_VOCABULARY = json.loads((HERE / "vocabulary.json").read_text(encoding="utf-8"))
+EVENTS: tuple[str, ...] = tuple(_VOCABULARY["events"])
+FOLDS: dict[str, dict] = dict(_VOCABULARY.get("folds") or {})
+# The cost-calibration ablation kernels are a benchmark input shared with the Stage-F harness, so
+# they live under merlin/benchmarks/, not here.
+STAGEF = bench_dir() / "cost_calib"
 
 KIND = {"mvin": 0, "mvin2": 1, "compute": 2, "mvout": 3, "config": 4, "fence": 5, "matmul": 6}
+
+
+def _work_dir() -> Path:
+    return cache_dir("cost_model") / "build"
 
 
 def paths() -> dict:
@@ -91,38 +111,24 @@ def calib_events(kind: str, count: int) -> dict[str, float]:
     return e
 
 
-def calibrate(p: dict, counts=(4, 16), tmp=Path("/tmp/cmcalib")) -> tuple[GemminiCostModel, list]:
+def calibrate(p: dict, counts=(4, 16), tmp: Path | None = None) -> tuple[LinearCostModel, list]:
+    tmp = tmp or _work_dir()
     tmp.mkdir(parents=True, exist_ok=True)
-    rows, X, y = [], [], []
+    rows = []
     for kind, kid in KIND.items():
         for c in counts:
             b = build(p, CALIB_SRC, [f"-DKIND={kid}", f"-DCOUNT={c}"], tmp / f"k{kid}_c{c}")
             cyc = run_rtl(p, b, "CYCLES")
             ev = calib_events(kind, c)
             rows.append({"kind": kind, "count": c, "cycles": cyc, "events": ev})
-            X.append([1.0] + [ev[e] for e in EVENTS])
-            y.append(cyc)
             print(f"  calib {kind:<8} count={c:>2} -> {cyc} cyc")
     return fit_model(rows, p["sim"].name if p["sim"] else "?", counts)
 
 
-def fit_model(rows: list[dict], sim: str = "?", counts=(4, 16)) -> tuple[GemminiCostModel, list]:
-    """Relative-error-weighted least squares over calibration rows.
-
-    Weighting by 1/cycles minimizes MAPE (what we act on), so tiny config/fence runs are not
-    swamped by the large matmul runs — unweighted abs-residual lstsq otherwise drives the
-    near-free ``config`` coefficient to ~0 and inflates the intercept.
-    """
-    A = np.array([[1.0] + [r["events"][e] for e in EVENTS] for r in rows])
-    b = np.array([r["cycles"] for r in rows], dtype=float)
-    w = 1.0 / np.maximum(b, 1.0)
-    coef, *_ = np.linalg.lstsq(A * w[:, None], b * w, rcond=None)
-    ape = np.abs(A @ coef - b) / np.maximum(b, 1)
-    model = GemminiCostModel(
-        const=float(coef[0]),
-        coeff={e: float(coef[i + 1]) for i, e in enumerate(EVENTS)},
-        error={"mape": float(ape.mean()), "max_abs_pct": float(ape.max()),
-               "n_points": len(b)},
+def fit_model(rows: list[dict], sim: str = "?", counts=(4, 16)) -> tuple[LinearCostModel, list]:
+    """Relative-error-weighted least squares over calibration rows (see :func:`fit_linear`)."""
+    model = fit_linear(
+        rows, EVENTS, folds=FOLDS, target=TARGET,
         meta={"fidelity": "L2.5 calibrated (linear, serial; no overlap)",
               "fit": "relative-error-weighted lstsq", "sim": sim, "counts": list(counts)})
     return model, rows
@@ -146,8 +152,9 @@ def slate_events_dispatch(variant: str, tiles: int) -> dict:
     return e
 
 
-def validate(model: GemminiCostModel, p: dict, tmp=Path("/tmp/cmcalib")) -> list:
+def validate(model: LinearCostModel, p: dict, tmp: Path | None = None) -> list:
     """Predict vs measured cycles on slate harnesses NOT used for the fit."""
+    tmp = tmp or _work_dir()
     checks = []
     cases = [
         ("resident_rhs", STAGEF / "resident_rhs_ablation.c", "REPS", 16,
@@ -194,15 +201,18 @@ def _print_validation(checks: list, val_mape: float) -> None:
     print(f"  validation MAPE (operative band on realistic kernels) = {val_mape*100:.1f}%")
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--out", default=str(HERE / "gemmini_cost_coeffs.json"))
-    ap.add_argument("--report", default="out/artifacts/cache/cost_model/calibration.json")
+    ap.add_argument("--out", default=str(COEFFICIENTS))
+    ap.add_argument("--report", default=None,
+                    help="calibration report path (default: <out>/artifacts/cache/cost_model/"
+                         "calibration.json)")
     ap.add_argument("--no-validate", action="store_true")
     ap.add_argument("--refit", default=None,
                     help="refit offline from a saved calibration.json (no RTL); reuses its "
                          "calibration_rows + validation measured cycles")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    report_path = Path(args.report) if args.report else cache_dir("cost_model") / "calibration.json"
 
     if args.refit:
         saved = json.loads(Path(args.refit).read_text(encoding="utf-8"))
@@ -229,16 +239,16 @@ def main() -> int:
         print("coeffs: const=%.0f " % model.const
               + " ".join(f"{e}={model.coeff[e]:.1f}" for e in EVENTS))
         _print_validation(checks, val_mape)
-        Path(args.report).write_text(json.dumps(
+        report_path.write_text(json.dumps(
             {"coeffs": model.coeff, "const": model.const, "error": model.error,
              "calibration_rows": rows, "validation": checks}, indent=1), encoding="utf-8")
-        print(f"\nwrote {args.out}\nwrote {args.report}")
+        print(f"\nwrote {args.out}\nwrote {report_path}")
         return 0
 
     p = paths()
     for k in ("gcc", "sim"):
         if not p[k] or not Path(p[k]).exists():
-            sys.exit(f"missing {k}: {p[k]} (set MERLIN_CHIPYARD / build the Gemmini sim)")
+            sys.exit(f"missing {k}: {p[k]} (set MERLIN_CHIPYARD / build the {TARGET} sim)")
     print("calibrating against", p["sim"].name)
     model, rows = calibrate(p)
     model.save(args.out)  # save before validation so coefficients survive a validation error
@@ -257,10 +267,9 @@ def main() -> int:
         model.error["mape"] = val_mape  # operative band
         model.save(args.out)
         _print_validation(checks, val_mape)
-    out = Path(args.report)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=1), encoding="utf-8")
-    print(f"\nwrote {args.out}\nwrote {out}")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print(f"\nwrote {args.out}\nwrote {report_path}")
     return 0
 
 

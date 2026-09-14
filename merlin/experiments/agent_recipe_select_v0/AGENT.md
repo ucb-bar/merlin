@@ -72,7 +72,7 @@ Do **not** pass `runs_root=out/runs`: `certify` appends `runs/<suite>/`, which p
 
 ## Two things this experiment FALSIFIED (kept, not deleted)
 
-1. **`merlin/python/merlin/cost_model/gemmini_cost_coeffs.json`.** Predicted vs measured: A2 174/302,
+1. **`merlin/targets/gemmini/cost_model/coefficients.json`.** Predicted vs measured: A2 174/302,
    PK03_k128 1103/604, w1 1056/780, w2 7322/3466 — both directions, outside its own declared
    `max_abs_pct` of 34.9%. Its metadata says `"linear, serial; no overlap"` and `meta.sim` is `"?"`.
    It has **no gated consumer** (`perf` registers it `DIAGNOSTIC`; `merlin/dse/` imports an unrelated

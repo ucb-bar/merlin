@@ -105,19 +105,18 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - merlin/python/merlin/cost_model/calibrate.py
       - merlin/python/merlin/targetgen/oracle_helpers/npu_emit.py
     why: >-
-      `cost_model/gemmini.py` is already a clean split — an EVENTS tuple, a byte ratio, a coefficient
-      artifact and one `predict` override over `cost_model/linear.LinearCostModel` — but nothing in core
-      RESOLVES a target to a cost model, so the only way to reach it is to import it by name. The npu
-      calibration modules import a model package the same way.
+      The cost-model half is resolved: `perf/linear_cost.LinearCostModel.for_target(target)` reads a
+      target's coefficients and vocabulary from `merlin/targets/<target>/cost_model/`, and the
+      per-target calibration driver lives there too. What remains is the npu oracle helper, which
+      imports the model package's own ISA module (`npu_model.isa`) by name to encode instructions,
+      because nothing in core resolves a target to its functional model's ISA definition.
     blocks: >-
-      Evicting cost_model/gemmini.py and its coefficient artifact into the target's own package, and
-      supplying a cost model for any new target without editing core.
+      Running the same oracle helper against a second functional model without editing core.
     removal_condition: >-
-      A cost-model seam exists (a contract key naming the class, or EVENTS + coefficients read from the
-      package) and these callers resolve through it.
+      A seam resolves a target to its functional model's ISA module (a contract key naming it), and
+      npu_emit imports through that seam.
 
   # ---------------------------------------------------------------- run-time concession
   - id: simt-spawn-width-capped-below-declared-hardware
