@@ -35,6 +35,7 @@ from pathlib import Path
 from merlin.common.paths import env, repo_root, runtime_dir
 from typing import Any
 from merlin.common import proc as _proc
+from merlin.baselines import toolchain_locator as _toolchains
 
 # Board access — set both via env (no personal defaults committed). The board IP is a DHCP lease.
 # Read through paths.env (os.environ -> .env -> default) so a repo-local .env configures the board +
@@ -48,12 +49,17 @@ K1_SSH_PORT = env("MERLIN_K1_SSH_PORT", "")
 _SSH_PORT_OPTS = ["-p", K1_SSH_PORT] if K1_SSH_PORT else []   # ssh uses -p
 _SCP_PORT_OPTS = ["-P", K1_SSH_PORT] if K1_SSH_PORT else []   # scp uses -P (capital)
 # SpacemiT cross-toolchain. The repo keeps only setup_toolchain.sh as reference under
-# build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env, default
-# to the known /scratch2 path. ``toolchain_cc()` tolerates either the bin/ layout or the
-# extracted ``spacemit-toolchain-*`` subdir layout.
+# build_tools/SpacemiT/ (the toolchain itself is huge); locate the real install via env. Its layout --
+# the vendor's extracted-release directory naming, and the install used when the variable is unset --
+# is declared by the owning target contract under ``runtime.toolchain`` (keyed by the variable) and
+# read through merlin.baselines.toolchain_locator, so ``toolchain_cc()`` accepts either a bin/ prefix
+# or an extracted release under the install without this module naming the vendor.
 _REPO = repo_root()
-# Locate the (huge) SpacemiT cross-toolchain via env; no personal path committed as a default.
-K1_TOOLCHAIN = Path(env("MERLIN_K1_TOOLCHAIN", str(_REPO / "build_tools" / "SpacemiT" / "riscv-tools-spacemit")))
+K1_TOOLCHAIN_ENV = "MERLIN_K1_TOOLCHAIN"
+_toolchain_install = env(K1_TOOLCHAIN_ENV, "") or _toolchains.default_install(K1_TOOLCHAIN_ENV)
+#: The install ``$MERLIN_K1_TOOLCHAIN`` names, else the contract's declared default. None when neither
+#: exists, which reads as "toolchain unavailable" (fail closed) rather than as the working directory.
+K1_TOOLCHAIN: Path | None = Path(_toolchain_install) if _toolchain_install else None
 
 # K1 X60 target: glibc Linux userspace (NOT medany/freestanding). The board's ISA carries the
 # half-precision extensions zfh/zfhmin (scalar) + zvfh/zvfhmin (VECTOR fp16) — see /proc/cpuinfo — so
@@ -189,18 +195,12 @@ def _toolchain_root() -> Path | None:
     """Resolve the directory that actually contains ``bin/clang``.
 
     Accepts either ``$MERLIN_K1_TOOLCHAIN`` pointing directly at a toolchain prefix
-    (``<prefix>/bin/clang``) OR at a parent holding the extracted
-    ``spacemit-toolchain-linux-glibc-x86_64-*`` subdir.
+    (``<prefix>/bin/clang``) OR at a parent holding an extracted vendor release, whose directory
+    naming the owning target contract declares (see :mod:`merlin.baselines.toolchain_locator`).
     """
-    if (K1_TOOLCHAIN / "bin" / "clang").is_file():
-        return K1_TOOLCHAIN
-    if K1_TOOLCHAIN.is_dir():
-        candidates = [*K1_TOOLCHAIN.glob("spacemit-toolchain-*"),
-                      *K1_TOOLCHAIN.glob("*/spacemit-toolchain-*")]
-        for sub in sorted(candidates):
-            if (sub / "bin" / "clang").is_file():
-                return sub
-    return None
+    if K1_TOOLCHAIN is None:
+        return None
+    return _toolchains.find_prefix(K1_TOOLCHAIN, K1_TOOLCHAIN_ENV, tools=("clang",))
 
 
 def toolchain_cc() -> Path | None:
@@ -1748,7 +1748,9 @@ def run_arch_probe(source: str | Path, *, timeout: int = 60) -> dict[str, Any]:
         raise K1Error(f"K1 architecture probe does not exist: {source}")
     cc = toolchain_cc()
     if cc is None:
-        raise K1Error(f"K1 cross-toolchain is unavailable under {K1_TOOLCHAIN}")
+        where = (K1_TOOLCHAIN if K1_TOOLCHAIN is not None
+                 else f"${K1_TOOLCHAIN_ENV} (unset, and no contract declares a default install)")
+        raise K1Error(f"K1 cross-toolchain is unavailable under {where}")
     if not K1_HOST or not Path(K1_SSH_KEY).is_file():
         raise K1Error("K1 SSH endpoint or key is unavailable")
     source_bytes = source.read_bytes()

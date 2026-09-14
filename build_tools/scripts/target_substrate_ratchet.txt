@@ -9,12 +9,12 @@ build_tools/scripts/make_delivery.py  # kodiak
 build_tools/scripts/rvv_chia_beam.py  # k1
 merlin/python/merlin/baselines/buddy.py  # spacemit
 merlin/python/merlin/baselines/executorch.py  # spacemit
-merlin/python/merlin/baselines/executorch_session.py  # k1, spacemit
+merlin/python/merlin/baselines/executorch_session.py  # k1
 merlin/python/merlin/baselines/exo.py  # spacemit
 merlin/python/merlin/baselines/ggml.py  # spacemit
 merlin/python/merlin/baselines/tvm.py  # k1, spacemit
 merlin/python/merlin/compare/executorch_column.py  # k1
-merlin/python/merlin/compare/executorch_packages.py  # k1, spacemit
+merlin/python/merlin/compare/executorch_packages.py  # k1
 merlin/python/merlin/compare/frozen_environment.py  # k1, spacemit
 merlin/python/merlin/compare/host_experiment.py  # k1
 merlin/python/merlin/compare/paper_ablation_generator.py  # k1
@@ -28,7 +28,6 @@ merlin/python/merlin/compile_cli.py  # k1
 merlin/python/merlin/llvmlower/opu_shim.py  # k1
 merlin/python/merlin/llvmlower/reduce_vec.py  # k1
 merlin/python/merlin/llvmlower/requant_fuse.py  # k1
-merlin/python/merlin/mining/k1.py  # spacemit
 merlin/python/merlin/mining/wholemodel_proposer.py  # k1
 merlin/python/merlin/plotting/cpu_host_beam_figures.py  # k1
 merlin/python/merlin/plotting/cpu_host_experiment_figures.py  # k1

@@ -293,13 +293,10 @@ def _toolchain_identity(root: str | Path | None = None) -> dict[str, Any]:
         raise ValueError(
             "paper package preflight requires explicit MERLIN_K1_TOOLCHAIN or --k1-toolchain")
     candidate = Path(requested).resolve()
-    roots = [candidate]
-    if candidate.is_dir():
-        roots.extend(sorted(candidate.glob("spacemit-toolchain-*")))
-        roots.extend(sorted(candidate.glob("*/spacemit-toolchain-*")))
-    resolved = next((value.resolve() for value in roots
-                     if (value / "bin" / "clang").is_file()
-                     and (value / "bin" / "clang++").is_file()), None)
+    from merlin.baselines import toolchain_locator
+    found = toolchain_locator.find_prefix(
+        candidate, "MERLIN_K1_TOOLCHAIN", tools=("clang", "clang++"))
+    resolved = found.resolve() if found is not None else None
     if resolved is None:
         raise ValueError(
             f"explicit SpacemiT toolchain contains no clang/clang++ prefix: {candidate}")

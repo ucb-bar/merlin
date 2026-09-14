@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from merlin.baselines import k1_exec, rvv_audit
+from merlin.baselines import k1_exec, rvv_audit, toolchain_locator
 from merlin.baselines.executorch_identity import (
     ExecuTorchIdentity,
     ExecuTorchIdentityError,
@@ -899,13 +899,9 @@ def _explicit_toolchain_root() -> Path:
             "paper package build requires explicit MERLIN_K1_TOOLCHAIN and "
             "MERLIN_K1_TOOLCHAIN_ROOT")
     candidate = Path(requested).resolve()
-    roots = [candidate]
-    if candidate.is_dir():
-        roots.extend(sorted(candidate.glob("spacemit-toolchain-*")))
-        roots.extend(sorted(candidate.glob("*/spacemit-toolchain-*")))
-    root = next((value.resolve() for value in roots
-                 if (value / "bin" / "clang").is_file()
-                 and (value / "bin" / "clang++").is_file()), None)
+    found = toolchain_locator.find_prefix(
+        candidate, "MERLIN_K1_TOOLCHAIN", tools=("clang", "clang++"))
+    root = found.resolve() if found is not None else None
     if root is None:
         raise ExecuTorchSessionError(
             f"explicit MERLIN_K1_TOOLCHAIN contains no clang/clang++ prefix: {candidate}")
