@@ -37,6 +37,16 @@ def test_the_config_is_the_derived_address_space() -> None:
     assert "dram_bandwidth" in derived.not_modelled
 
 
+def test_the_bridge_geometry_is_the_same_facts_as_the_config() -> None:
+    from merlin.baselines.voyager import geometry_for
+
+    config = accelerator_config_for(TARGET).fields
+    geometry = geometry_for(TARGET)
+    assert geometry.dim == config["pe_array_size"][0] == config["weight_buffer_size"]
+    assert geometry.spad_rows * geometry.spad_row_bytes == config["scratchpad_size"]
+    assert geometry.acc_rows == config["accum_buffer_size"]
+
+
 def test_a_missing_store_is_refused_not_defaulted() -> None:
     facts = {"facts": {"arrays": [{"name": "mesh", "rows": 16, "cols": 16}], "memories": [],
                        "datapaths": []}}

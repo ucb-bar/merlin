@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-__all__ = ["DerivedConfig", "VoyagerConfigError", "accelerator_config_for"]
+__all__ = ["DerivedConfig", "VoyagerConfigError", "accelerator_config_for", "geometry_for"]
 
 
 class VoyagerConfigError(ValueError):
@@ -103,3 +103,18 @@ def accelerator_config_for(target: str, *, facts: dict[str, Any] | None = None) 
         "double_buffered_l2": "Voyager default (True): a scheduling choice of the compiler under test",
     }
     return DerivedConfig(target=target, fields=fields, sources=sources, not_modelled=not_modelled)
+
+
+def geometry_for(target: str, *, facts: dict[str, Any] | None = None):
+    """The :class:`merlin.baselines.voyager_schedule.Geometry` a lowered Voyager schedule is laid out
+    on, from the same derived address space as :func:`accelerator_config_for` -- so the machine
+    Voyager planned for and the rows the bridge addresses are one set of facts."""
+    from .voyager_schedule import Geometry
+
+    derived = accelerator_config_for(target, facts=facts)
+    f = derived.fields
+    rows, cols = f["pe_array_size"]
+    if rows != cols:
+        raise VoyagerConfigError(f"{target}: a {rows}x{cols} array has no single block edge")
+    return Geometry(dim=int(rows), spad_rows=int(f["input_buffer_size"]),
+                    spad_row_bytes=int(f["bank_width"]), acc_rows=int(f["accum_buffer_size"]))

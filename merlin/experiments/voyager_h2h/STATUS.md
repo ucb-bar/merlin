@@ -33,6 +33,14 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   lowered output differs from the quantized reference (max |d| = 0.0156). This is concession C2:
   on Gemmini the partial sums combine in the int32 accumulator instead.
 
+- **First Voyager-scheduled kernel runs on Gemmini (L2).** `scripts/build_bridge_package.py` built a
+  package whose `build_trace` replays the pinned compiler's schedule for A2_single_tile_matmul
+  (2 block loads, 1 preload, 1 compute, 1 store; lowered arithmetic self-checked with numpy). Through
+  `merlin.targetgen.oot_runner --simulator spike`: status pass -- contract, all four entrypoints, the
+  command-buffer semantic check, and the spike+libgemmini functional oracle. Control: the certified
+  reference package passes the same capsule the same way. Spike's `cycles` (53 vs 52) is instret + 4,
+  not timing, and is not a comparison.
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
