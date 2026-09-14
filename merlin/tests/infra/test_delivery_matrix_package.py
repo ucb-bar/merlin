@@ -309,3 +309,20 @@ def test_no_start_small_advice_when_every_image_costs_the_same_days():
     brd, man = _manifest([a, b])
     txt = md._readme(brd, man)
     assert "start with `a.elf`" not in txt
+
+
+def test_firesim_evidence_names_the_board_it_ran_on_or_refuses(tmp_path):
+    """The results files do not record their hardware, and the README quotes its bitstream and vector
+    length beside the numbers -- so both come from a named registry entry, and an unnamed, unknown or
+    bitstream-less board refuses the package rather than attributing the numbers to a guessed device."""
+    md = _load_packager()
+    brd, why = md._firesim_evidence_board(None, tmp_path)
+    assert brd is None and "--firesim-board" in why
+    brd, why = md._firesim_evidence_board("no_such_board", tmp_path)
+    assert brd is None and "not in the board registry" in why
+    bare = next(n for n, b in boards.BOARDS.items() if not b.bitstream)
+    brd, why = md._firesim_evidence_board(bare, tmp_path)
+    assert brd is None and "bitstream" in why
+    measured = next(n for n, b in boards.BOARDS.items() if b.bitstream)
+    brd, why = md._firesim_evidence_board(measured, tmp_path)
+    assert why is None and brd is boards.BOARDS[measured]

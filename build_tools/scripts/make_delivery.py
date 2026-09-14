@@ -1046,6 +1046,11 @@ def main(argv=None) -> int:
                     help="the target's own SDK checkout. REQUIRED for a board whose console is its "
                          "own UART: the UART address and the clock rates its baud divisor depends on "
                          "are derived from that SDK's headers rather than hardcoded here.")
+    ap.add_argument("--firesim-board", default=None,
+                    help="the board (a registry entry declaring its `bitstream`) whose FireSim runs "
+                         "produced the results in $MERLIN_EXT_FIRESIM_BUILDS. Required when that "
+                         "directory has results for a packaged model; defaults to "
+                         "$MERLIN_FIRESIM_EVIDENCE_BOARD (process env or .env).")
     a = ap.parse_args(argv)
 
     if a.refresh:
@@ -1394,6 +1399,12 @@ def main(argv=None) -> int:
     # rather than pointed at one developer's home directory.
     _fs = os.environ.get("MERLIN_EXT_FIRESIM_BUILDS") or _dotenv().get("MERLIN_EXT_FIRESIM_BUILDS")
     fs_dir = Path(_fs) if _fs else None
+    # WHICH hardware produced those results: the results files do not record it, and the README quotes
+    # its bitstream and vector length as facts about them. Resolved on the first model that actually has
+    # evidence, so a package without any never asks.
+    fs_board_name = (a.firesim_board or os.environ.get("MERLIN_FIRESIM_EVIDENCE_BOARD")
+                     or _dotenv().get("MERLIN_FIRESIM_EVIDENCE_BOARD"))
+    fs_board = None
     for model in (models if fs_dir else []):
         f = fs_dir / f"results_{model}.json"
         if not f.is_file():
@@ -1407,7 +1418,13 @@ def main(argv=None) -> int:
         if not keep:
             continue
         by = {r["harts"]: r for r in keep}
-        ent = {"bitstream": "alveo_u250_firesim_dual_saturn_v256d128", "vlen": 256, "runs": keep}
+        if fs_board is None:
+            fs_board, why = _firesim_evidence_board(fs_board_name, fs_dir)
+            if fs_board is None:
+                print(f"[make_delivery] {why}", file=sys.stderr)
+                return 2
+        ent = {"board": fs_board.name, "bitstream": fs_board.bitstream, "vlen": fs_board.vlen,
+               "runs": keep}
         if 1 in by and 2 in by and by[1]["cycles"] and by[2]["cycles"]:
             ent["speedup_1_to_2_harts"] = round(by[1]["cycles"] / by[2]["cycles"], 3)
             # Prefer an explicitly recorded verdict over inferring one from stored outputs: a results
@@ -1818,6 +1835,28 @@ def _git_sha() -> str:
         return "unknown"
 
 
+def _firesim_evidence_board(name: str | None, fs_dir: Path):
+    """``(board, None)`` for the board whose FireSim runs produced the results in ``fs_dir``, else
+    ``(None, reason)``.
+
+    The package quotes that board's bitstream and vector length beside the numbers, so they come from its
+    registry entry -- named by the operator, never assumed. Results attributed to the wrong hardware are
+    worse than none (they get cited), so an unnamed board, an unknown one, or one that declares no
+    ``bitstream`` refuses the package instead.
+    """
+    if not name:
+        return None, (f"FireSim results found in {fs_dir}, but nothing says which hardware produced them: "
+                      f"pass --firesim-board <board> (or set MERLIN_FIRESIM_EVIDENCE_BOARD) naming the "
+                      f"board-registry entry whose `bitstream` they ran on")
+    brd = boards.BOARDS.get(name)
+    if brd is None:
+        return None, f"--firesim-board {name!r} is not in the board registry: {sorted(boards.BOARDS)}"
+    if not brd.bitstream:
+        return None, (f"board {name!r} declares no `bitstream`, so it cannot be the hardware FireSim "
+                      f"results were measured on")
+    return brd, None
+
+
 def _provenance(no_spike: bool, no_spike_models: set, no_spike_backends: set = frozenset()) -> str:
     """One line saying what actually happened to the binaries in THIS package.
 
@@ -1829,7 +1868,7 @@ def _provenance(no_spike: bool, no_spike_models: set, no_spike_backends: set = f
     matrix-unit image of a model whose RVV image was simulated here leaves this line true of most of the
     package and false of one row, so the row is named.
     """
-    rtl = ("FireSim (our own Saturn RTL, whole model, bit-exact vs the W8A8 reference)")
+    rtl = ("FireSim (our own SoC's RTL, whole model, bit-exact vs the W8A8 reference)")
     if no_spike:
         return f"{rtl}; these binaries were built and ELF-audited but NOT simulated"
     spike = "spike (functional, at the board's VLEN)"
@@ -1924,8 +1963,8 @@ config file: `vlenb 64` is **VLEN = 512 bits**, and your `vlmax_e8 64` / `vlmax_
 what 512 predicts. Everything here is built for that.
 
 **We could not reproduce the trap in any simulator**, and that is worth saying plainly rather than
-implying the fix is tested: neither spike nor the Saturn RTL on FireSim enforces `mstatus.VS`, so both
-ran the broken image perfectly. Your two `mtval` values are the only direct evidence that exists, which
+implying the fix is tested: neither spike nor the vector RTL we run on FireSim enforces `mstatus.VS`, so
+both ran the broken image perfectly. Your two `mtval` values are the only direct evidence that exists, which
 is why they mattered so much. Every image here now reports the state itself — look for
 `METRIC hart<N>_mstatus_vs`. A `2` or `3` means Zephyr is managing vector state; a `0` would mean we
 are back where we started.
@@ -2365,8 +2404,8 @@ only, and the table says so.
         firesim_doc = ("""\
 ## What the same code did on real RTL (not a simulator)
 
-These models also ran on **FireSim**, executing the Saturn RTL on an FPGA — our own SoC, whole model,
-cycle-accurate. Bitstream `%s`, **vLen=256**.
+These models also ran on **FireSim**, executing our own SoC's RTL on an FPGA — whole model,
+cycle-accurate. Bitstream `%s`, **vLen=%s**.
 
 These are *separate images*, not the ELFs in this package: a FireSim build targets that SoC at its own
 vector length, so it cannot be the same binary as one built for your chip. What carries over is the
@@ -2383,7 +2422,8 @@ model, the lowering and the schedule — the compiled arithmetic — not the ima
 This is *not* a claim about your chip's clock or memory system — different SoC, different frequency.
 What it does establish is that the arithmetic holds up on real hardware rather than only in a
 functional simulator, and it is where a multicore split gets its first honest test.
-""" % (list(fs.values())[0]["bitstream"], "\n".join(rows_fs), "\n".join(extra) or "", caveat))
+""" % (list(fs.values())[0]["bitstream"], list(fs.values())[0].get("vlen") or "unrecorded",
+       "\n".join(rows_fs), "\n".join(extra) or "", caveat))
     else:
         firesim_doc = ""
     simulated = any(b.get("spike_cycles") is not None for b in manifest["binaries"])
@@ -2407,7 +2447,7 @@ functional simulator, and it is where a multicore split gets its first honest te
   not, and `METRIC cycles` will differ because it is a different chip. Grading reads the `OUT` line, so
   neither affects PASS/FAIL.""" % (which, brd.vlen or 128, same_image) if simulated else """\
 - **Did NOT run these exact binaries through a functional simulator.** The lowering they were built
-  from is validated on stronger evidence — the same models, same schedule, executing our own Saturn
+  from is validated on stronger evidence — the same models, same schedule, executing our own SoC's
   RTL on an FPGA, bit-exact against the W8A8 reference (see above). What is specific to these
   binaries is their memory map and link, which is what the ELF audit checks. That is why there is no
   `expected_console.txt` for them: we would rather ship no reference than one we did not produce.""")

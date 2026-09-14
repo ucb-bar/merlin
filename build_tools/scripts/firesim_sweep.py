@@ -75,11 +75,14 @@ def main() -> int:
                          "nonlinears) and gate multi-tier vs golden_w8a8.npy + golden.npy")
     ap.add_argument("--report", action="store_true",
                     help="print the int8-vs-fp32 cycle/speedup table from the ledger and exit")
+    # The bitstream this sweep was written against is heterogeneous: its scalar host tile is hart 0 (a
+    # Gemmini tile) and its vector tile is hart 1 (a Saturn-OPU tile) -- hence --rvv-hart's default.
     ap.add_argument("--backend", default="scalar", choices=("scalar", "rvv"),
-                    help="scalar (Gemmini tile 0) or rvv (Saturn-OPU vector tile 1). The int8 "
-                         "throughput win lives on rvv — i8 lanes pack ~4x an f32 lane.")
+                    help="scalar (the scalar host tile, hart 0) or rvv (the vector tile, see "
+                         "--rvv-hart). The int8 throughput win lives on rvv — i8 lanes pack ~4x an "
+                         "f32 lane.")
     ap.add_argument("--rvv-hart", type=int, default=1,
-                    help="hart the rvv model object runs on (Saturn-OPU tile = hart 1)")
+                    help="hart the rvv model object runs on (the vector tile's hart)")
     # Routing the contractions to a matrix unit is a THIRD thing, orthogonal to --backend: the host
     # core still runs everything the unit does not take, so the image is an rvv (or scalar) image
     # that additionally dispatches to the unit. Both names are required together and neither has a
