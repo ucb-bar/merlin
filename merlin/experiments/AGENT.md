@@ -8,6 +8,8 @@ In-repo experiments + benchmark harnesses. They **consume** merlin (add `merlin/
 - Benchmark harnesses: `capsule_bench/` (the multi-target capsule benchmark — six targets, one
   harness), `agent_bench/` (target-agnostic reference scaffold), `gemmini_perf_bench/`,
   `muon_perf_bench_v0/`, `targetgen_evals/` (import-isolated; 0 real runs — do not cite it).
+- Cross-compiler studies: `llm_kernel_vs_compiler_v0/`, `voyager_h2h/` (merlin vs the Voyager
+  compiler, same-hardware and home-turf planes).
 
 ## What lives here (curated inputs only)
 - Task specs, `input_bundles/`, method specs, per-target guides, and the harness drivers that run them.
