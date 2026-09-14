@@ -1,5 +1,7 @@
 # AGENT.md — merlin/experiments/voyager_h2h
 
+Status: active — merlin vs the Voyager compiler on three planes; what is verified is in `STATUS.md`.
+
 ## Purpose
 
 Head-to-head of merlin against the Voyager compiler (github.com/jeffreyyu0602/voyager-compiler,
