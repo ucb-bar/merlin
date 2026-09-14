@@ -65,7 +65,6 @@ entries:
     status: triaged
     owner: targetgen
     items:
-      - merlin/python/merlin/targetgen/heavy_oracles.py
       - merlin/python/merlin/targetgen/oot_runner.py
       - merlin/python/merlin/targetgen/baremetalc_corroborate.py
       - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
@@ -182,21 +181,19 @@ entries:
       - merlin/python/merlin/kernels/framework_contracts/__init__.py
       - merlin/python/merlin/kernels/ingest/exo.py
       - merlin/python/merlin/kernels/markers.py
-      - merlin/python/merlin/runtime/backends/zephyr_model.py
-      - merlin/python/merlin/runtime/boards.py
       - merlin/python/merlin/targetgen/corpora.py
       - merlin/python/merlin/targetgen/rtl/introspect.py
       - merlin/python/merlin/targetgen/rtl/mlc_bridge.py
-      - build_tools/scripts/firesim_sweep.py
-      - build_tools/scripts/make_delivery.py
     why: >-
       Read line by line, and these DO decide behaviour. Five kinds: environment-variable names
-      (`MERLIN_SATURN_REPO`, `MERLIN_GEMMINI_SPIKE`, `MERLIN_SATURN_VERILATOR`); table keys a lookup
-      indexes by (`firesim_dual_saturn` in the board table, `saturn_opu_mxv256d128` in the OPU id map,
-      `saturn_vec` seeding the backend registry); emitted-symbol patterns a matcher tests against
-      (`gemmini_extended_compute_preloaded`, `replace_gemmini_calls`); elaborated-config names
-      (`GemminiRocketConfig`, `MultiSaturnV256D128ShuttleConfig`); and directory/framework identifiers
-      (`gemmini_perf_bench`, `saturn_vectors`).
+      (`MERLIN_SATURN_REPO`, `MERLIN_GEMMINI_SPIKE`); table keys a lookup indexes by
+      (`saturn_opu_mxv256d128` in the OPU id map, `saturn_vec` seeding the backend registry);
+      emitted-symbol patterns a matcher tests against (`gemmini_extended_compute_preloaded`,
+      `replace_gemmini_calls`); elaborated-config names (`GemminiRocketConfig`); and
+      directory/framework identifiers (`gemmini_perf_bench`, `saturn_vectors`).
+      The board table closed on 2026-09-14: it is data (merlin/contract/boards.yaml), and the
+      Verilator/VCS simulator names and override variables it and the heavy oracles used are derived from
+      the board entry and the target contract.
       Each has the same shape as an overfit already closed elsewhere in this file — a fact that could
       come from a contract, a manifest or a registry, written as a literal instead. They are grouped
       because the fix is one mechanism, not fourteen: a per-kind lookup the target resolves.
