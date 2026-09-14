@@ -145,14 +145,33 @@ def _resolved_target(label: str) -> str:
         return label
 
 
+#: target -> its selected L3 engine bucket (or None). Kept apart from the per-target fit cache, whose keys the
+#: audit reads back as the set of targets it has seen.
+_SELECTED_L3: dict = {}
+
+
+def _selected_l3_engine(target: str) -> "str | None":
+    """The engine the runner's own L3 selection picks for ``target`` on this host, normalized to a fit
+    bucket -- or ``None`` when that selection cannot be made (no chipyard sim, no engine available)."""
+    try:
+        from merlin.targetgen import tier_affordability as TA
+        from merlin.targetgen.capsule_runner import chipyard_l3_selection
+        engine = (chipyard_l3_selection(_resolved_target(target)) or {}).get("engine")
+    except Exception:                              # noqa: BLE001 -- unselectable is "no choice", never a guess
+        return None
+    return TA.normalize_engine(engine) if engine else None
+
+
 def _engine_fit(target: str, cache: dict):
     """The ONE measured ``(target, engine)`` fit to price this target's capsules with, or ``None``.
 
-    ``None`` for a target with no measured certification history at all, and ``None`` -- deliberately --
-    for a target measured on SEVERAL engines: the two answers differ by more than an order of magnitude
-    (3.31 s vs 86.83 s for the same capsule), so "the cost on this target" is not a question with one
-    answer and picking either engine would be inventing the choice. Such a target is priced per engine in
-    ``measured_basis`` instead, where the reader sees both.
+    ``None`` for a target with no measured certification history at all. A target measured on SEVERAL
+    engines is priced with the fit for the engine its certification would actually run on -- the
+    runner's own L3 selection (:func:`capsule_runner.chipyard_l3_selection`), the same choice that
+    prints ``[oracle] <target> L3 engine: ...`` -- because the answers differ by more than an order of
+    magnitude (3.31 s vs 86.83 s for the same capsule) and only that engine's is the cost the run pays.
+    When no selection can be made the answer is still ``None``: picking an engine here would be
+    inventing the choice. Every engine's fit is shown in ``measured_basis`` either way.
     """
     if target not in cache:
         try:
@@ -160,8 +179,14 @@ def _engine_fit(target: str, cache: dict):
         except Exception:                          # noqa: BLE001 -- unreadable history is no history
             cache[target] = {"engines": {}, "sample_counts": {}, "unattributed_samples": 0,
                              "unsized_samples": 0}
-    fits = [f for f in cache[target]["engines"].values() if f is not None]
-    return fits[0] if len(fits) == 1 else None
+    fits = {e: f for e, f in cache[target]["engines"].items() if f is not None}
+    if len(fits) == 1:
+        return next(iter(fits.values()))
+    if len(fits) > 1:
+        if target not in _SELECTED_L3:
+            _SELECTED_L3[target] = _selected_l3_engine(target)
+        return fits.get(_SELECTED_L3[target])
+    return None
 
 
 #: What a row records when its target's tier ladder could not be resolved at all. NOT ``False``: "this

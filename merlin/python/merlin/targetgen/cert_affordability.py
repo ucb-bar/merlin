@@ -15,14 +15,15 @@ So this module is the same arithmetic with the engine restored as a first-class 
   * a FIT is per ``(target, engine)`` and never crosses either;
   * a COHORT price is the sum over the capsules that demand certification, at one engine's measured cost.
 
-THE ENGINE COMES FROM THE RECORD'S OWN ``engine`` FIELD AND FROM NOWHERE ELSE. It is tempting to recover
-it from the ``evidence`` filename, which is ``<engine>_console.log`` and is the only trace older records
-carry. That inference is WRONG, and the runner says why in its own comment: ``sim_name`` comes from the
-contract's static ``tier_sim`` map, which cannot know that a faster RTL-derived engine replaced the
-declared one at run time, so a console written by GSIM was filed under Verilator's name. Deriving the
-engine from that filename would attribute one engine's seconds to another — the exact defect this module
-exists to remove, reintroduced through the back door. A record with no ``engine`` field is
-:data:`UNATTRIBUTED`: it is COUNTED and REPORTED, never guessed at and never quietly dropped.
+THE ENGINE IS ATTRIBUTED BY ONE RULE, SHARED WITH :mod:`tier_affordability` (and through it with
+``cert_cost``): the record's own statement first (``engine``, then the other fields that name what ran),
+and only when it states none, the ``evidence`` console filename as an inference. Spellings of one engine
+fold into one bucket (``normalize_engine``). The inference has a known failure -- a run-time engine
+substitution files a console under the DECLARED engine's name -- which is why it ranks below any
+statement and why every sample records the field it was attributed from, so a fit that rests on
+inference says so (``EngineFit.to_dict()["attributed_by"]``). Measured when the rule was adopted
+(2026-09-14): on every one of the 758 records that carry both a statement and a filename, the two agree.
+A record with neither is :data:`UNATTRIBUTED`: counted and reported, never guessed at.
 
 TWO REFUSALS, inherited deliberately from ``cert_cost`` and extended to the engine axis:
 
@@ -89,19 +90,36 @@ class EngineFit:
                 "per_element_s": round(self.per_element_s, 6), "r2": round(self.r2, 4),
                 "n_samples": self.n_samples,
                 "measured_range_elements": [self.elements_min, self.elements_max],
-                "metric": self.metric, "n_sources": len(self.sources)}
+                "metric": self.metric, "n_sources": len(self.sources),
+                "attributed_by": self.attributed_by()}
+
+    def attributed_by(self) -> dict:
+        """``{record field -> n sources}``: whether this fit rests on stated engines or inferred ones."""
+        counts: dict = {}
+        for src in self.sources:
+            field = src.rpartition(_FIELD_SEP)[2] if _FIELD_SEP in src else "unknown"
+            counts[field] = counts.get(field, 0) + 1
+        return dict(sorted(counts.items()))
+
+
+#: Separates a sample's source from the record field its engine was attributed from.
+_FIELD_SEP = "<-"
+
+
+def _attribute(tier_record) -> "tuple[str | None, str]":
+    """``(engine bucket or None, the field it came from)`` -- :func:`tier_affordability.engine_attribution`."""
+    from merlin.targetgen import tier_affordability as TA
+
+    if not isinstance(tier_record, dict):
+        return None, ""
+    engine, field = TA.engine_attribution(tier_record)
+    return (None if engine == TA.ENGINE_UNATTRIBUTED else engine), field
 
 
 def engine_of(tier_record) -> "str | None":
-    """The engine a tier record STATES it ran on, or ``None`` when it states none.
-
-    Structural: the record's own field, stripped. No filename inference — see the module docstring for
-    the measured reason that inference is unsound.
-    """
-    if not isinstance(tier_record, dict):
-        return None
-    value = str(tier_record.get("engine") or "").strip()
-    return value or None
+    """The engine a tier record is attributed to -- its own statement first, then its evidence filename --
+    or ``None`` when it offers neither. See the module docstring for the rule and its known failure."""
+    return _attribute(tier_record)[0]
 
 
 def _cycle_accurate(rec) -> bool:
@@ -150,10 +168,11 @@ def _timing_by_engine(target: str, root=None, extra_roots=()) -> dict:
             secs = _seconds(rec)
             if secs is None:
                 continue
-            eng = engine_of(rec) or UNATTRIBUTED
+            eng, field = _attribute(rec)
+            eng = eng or UNATTRIBUTED
             prev = best.get(eng)
             if prev is None or secs > prev[0]:
-                best[eng] = (secs, f"{path}#{tier}@{eng}")
+                best[eng] = (secs, f"{path}#{tier}@{eng}{_FIELD_SEP}{field or 'none'}")
         for eng, val in best.items():
             out[(str(capsule), eng)] = val
 

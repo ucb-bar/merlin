@@ -11,9 +11,9 @@ FAILS against the behaviour it replaces:
     same test, to match neither engine;
   * a ``(target, engine)`` with no measured history yields ``None``, never a default, and a cohort
     priced against ``None`` has an unknown total rather than a zero one;
-  * a record that does not NAME its engine is counted and reported, never attributed by guessing at the
-    console filename -- the runner writes that filename from a static map that a run-time engine
-    substitution does not update, so the filename is evidence of what was declared, not of what ran.
+  * a record's engine follows the one attribution rule shared with ``tier_affordability``: its own
+    statement first, the console filename only as a fallback inference, and a fit reports which of the
+    two it rests on; a record with neither is counted and reported, never guessed.
 
 Plus a drift guard: over a history that is entirely one engine, this module must reproduce
 ``cert_cost.fit_for`` exactly, since the two fit the same law over the same metric.
@@ -155,23 +155,45 @@ def test_a_capsule_past_the_evidence_is_excluded_from_the_total_not_extrapolated
 # ---------------------------------------------------------------------------------------------
 # 3. an unattributed second is counted, never guessed
 # ---------------------------------------------------------------------------------------------
-def test_a_record_that_does_not_name_its_engine_is_counted_and_fits_nothing(tmp_path):
-    """Every record here carries ``evidence: <SLOW>_console.log`` and NO ``engine`` field.
-
-    Reading the engine off that filename would produce a confident, wrong fit for ``SLOW``. The runner
-    writes that name from the contract's static tier map, which a run-time engine substitution does not
-    update -- so it says what was declared, not what ran. Fail closed: no fit, and the count surfaced.
-    """
-    timing = _timings(tmp_path, [(c, None, 40.0 + 0.26 * n) for c, n in SIZES.items()])
+def test_a_statement_beats_the_filename_and_the_fit_says_what_it_rests_on(tmp_path):
+    """Every record names ``FAST`` and carries a console filename naming ``SLOW``: the statement wins."""
+    timing = _timings(tmp_path, [(c, FAST, 5.0 + 0.01 * n) for c, n in SIZES.items()])
     got = CA.fits_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=timing)
-    assert got["engines"] == {}
-    assert got["unattributed_samples"] == len(SIZES)
-    assert CA.fit_for(TARGET, SLOW, corpus_roots=[_corpus(tmp_path)], timing_root=timing) is None
+    assert set(got["engines"]) == {FAST} and got["unattributed_samples"] == 0
+    assert got["engines"][FAST].to_dict()["attributed_by"] == {"engine": len(SIZES)}
 
 
-def test_engine_of_reads_the_field_and_only_the_field():
+def test_a_record_with_only_a_filename_is_attributed_by_inference_and_says_so(tmp_path):
+    """No ``engine`` field: the filename is the fallback, and the fit reports that it rests on it."""
+    root = tmp_path / "timings"
+    for i, (capsule, n) in enumerate(SIZES.items()):
+        d = root / f"run{i}"
+        d.mkdir(parents=True, exist_ok=True)
+        tier = {"cycle_accurate": True, "timing": {"sim_active_s": 40.0 + 0.26 * n},
+                "evidence": "verilator_console.log"}
+        (d / "capsule_result.json").write_text(json.dumps({"capsule": capsule, "tiers": {"L3": tier}}),
+                                               encoding="utf-8")
+    got = CA.fits_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=root)
+    assert set(got["engines"]) == {"verilator"} and got["unattributed_samples"] == 0
+    assert got["engines"]["verilator"].to_dict()["attributed_by"] == {"evidence": len(SIZES)}
+
+
+def test_a_record_with_neither_is_counted_and_fits_nothing(tmp_path):
+    root = tmp_path / "timings"
+    for i, (capsule, n) in enumerate(SIZES.items()):
+        d = root / f"run{i}"
+        d.mkdir(parents=True, exist_ok=True)
+        tier = {"cycle_accurate": True, "timing": {"sim_active_s": 40.0 + 0.26 * n}}
+        (d / "capsule_result.json").write_text(json.dumps({"capsule": capsule, "tiers": {"L3": tier}}),
+                                               encoding="utf-8")
+    got = CA.fits_for(TARGET, corpus_roots=[_corpus(tmp_path)], timing_root=root)
+    assert got["engines"] == {} and got["unattributed_samples"] == len(SIZES)
+
+
+def test_engine_of_prefers_the_statement_then_the_filename():
     assert CA.engine_of({"engine": " gsim "}) == "gsim"
-    assert CA.engine_of({"evidence": "verilator_console.log"}) is None
+    assert CA.engine_of({"evidence": "verilator_console.log"}) == "verilator"
+    assert CA.engine_of({"engine": "gsim", "evidence": "verilator_console.log"}) == "gsim"
     assert CA.engine_of({"engine": ""}) is None
     assert CA.engine_of(None) is None
 
