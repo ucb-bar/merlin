@@ -27,7 +27,7 @@ _TARGET_DIR = merlin_dir() / "experiments" / "capsule_bench" / "targets"
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--target-dir", default="saturn_opu_rvv",
+    ap.add_argument("--target-dir", default="saturn_opu_rvv",  # target-ok: this script generates that one target's contract
                     help="the capsule-bench target directory holding the descriptor + residual")
     ap.add_argument("--facts-from", required=True,
                     help="the mlc target whose OPU state manifest the facts are read from (the same "

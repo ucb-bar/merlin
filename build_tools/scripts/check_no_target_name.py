@@ -49,13 +49,28 @@ SCAN_ROOTS = ("merlin/python/merlin", "merlin/contract", "build_tools/scripts")
 EXCLUDE_FRAGMENTS = ("/_data/",)
 INLINE_MARKER = "# target-ok:"
 
-# The concrete target names this repo ships. A core module must resolve the target at runtime, never
-# hardcode one of these. ``toy_npu`` is deliberately NOT here — it is the kept how-to reference target
-# (the onboarding example), and ``rvv`` is a generic ISA class, not a target. Read from the sibling
-# data file so the set has a single source of truth shared with the audit.
-TARGET_NAMES = frozenset({
-    "gemmini", "mx_gemmini", "atlas", "radiance", "saturn", "muon", "npu_model",  # target-ok: the set this gate hunts
-})
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import _target_roster  # noqa: E402  (sibling module, stdlib only)
+
+# The concrete target names this repo ships -- DERIVED from the registries that declare a target (see
+# _target_roster.py), never listed here. Until 2026-09-14 this was a literal set of seven, so every target
+# registered after it (gemmini_universal, saturn_opu, saturn_opu_mxv256d128, ...) passed by construction.
+#   * REFERENCE_DEFAULTS are declared targets deliberately NOT enforced: ``toy_npu`` is the kept onboarding
+#     example (``families.DEFAULT_EXAMPLE_TARGET``), not hardware. ``rvv`` is an ISA class, not a target.
+#   * RESIDUAL_NAMES are hardware names no registry declares as a target that core code must still not bake
+#     in: ``npu_model`` is the external model package one target's oracle imports.
+REFERENCE_DEFAULTS = frozenset({"toy_npu"})  # target-ok: the one unenforced reference example
+RESIDUAL_NAMES = frozenset({"npu_model"})  # target-ok: external model package, declared by no registry
+TARGET_NAMES = frozenset((_target_roster.target_names(ROOT) | RESIDUAL_NAMES) - REFERENCE_DEFAULTS)
+
+# SUBSTRATES: boards, simulators and hardware-unit names. Not targets, but a literal naming one welds shared
+# code to one machine all the same, and none was gated (measured 2026-09-14: 56 in-scope files). Each is
+# attested by a registry -- a runtime BOARDS key, a sandbox SIM_TOOLCHAINS key, an RTL-facts producer, or a
+# target contract -- and merlin/tests/infra/test_overfit_gate_regression.py fails if one stops being. A
+# file whose own path names the substrate is that substrate's module and is exempt; the existing debt in
+# generic files is recorded per file in target_substrate_ratchet.txt, which may only shrink.
+SUBSTRATE_NAMES = frozenset({"k1", "spacemit", "kodiak", "cyclotron", "opu"})  # target-ok: the set hunted
+SUBSTRATE_RATCHET = ROOT / "build_tools" / "scripts" / "target_substrate_ratchet.txt"
 
 
 def _is_word_char(c: str) -> bool:
@@ -100,7 +115,8 @@ class _TargetNameVisitor(ast.NodeVisitor):
     """Collect (lineno, name, snippet) for string-literal Constants that name a target, skipping the
     docstring Constant of every module/class/function (documentation is allowed to name a target)."""
 
-    def __init__(self) -> None:
+    def __init__(self, names: frozenset[str] | None = None) -> None:
+        self.names = TARGET_NAMES if names is None else names
         self.docstrings: set[int] = set()      # id() of Constant nodes that are docstrings
         self.hits: list[tuple[int, str, str, int]] = []   # + end_lineno, so the marker may sit anywhere
         #                                                   inside a multi-line implicit concatenation
@@ -129,7 +145,7 @@ class _TargetNameVisitor(ast.NodeVisitor):
 
     def visit_Constant(self, node: ast.Constant) -> None:
         if isinstance(node.value, str) and id(node) not in self.docstrings:
-            for name in TARGET_NAMES:
+            for name in sorted(self.names):
                 if _contains_identifier(node.value, name):
                     end = getattr(node, "end_lineno", None) or node.lineno
                     self.hits.append((node.lineno, name, node.value.strip()[:60], end))
@@ -137,7 +153,7 @@ class _TargetNameVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _scan_file(path: Path) -> list[tuple[int, str, str]]:
+def _scan_file(path: Path, names: frozenset[str] | None = None) -> list[tuple[int, str, str]]:
     """Target-name literals in ``path`` not silenced by an inline ``# target-ok:`` marker.
 
     The marker is honoured on ANY line of the offending constant, not only its first. Python reports an
@@ -151,7 +167,7 @@ def _scan_file(path: Path) -> list[tuple[int, str, str]]:
         tree = ast.parse(src, filename=str(path))
     except SyntaxError:
         return []
-    v = _TargetNameVisitor()
+    v = _TargetNameVisitor(names)
     v.visit(tree)
     if not v.hits:
         return []
@@ -191,6 +207,57 @@ def _iter_targets(staged: bool) -> list[Path]:
 
 def _allowed(relstr: str, exact: set[str], prefixes: list[str]) -> bool:
     return relstr in exact or any(relstr.startswith(p) for p in prefixes)
+
+
+def _path_tokens(relstr: str) -> set[str]:
+    """The identifier tokens of a repo path: ``build_tools/scripts/k1_int8_ab.py`` -> {..., "k1", "int8", ...}."""
+    out = relstr.lower()
+    for sep in ("/", ".", "-"):
+        out = out.replace(sep, "_")
+    return {t for t in out.split("_") if t}
+
+
+def _substrate_owned(relstr: str, name: str) -> bool:
+    """True when the path itself names the substrate: the file is that board's/simulator's own module."""
+    return name in _path_tokens(relstr)
+
+
+def _load_substrate_ratchet() -> set[str]:
+    if not SUBSTRATE_RATCHET.is_file():
+        return set()
+    out = set()
+    for line in SUBSTRATE_RATCHET.read_text(encoding="utf-8").splitlines():
+        entry = line.split("#", 1)[0].strip()
+        if entry:
+            out.add(entry)
+    return out
+
+
+def substrate_hits(relstr: str) -> list[tuple[int, str, str]]:
+    """Substrate-name literals in a generic file (the substrate's own modules are exempt)."""
+    return [h for h in _scan_file(ROOT / relstr, SUBSTRATE_NAMES) if not _substrate_owned(relstr, h[1])]
+
+
+def substrate_report(targets: list[Path]) -> tuple[list[str], list[str], int]:
+    """(violations, healed ratchet entries, ratcheted files still carrying debt) over ``targets``."""
+    ratchet = _load_substrate_ratchet()
+    violations: list[str] = []
+    healed: list[str] = []
+    carried = 0
+    for rel in targets:
+        relstr = rel.as_posix()
+        hits = substrate_hits(relstr)
+        if relstr in ratchet:
+            if hits:
+                carried += 1
+            else:
+                healed.append(relstr)
+            continue
+        for lineno, name, snippet in hits:
+            violations.append(f"{relstr}:{lineno}: hardcoded substrate name {name!r} in literal {snippet!r} "
+                              f"(derive it from the board/simulator registry or the target contract, or add "
+                              f"`# target-ok: <why>`)")
+    return violations, healed, carried
 
 
 # --- the coupling scan: what the literal check above cannot see ------------------------------------
@@ -359,6 +426,9 @@ def main(argv: list[str] | None = None) -> int:
                               f"in literal {snippet!r} (resolve the target at runtime, add "
                               f"`# target-ok: <why>`, or allowlist the file)")
 
+    sub_violations, healed, carried = substrate_report(targets)
+    violations.extend(sub_violations)
+
     if stop_hook:
         if violations:
             print(json.dumps({"decision": "block",
@@ -378,10 +448,17 @@ def main(argv: list[str] | None = None) -> int:
     # Report the exemptions as DEBT, not as part of a pass. An allowlist announced on an "ok" line reads
     # as "nothing to see"; it is 36 places where the core is welded to a specific target.
     n_coupling = len(coupling_inventory(staged))
-    print(f"[  ok] no-target-name: no stray target-name literal in scope.")
+    print(f"[  ok] no-target-name: no stray target-name literal in scope "
+          f"({len(TARGET_NAMES)} derived target names, {len(SUBSTRATE_NAMES)} substrates).")
+    if healed:
+        print(f"[note] {len(healed)} file(s) in {SUBSTRATE_RATCHET.name} no longer name a substrate; delete "
+              f"their lines: {', '.join(healed)}")
     print(f"[DEBT] {n_allow} allowlisted file(s) still name a target, and {n_coupling} dependency(ies) on "
           f"a specific target sit in modules whose own name claims to be generic (--coupling to list). "
           f"Both counts may only fall.")
+    if carried:
+        print(f"[DEBT] {carried} generic file(s) still name a board/simulator/unit ({SUBSTRATE_RATCHET.name}); "
+              f"the list may only shrink.")
     return 0
 
 

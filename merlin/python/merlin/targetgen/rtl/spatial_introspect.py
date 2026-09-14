@@ -534,7 +534,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Emit a spatial tensor-tile (OPU) DERIVED fact bundle. Prints Markdown; --json prints "
                     "the raw provenance-tagged bundle; --dump writes the purgeable facts.json cache.")
-    ap.add_argument("target", help="the OPU target id (e.g. saturn_opu_mxv256d128 / saturn_opu_v128d64)")
+    ap.add_argument("target", help="the OPU target id (e.g. saturn_opu_mxv256d128 / saturn_opu_v128d64)")  # target-ok: help-text example
     ap.add_argument("--json", action="store_true", help="print the raw provenance-tagged bundle as JSON")
     ap.add_argument("--dump", action="store_true", help="write the purgeable facts.json cache")
     a = ap.parse_args(argv)

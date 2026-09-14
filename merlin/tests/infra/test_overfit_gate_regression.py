@@ -157,3 +157,64 @@ def test_benign_file_passes_all_three_gates(tmp_path):
     assert a._scan_file(benign) == []
     assert t._scan_file(benign) == [] and t._scan_coupling(benign) == []
     assert r._scan_file(benign) == []
+
+
+# --------------------------------------------------------------------------- derived target roster
+
+
+def _registries(tmp_path: Path) -> None:
+    _write(tmp_path, "merlin/targets/foo_hw/contracts/target_contract.yaml", "name: foo_hw\nversion: 1\n")
+    _write(tmp_path, "merlin/experiments/capsule_bench/targets/bar/target_experiment.yaml",
+           "target: bar_hw\nnested:\n  target: not_an_identity\n")
+    _write(tmp_path, "merlin/contract/hardware_pins.yaml",
+           "pins:\n  p1:\n    targets: [baz_hw, qux_hw]\n  p2:\n    targets:\n      - blk_hw\n")
+    _write(tmp_path, "merlin/contract/capsules/profiles/zed_hw.hidden.yaml", "{}\n")
+    _write(tmp_path, "merlin/contract/capsules/profiles/_perf.yaml", "{}\n")
+
+
+def test_target_roster_is_derived_from_every_declaring_registry(tmp_path):
+    """The gate's name set is DISCOVERED: registering a target anywhere extends it with no edit."""
+    roster = _load_gate("_target_roster")
+    _registries(tmp_path)
+    assert roster.target_names(tmp_path) == {"foo_hw", "bar_hw", "baz_hw", "qux_hw", "blk_hw", "zed_hw"}
+
+
+def test_target_roster_fails_closed_on_a_tree_that_declares_nothing(tmp_path):
+    """An empty roster would make the gate pass every file; it must refuse instead."""
+    roster = _load_gate("_target_roster")
+    with pytest.raises(roster.RosterError):
+        roster.target_names(tmp_path)
+
+
+def test_target_name_gate_flags_a_newly_registered_target(tmp_path):
+    """A literal naming a target the old hand-written set never knew is caught once the target is declared."""
+    gate, roster = _load_gate("check_no_target_name"), _load_gate("_target_roster")
+    _registries(tmp_path)
+    planted = _write(tmp_path, "planted.py", 'MODE = "blk_hw"\n')
+    hits = gate._scan_file(planted, frozenset(roster.target_names(tmp_path)))
+    assert [name for _ln, name, _snip in hits] == ["blk_hw"]
+
+
+def test_substrate_literal_is_flagged_but_its_own_module_is_exempt(tmp_path):
+    gate = _load_gate("check_no_target_name")
+    planted = _write(tmp_path, "planted.py", 'BOARD = "kodiak"\nSIM = "cyclotron"\n')
+    assert {name for _ln, name, _snip in gate._scan_file(planted, gate.SUBSTRATE_NAMES)} == {"kodiak", "cyclotron"}
+    assert gate._substrate_owned("build_tools/scripts/k1_int8_fair_compare.py", "k1")
+    assert gate._substrate_owned("merlin/python/merlin/llvmlower/passes_opu.py", "opu")
+    assert not gate._substrate_owned("merlin/python/merlin/compare/spec.py", "k1")
+
+
+def test_every_substrate_name_is_attested_by_a_registry():
+    """The substrate set is the one hand-kept list in the gate, so it must not go stale: each name has to
+    appear as a token of a BOARDS / SIM_TOOLCHAINS / RTL-facts-producer key, or in a target contract."""
+    from merlin.runtime.boards import BOARDS
+    from merlin.targetgen.rtl.facts import _ARTIFACT_PRODUCERS
+    from merlin.targetgen.sandbox.toolchain import SIM_TOOLCHAINS
+    gate = _load_gate("check_no_target_name")
+    tokens: set[str] = set()
+    for key in (*BOARDS, *SIM_TOOLCHAINS, *_ARTIFACT_PRODUCERS):
+        tokens |= set(key.lower().replace("-", "_").split("_"))
+    contracts = " ".join(p.read_text(encoding="utf-8").lower()
+                         for p in (repo_root() / "merlin" / "targets").glob("*/contracts/target_contract.yaml"))
+    stale = sorted(n for n in gate.SUBSTRATE_NAMES if n not in tokens and n not in contracts)
+    assert not stale, f"substrate name(s) no registry attests any more: {stale}"
