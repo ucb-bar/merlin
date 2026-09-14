@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 # Target op -> Merlin-owned abstract opcode (the command buffer is Merlin's; every
 # target encodes onto the same opcode set — that is what keeps metrics comparable). Only the ONE
@@ -50,7 +51,7 @@ def _shape_str(t) -> str:
     return "x".join(str(d) for d in t.get_shape()) + ":" + _dtype_str(t)
 
 
-def lower_to_runtime(module, target: str = "toy_npu", backend: str = "simulator",
+def lower_to_runtime(module, target: str = DEFAULT_EXAMPLE_TARGET, backend: str = "simulator",
                      opcodes: dict | None = None):
     """Rebuild the target module as runtime command-buffer IR.
 

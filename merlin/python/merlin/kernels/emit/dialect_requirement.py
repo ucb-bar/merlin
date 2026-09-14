@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from merlin.common import schemas
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 # Verifier conditions each known interface needs a target dialect to enforce.
 VERIFIERS: dict[str, list[str]] = {
@@ -26,7 +27,7 @@ def emit_dialect_requirement(
     source_abstraction: str,
     required_ops: Iterable[str],
     required_types: Iterable[str],
-    target: str = "toy_npu",
+    target: str = DEFAULT_EXAMPLE_TARGET,
     required_verifiers: Iterable[str] | None = None,
     lowering_target: Iterable[str] = ("command_buffer", "simulator"),
     extra: dict | None = None,

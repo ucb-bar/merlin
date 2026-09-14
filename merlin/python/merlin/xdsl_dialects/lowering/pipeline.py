@@ -22,6 +22,7 @@ from .interface_lowering import LoweringError, lower_to_interface
 from .runtime_lowering import lower_to_runtime
 from .schedule_decisions import lower_to_schedule
 from .target_lowering import lower_to_target
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 
 def load_curated_contract(target: str) -> dict:
@@ -74,7 +75,7 @@ class LoweringResult:
 def lower_module(
     input_module: Any,
     *,
-    target: str = "toy_npu",
+    target: str = DEFAULT_EXAMPLE_TARGET,
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,
@@ -148,7 +149,7 @@ def lower_repeated_rhs_matmul(
     m: int = 64,
     k: int = 128,
     n: int = 64,
-    target: str = "toy_npu",
+    target: str = DEFAULT_EXAMPLE_TARGET,
     target_contract: dict[str, Any] | None = None,
     dialect_plan: dict[str, Any] | None = None,
     backend: str | None = None,

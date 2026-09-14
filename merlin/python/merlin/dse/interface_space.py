@@ -8,9 +8,10 @@ the fixed interface for the hardware-only DSE baseline.
 from __future__ import annotations
 
 from merlin.dse.strategy import Strategy, default_strategies
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 
-def build_interface_space(target: str = "toy_npu",
+def build_interface_space(target: str = DEFAULT_EXAMPLE_TARGET,
                           variant_classes: list[str] | None = None) -> list[Strategy]:
     """Candidate interface strategies, optionally filtered to some variant classes."""
     strategies = default_strategies(target=target)
@@ -19,6 +20,6 @@ def build_interface_space(target: str = "toy_npu",
     return strategies
 
 
-def baseline_only(target: str = "toy_npu") -> list[Strategy]:
+def baseline_only(target: str = DEFAULT_EXAMPLE_TARGET) -> list[Strategy]:
     """Just the opaque baseline — the fixed interface for hardware-only DSE."""
     return [s for s in default_strategies(target=target) if s.variant_class == "baseline"]

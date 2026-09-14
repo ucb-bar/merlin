@@ -17,6 +17,7 @@ from typing import Any
 
 from .._common import HAS_XDSL
 from .interface_lowering import LoweringError
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 # --- discovered target-package dialect specs -------------------------------------------------------
 # A reference target's dialect is DATA its own package contributes (``plugin.dialect``), not a hardcoded
@@ -70,7 +71,7 @@ EXPECTED_INTERFACE_OPS = ("interface.resident_pack", "interface.matmul",
 
 
 def load_lowering_table(dialect_plan: dict[str, Any] | None = None,
-                        target: str = "toy_npu") -> dict[str, str]:
+                        target: str = DEFAULT_EXAMPLE_TARGET) -> dict[str, str]:
     """{interface op name: target op name} from a dialect_plan dict, or the target's committed plan
     (via the target registry — no hardcoded per-target table)."""
     if dialect_plan is None:
@@ -92,7 +93,7 @@ def load_dialect_plan(target: str, repo_root: str | Path | None = None) -> dict[
 
 def load_toy_dialect_plan(repo_root: str | Path | None = None) -> dict[str, Any]:
     """Back-compat alias for the toy_npu dialect plan."""
-    return load_dialect_plan("toy_npu", repo_root)
+    return load_dialect_plan(DEFAULT_EXAMPLE_TARGET, repo_root)
 
 
 if HAS_XDSL:
@@ -151,7 +152,7 @@ if HAS_XDSL:
 
 
 def lower_to_target(module, dialect_plan: dict[str, Any] | None = None,
-                    target: str = "toy_npu", spec=None):
+                    target: str = DEFAULT_EXAMPLE_TARGET, spec=None):
     """Rebuild the interface module in the target dialect.
 
     ``spec`` (a :class:`TargetSpec`) overrides the built-in reference lookup — this is how an

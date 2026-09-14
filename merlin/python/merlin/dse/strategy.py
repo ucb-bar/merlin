@@ -19,6 +19,7 @@ from merlin.dse.cost_model import evaluate_cost
 from merlin.dse.hardware_space import default_cost_model
 from merlin.dse.variants import contract_plans
 from merlin.dse.pipelines.builder import build_pipeline
+from merlin.targetgen.families import DEFAULT_EXAMPLE_TARGET
 
 
 @dataclass(frozen=True)
@@ -93,7 +94,7 @@ def evaluate_strategy(strategy: Strategy, rpv: dict, cost_model: dict | None = N
     }
 
 
-def default_strategies(target: str = "toy_npu") -> list[Strategy]:
+def default_strategies(target: str = DEFAULT_EXAMPLE_TARGET) -> list[Strategy]:
     """The four canonical strategies, expressed as pass pipelines (not an enum)."""
     pre, post = "merlin-contract,merlin-schedule", "interface-lower,toynpu-lower"
     return [
@@ -138,7 +139,7 @@ _POST = ["interface-lower", "toynpu-lower"]
 _EFFECT_ORDER = ["hw-cache", "hoist-pack", "make-resident", "defer-commit", "batch-dispatch"]
 
 
-def strategy_from_passes(effect_passes, target: str = "toy_npu",
+def strategy_from_passes(effect_passes, target: str = DEFAULT_EXAMPLE_TARGET,
                          id: str | None = None) -> Strategy:
     """Assemble a Strategy from a set of effect passes (features/variant_class derived)."""
     chosen = [p for p in _EFFECT_ORDER if p in set(effect_passes)]
