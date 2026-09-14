@@ -210,7 +210,7 @@ PROTOTYPE_CATALOG: tuple[PassInfo, ...] = (
              input_dialect="schedule", output_dialect="interface",
              obligation="boundary materialization"),
     PassInfo("merlin-lower-to-target", "target",
-             "interface ops -> a reference target dialect (toynpu/saturn)",
+             "interface ops -> a reference target dialect (toynpu/saturn)",  # target-ok: example targets named in a pass description
              "merlin.xdsl_dialects.lowering.target_lowering.lower_to_target",
              input_dialect="interface", output_dialect=TARGET_DIALECT,
              obligation="target lowering"),
