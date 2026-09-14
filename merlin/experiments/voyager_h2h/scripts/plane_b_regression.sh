@@ -29,11 +29,10 @@ setup_env() {
   # VCS's SystemC 2.3.3 front end accepts only g++ 7.3 / 9.2 / 9.5; the gcc VCS V-2023.12 bundles is
   # 13.2. Upstream documents the VCS GNU package S-2021.09 (gcc 9), which this host has inside its
   # S-2021.09 VCS install: gcc 9.2.0 + binutils 2.33.1 via its own source_me script.
+  # Exported so VCS does not substitute its bundled gcc 13. The package's source_me script is not
+  # sourced: the wrapper below names the gcc 9.2 driver directly, and that script would only put the
+  # package's binutils 2.33.1 first on PATH.
   export VG_GNU_PACKAGE="${VG_GNU_PACKAGE_OVERRIDE:-/ecad/tools/synopsys/vcs/S-2021.09-SP1-1/gnu/linux}"
-  # shellcheck disable=SC1091
-  set +u   # the vendor script reads variables that may be unset
-  source "$VG_GNU_PACKAGE/source_me_gcc9_64-shared.sh" > /dev/null
-  set -u
   # Catapult's make and HLS still use Catapult's own g++ (the Makefile names it explicitly).
   unset VCS_ARCH_OVERRIDE   # the site default forces the 32-bit VCS, which cannot load libelf
   export PYTHONPATH="$ext/voyager-interstellar-shim"   # public interstellar, nothing else
@@ -51,27 +50,43 @@ setup_env() {
   export MAX_TILES="${MAX_TILES:-1000000}"
   # Deviation 1+2: host multiarch headers; the one ac_math header Catapult 2023.1 lacks, searched last.
   export BASE_FLAGS="-idirafter $shim_dir -isystem /usr/include/x86_64-linux-gnu"
-  # Deviation 3: host multiarch C runtime start files for Catapult's bundled gcc.
-  export LDFLAGS="-B/usr/lib/x86_64-linux-gnu -L/usr/lib/x86_64-linux-gnu"
-  # Deviations 1+3 for compilers the Makefile does not drive (VCS's SystemC wrapper compile with
-  # the gcc 9.2 package): gcc's own environment variables for the host multiarch dirs.
-  export C_INCLUDE_PATH="/usr/include/x86_64-linux-gnu" CPLUS_INCLUDE_PATH="/usr/include/x86_64-linux-gnu"
-  export LIBRARY_PATH="/usr/lib/x86_64-linux-gnu"
+  # Deviation 3: host multiarch C runtime start files for Catapult's bundled gcc. The env's lib dir
+  # goes ahead of the multiarch dir: VCS's link takes LDFLAGS before its own -L, and the host's
+  # protobuf 3.21 (libprotobuf.so.32) would otherwise shadow the env's 29.3 the harness is built with.
+  export LDFLAGS="-B/usr/lib/x86_64-linux-gnu -L$env_prefix/lib -L/usr/lib/x86_64-linux-gnu"
   # Pin VCS's SystemC compiler to the gcc 9.2 package through Catapult's own ccs_vcs.mk hooks. The
-  # package's xbin/g++ unsets CPATH/C(PLUS)_INCLUDE_PATH, and vlogan spawns its own syscan with an
-  # empty -cflags, so deviation 1 reaches those compiles only through the compiler itself: a
-  # two-line wrapper that appends -idirafter <multiarch> (searched after every system directory)
-  # and execs the package's own wrapper unchanged.
-  g9="$VG_GNU_PACKAGE/gcc-9.2.0_64-shared/xbin"
+  # package's own xbin/ wrapper cannot be used as is: it forces the package's binutils 2.33.1 ahead
+  # of any user flag, and that ld rejects this host's glibc 2.39 shared objects (their .relr.dyn
+  # section postdates it), so simv does not link. VCS also puts its own bundled binutils 2.33.1
+  # first on PATH for the link. This wrapper runs the same gcc 9.2 driver the package's does, with
+  # the package's Ubuntu -B for the multiarch crt files, the host's as/ld (binutils 2.42) forced
+  # first on PATH (gcc finds its own cc1plus/collect2 through its install prefix, as/ld through
+  # PATH), and deviation 1's multiarch include dir searched after every system directory. vlogan
+  # spawns its own syscan with an empty -cflags, so the compiler is the only place that include
+  # reaches every compile.
+  g9="$VG_GNU_PACKAGE/gcc-9.2.0_64-shared/bin"
   g9wrap="$ext/voyager-gcc9-multiarch"
   mkdir -p "$g9wrap"
   for tool in gcc g++; do
-    printf '#!/bin/sh\nexec %s "$@" -idirafter /usr/include/x86_64-linux-gnu\n' "$g9/$tool" \
-      > "$g9wrap/$tool"
+    printf '#!/bin/sh\nunset GCC_EXEC_PREFIX CPATH CPLUS_INCLUDE_PATH C_INCLUDE_PATH\nPATH=/usr/bin:$PATH; export PATH\nexec %s -B/usr/lib/x86_64-linux-gnu "$@" -idirafter /usr/include/x86_64-linux-gnu\n' \
+      "$g9/$tool" > "$g9wrap/$tool"
     chmod +x "$g9wrap/$tool"
   done
   export VCS_EXEC_VLOGAN="vlogan -cpp $g9wrap/g++ -cc $g9wrap/gcc"
-  export VCS_EXEC_SYSCAN="syscan -cpp $g9wrap/g++ -cc $g9wrap/gcc"
+  # Deviation 9: the RTL testbench compiles Voyager's SystemC design too (Catapult's sysc_sim.h
+  # includes src/Accelerator.h), and that source needs the Connections generation it was written
+  # against: src/Tieoff.h assigns a T to Out<T>::dat (DIRECT_PORT, the pre-HLS default since 2.2.0)
+  # and Catapult 2023.1's own Connections 1.3.0/1.4 Fifo writes a literal 0 into a struct message
+  # (fixed in 1.5.0). The testbench's syscan compiles therefore see public Connections 2.2.0 first;
+  # HLS keeps Catapult's own copy. Pinned by commit, fail closed otherwise.
+  conn_dir="$ext/hlslibs-matchlib_connections"
+  conn_pin=6a3003b85c251c88dd2f02881bb98ce71f9aa42b   # hlslibs/matchlib_connections tag 2.2.0
+  if [ "$(git -C "$conn_dir" rev-parse HEAD 2>/dev/null)" != "$conn_pin" ]; then
+    echo "need $conn_dir at $conn_pin (git clone https://github.com/hlslibs/matchlib_connections;" \
+         "git checkout 2.2.0)" >&2
+    exit 2
+  fi
+  export VCS_EXEC_SYSCAN="syscan -cpp $g9wrap/g++ -cc $g9wrap/gcc -cflags -I$conn_dir/include"
   export VCS_EXEC_VCS="vcs -cpp $g9wrap/g++ -cc $g9wrap/gcc"
   # As upstream env.sh: the env's newer libstdc++ first, Catapult's SystemC after it.
   export LD_LIBRARY_PATH="$env_prefix/lib:$catapult/shared/lib/Linux/gcc-10.3.0-64:${LD_LIBRARY_PATH:-}"
@@ -114,8 +129,8 @@ case "$cmd" in
     # Quoted exports for `source <(plane_b_regression.sh env-sh)`; never includes HF_TOKEN.
     for v in PATH CONDA_PREFIX CATAPULT_ROOT VCS_HOME VG_GNU_PACKAGE PYTHONPATH TMPDIR HF_HOME \
              DATATYPE IC_DIMENSION OC_DIMENSION TECHNOLOGY CLOCK_PERIOD MAX_TILES BASE_FLAGS \
-             LDFLAGS C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH VCS_EXEC_VLOGAN \
-             VCS_EXEC_SYSCAN VCS_EXEC_VCS LD_LIBRARY_PATH PROJECT_ROOT CODEGEN_DIR; do
+             LDFLAGS VCS_EXEC_VLOGAN VCS_EXEC_SYSCAN VCS_EXEC_VCS LD_LIBRARY_PATH PROJECT_ROOT \
+             CODEGEN_DIR; do
       printf 'export %s=%q\n' "$v" "${!v:-}"
     done
     echo "unset VCS_ARCH_OVERRIDE" ;;
