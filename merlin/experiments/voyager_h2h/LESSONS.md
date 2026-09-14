@@ -111,6 +111,24 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
 - **Merlin's way.** Use a public harvest as the coverage requirement, the same derived-denominator
   discipline as the capsule corpus.
 
+## Generalization: can Voyager's compiler target merlin's other accelerators?
+
+Checked the only way that does not presume the answer: ask merlin's target-agnostic derivation
+(`baselines.voyager.accelerator_config_for`, built on `targetgen.address_space`) to describe each
+target in Voyager's machine-model terms, from that target's own RTL facts (2026-09-14).
+
+| Target | What its facts say | Voyager `AcceleratorConfig` |
+|---|---|---|
+| Gemmini (systolic, RoCC) | 16x16 mesh, 256 KiB 4-bank scratchpad, 64 KiB accumulator | derived. It still took a ~1.2k-line bridge, six concessions (C1-C6), and Voyager's own `--conv2d_im2col` before whole-model ResNet-50 compiled at all |
+| Atlas NPU (own ISA, matrix registers) | 32x32 mesh; one 1.5 MB 6-bank vector memory whose role (scratchpad vs register file) is not classified; operands reach the MXU through matrix registers driven by an instruction stream | refused: no store that maps to Voyager's L2 scratchpad. Even with one assigned by hand, Voyager emits parameters for ITS deserializer and has no instruction selection, so Atlas needs a new backend, not a bridge |
+| Radiance (SIMT GPU) | 16 lanes/warp, 128 KiB shared memory, no systolic array | refused: no array edge to derive. Voyager's tiler pins an IC x OC spatial partition at level 0 (weight-stationary array); warps, divergence, register blocking and shared-memory banking have no representation |
+
+So Voyager generalizes across its own template's DESIGN SPACE (array size, buffers, datatypes -- its
+DSE), not across ARCHITECTURE CLASSES. That is by design, and it is the axis on which merlin is
+distinct: the same derivation that fed Voyager a Gemmini machine also serves merlin's own backends for
+all three targets. Co-design also drifts on its own clock: Voyager's latest compiler no longer emits
+the IR its own public hardware release consumes (see STATUS.md).
+
 ## Lessons to NOT adopt (their weaknesses are our differentiators)
 
 | Voyager practice | Why merlin keeps its own |
