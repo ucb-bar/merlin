@@ -24,6 +24,15 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   `full_tiles * count / actual_tiles`. Recorded as a caveat on every paper entry in
   `perf_reference_targets.yaml`.
 
+- **Schedule replay.** `merlin.baselines.voyager_ir.replay` evaluates Voyager's scalar control flow
+  and yields the ordered load/store/wait/compute trace with every operand resolved to slot and byte
+  address; Voyager's own counting-semaphore discipline balances to zero on all four probe exports
+  (64^3; 16x64x64; 128x256x64; 256x512x256). Observed: resident operands are reloaded only when their
+  tile index changes (128x256x64: 4 input loads vs 16 weight loads), and a K split is combined by a
+  second commit whose tail is `dequantize -> aten::add` in bf16 (256x512x256) -- the one probe whose
+  lowered output differs from the quantized reference (max |d| = 0.0156). This is concession C2:
+  on Gemmini the partial sums combine in the int32 accumulator instead.
+
 ## Open
 
 - Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
