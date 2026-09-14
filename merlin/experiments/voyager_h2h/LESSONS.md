@@ -18,8 +18,12 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
   exactly: in 128x256x64, 4 input loads against 16 weight loads.
 - **What it bought on Gemmini.** With identical packing, the bridge retires fewer instructions than
   the certified reference package: C0 215 vs 224, GM1 6,290 vs 6,538 (Spike instret). The reason is
-  that Voyager loads the resident input once, where the reference reloads it per (k, n) block. The L3
-  cycle verdict is pending in STATUS.md.
+  that Voyager loads the resident input once, where the reference reloads it per (k, n) block. At L3
+  the reference backend with only that change (`gemmini_xdsl_rtl_v1_l1`, one guard) takes C0/C1 from
+  1,547 to 1,108 cycles (-28%), 5 cycles under Voyager's own schedule (1,113).
+- **What not to copy.** The slot ROTATION. On a deep K (GM0/GM1) Voyager's two slots make each load
+  wait for the compute still reading the slot it overwrites; merlin's one-region-per-block placement is
+  1.38-1.42x faster there. Rotate only when capacity forces it; the derived capacity says when.
 - **Merlin today.** Each backend hand-writes its loop nest (`_matmul_trace` K→N→M). There is no
   double-buffer transform, and `plan_arena` is analysis-only.
 - **Merlin's way.** Add a target-agnostic *block-spec pipeline* pass over the interface IR: grid,
@@ -111,6 +115,21 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
 - **Merlin's way.** Use a public harvest as the coverage requirement, the same derived-denominator
   discipline as the capsule corpus.
 
+### L10. Order loads inside a K step so the streamed block arrives first; run one step ahead — measured
+
+- **Voyager.** Its double-buffered pipeline issues the next K step's copies before the current
+  step's compute, and within a step it copies the streamed input tile before the weight tile. Replayed
+  on Gemmini (fence-corrected bridge) this is its whole short-capsule lead over merlin v1_l1: A3/B0-B2
+  by 20 cycles (~5.5%), C2-C4 by 2.
+- **What we measured.** Not hoisting: issuing every load first (`v1_hoist`) moved A3 by one cycle and
+  made C0 7% slower (1,108 -> 1,186), because the loads crowd the queues ahead of the first compute.
+  The order is what matters: input block before weight block, one K step ahead (`v1_la1`) takes A3 to
+  359, B0 to 326 and C2 to 459, below Voyager's 365, 330 and 469.
+- **Merlin's way.** Make lookahead depth and intra-step operand order knobs of the L1 block-spec
+  pipeline pass, chosen per target by measurement (cycles keyed by kernel digest, lesson L3), not
+  fixed in a backend. The mechanism is target-agnostic; the best order is a measured fact of the
+  target.
+
 ## Generalization: can Voyager's compiler target merlin's other accelerators?
 
 Checked the only way that does not presume the answer: ask merlin's target-agnostic derivation
@@ -122,6 +141,13 @@ target in Voyager's machine-model terms, from that target's own RTL facts (2026-
 | Gemmini (systolic, RoCC) | 16x16 mesh, 256 KiB 4-bank scratchpad, 64 KiB accumulator | derived. It still took a ~1.2k-line bridge, six concessions (C1-C6), and Voyager's own `--conv2d_im2col` before whole-model ResNet-50 compiled at all |
 | Atlas NPU (own ISA, matrix registers) | 32x32 mesh; one 1.5 MB 6-bank vector memory whose role (scratchpad vs register file) is not classified; operands reach the MXU through matrix registers driven by an instruction stream | refused: no store that maps to Voyager's L2 scratchpad. Even with one assigned by hand, Voyager emits parameters for ITS deserializer and has no instruction selection, so Atlas needs a new backend, not a bridge |
 | Radiance (SIMT GPU) | 16 lanes/warp, 128 KiB shared memory, no systolic array | refused: no array edge to derive. Voyager's tiler pins an IC x OC spatial partition at level 0 (weight-stationary array); warps, divergence, register blocking and shared-memory banking have no representation |
+
+Even inside the systolic class, the machine model misses what a different array needs. Voyager's
+mapper has no notion of a target that streams CONTIGUOUS scratchpad rows into its array: its own
+hardware addresses a window per pixel, so it keeps innermost OX extents of 4 (3x3 stride 1) or 2
+(stride 2) for ResNet-style convs. Replayed faithfully on Gemmini those are 4- and 2-row computes on a
+16-row array (28,224 per layer; `lower_conv`, STATUS.md). Merlin's derivation should carry the
+target's stream-contiguity requirement into any tiler it feeds.
 
 So Voyager generalizes across its own template's DESIGN SPACE (array size, buffers, datatypes -- its
 DSE), not across ARCHITECTURE CLASSES. That is by design, and it is the axis on which merlin is
@@ -196,6 +222,7 @@ What merlin should take from it:
 | L7 | G5 |
 | L8 | G6 |
 | L9 | G4 |
+| L10 | G2 (lookahead depth and operand order as measured knobs of the pipeline pass) |
 
 L1 goes first. It is the one lesson already measured on our own hardware, and the reference backend
 can adopt it without any new infrastructure.

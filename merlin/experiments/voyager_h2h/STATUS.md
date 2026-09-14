@@ -154,8 +154,57 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   the Voyager arm has a legitimate whole-model program; lowering it onto Gemmini needs the bridge to
   grow convolution, bias and the vector-unit ops (still open).
 
+- **L3 capsule head-to-head, clean room (Verilator, cycle-accurate).** Products under
+  `out/artifacts/compare/gemmini/v1/`; every run passes its RTL oracle.
+  - **Bridge correction first.** `voyager_bridge_v0` closed each replayed matmul with a FENCE the
+    reference package does not emit: one cycle per capsule of OUR packing, not Voyager's schedule.
+    `voyager_bridge_v1` drops it (23a53da1) and is faster on all 16 short capsules
+    (`..._20260914T211028Z_2a7a601`). Every v0 Voyager number is superseded; merlin's apparent
+    one-cycle wins over v0 were that fence.
+  - Cycles, reference `gemmini_xdsl_rtl_v0` / Voyager `voyager_bridge_v1` / merlin `v1_l1` (lesson L1):
+
+    | capsules | reference | Voyager | merlin v1_l1 |
+    |---|---|---|---|
+    | A0 A2 A5 C5 C6 GS0 | 302 | 302 | 302 |
+    | A4 | 269 | 269 | 269 |
+    | A3 B1 | 385 | 365 | 385 |
+    | B0 B2 | 350 | 330 | 350 |
+    | C0 C1 | 1547 | 1113 | 1108 |
+    | C2 C3 C4 | 471 | 469 | 471 |
+    | GM0 (K=6144) | 19649 | 27971 (v0) | 19649 |
+    | GM1 (K=8208) | 27791 | 38277 (v0) | 27791 |
+
+  - **Short capsules: Voyager's schedule leads merlin v1_l1 by 1.4% (geomean of 16).** merlin wins
+    C0/C1 by 5 cycles, ties 7, loses A3/B0-B2 by 20 and C2-C4 by 2.
+  - **Deep K: merlin is 1.42x (GM0) and 1.38x (GM1) faster** (`..._20260914T211317Z_2a7a601`,
+    3600 s oracle wall). Voyager rotates two slots through 384/513 K steps, so each load waits for the
+    compute still reading the slot it overwrites; merlin gives every block its own scratchpad rows.
+    Spike instret ranked these the other way (Voyager fewer instructions) -- instret is not timing.
+    GM0/GM1 for `voyager_bridge_v1` and `v1_la1` are in flight (tag `long2`).
+  - **What Voyager's short-capsule edge is.** Hoisting every load ahead of the computes
+    (`gemmini_xdsl_rtl_v1_hoist`) is not it: A3 385 -> 384, and C0 1108 -> 1186 (worse). The order
+    inside a K step is: the streamed input block before the weight block. `v1_la1` (loads one K step
+    ahead of the computes, input then weight) takes A3 to 359, B0 to 326 and C2 to 459, below
+    Voyager's 365, 330 and 469; `v1_grp` (all inputs, then all weights) 363, 328 and 469. C0 and the
+    remaining capsules for `v1_la1` are in flight (tags `order`, `rest`).
+  - The remaining A0-class cycle: with the same load order, the weight block's row decides 302 vs
+    303 (Voyager places it at 4096, the start of bank 1; merlin at 16368, the end of bank 3).
+
+- **Conv lowering exists and is exact** (`baselines.voyager_schedule.lower_conv`, abcd2847): the
+  3x3 s1, 3x3 s2 and 1x1 probes lower bit-exactly against a direct convolution. Faithful to Voyager's
+  mapping, the 3x3 layers stream 4-row (s1) and 2-row (s2) computes -- 28,224 per layer, where 16-row
+  runs would need a quarter or an eighth as many. Voyager's mapper has no notion of a target that
+  streams contiguous rows; its own hardware addresses a window per pixel.
+- **What whole-model ResNet-50 (im2col export) still needs from the bridge.** 1,560 fused computes:
+  476 convs with a residual epilogue (`dequantize(res), dequantize(acc), add_, relu_[, quantize]`,
+  C5), 64 standalone residual adds anchored on `dequantize`, 98 biased linears (the im2col'd stem),
+  and host ops: 28 max-pools, 1 average pool, the fc as 63 bf16 `aten::linear` tiles, 16
+  quantize/dequantize (C6). Plus per-layer segmentation of the trace.
+
 ## Open
 
-- Bridge: Voyager IR (JSON) -> Gemmini command stream, graded at L2/L3 on the capsule corpus.
-- Plane B feasibility gate: Catapult 2023.1_1 vs the tested 2024.2; licence; VCS V-2023.12.
-- Whether using the shared FireSim queue service is acceptable (ask before the first submission).
+- Whole-model plane A: residual epilogue (C5), vector and host ops (C6), per-layer segmentation, then
+  the C translation, Spike, and FireSim.
+- FireSim: our own queue, only while the FPGA is idle (user, 2026-09-14). Blocker: no
+  `FireSimGemminiRocketConfig` driver or workload in our chipyard yet.
+- Plane B RTL cycle runs (Catapult + VCS) in flight.
