@@ -129,6 +129,50 @@ distinct: the same derivation that fed Voyager a Gemmini machine also serves mer
 all three targets. Co-design also drifts on its own clock: Voyager's latest compiler no longer emits
 the IR its own public hardware release consumes (see STATUS.md).
 
+## How Voyager connects the CPU to the accelerator, and what it takes to express one
+
+From the public release (accelerator `e3a725db`, paired compiler `cac504ef`) and the latest compiler
+(`f9d4c498`); citations relative to the checkouts under `out/build/external/`.
+
+- **The hardware has no ISA, registers or interrupts. It has per-unit parameter queues.** Each unit
+  (matrix, matrix-vector, SpMM, depthwise, vector) has one `params_in` channel of 64-bit words
+  (`src/Accelerator.h`). The host bit-packs a `MatrixParams` / `VectorParams` /
+  `VectorInstructionConfig` struct in its `Marshall` order, pads it to 64 bits and streams it; the
+  unit's `ParamsDeserializer` rebuilds the struct (`src/Params.h`, `src/ParamsDeserializer.h`). The
+  structs ARE the instruction set: loop bounds (two levels of six loops), base addresses, dtype
+  indices, fusion selectors, and a micro-program of up to 8 vector instructions over four fixed stages.
+- **Units are their own bus masters.** Every operand stream has an `(address, burst)` request port;
+  there is no separate DMA engine. Completion is a per-unit `start`/`done` sync handshake -- no
+  interrupt, no status register, no global done.
+- **In the public release the "CPU" is the SystemC testbench.** It parses `model.txt` and
+  `tilings.txtpb`, maps each operation to descriptors in hand-written C++
+  (`test/toolchain/MapOperation.cc`, `MatrixOps.h`), streams them, waits on `done`, and in `SOC_SIM`
+  mode even copies tiles DRAM<->scratchpad itself (`test/common/DataLoader.cc`). The paper's Chipyard
+  integration (MMIO control registers, TileLink ports, an interrupt controller) is not in the release.
+- **The latest compiler moves sequencing into the IR.** `voyager_ir.proto` adds loops, conditionals,
+  `AsyncOp` regions with semaphores, and marks index arithmetic `op: "cpu"`, "run on the control
+  processor rather than the accelerator datapath" (`codegen/transform/bufferize/emit.py`). No public
+  executor consumes it; the tiler's "Sphinx SoC" calibration constants suggest a private one.
+- **To express an accelerator, Voyager needs:** a template instance (compile-time `-D` knobs: datatype
+  preset, IC x OC, buffer depths, which units exist), a matching `AcceleratorConfig`, hand-written
+  vector-pipeline fusion patterns, and hand-written C++ mappers that know the `Params.h` layout. There
+  is no target description, capability declaration or instruction selector; adding an op touches the
+  compiler, the mapper, the gold model and possibly the datapath RTL.
+
+What merlin does that this lacks: a declared endpoint kind per target (RoCC `.insn`, MMIO, command
+buffer) in its target contract, a documented command-buffer ABI, and facts/capabilities DERIVED from
+the RTL instead of `-D` knobs and hand-written mappers.
+
+What merlin should take from it:
+- **H1.** An IR that marks, per operation, which work is control-processor and which is datapath, with
+  explicit async regions and semaphores. merlin's command buffer is a flat list; the host lane and the
+  accelerator lane are separated by placement, not by a first-class async construct.
+- **H2.** Descriptor layouts whose bit widths are computed from the struct (`TypeToBits`), never
+  written down. merlin already derives register-bundle layouts from Scala; use them to generate
+  command encoders and decoders from one source.
+- **H3.** A gold model per op living next to the mapper (`test/common/GoldModel.cc`), so every new
+  mapping is checked op by op before whole-model runs.
+
 ## Lessons to NOT adopt (their weaknesses are our differentiators)
 
 | Voyager practice | Why merlin keeps its own |

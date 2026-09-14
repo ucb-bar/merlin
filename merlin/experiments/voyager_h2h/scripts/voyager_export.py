@@ -57,12 +57,29 @@ class _Linear(torch.nn.Module):
         return torch.relu(y) if self.relu else y
 
 
+class _Conv(torch.nn.Module):
+    def __init__(self, cin: int, cout: int, k: int, stride: int, padding: int, bias: bool,
+                 relu: bool):
+        super().__init__()
+        self.conv = torch.nn.Conv2d(cin, cout, k, stride=stride, padding=padding, bias=bias)
+        self.relu = relu
+
+    def forward(self, x):
+        y = self.conv(x)
+        return torch.relu(y) if self.relu else y
+
+
 def build_workload(spec: dict, dtype: torch.dtype):
-    """(module, example input) for a workload spec. Kinds: ``linear``, ``torchvision``."""
+    """(module, example input) for a workload spec. Kinds: ``linear``, ``conv``, ``torchvision``."""
     kind = spec["kind"]
     if kind == "linear":
         module = _Linear(spec["K"], spec["N"], spec.get("bias", True), spec.get("relu", False))
         example = torch.randn(spec["M"], spec["K"], dtype=dtype)
+    elif kind == "conv":
+        module = _Conv(spec["Cin"], spec["Cout"], spec["k"], spec.get("stride", 1),
+                       spec.get("padding", spec["k"] // 2), spec.get("bias", True),
+                       spec.get("relu", True))
+        example = torch.randn(1, spec["Cin"], spec["H"], spec["W"], dtype=dtype)
     elif kind == "torchvision":
         from torchvision import models
         from voyager_compiler.quantization.quantize import get_conv_bn_layers
