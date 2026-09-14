@@ -13,7 +13,7 @@ acceptance question is "did the emitted code acquire the facet the action promis
 number". That is answered by ``achieved_residual`` plus bit-exactness, not by a tier. It lives beside
 ``mining.tuning_agent`` because the beam owns the ladder, so the beam owns its leaf.
 
-THE DISCIPLINE, inherited from ``targetgen.agent.kernel_slot``: agent autonomy on visible data, a
+THE DISCIPLINE, inherited from ``targetgen.agent.gemmini_kernel_slot``: agent autonomy on visible data, a
 deterministic oracle gate, held-out certification, and structural cheat detection. The agent's semantic
 claims are never trusted -- only the executable consequences are checked. Two additions specific to a
 compiler pass:
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 #: Tokens that mean the proposal is reaching for the answer instead of computing it. Narrower than
-#: kernel_slot's list because a compiler pass legitimately imports numpy and legitimately contains the
+#: gemmini_kernel_slot's list because a compiler pass legitimately imports numpy and legitimately contains the
 #: word "reference" in prose -- so this keys on the specific escapes that would let a pass special-case
 #: its way to a passing gate.
 CHEAT_TOKENS: tuple[str, ...] = (

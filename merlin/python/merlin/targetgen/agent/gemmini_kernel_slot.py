@@ -23,12 +23,15 @@ from . import claude_cli
 from ..eval.gemmini_conformance import build
 from ...runtime.backends import base as _bk
 
-gemmini = _bk.get_backend("gemmini")
+#: The target this slot drives. The module is gemmini's by construction (libgemmini's C API, the gemmini
+#: conformance corpus); what it must NOT do is bake that target's GEOMETRY into the prompt, or bind the
+#: backend at import time. Both are resolved per call below.
+TARGET = "gemmini"
 
-ISA_REFERENCE = r"""
+_ISA_TEMPLATE = r"""
 Gemmini (chipyard) bare-metal C, via libgemmini intrinsics. Constants/macros available after
 `#include "include/gemmini_testutils.h"`:
-  DIM = 16; elem_t = int8 (inputs); acc_t = int32 (accumulator/output); ADDR_LEN = 32.
+  DIM = {DIM}; elem_t = {ELEM} (inputs); acc_t = {ACC} (accumulator/output); ADDR_LEN = {ADDR_LEN}.
   gemmini_flush(0);
   gemmini_config_ex(WEIGHT_STATIONARY, NO_ACTIVATION, 0);   // dataflow
   gemmini_config_ld(stride_bytes);                          // DRAM row stride for the NEXT mvin(s)
@@ -42,10 +45,36 @@ Gemmini (chipyard) bare-metal C, via libgemmini intrinsics. Constants/macros ava
 Accumulator addressing (full i32 readout):
   overwrite tile: c_ovw = ((3u<<(ADDR_LEN-2))|(1u<<(ADDR_LEN-3))) & ~(1u<<(ADDR_LEN-2));
   accumulate-onto-existing (for K-tiles after the first): c_acc = c_ovw | (1u<<(ADDR_LEN-2));
-Notes: matrices are row-major; M/K/N may exceed DIM -> tile into 16x16 blocks and accumulate
-over K (overwrite on the first K-tile, accumulate after). Non-multiples of 16 -> zero-pad the
+Notes: matrices are row-major; M/K/N may exceed DIM -> tile into {DIM}x{DIM} blocks and accumulate
+over K (overwrite on the first K-tile, accumulate after). Non-multiples of {DIM} -> zero-pad the
 edges and crop on output. RELU (acc_act) applies to the i32 accumulator on mvout.
 """.strip()
+
+_C_INT = {"i8": "int8", "i16": "int16", "i32": "int32", "i64": "int64"}
+
+
+def isa_reference(target: str = TARGET) -> str:
+    """The ISA reference with the target's geometry DERIVED: mesh size and datapath dtypes from its RTL
+    facts, address width from its contract. Fails closed -- a prompt that told the agent the wrong mesh
+    size would be graded against hardware that does not match it."""
+    from ..rtl.facts import facts_body, load_facts
+    from ..target_registry import load_contract
+
+    body = facts_body(load_facts(target), target, needs="the kernel-slot ISA reference (mesh, dtypes)")
+    mesh = next((a for a in body.get("arrays") or [] if a.get("name") == "mesh"), None)
+    if not mesh or not mesh.get("rows") or mesh.get("rows") != mesh.get("cols"):
+        raise RuntimeError(f"{target}: RTL facts declare no square mesh ({mesh!r}); cannot state DIM")
+    dtypes = {d.get("name"): d.get("dtype") for d in body.get("datapaths") or []}
+    elem, acc = _C_INT.get(dtypes.get("input")), _C_INT.get(dtypes.get("accumulator"))
+    addr_len = (load_contract(target).get("encoding") or {}).get("addr_len")
+    if not (elem and acc and addr_len):
+        raise RuntimeError(f"{target}: facts/contract leave the input/accumulator dtype or addr_len "
+                           f"undetermined ({dtypes!r}, addr_len={addr_len!r})")
+    out = _ISA_TEMPLATE
+    for token, value in (("{DIM}", mesh["rows"]), ("{ELEM}", elem), ("{ACC}", acc), ("{ADDR_LEN}", addr_len)):
+        out = out.replace(token, str(value))
+    return out
+
 
 OUTPUT_CONTRACT = r"""
 The generated C `main()` must, for each committed output tensor named OUT_NAME (m x n), print:
@@ -97,7 +126,7 @@ def _example(rung: str) -> str:
 
 def build_prompt(visible: tuple[str, ...], feedback: str | None) -> str:
     parts = ["You are generating a Merlin runtime kernel for the Gemmini accelerator.",
-             "", "## Gemmini ISA reference", ISA_REFERENCE,
+             "", "## Gemmini ISA reference", isa_reference(TARGET),
              "", "## Output contract", OUTPUT_CONTRACT,
              "", "## Task", TASK,
              "", "## Visible examples (structure only — NOT the expected outputs)"]
@@ -124,7 +153,7 @@ def _load_generate_driver(code: str, path: Path) -> Callable:
 def _certify(rung: str, gen_fn: Callable, simulator: str, timeout: int) -> dict:
     cb = build(rung)
     src = gen_fn(cb)
-    res = gemmini.run_command_buffer(cb, simulator=simulator, timeout=timeout, driver_src=src)
+    res = _bk.get_backend(TARGET).run_command_buffer(cb, simulator=simulator, timeout=timeout, driver_src=src)
     return res
 
 

@@ -1,7 +1,7 @@
 """Agentic kernel generation (Claude Code CLI, Opus) — gate logic + held-out certification.
 
 The live generation loop (which calls `claude -p`) is exercised by
-`merlin.targetgen.agent.kernel_slot.generate_kernel` and is not run in CI (slow/networked).
+`merlin.targetgen.agent.gemmini_kernel_slot.generate_kernel` and is not run in CI (slow/networked).
 What CI verifies deterministically:
   - the gate logic (cheat scan, prompt assembly) — no toolchain;
   - the *committed* agent-generated kernel certifies bit-exact on the HELD-OUT shapes it never
@@ -21,7 +21,7 @@ from merlin.runtime.backends import base as _bk
 from merlin.targetgen.eval.gemmini_conformance import build
 
 gemmini = _bk.get_backend("gemmini")
-from merlin.targetgen.agent import kernel_slot
+from merlin.targetgen.agent import gemmini_kernel_slot as kernel_slot
 
 REPO = repo_root()
 AGENT_KERNEL = REPO / "merlin/tests/data/gemmini_cert/agent_generated/kernel_codegen.py"
@@ -36,8 +36,24 @@ def test_cheat_scan_blocks_peeking():
     assert "import numpy" in kernel_slot._scan_cheat("import numpy as np")
 
 
+def _facts_or_skip():
+    try:
+        return kernel_slot.isa_reference(kernel_slot.TARGET)
+    except Exception as exc:  # noqa: BLE001 -- no RTL facts in this checkout
+        pytest.skip(f"{kernel_slot.TARGET} RTL facts unavailable: {exc}")
+
+
+def test_isa_reference_geometry_is_derived_and_matches_the_reference_config():
+    """The prompt's DIM/dtypes/ADDR_LEN come from RTL facts + contract; for the reference config they are
+    the values the prompt used to bake in, so the derivation is checked against them, not assumed."""
+    ref = _facts_or_skip()
+    assert "DIM = 16; elem_t = int8 (inputs); acc_t = int32 (accumulator/output); ADDR_LEN = 32." in ref
+    assert "{DIM}" not in ref and "tile into 16x16 blocks" in ref
+
+
 def test_prompt_excludes_golden():
     """The agent prompt carries example cb STRUCTURE but never reference outputs."""
+    _facts_or_skip()
     prompt = kernel_slot.build_prompt(VISIBLE, feedback=None)
     assert "generate_driver" in prompt and "RES_PACK" in prompt
     assert "reference_outputs" in prompt  # only as a forbidden-token rule
