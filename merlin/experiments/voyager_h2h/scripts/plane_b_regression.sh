@@ -7,7 +7,17 @@
 #   plane_b_regression.sh fast-sim <network>       Voyager's run_regression.py --sims fast-systemc
 #   plane_b_regression.sh rtl                      make rtl (Catapult HLS, all blocks)
 #   plane_b_regression.sh rtl-sim <network>        Voyager's run_regression.py --sims rtl
+#   plane_b_regression.sh rtl-layer <net> <layer> <out> [ucli.tcl]
+#                                                  one layer of the existing SCVerify build
+#   plane_b_regression.sh rtl-trace <net> <layer> <out> <nets-file>
+#                                                  rtl-layer + an event log of every value change
+#                                                  of the listed vld/rdy nets, reduced to
+#                                                  per-channel handshake counts
+#   plane_b_regression.sh systemc-layer <net> <layer> <out>
+#                                                  Voyager's pre-HLS SystemC model (Makefile `sim`,
+#                                                  CONNECTIONS_ACCURATE_SIM) on one layer
 #
+# VOYAGER_WORK selects another tree than the flow's work tree (e.g. a patched A/B copy).
 # Configuration comes from the environment with the paper's 256-MAC point as default:
 # DATATYPE=INT8 IC_DIMENSION=16 OC_DIMENSION=16, default 1024-element buffers, TECHNOLOGY=generic
 # (Catapult's shipped nangate-45nm_beh + ccs_sample_mem), CLOCK_PERIOD=5 (ns; see setup_env).
@@ -17,7 +27,7 @@ set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(git -C "$here" rev-parse --show-toplevel)"
 ext="$repo/out/build/external"
-work="$ext/voyager-accelerator-work"            # git worktree of voyager_accelerator @ e3a725db
+work="${VOYAGER_WORK:-$ext/voyager-accelerator-work}"  # git worktree of voyager_accelerator @ e3a725db
 env_prefix="$repo/out/build/voyager-accel-env"  # mamba env: py3.10, torch 2.6, protoc 29.3
 catapult="${CATAPULT_ROOT:-/ecad/tools/mentor/catapult/2023.1_1/Mgc_home}"
 vcs_home="${VCS_HOME:-/ecad/tools/synopsys/vcs/current}"
@@ -26,6 +36,10 @@ shim_dir="${VOYAGER_HEADER_SHIM:-$ext/voyager-acmath-shim}"   # holds ac_math/ac
 setup_env() {
   export PATH="$env_prefix/bin:$catapult/bin:$vcs_home/bin:$PATH"
   export CONDA_PREFIX="$env_prefix" CATAPULT_ROOT="$catapult" VCS_HOME="$vcs_home"
+  # SCVerify's generated wave script sources $MGC_HOME/pkgs/sif/userware/En_na/flows/vcs_funcs.tcl.
+  # The site default points MGC_HOME at Calibre, and ucli then aborts the run at that source line
+  # (CLE-10) before the layer starts, so name Catapult's own Mgc_home.
+  export MGC_HOME="$catapult"
   # VCS's SystemC 2.3.3 front end accepts only g++ 7.3 / 9.2 / 9.5; the gcc VCS V-2023.12 bundles is
   # 13.2. Upstream documents the VCS GNU package S-2021.09 (gcc 9), which this host has inside its
   # S-2021.09 VCS install: gcc 9.2.0 + binutils 2.33.1 via its own source_me script.
@@ -149,6 +163,92 @@ case "$cmd" in
     net="${1:?network}"
     python run_regression.py --models "$net" --sims rtl --num_processes "${NPROC:-8}" \
       --uniquify_layers --skip_layers --keep_build ;;
+  rtl-layer|rtl-trace|systemc-layer)
+    # Single-layer runs, used to trace where the per-layer 2x comes from (PLANE_B.md, "Where the 2x
+    # comes from"). Paths must be absolute: this script has already changed into the work tree.
+    net="${1:?network}"; layer="${2:?layer}"; out="${3:?absolute output dir}"
+    case "$out" in /*) ;; *) echo "output dir must be absolute" >&2; exit 2 ;; esac
+    # Same defaults as run_regression.py set_default_env_vars / get_build_folder.
+    export INPUT_BUFFER_SIZE="${INPUT_BUFFER_SIZE:-1024}" WEIGHT_BUFFER_SIZE="${WEIGHT_BUFFER_SIZE:-1024}"
+    export ACCUM_BUFFER_SIZE="${ACCUM_BUFFER_SIZE:-1024}"
+    export DOUBLE_BUFFERED_ACCUM_BUFFER="${DOUBLE_BUFFERED_ACCUM_BUFFER:-false}"
+    export SUPPORT_MVM="${SUPPORT_MVM:-false}" SUPPORT_SPMM="${SUPPORT_SPMM:-false}"
+    bdir="build/${DATATYPE}_${IC_DIMENSION}x${OC_DIMENSION}_${INPUT_BUFFER_SIZE}x${WEIGHT_BUFFER_SIZE}x${ACCUM_BUFFER_SIZE}_${DOUBLE_BUFFERED_ACCUM_BUFFER}_${SUPPORT_MVM}_${SUPPORT_SPMM}"
+    export NETWORK="$net" TESTS="$layer" SIMS="gold,accelerator"
+    mkdir -p "$out"
+    if [ "$cmd" = systemc-layer ]; then
+      # The Makefile's `sim` TestRunner: pre-HLS SystemC, CONNECTIONS_ACCURATE_SIM (DIRECT_PORT).
+      # Deviation 9 applies here as well: against Catapult 2023.1's Connections, src/Tieoff.h does
+      # not compile (MARSHALL_PORT), so the pinned public 2.2.0 goes first on the include path.
+      export BASE_FLAGS="-I$conn_dir/include $BASE_FLAGS"
+      make -j"${NPROC:-4}" "$bdir/cc/TestRunner" > "$out/build.log" 2>&1
+      "./$bdir/cc/TestRunner" > "$out/run.log" 2>&1 || true
+    else
+      sol="$bdir/Catapult/$TECHNOLOGY/clock_$CLOCK_PERIOD"
+      tcl="${4:-}"
+      if [ "$cmd" = rtl-trace ]; then
+        nets="${4:?file of RTL nets (vld/rdy), one hierarchical name per line}"
+        tcl="$out/change_log.tcl"
+        # ucli: log every value change of each net with the simulator's own time (event-driven, so
+        # no sampling phase is assumed). ucli here rejects `dump -type VCD`, hence a text log.
+        cat > "$tcl" <<'EOF'
+global env
+set ::f [open $env(VG_TRACE) w]
+set fh [open $env(VG_SIGS) r]
+foreach l [split [read $fh] "\n"] {
+  set l [string trim $l]
+  if {$l ne ""} {
+    if {[catch {stop -change $l -continue -command "puts \$::f \"\[senv time\] $l \[get $l\]\""} e]} {
+      puts "CHG-SKIP $l: $e"
+    }
+  }
+}
+close $fh
+run
+close $::f
+quit
+EOF
+        export VG_SIGS="$nets" VG_TRACE="$out/changes.txt"
+      fi
+      [ -n "$tcl" ] || tcl="./Accelerator/Accelerator.v1/scverify/concat_sim_rtl_v_vcs/scverify_vcs_wave.tcl"
+      ( cd "$sol" && LD_PRELOAD="$env_prefix/lib/libstdc++.so.6" \
+          SYNOPSYS_SIM_SETUP=./Accelerator/Accelerator.v1/scverify/concat_sim_rtl_v_vcs/synopsys_sim.setup \
+          ./Accelerator/Accelerator.v1/scverify/concat_sim_rtl_v_vcs/sc_main -systemcrun +vcs+lic+wait \
+          -verilogrun -cm assert -ucli -ucli2Proc -i "$tcl" -l "$out/vcs_sim.log" ) > "$out/run.log" 2>&1 || true
+      if [ "$cmd" = rtl-trace ]; then
+        # Per channel (<name>_vld with a matching <name>_rdy): transfers (vld && rdy at a rising edge),
+        # cycles with vld high, cycles with rdy high, over the layer's Started..Finished window.
+        "$env_prefix/bin/python" - "$out/changes.txt" "$out/run.log" "$CLOCK_PERIOD" > "$out/handshakes.txt" <<'EOF'
+import bisect, collections, sys
+changes, log, per = sys.argv[1], sys.argv[2], float(sys.argv[3])
+t0 = t1 = None
+for line in open(log):
+    if "Accelerator Layer" in line and line.split()[1:2] == ["ns"]:
+        if "Started" in line: t0 = float(line.split()[0])
+        if "Finished" in line: t1 = float(line.split()[0])
+if t0 is None or t1 is None:
+    sys.exit("layer window not found in " + log)
+ch = collections.defaultdict(list)
+for line in open(changes):
+    p = line.split()
+    if len(p) >= 4 and p[1] == "ps":
+        ch[p[2]].append((int(p[0]), p[3]))
+def high(sig, t):
+    ev = ch[sig]; i = bisect.bisect_left(ev, (t, "")) - 1
+    return i >= 0 and ev[i][1].endswith("1")
+edges = [round(k * per * 1000) for k in range(int(t0 // per) + 1, int(t1 // per) + 1)]
+print(f"window {t0:.0f}..{t1:.0f} ns, {len(edges)} rising edges")
+for v in sorted(n for n in ch if n.endswith("_vld") and n[:-3] + "rdy" in ch):
+    r = v[:-3] + "rdy"
+    x = sum(1 for e in edges if high(v, e) and high(r, e))
+    vh = sum(1 for e in edges if high(v, e)); rh = sum(1 for e in edges if high(r, e))
+    if vh:
+        print(f"xfers={x:7d} vld_hi={vh:7d} rdy_hi={rh:7d}  {v[:-4]}")
+EOF
+        gzip -f "$out/changes.txt"
+      fi
+    fi
+    command grep -E "ideal runtime|Total Runtime|Error count" "$out/run.log" || true ;;
   *)
     echo "unknown command $cmd" >&2; exit 2 ;;
 esac

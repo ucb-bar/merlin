@@ -226,15 +226,149 @@ Ratios range from 2.00 to 2.12 on both matrix and vector layers, at every size f
   OutputController) reports "initiation interval 1" (SCHD-43) in the 5 ns logs.
 - Not single-port RAM: the buffers map to Catapult's `ram_sync_1R1W`.
 - Where it shows: `ffn_0_intermediate_dense_fused` reads 524,288 input bytes = 32,768 beats of 128
-  bits, exactly its 32,768 ideal compute cycles, in 65,676 cycles. The input stream delivers one beat
-  every two cycles.
-- The Connections swap (deviation 9) is not a visible cause: the blocking `Push`/`Pop` protocol the
-  testbench uses (`do { vld = 1; wait(); } while (!rdy)`, one transfer per cycle when ready) has the
-  same structure in Catapult's 1.3.0 and in 2.2.0; the port type only changes marshalling.
+  bits, exactly its 32,768 ideal compute cycles, in 65,676 cycles, i.e. one beat per two cycles on
+  average. The handshake trace below shows that the memory side is not what limits it.
 
-The source of the one-beat-per-two-cycles input stream was not traced further (it needs a
-waveform of the input request/response handshakes). Until it is, the 2x is a measured property of
-this build and harness, not an explained one.
+#### Where the 2x comes from
+
+Traced, and **not a deviation of ours**. It is in Voyager's released source. There are two
+mechanisms: one on the matrix path, one on the vector path. Evidence is in
+`out/runs/voyager_accel/plane_b/stall_trace_20260914T230518Z/`: per-layer ucli event logs of every
+vld/rdy change (`changes.txt.gz`), the reduced tables, and the helper scripts. The driver reproduces
+them with `rtl-trace` / `rtl-layer` / `systemc-layer`.
+
+Method. One layer of the existing SCVerify build, run under a ucli script. ucli here rejects
+`dump -type VCD`, so the script logs every value change of the listed nets with the simulator's own
+time. Reduced per channel: a transfer is vld && rdy at a rising edge.
+
+- **`classifier` is not a matrix layer in RTL.** The log calls it "matrix unit ideal runtime", but
+  `matrix_unit_params_in` never fires and every `matrix_unit_*` port is idle. It runs on the vector
+  unit. The smallest real matrix layer is `matmul_2_fused` (ideal 2,048 cycles, 4,239 measured).
+- **The memory side keeps up.** In `matmul_2_fused` (4,239 cycles):
+  - `matrix_unit_input_resp` has vld high on 3,975 cycles; the harness offers data 94% of the time.
+  - Its rdy is high on only 2,048 cycles; the RTL accepts half the time.
+  - `input_req` has rdy high on all 4,239 cycles; the harness is always ready, and the RTL raises
+    vld on 2,048.
+
+  The testbench memory model (`test/common/Harness.cc` `process_read_request` /
+  `send_data_response`, a 16-deep `sc_fifo` behind Connections sim ports) is not the stall.
+- **The backpressure comes from `MatrixProcessor`.** Cycles 1000-1040, per edge (X = transfer,
+  V = vld only, R = rdy only):
+
+  ```
+  window_buffer_out (MatrixProcessor input)   XVXVXVXVXVXVXVXVXVXV...
+  weight_buffer_read_resp (its weight input)  ...XVXVXVXVXVXVXVXV...
+  output_channel (its output)                 XRXRXRXRXRXRXR...
+  accumulation_buffer_mu_write_request        ...RXRXRXRXRXRXRX
+  ```
+
+  - Every producer upstream holds vld: InputController, the input and weight double buffers, and
+    the memory stream.
+  - The consumer downstream holds rdy: the vector unit.
+  - `MatrixProcessor` alone takes one item per two cycles, and emits one per two cycles.
+  - Averaged over 128-cycle bins the whole matrix path moves in lockstep at half rate: 64 input
+    beats, 32+32 bank writes, 32+32 bank reads, 32 weight beats and 32 outputs per bin. There are
+    no load-then-compute phases.
+
+**Cause 1, matrix path: a depth-1 FIFO inside MatrixProcessor for non-MX datatypes.**
+
+- **Where.** `src/MatrixProcessor.h:24` is `static constexpr int FIFO_DEPTH = SUPPORT_MX ? 8 : 1;`.
+  It sizes `accum_to_wb_fifo` (`:47`), the `Connections::Fifo` between the `process_accumulation`
+  and `write_back` threads. Every output row of the systolic array crosses it.
+- **Why depth 1 halves throughput.** `Connections::Fifo` drives `enq.rdy = !full` with `full`
+  registered, and clears `full` one cycle after a dequeue (`connections_fifo.h` `EnqRdy` /
+  `FullNext`). A depth-1 FIFO can therefore never enqueue in the cycle it dequeues: one message per
+  two cycles.
+- **Same in both generations.** This logic is identical in Catapult 2023.1's bundled 1.4.0 (what
+  HLS synthesized) and in public 2.2.0 (what the testbench compiles). Their diff is initial values
+  and index types only.
+- **Which configs get it.** `SUPPORT_MX` is true only for `MXINT8`/`MXNF4`
+  (`src/ArchitectureParams.h`), so every INT8, E4M3 and posit build gets depth 1.
+- **Not ours.** No tool or library version of ours enters it.
+
+**Cause 2, vector path: 128-bit ports against a 256-bit bf16 vector.**
+
+- **The bound.** `OC_PORT_WIDTH = OC_DIMENSION * WEIGHT_DTYPE_WIDTH` = 128 bits for INT8
+  (`ArchitectureParams.h:297`), while `VECTOR_DATATYPE` is bf16. One 16-lane vector is 256 bits,
+  i.e. two beats (`VectorFetch.h:369-370`, `vector_fetch_*_num_beats`).
+- **What the trace shows.** In `add_4_fused` (2,082 cycles):
+  - both `vector_fetch_0_resp` and `vector_fetch_1_resp` transfer on every cycle, 2,048 beats each;
+  - `vector_output_data` emits 1,024 words, one per two cycles.
+
+  The port runs at full rate.
+- **Why that reads as 2x.** The harness's ideal (`test/common/Simulation.cc:174-175`,
+  `num_ops / VECTOR_UNIT_WIDTH`) assumes one vector per cycle, which this port width cannot supply.
+  The vector layers' 2x is a bandwidth bound of the configuration, not a stall.
+
+**What rules out our toolchain, library and testbench deviations as the cause.**
+
+- **The pre-HLS SystemC model reproduces it.** The Makefile's `sim` TestRunner is the same harness
+  in `CONNECTIONS_ACCURATE_SIM`, with no Catapult, no VCS, no RTL and no SCVerify wrapper
+  (`plane_b_regression.sh systemc-layer`). It gives the same numbers:
+
+  | Layer | RTL (VCS) ns | SystemC accurate ns | Ideal ns |
+  |---|---|---|---|
+  | classifier | 5,425 | 5,220 | 2,560 |
+  | matmul_2_fused | 21,195 | 21,075 | 10,240 |
+  | add_4_fused | 10,410 | 10,305 | 5,120 |
+  | ffn_0_intermediate_dense_fused | 328,380 | 328,275 | 163,840 |
+
+  This rules out Catapult 2023.1 vs 2024.2, VCS V-2023.12, the gcc 9.2 wrapper and the SCVerify
+  testbench. The SystemC build needs deviation 9 too: `src/Tieoff.h` does not compile against
+  Catapult 2023.1's Connections in accurate mode either. So the release was written against
+  Connections 2.x.
+- **The Connections swap** changes neither the sim-accurate `Pre()`/`Post()` timing nor
+  `Connections::Fifo`. The whole 1.3.0/1.4 vs 2.2.0 `connections.h` diff (419 lines) is
+  destructors, logging and the `AUTO_PORT` default (MARSHALL_PORT vs DIRECT_PORT); the harness's
+  channels run in bypass (latency 0) in both.
+- **No memory-model knob** (burst length, bus width, outstanding requests) can help, because the
+  harness is never the side that stalls.
+- **`DOUBLE_BUFFERED_ACCUM_BUFFER=true`** (one variable, SystemC) does not help:
+  - `matmul_2_fused` becomes slower, 33,930 ns;
+  - `add_4_fused` (10,305 ns) and `classifier` (5,220 ns) are unchanged.
+
+**A/B, one variable: `FIFO_DEPTH` 1 -> 2 (non-MX).**
+
+- **Setup.** Patched copy `out/build/external/voyager-accelerator-ab-fifo2`: the work tree minus
+  `.git`/`build`/`regression_results`, with `models` and `test/compiler/networks` symlinked. Its
+  only source difference is `src/MatrixProcessor.h:24`. Neither the pinned checkout nor the flow's
+  work tree was touched.
+- **SystemC accurate**
+  (`out/runs/voyager_accel/plane_b/systemc_accurate_fifo_ab_20260914T225955Z`):
+
+  | Layer | C2 | depth 1 ns | depth 2 ns | x ideal |
+  |---|---|---|---|---|
+  | matmul_2_fused | 2 | 21,075 | 15,965 | 2.06 -> 1.56 |
+  | ffn_0_intermediate_dense_fused | 8 | 328,275 | 307,805 | 2.00 -> 1.88 |
+  | add_4_fused (vector, control) | - | 10,305 | 10,305 | 2.01 -> 2.01 |
+
+- **The SystemC residual is the accumulate round trip.** It is exactly
+  1 + (C2 - 1)/C2, where C2 is the layer's reduction-tile count `loops[0][reduction_loop_idx[0]]`.
+  Accumulating steps (C2 - 1 of every C2) do `accumulation_buffer_read_address.Push()` then
+  `read_data.Pop()` in one iteration (`MatrixProcessor.h:579-582`).
+  - In SystemC a thread cannot overlap iterations, so that costs 2 cycles.
+  - In HLS the loop is pipelined at II=1 with the Pop scheduled 2 cycles after the Push
+    (`MatrixProcessor.tcl` `cycle set ... -equal 2`).
+
+  So once the FIFO is fixed the SystemC model is a pessimistic proxy, and only the RTL shows what
+  the fix recovers.
+- **RTL** (re-HLS of `MatrixProcessor` and the `Accelerator` top in the patched copy, every other
+  block solution reused unchanged; `make rtl` rc=0 in 510 s, MatrixProcessor `concat_rtl.v` sha256
+  `8c73d719...`, `Accelerator` `d1737382...`; VCS build rc=0 in 273 s;
+  `out/runs/voyager_accel/plane_b/rtl_fifo2_ab_20260914T230402Z`). **This is where the matrix path
+  recovers**, because HLS pipelines the accumulate round trip at II=1 while SystemC cannot:
+
+  | Layer | C2 | depth 1 ns | depth 2 ns | x ideal | Error count |
+  |---|---|---|---|---|---|
+  | matmul_2_fused | 2 | 21,195 | 12,835 | 2.07 -> 1.25 | 0 |
+  | attention_self_query_fused | 8 | 82,620 | 41,685 | 2.02 -> 1.018 | 0 |
+  | ffn_0_intermediate_dense_fused | 8 | 328,380 | 164,565 | 2.00 -> 1.004 | 0 |
+  | add_4_fused (vector, control) | - | 10,410 | 10,410 | 2.03 -> 2.03 | 0 |
+
+  Every layer still matches Voyager's gold model. The big dense layers, which dominate the model,
+  land within 0.4-1.8% of ideal; the small `matmul_2_fused` keeps a fixed ~800 ns of per-layer
+  pipeline fill, which matters only at 2,048 ideal cycles. The vector layer is untouched, as
+  expected for a matrix-path FIFO.
 
 #### `mobilebert` (full model) vs the paper
 
@@ -262,8 +396,9 @@ Run `out/runs/voyager_accel/plane_b/rtlsim_mobilebert_INT8_16x16_generic_clk5_20
 
 Reading the gap:
 
-- Almost all of it is the ~2x per-layer throughput halving above. At the paper's 95.1%, this
-  run's ideal work would take ~7.13M cycles (6.78M / 0.951).
+- Almost all of it is the ~2x per-layer throughput halving above, and that is the depth-1
+  `accum_to_wb_fifo`. With `FIFO_DEPTH` 1 -> 2 as the only change, the same flow on the same host
+  reproduces the paper's order of magnitude (next table).
 - The ideal work is itself 7.5% below the paper's implied ideal, so the model this release pair
   compiles (`make network-proto NETWORK=mobilebert`, compiler `cac504ef`) is not exactly the paper's
   MobileBERT-tiny workload (different op set or shapes; not investigated). The paper's model name is
@@ -272,8 +407,44 @@ Reading the gap:
 - The one excluded `slice_tensor` instance cannot matter: even at an `add` layer's cost (~8.2k
   cycles) it would move the total by 0.06%.
 
-**Not reproduced:** the paper's 95.1% utilization and 7.71M cycles. The release's own flow, at its
-own CI configuration for this point, gives 49.7% and 13.63M on this host.
+#### Whole model, one variable changed
+
+Run `out/runs/voyager_accel/plane_b/rtlsim_mobilebert_fifo2_20260914T233000Z`: the release's own
+`run_regression.py --models mobilebert --sims rtl --uniquify_layers --skip_layers`, same settings,
+same host, on the patched RTL. Same 15/16 unique layers pass, same `slice_tensor` failure, rc=1.
+
+| | Paper Table 4 (16x16, 1 GHz, TSMC 16 nm) | Release as shipped | `FIFO_DEPTH` 1 -> 2 |
+|---|---|---|---|
+| MobileBERT cycles | 7.71M | 13.63M | **7.38M** |
+| Utilization | 95.1% | 49.7% | **91.8%** |
+| Matrix utilization | - | 49.8% | **97.4%** |
+| Vector utilization | - | 48.8% | 48.8% |
+
+The release prints 0.918 / 0.974. One line of Voyager's own source moves this flow from 1.77x the
+paper's cycles to 0.96x, i.e. 4% fewer cycles than Table 4 reports, on a workload whose ideal work
+is 7.5% smaller than the paper's implied ideal.
+
+**What this means for Table 4.**
+
+- The paper's numbers are **not reproducible from the public release as configured**: its INT8 point
+  is capped at ~50% of its own ideal by `SUPPORT_MX ? 8 : 1`. Table 4's 95.1% therefore cannot have
+  been measured on this configuration of this code. It is consistent with a build where that FIFO is
+  deeper -- every `SUPPORT_MX` datatype (`MXINT8`, `MXNF4`) gets depth 8 -- or with an internal
+  revision. Which one was not determined here.
+- With that one line changed, the release's own flow does reproduce the paper's claim on this host:
+  91.8% utilization and 7.38M cycles against 95.1% and 7.71M. So the paper's *architectural* claim
+  stands; what the public release ships for non-MX datatypes does not match it.
+- The residual 8.2% is **not** the matrix path (97.4% utilized). 433,539 of the 601,839 remaining
+  slack cycles (72%) are the vector path's 128-bit ports against 256-bit bf16 vectors, which is a
+  property of the configuration's port width, not a stall.
+- For the head-to-head this plane exists to support: comparing a merlin backend against Voyager's
+  compiler on RTL built from the release as shipped would credit merlin with a 2x that belongs to a
+  FIFO depth. Either build both sides with the patched depth, or report the cap alongside the
+  numbers.
+
+**Reproduced, with one line changed.** The release's own flow, at its own CI configuration for this
+point, gives 49.7% and 13.63M on this host; with `MatrixProcessor.h`'s non-MX `FIFO_DEPTH` raised
+from 1 to 2 it gives 91.8% and 7.38M, against the paper's 95.1% and 7.71M.
 
 ### ResNet-50 (blocked)
 
