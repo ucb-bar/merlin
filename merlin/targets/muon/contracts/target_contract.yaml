@@ -19,6 +19,9 @@ plugin:
   # oracle/introspect/CLI siblings). base._oot_backend_modules loads a reference target's plugin.backend
   # (the reference package root is the injected path), so importing the backend self-registers "muon".
   backend: backend
+  # The SIMT RTL introspect this package serves, as `<plugin.backend>:<attribute>`; rtl.mlc_bridge
+  # registers it from here when none is registered, so core never names a SIMT target.
+  simt_introspect: backend:muon_introspect
   # Bespoke SIMT grading oracle (registers "cyclotron" via capsule_runner.register_sim_oracle at import).
   # A single leaf module that reaches the relocated muon_oracles via the backend registry.
   sim_oracle: sim_oracle.py

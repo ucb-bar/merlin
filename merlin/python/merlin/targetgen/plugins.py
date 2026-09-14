@@ -61,6 +61,12 @@ PLUGIN_KEYS: dict[str, PluginKey] = {
         "A runtime backend module (or package directory) that self-registers via "
         "runtime.backends.base.register(). The only fully live seam in the repo.",
         consumed=True, expects="path"),
+    "simt_introspect": PluginKey(
+        "simt_introspect",
+        "The SIMT RTL introspect this package serves, as `<plugin.backend>:<attribute>` -- an attribute of "
+        "the package's own registered backend exposing TARGET + build_facts(). rtl.mlc_bridge registers it "
+        "when no introspect is registered, so core names no SIMT target and nothing is imported twice.",
+        consumed=True, expects="attr"),
     "path": PluginKey(
         "path",
         "Injected by target_registry for external packages — the package root. Not authored by hand.",

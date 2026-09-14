@@ -1347,20 +1347,46 @@ def register_simt_introspect(module) -> None:
     _SIMT_INTROSPECTS[module.TARGET] = module
 
 
+def _register_declared_simt_introspects() -> None:
+    """Register every SIMT introspect a target contract DECLARES, without naming any target here.
+
+    A target contributes its introspect as data: ``plugin.simt_introspect: <plugin.backend>:<attribute>``
+    names an attribute of its own registered backend package, resolved through the backend registry, so
+    nothing is imported a second time under another name. This keeps the on-demand guarantee the old
+    hardcoded fallback gave (it fires whenever the registry is empty, independent of discovery order, so
+    the SIMT introspection a composite target relies on cannot silently go missing) while core carries no
+    SIMT target's name. A declaration that does not resolve registers nothing and the fact bundle says so.
+    """
+    try:
+        from .. import target_registry as _tr
+        from ..plugins import ATTR_SEP
+        from ...runtime.backends import base as _bk
+        names = _tr.all_targets()
+    except Exception:  # noqa: BLE001 — no registry, no declared introspect; _simt_fact_bundle reports it
+        return
+    for name in names:
+        try:
+            plugin = _tr.resolve(name).plugin()
+        except Exception:  # noqa: BLE001 — a contract that will not parse declares nothing usable
+            continue
+        ref = plugin.get("simt_introspect")
+        if not isinstance(ref, str) or ATTR_SEP not in ref:
+            continue
+        module_ref, _, attr = ref.partition(ATTR_SEP)
+        if module_ref != plugin.get("backend"):
+            continue  # only the target's own registered backend package is consulted
+        try:
+            register_simt_introspect(getattr(_bk.get_backend(name), attr))
+        except Exception:  # noqa: BLE001 — unresolvable declaration: register nothing, report honestly
+            continue
+
+
 def _resolve_simt_introspect(target: str):
     """The registered SIMT introspect whose declared identity matches ``target``'s arc alias, or None.
     Serves by the ARC-target alias (not the merlin name): a composite SIMT target (e.g. radiance) whose
     RTL IS the introspect's config (RadianceCluster) resolves to that introspect via ``_arc_target``."""
     if not _SIMT_INTROSPECTS:
-        # The reference Muon introspect was evicted to its own package (merlin/targets/muon/backend/);
-        # resolve it via the registry so mlc_bridge no longer imports it directly, while preserving the
-        # on-demand registration guarantee (this fires whenever the registry is empty, independent of
-        # discovery order — so SIMT introspection radiance relies on cannot silently go missing).
-        try:
-            from ...runtime.backends import base as _bk
-            register_simt_introspect(_bk.get_backend("muon").muon_introspect)
-        except Exception:  # noqa: BLE001 — no SIMT introspect available -> _simt_fact_bundle reports honestly
-            pass
+        _register_declared_simt_introspects()
     return _SIMT_INTROSPECTS.get(_arc_target(target))
 
 
@@ -1418,7 +1444,7 @@ def _simt_fact_bundle(target: str) -> dict:
                                 facts.get("generator", {}).get("name"))
               for name in ("simt", "registers", "shared_memory", "fp_datapath", "isa")}
     return {"target": target,
-            "method": facts.get("generator", {}).get("method", "muon RTL introspect"),
+            "method": facts.get("generator", {}).get("method", f"{getattr(intro, 'TARGET', 'SIMT')} RTL introspect"),
             "kind": "simt", "rtl_present": present, "fields": fields,
             "n_derived": sum(1 for v in fields.values() if v["derived"])}
 
