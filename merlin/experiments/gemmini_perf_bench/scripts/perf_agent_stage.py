@@ -3746,7 +3746,17 @@ def _record_host_refusal(stage: Any, exc: BaseException, *, round_index: Any, ca
         private_root = getattr(macro, "output", None) or getattr(evaluator, "work_root", None)
         if private_root is None:
             return  # Never fall back to a cwd which could be part of an agent-visible workspace.
-        root = Path(private_root) / "host_refusals"
+        base = Path(private_root)
+        # A RELATIVE root resolves against the process cwd, which is the repo checkout for a
+        # launcher run from the tree -- measured: two refusal files landed at the repository root.
+        # Recording is best-effort, so an unanchored root is dropped, never re-anchored.
+        if not base.is_absolute():
+            return
+        base = base.resolve()
+        checkout = Path(repo_root()).resolve()
+        if base == checkout or checkout.is_relative_to(base):
+            return  # The checkout (or one of its parents) is never a host-private work root.
+        root = base / "host_refusals"
         root.mkdir(parents=True, exist_ok=True)
         (root / f"round_{round_index}_call_{call_index}.txt").write_text(
             f"{type(exc).__name__}: {exc}\n\n"
