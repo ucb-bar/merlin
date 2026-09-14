@@ -13,7 +13,6 @@
 
 # ---------------------------------------------------------------- PERMANENT (irreducible)
 merlin/python/merlin/kernels/markers.py                       # motif-evidence table ("heart of extraction"); by design
-merlin/python/merlin/targetgen/rtl/gen_arc_ports.py           # C-identifier sanitization of a name already read from JSON
 
 # ---------------------------------------------------------------- DEFERRED: legacy comparator (needs a validated beam-ranking migration, not a mechanical swap)
 merlin/python/merlin/kernels/compare.py                       # legacy RvvFingerprint; superseded by cca_compare.py, BUT beam.py ranks on its structural_match scalar (0.6*decisions + 0.4*histogram-cosine) and CCA has no histogram — deleting needs a CCA-based score + intentional test_rvv_beam re-baseline (can't validate rankings without the RVV toolchain here)

@@ -13,8 +13,6 @@ unchecked-subprocess-input build_tools/scripts/check_no_regex.py:_iter_targets
 unchecked-subprocess-input build_tools/scripts/check_no_target_name.py:_iter_targets
 unchecked-subprocess-input build_tools/scripts/k1_int8_fair_compare.py:main
 unchecked-subprocess-input build_tools/scripts/k1_intrinsic_microkernel.py:_objdump_vsetvli
-unchecked-subprocess-input merlin/python/merlin/baselines/tvm_board/board_tune.py:make_board_runner
-unchecked-subprocess-input merlin/python/merlin/baselines/tvm_board/board_tune.py:run
 unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_ver
 unchecked-subprocess-input merlin/python/merlin/verify/evaluate.py:_write_product
 self-comparison merlin/python/merlin/dse_guidance/insight_mining.py:2575:art_names == art_names
