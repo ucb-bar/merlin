@@ -152,6 +152,185 @@ def snapshot_sharing() -> dict:
             "occupied_bytes": usage.occupied, "files": usage.files}
 
 
+# --- layout drift ------------------------------------------------------------------------------
+# The layout convention names THREE top-level dirs under out/ and a closed set of concerns under
+# out/artifacts/. Neither is enforced for UNTRACKED output, which is almost all of it: the tracked
+# linter (check_artifact_layout.py) can only see files in the index, and generated output is
+# gitignored by design. So the convention held for the tracked tree and drifted freely underneath
+# it. Measured 2026-09-15: 4 undeclared top-level dirs and 52 undeclared concerns, against 16
+# declared ones. A one-off directory is not a crime; 52 of them means nobody can find anything, and
+# a reader cannot tell a live concern from a debugging detour someone left behind.
+#
+# This reports, it does not move: a product's path is quoted in reports, manifests and docs, and a
+# tidy tree that broke those references would be a poor trade.
+OUT_ROOTS = ("runs", "artifacts", "build")
+DECLARED_CONCERNS = (
+    "cache", "capsule-bench", "ceiling", "compare", "design-pressure", "dse", "dse-guidance",
+    "kernel-index", "kernel-mining", "measurements", "optimization-surface", "perf-bench",
+    "presentation", "recaptures", "selfcheck", "targets",
+)
+
+
+def layout_drift() -> dict:
+    """What sits under out/ that the convention does not name, and what it costs."""
+    report: dict = {"stray_roots": [], "undeclared_concerns": [], "declared_concerns": []}
+    for path in _safe_dirs(out_dir()):
+        if path.name not in OUT_ROOTS:
+            usage = measure(path)
+            report["stray_roots"].append({"name": path.name, "bytes": usage.occupied,
+                                          "files": usage.files})
+    for path in _safe_dirs(artifacts_dir()):
+        usage = measure(path)
+        row = {"name": path.name, "bytes": usage.occupied, "files": usage.files,
+               "units": len(_safe_dirs(path))}
+        key = "declared_concerns" if path.name in DECLARED_CONCERNS else "undeclared_concerns"
+        report[key].append(row)
+    for key in ("stray_roots", "undeclared_concerns", "declared_concerns"):
+        report[key].sort(key=lambda r: -r["bytes"])
+    return report
+
+
+def _print_layout(report: dict, top: int) -> None:
+    stray, undeclared = report["stray_roots"], report["undeclared_concerns"]
+    declared = report["declared_concerns"]
+    print(f"out/ roots: {len(OUT_ROOTS)} declared ({', '.join(OUT_ROOTS)}), "
+          f"{len(stray)} undeclared")
+    for row in stray:
+        print(f"  [stray root]  {_human(row['bytes']):>10}  {row['files']:>7,} files  "
+              f"out/{row['name']}")
+    if stray:
+        print("  -> generated output belongs under one of the three roots; anything else is a root\n"
+              "     the convention retired, and the write-guard hook only blocks paths it knows.")
+
+    print(f"\nout/artifacts concerns: {len(declared)} declared, {len(undeclared)} undeclared")
+    declared_bytes = sum(r["bytes"] for r in declared)
+    undeclared_bytes = sum(r["bytes"] for r in undeclared)
+    print(f"  declared   {_human(declared_bytes):>10}")
+    print(f"  undeclared {_human(undeclared_bytes):>10}   "
+          f"({len(undeclared)} dirs, {sum(r['units'] for r in undeclared):,} units)")
+    if undeclared:
+        print(f"\n  largest undeclared (top {top}):")
+        for row in undeclared[:top]:
+            print(f"    {_human(row['bytes']):>10}  {row['units']:>5} units  {row['name']}")
+        print("\n  Each needs one of: fold into a declared concern, add it to the convention as a\n"
+              "  real concern, or retire it. Reported only -- paths appear in reports and manifests.")
+
+
+# --- per-experiment accounting ----------------------------------------------------------------
+# "How much does one run cost?" had no answer, so every disk conversation was about totals -- and a
+# total cannot distinguish a concern that is big because each run is bloated from one that is big
+# because nothing ever deletes a finished campaign. Those want opposite fixes: the first is a bug in
+# the producer, the second a retention decision. Measured 2026-09-15: a phase-2 perf-bench unit is
+# 170 MB and there are 172 of them, while the same concern's 297 other units average 187 MB -- so
+# perf-bench is large by accumulation, not by bloat, and no amount of de-duplication would fix it.
+_VERSION_PREFIX = "v"
+
+
+def _is_version_level(name: str) -> bool:
+    """``v1``/``v12`` product-version levels sit BETWEEN the axis and the unit.
+
+    Treating one as a unit prices a whole version series as a single experiment -- ``perf-bench``'s
+    ``v1`` holds 34 GB -- which is the one number guaranteed to mislead.
+    """
+    return (name.startswith(_VERSION_PREFIX) and len(name) > 1
+            and name[1:].isdigit())
+
+
+def experiment_units() -> list[tuple[str, str, Path]]:
+    """``(group, unit name, path)`` for every directory that represents ONE experiment.
+
+    Two shapes, both from the layout convention: an aet run at
+    ``out/runs/<target>/<suite>/<run-id>`` and a product at
+    ``out/artifacts/<concern>/<axis>/[v<n>/]<unit>``. Anything shallower is a container and anything
+    deeper is a unit's own content, so this is the level at which "per experiment" means something.
+    """
+    found: list[tuple[str, str, Path]] = []
+
+    def descend(group: str, parent: Path, depth: int) -> None:
+        try:
+            children = sorted(p for p in parent.iterdir() if p.is_dir() and not p.is_symlink())
+        except OSError:
+            return
+        for child in children:
+            if _is_version_level(child.name) and depth == 0:
+                descend(_label(child), child, depth)
+            else:
+                found.append((group, child.name, child))
+
+    for target in _safe_dirs(runs_dir()):
+        for suite in _safe_dirs(target):
+            descend(_label(suite), suite, 0)
+    for concern in _safe_dirs(artifacts_dir()):
+        if concern.name == "cache":
+            continue                          # regenerable by convention; priced as a cache instead
+        for axis in _safe_dirs(concern):
+            descend(_label(axis), axis, 0)
+    return found
+
+
+def _label(path: Path) -> str:
+    """A group's name is its place under the out/ root, derived rather than spelled.
+
+    Writing the root names into the label would also bake in the layout this module is meant to
+    REPORT on, and it would go wrong the moment ``MERLIN_OUT_ROOT`` points somewhere else.
+    """
+    try:
+        return path.relative_to(out_dir()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _safe_dirs(parent: Path) -> list[Path]:
+    try:
+        return sorted(p for p in parent.iterdir() if p.is_dir() and not p.is_symlink())
+    except OSError:
+        return []
+
+
+def experiment_costs(match: str | None = None) -> dict:
+    """Per-group experiment cost. ``match`` keeps only units whose name contains it (case-folded),
+    which is how a campaign spread across groups -- ``phase2``, a model name, a date -- gets priced
+    as one thing."""
+    groups: dict[str, dict] = {}
+    needle = match.casefold() if match else None
+    for group, name, path in experiment_units():
+        if needle and needle not in name.casefold():
+            continue
+        usage = measure(path)
+        row = groups.setdefault(group, {"units": 0, "bytes": 0, "files": 0, "largest": ("", 0)})
+        row["units"] += 1
+        row["bytes"] += usage.occupied
+        row["files"] += usage.files
+        if usage.occupied > row["largest"][1]:
+            row["largest"] = (name, usage.occupied)
+    for row in groups.values():
+        row["mean_bytes"] = row["bytes"] // row["units"] if row["units"] else 0
+    return groups
+
+
+def _print_experiments(groups: dict, top: int, match: str | None) -> None:
+    if not groups:
+        print(f"no experiment units{f' matching {match!r}' if match else ''} under the out/ root")
+        return
+    rows = sorted(groups.items(), key=lambda kv: -kv[1]["bytes"])
+    total_units = sum(r["units"] for _, r in rows)
+    total_bytes = sum(r["bytes"] for _, r in rows)
+    shown = rows[:top]
+    label = f" matching {match!r}" if match else ""
+    print(f"{total_units:,} experiment unit(s){label}, {_human(total_bytes)} "
+          f"(top {len(shown)} of {len(rows)} groups by total)\n")
+    print(f"  {'group':<46} {'units':>6} {'total':>12} {'mean/unit':>12} {'files':>10}")
+    for group, row in shown:
+        print(f"  {group:<46} {row['units']:>6} {_human(row['bytes']):>12} "
+              f"{_human(row['mean_bytes']):>12} {row['files']:>10,}")
+    print("\nA group that is large with a SMALL mean is large by accumulation -- that is a retention\n"
+          "decision, not a producer bug. A large mean is the producer writing too much per run.")
+    biggest = max(rows, key=lambda kv: kv[1]["mean_bytes"])
+    print(f"\nheaviest per run: {biggest[0]} at {_human(biggest[1]['mean_bytes'])}/unit "
+          f"(largest single unit: {biggest[1]['largest'][0]} "
+          f"{_human(biggest[1]['largest'][1])})")
+
+
 def collect() -> dict:
     roots = {"runs": runs_dir(), "artifacts": artifacts_dir(), "build": build_dir()}
     report: dict = {"out_root": str(out_dir()), "roots": {}, "concerns": {}}
@@ -281,6 +460,15 @@ def main(argv: list[str] | None = None) -> int:
     show.add_argument("--top", type=int, default=12, help="how many artifact concerns to list")
     show.add_argument("--json", action="store_true", help="emit the measurements instead of a table")
 
+    exp = sub.add_parser("experiments", help="what ONE experiment costs, by group")
+    exp.add_argument("--top", type=int, default=20, help="how many groups to list")
+    exp.add_argument("--match", help="only units whose name contains this (e.g. phase2)")
+    exp.add_argument("--json", action="store_true", help="emit the measurements instead of a table")
+
+    lay = sub.add_parser("layout", help="what sits under out/ that the convention does not name")
+    lay.add_argument("--top", type=int, default=15, help="how many undeclared concerns to list")
+    lay.add_argument("--json", action="store_true", help="emit the measurements instead of a table")
+
     prune = sub.add_parser("prune", help="reclaim the provably-safe classes (dry run by default)")
     prune.add_argument("classes", nargs="*", choices=CLASSES,
                        help="which classes to reclaim (default: all of them)")
@@ -295,6 +483,22 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report, indent=2, sort_keys=True))
         else:
             _print_report(report, args.top)
+        return 0
+
+    if args.command == "experiments":
+        groups = experiment_costs(args.match)
+        if args.json:
+            print(json.dumps(groups, indent=2, sort_keys=True))
+        else:
+            _print_experiments(groups, args.top, args.match)
+        return 0
+
+    if args.command == "layout":
+        report = layout_drift()
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+        else:
+            _print_layout(report, args.top)
         return 0
 
     chosen = tuple(args.classes or CLASSES)
