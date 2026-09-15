@@ -218,6 +218,30 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **The same capsule ELFs on the FPGA** (FireSim, pinned Gemmini bitstream
+  `resnet50_merlin_warm_measured_full_gemmini_u250_pinned`, via the existing submit tool;
+  `scripts/firesim_h2h.py`, jobs 657-680). Every job's `OUT` line is byte-identical to the
+  Verilator-certified output of the same ELF, so each cycle count is admitted only with its
+  correctness:
+
+  | capsule | Voyager | reference | v1_l1 | v1_la1 | v1_la1b | v1_hoist | v1_grp |
+  |---|---|---|---|---|---|---|---|
+  | A3 | 652 | 669 | 669 | 650 | **648** | - | - |
+  | C0 | 2070 | 2326 | 1909 | **1876** | 1906 | 2044 | 2147 |
+  | C2 | **861** | 933 | 933 | 968 | 1025 | 933 | 862 |
+  | GM0 | 56577 | 46604 | 46604 | **45589** | 49625 | - | - |
+  | GM1 | 59057 | 56921 | - | **54146** | - | - | - |
+
+  - Best merlin variant per capsule vs Voyager: geomean **0.922** (7.8% fewer cycles), 4 wins and a
+    one-cycle loss on C2 (862 vs 861).
+  - **Real memory reorders the verdict.** The same ELF costs 1.55-2.08x its Verilator cycles, and C2
+    flips outright: merlin's lookahead order wins in Verilator (459 vs 469) and loses on the FPGA
+    (968 vs 861). Rank compilers on the timed substrate, never on the fast-memory simulator alone.
+  - **The mechanism is memory-level parallelism, and it is measurable.** Grouping every input load
+    ahead of the weight loads (`v1_grp`) -- the order Voyager emits for that shape -- matches Voyager
+    on C2 (862 vs 861) but is the WORST arm on C0 (2147 vs 1876). No fixed order wins both, so
+    lookahead depth, operand grouping and bank placement belong in a knob chosen by measurement per
+    shape AND substrate, not in a backend constant.
 - **Plane B: the 2x per-layer gap is Voyager's own, and one line recovers it** (2feb9db6; details and
   evidence in `PLANE_B.md`, runs under `out/runs/voyager_accel/plane_b/`).
   - `src/MatrixProcessor.h:24` sizes the accumulate-to-writeback FIFO `SUPPORT_MX ? 8 : 1`, so every
@@ -265,7 +289,12 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     hand-applied lessons on the certified package, not the agent's output, and must be labelled so.
   - Suggested cell: "L3, clean-room bridge; 18 exact matched capsules & Voyager uses 1.4% fewer
     cycles than the certified backend (0.986); Merlin 1.38x faster on deep-K GEMMs; applying
-    Voyager's load-once lesson reverses it (Merlin 2.3% fewer)". FireSim column pending.
+    Voyager's load-once lesson reverses it (Merlin 2.3% fewer)".
+  - **On the FPGA** (5 capsules measured on the pinned bitstream, outputs byte-identical to the
+    certified Verilator results): the best merlin variant per capsule uses **7.8% fewer cycles**
+    than Voyager (geomean 0.922; 4 wins, one 1-cycle loss). That row must say which substrate it is,
+    since the same ELFs rank differently in Verilator, and must label the per-capsule variant choice
+    as tuned.
 - **Verification mutation study** (`scripts/mutation_study.py`, e21dfb4f; product
   `compare_gemmini_v1_20260914T222217Z_ada9e07`). 64 faults were seeded into Voyager's own compiled
   programs (4 workloads). Each faulty program was judged by Voyager's checks (its own code at

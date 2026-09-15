@@ -130,6 +130,11 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
   bank boundary (`v1_la1b`) ties those and wins 8, but loses C2-C4 by 3 cycles. So operand PLACEMENT is
   a second measured knob next to order: weights sharing the input's bank cost 3-15%, and the position
   inside the other bank moves a capsule by a few cycles.
+- **On the FPGA the same knob flips.** With real DRAM (FireSim, same ELFs) C2 reverses: merlin's
+  lookahead order wins in Verilator (459 vs 469) and loses on the FPGA (968 vs 861), while grouping
+  every input load ahead of the weights -- Voyager's own order for that shape -- matches Voyager
+  there (862) yet is the worst arm on C0 (2147 vs 1876). The knob's best value depends on the
+  memory system, not only on the array, so it must be measured on the substrate being claimed.
 - **Merlin's way.** Make lookahead depth, intra-step operand order and bank placement knobs of the
   L1 block-spec pipeline pass, chosen per target by measurement (cycles keyed by kernel digest, lesson L3), not
   fixed in a backend. The mechanism is target-agnostic; the best order is a measured fact of the
