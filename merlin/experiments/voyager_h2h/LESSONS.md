@@ -149,6 +149,11 @@ Status legend: **measured** (seen in our runs), **read** (in Voyager's code), **
   all. It caught the cross-bank-group overlap that merlin's exact check missed: merlin's lowering
   keeps partials and outputs in the accumulator, so that overlap never reaches a planned address it
   executes.
+- **It already paid.** The library pipeline pass (L1/L10, `compile/scheduling/block_schedule.py`)
+  carries such a check, and it refused two knob settings on the deep-K spill shape: the operand
+  regions overlap there by 32 rows, so hoisting every load overwrites an input block into rows a
+  later preload reads as weights. Those settings had never been graded on that shape, and the
+  arithmetic would simply have used wrong bytes.
 - **Merlin's way.** Put a static address/liveness checker beside the exact executor: scratchpad and
   accumulator row intervals per slot, live ranges from the op stream, and a hard failure (not a
   warning) on any write into a live region. The executor proves the arithmetic; the checker proves

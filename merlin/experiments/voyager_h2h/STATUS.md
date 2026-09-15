@@ -218,6 +218,18 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **The measured scheduling knobs are now a library pass** (`merlin/python/merlin/compile/scheduling/
+  block_schedule.py`, 950a20b9): load-on-index-change, lookahead depth, intra-step operand order,
+  load grouping (nest order vs by operand) and region placement, over geometry DERIVED from the
+  target's address space, refusing when the facts or the capacity do not admit a knob value.
+  - It reproduces every hand variant op for op: 42 variant x shape cells checked against each
+    package's own lowering run (v0, v1_l1, v1_hoist, v1_grp, v1_la1, v1_la1b, v1_la1_pafter); the
+    packages are read, never modified.
+  - **It caught a latent fault the measurements never hit.** On GM1 (K=8208) the operand regions
+    overlap by 32 rows, so `v1_hoist`/`v1_grp` would overwrite an input block into rows a later
+    preload reads as weights (in the package's own stream: the load at index 2049, the preload at
+    2054). Those two variants were never graded on GM1, and no in-order executor can see it -- this
+    is lesson L11's address/liveness check finding a real bug, and it is asserted as a test.
 - **The same capsule ELFs on the FPGA** (FireSim, pinned Gemmini bitstream
   `resnet50_merlin_warm_measured_full_gemmini_u250_pinned`, via the existing submit tool;
   `scripts/firesim_h2h.py`, jobs 657-680). Every job's `OUT` line is byte-identical to the
