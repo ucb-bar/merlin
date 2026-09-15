@@ -169,3 +169,70 @@ def test_reclaiming_a_tree_does_not_make_a_live_snapshots_files_writable(rooted)
     assert not abandoned.exists()
     assert not (survivor.stat().st_mode & 0o222), "the live snapshot's file was made writable"
     assert survivor.read_bytes() == b"shared"
+
+
+def test_the_scan_reaches_workspaces_that_live_outside_the_out_root(tmp_path, monkeypatch):
+    """The defect this contract exists to fix.
+
+    An agent run freezes its input closure as a SIBLING of its workspace, and a capsule-bench
+    workspace lives beside its target experiment rather than under out/. Scanning only the out/ root
+    made the tool blind to 40 GB of completed closures and one 8.7 GB closure abandoned mid-copy --
+    exactly the class it was built to find.
+    """
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    merlin = tmp_path / "merlin"
+    (merlin / "contract").mkdir(parents=True)
+    (merlin / "contract" / "storage.yaml").write_text(
+        "scan_roots:\n  - experiments/capsule_bench/targets/*/_qa_ws\n", encoding="utf-8")
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    (tmp_path / "out").mkdir()
+
+    ws = merlin / "experiments/capsule_bench/targets/gemmini/_qa_ws/run1"
+    abandoned = ws / "bundle_inputs.pending"
+    abandoned.mkdir(parents=True)
+    (abandoned / "half.bin").write_bytes(b"x" * 4096)
+    complete = ws / "bundle_inputs"
+    complete.mkdir()
+    (complete / "input.bin").write_bytes(b"y" * 2048)
+
+    roots = SC.scan_roots()
+    assert (tmp_path / "out").resolve() in roots
+    assert (merlin / "experiments/capsule_bench/targets/gemmini/_qa_ws").resolve() in roots
+
+    found, total = SC.pending_snapshots()
+    assert found == [abandoned] and total == 4096
+    assert SC.snapshot_sharing()["snapshots"] == 1
+
+
+def test_a_declared_root_that_is_not_on_disk_is_skipped(tmp_path, monkeypatch):
+    """A checkout without a given experiment is not an error."""
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    (tmp_path / "merlin" / "contract").mkdir(parents=True)
+    (tmp_path / "merlin" / "contract" / "storage.yaml").write_text(
+        "scan_roots:\n  - experiments/nothing/here/*\n", encoding="utf-8")
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    (tmp_path / "out").mkdir()
+
+    assert SC.scan_roots() == [(tmp_path / "out").resolve()]
+
+
+def test_a_missing_contract_still_leaves_the_out_root_scannable(tmp_path, monkeypatch):
+    """The contract is an addition, never a dependency: losing it must not blind the tool entirely."""
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    (tmp_path / "merlin").mkdir()
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    (tmp_path / "out").mkdir()
+
+    assert SC.scan_roots() == [(tmp_path / "out").resolve()]
+
+
+def test_a_nested_root_is_not_walked_twice(tmp_path, monkeypatch):
+    """Double-counting a closure would overstate both the cost and the reclaim."""
+    monkeypatch.setenv("MERLIN_REPO_ROOT", str(tmp_path))
+    (tmp_path / "merlin" / "contract").mkdir(parents=True)
+    monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
+    inner = tmp_path / "out" / "runs" / "t"
+    inner.mkdir(parents=True)
+
+    roots = SC.scan_roots(extra=[inner])
+    assert roots == [(tmp_path / "out").resolve()]

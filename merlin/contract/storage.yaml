@@ -1,0 +1,15 @@
+# Where generated state lives, for the tool that prices and reclaims it.
+#
+# The out/ root is found by merlin.common.paths and needs no entry here. What DOES need one is every
+# place a long-running experiment puts a workspace outside that root: an agent run freezes its
+# declared input closure as a sibling of its workspace, and a capsule-bench workspace lives beside
+# its target experiment, not under out/. merlin-storage was built to find exactly those and could
+# not see them -- measured 2026-09-15, 40 GB of completed closures and one 8.7 GB closure abandoned
+# mid-copy sat in workspaces the scan never reached.
+#
+# Declared here rather than spelled in code for the reason every other path in this directory is:
+# no library module names a checkout directory, so moving a workspace is an edit to this file.
+# Patterns are relative to merlin/ and may glob; a pattern matching nothing on disk is skipped, so a
+# checkout without a given experiment is not an error.
+scan_roots:
+  - experiments/capsule_bench/targets/*/_qa_ws

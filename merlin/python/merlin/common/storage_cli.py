@@ -35,6 +35,45 @@ from merlin.common.paths import artifacts_dir, build_dir, out_dir, runs_dir
 
 _SNAPSHOT_DIR = "bundle_inputs"
 _PENDING_SUFFIX = ".pending"
+_SCAN_ROOTS_CONTRACT = "storage.yaml"
+
+
+def scan_roots(extra: list[Path] | None = None) -> list[Path]:
+    """Every root that can hold generated state: the out/ root, plus the declared workspace roots.
+
+    An agent run freezes its declared input closure as a SIBLING of its workspace, and a
+    capsule-bench workspace lives beside its target experiment rather than under out/. So the roots
+    this tool must walk are not all reachable from ``out_dir()``, and the first version of it walked
+    only that -- it was blind to 40 GB of completed closures and one 8.7 GB closure abandoned
+    mid-copy, which is precisely the class it exists to find.
+
+    The extra roots come from ``merlin/contract/storage.yaml`` rather than from a literal here, for
+    the reason every other path in that directory is declared: no library module spells a checkout
+    directory, so relocating a workspace is an edit to data. A pattern matching nothing is skipped.
+    """
+    from merlin.common.paths import merlin_dir  # noqa: PLC0415
+    from merlin.common.yaml import load_yaml  # noqa: PLC0415
+
+    base = merlin_dir()
+    roots = [out_dir()]
+    try:
+        declared = load_yaml(base / "contract" / _SCAN_ROOTS_CONTRACT) or {}
+        patterns = declared.get("scan_roots") or []
+    except (OSError, ValueError):
+        patterns = []                         # no contract, or unreadable: the out/ root still works
+    for pattern in patterns:
+        for path in sorted(base.glob(str(pattern))):
+            if path.is_dir() and not path.is_symlink():
+                roots.append(path)
+    for path in extra or []:
+        if path.is_dir():
+            roots.append(path)
+    # A root nested inside another would be walked twice and double-counted.
+    kept: list[Path] = []
+    for path in sorted({p.resolve() for p in roots}, key=lambda p: len(p.parts)):
+        if not any(parent in path.parents for parent in kept):
+            kept.append(path)
+    return kept
 
 
 class Usage:
@@ -105,17 +144,17 @@ def store_orphans(root: Path | None = None) -> tuple[list[Path], int]:
     return content_store.orphans(root if root is not None else store_root())
 
 
-def pending_snapshots(root: Path | None = None) -> tuple[list[Path], int]:
+def pending_snapshots(roots: list[Path] | None = None) -> tuple[list[Path], int]:
     """Input closures abandoned mid-copy. A complete one is named without the suffix."""
-    root = root if root is not None else out_dir()
     found: list[Path] = []
     total = 0
-    if not root.is_dir():
-        return found, total
-    for path in root.rglob(_SNAPSHOT_DIR + _PENDING_SUFFIX):
-        if path.is_dir() and not path.is_symlink():
-            found.append(path)
-            total += measure(path).occupied
+    for root in (roots if roots is not None else scan_roots()):
+        if not root.is_dir():
+            continue
+        for path in root.rglob(_SNAPSHOT_DIR + _PENDING_SUFFIX):
+            if path.is_dir() and not path.is_symlink():
+                found.append(path)
+                total += measure(path).occupied
     return found, total
 
 
@@ -140,14 +179,21 @@ def purgeable_caches(store: Path | None = None) -> tuple[list[Path], int]:
     return found, total
 
 
-def snapshot_sharing() -> dict:
-    """How much the per-run input closures cost, and how much of that is shared."""
+def snapshot_sharing(roots: list[Path] | None = None) -> dict:
+    """How much the per-run input closures cost, and how much of that is shared.
+
+    ONE ``Usage`` across every closure on purpose: a store-backed inode is counted once no matter
+    how many runs link it, so apparent-minus-occupied IS the saving the store is producing.
+    """
     usage = Usage()
     count = 0
-    for path in out_dir().rglob(_SNAPSHOT_DIR):
-        if path.is_dir() and not path.is_symlink():
-            count += 1
-            measure(path, usage=usage)        # one Usage across all of them: shared inodes collapse
+    for root in (roots if roots is not None else scan_roots()):
+        if not root.is_dir():
+            continue
+        for path in root.rglob(_SNAPSHOT_DIR):
+            if path.is_dir() and not path.is_symlink():
+                count += 1
+                measure(path, usage=usage)
     return {"snapshots": count, "apparent_bytes": usage.apparent,
             "occupied_bytes": usage.occupied, "files": usage.files}
 

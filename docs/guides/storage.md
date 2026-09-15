@@ -110,6 +110,16 @@ compiler or simulator inherits `TMPDIR` and writes its intermediates in the same
 of a passing test file leave 8 KB behind and no retained run roots, where the defaults would have
 kept all three.
 
+**Where the tool looks.** Not every workspace is under `out/`. An agent run freezes its input
+closure as a *sibling of its workspace*, and a capsule-bench workspace lives beside its target
+experiment. The first version of `merlin-storage` walked only the `out/` root and was therefore blind
+to 40 GB of completed closures and one 8.7 GB closure abandoned mid-copy — precisely the class it
+exists to find. The extra roots are declared in `merlin/contract/storage.yaml` (patterns relative to
+`merlin/`, globs allowed, a pattern matching nothing is skipped) rather than spelled in code, for the
+same reason every other path in that directory is declared: no library module names a checkout
+directory, so relocating a workspace is an edit to data. Losing the contract degrades the tool to the
+`out/` root; it is never a dependency.
+
 **3. Declared-regenerable trees that nobody reclaims.** `out/artifacts/cache/<ns>/` and
 `out/artifacts/recaptures/` are PURGEABLE by the layout convention that created them (see
 [the generated-output convention](../../CLAUDE.md)); being purgeable is not the same as being purged.
