@@ -352,3 +352,12 @@ tmp
 # a test input, and it reappears the moment anyone runs the suite -- so without this it shows up as an
 # untracked file in every session and eventually gets swept into someone's commit.
 merlin/tests/data/lit/.lit_test_times.txt
+
+# Voyager head-to-head: the comparative analysis stays internal. This repo is public, and these three
+# carry our positioning against another group's published work -- including a defect in their public
+# release and the paper claims we intend to make from it. The reproducible half of the experiment
+# (bridge, harnesses, concession register) stays tracked; only the analysis is held back. Copies live
+# under out/artifacts/presentation/merlin_retrospective_20260911/.
+/merlin/experiments/voyager_h2h/LESSONS.md
+/merlin/experiments/voyager_h2h/STATUS.md
+/merlin/experiments/voyager_h2h/PLANE_B.md
