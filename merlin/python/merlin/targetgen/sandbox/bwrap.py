@@ -22,6 +22,7 @@ import os
 import shutil
 from pathlib import Path
 
+from merlin.common import content_store
 from merlin.common.paths import repo_root
 from merlin.targetgen.sandbox.answer_surfaces import AnswerSurface, answer_surfaces
 from merlin.targetgen.target_experiment import TargetExperiment
@@ -284,6 +285,8 @@ def _make_snapshot_writable(root: Path) -> None:
         raise RuntimeError(
             f"refusing to chmod tampered bundle snapshot containing symlink: {symlinks[0]}")
     for path in sorted(paths, key=lambda p: len(p.parts)):
+        if content_store.is_shared(path):
+            continue                          # unlink needs the DIRECTORY writable, not the file
         path.chmod(0o700 if path.is_dir() else 0o600)
     root.chmod(0o700)
 
@@ -336,16 +339,22 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
         roots.append(source)
 
     pending.mkdir(parents=True)
+    # One copy of each distinct byte-string, hard-linked here. A campaign's runs declare overlapping
+    # closures -- the same toolchain, the same model weights -- and deep-copying them per run cost
+    # 12.8 GB a run, 235 GiB across one campaign, for inputs that were byte-identical every time.
+    # These are still the run's own frozen bytes: the store holds its OWN copy of them, so an
+    # in-place edit of the source mutates the source's inode and cannot reach this snapshot.
+    # Symlinks are dereferenced, as the copy this replaces did, so an absolute link into an external
+    # RTL checkout cannot remain a live escape. See merlin.common.content_store.
+    store = content_store.store_root()
     try:
         for source in roots:
             dst = _snapshot_path(pending, source, repo)
             dst.parent.mkdir(parents=True, exist_ok=True)
             if source.is_dir():
-                # Dereference symlinks so an absolute link into an external RTL
-                # checkout cannot remain a live escape from the snapshot.
-                shutil.copytree(source, dst, symlinks=False)
+                content_store.place_tree(source, dst, store)
             else:
-                shutil.copy2(source, dst, follow_symlinks=True)
+                content_store.place_file(source, dst, store)
         digest, n_files, n_bytes = _snapshot_content(pending)
         grant_records = []
         for rel, source in grants:
@@ -369,6 +378,8 @@ def materialize_bundle_inputs(ws: Path, bundle: dict, *, repo: Path | None = Non
         for path in sorted(pending.rglob("*"), key=lambda p: len(p.parts), reverse=True):
             # Host-immutable means clear write bits, not executable bits.  A
             # bundle may grant compilers and scripts that must remain runnable.
+            if content_store.is_shared(path):
+                continue                      # already read-only in the store, and shared
             path.chmod(path.stat().st_mode & ~0o222)
         pending.chmod(pending.stat().st_mode & ~0o222)
         pending.rename(root)

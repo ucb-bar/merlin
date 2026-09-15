@@ -32,6 +32,8 @@ import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # <repo>/merlin/tests/conftest.py -> parents[2] == <repo>
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "merlin" / "python"
 if _PACKAGE_ROOT.is_dir() and str(_PACKAGE_ROOT) not in sys.path:
@@ -42,6 +44,55 @@ from merlin.common.paths import merlin_dir  # noqa: E402  -- must follow the pin
 _FIXTURES = merlin_dir() / "tests" / "fixtures"
 if str(_FIXTURES) not in sys.path:
     sys.path.insert(0, str(_FIXTURES))
+
+
+# ------------------------------------------------------------------------------------------------
+# Temp dirs the suite makes for itself must be reclaimable.
+# ------------------------------------------------------------------------------------------------
+# Many tests build a workload bundle and lower it in a scratch directory obtained from a bare
+# `tempfile.mkdtemp()` inside a module-level helper -- no `tmp_path`, no cleanup, because the helper
+# is shared by parametrized cases and has nowhere to put a fixture. Those directories are never
+# removed by anything: not the test, not pytest (which only manages what it handed out), not the OS.
+# Each holds a bundle, the MLIR at every stage, an object file and a disassembly, and a parametrized
+# module makes one per case per run.
+#
+# Rather than thread a fixture through every helper in every bucket, point `tempfile` itself at
+# pytest's managed base temp directory, which `tmp_path_retention_*` in pyproject.toml already
+# reclaims. TMPDIR is exported too, so a compiler or simulator the test spawns writes its own
+# intermediates in the same reclaimable place instead of on the root filesystem.
+#
+# The base temp root goes on the big filesystem. pytest's default is under /tmp, which here lives on
+# the small root volume that whole-model builds have filled before; `PYTEST_DEBUG_TEMPROOT` is the
+# only knob for it and it is read when the root is first requested, so it is set at import time and
+# only when the operator has not chosen one.
+_TEMP_ROOT_ENV = "PYTEST_DEBUG_TEMPROOT"
+if not os.environ.get(_TEMP_ROOT_ENV):
+    _preferred = Path(os.environ.get("MERLIN_TEST_TEMPROOT") or "/scratch")
+    if _preferred.is_dir() and os.access(_preferred, os.W_OK):
+        os.environ[_TEMP_ROOT_ENV] = str(_preferred)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _managed_tempdir(tmp_path_factory):
+    """Make every bare ``tempfile`` call land inside pytest's reclaimable base temp dir."""
+    import tempfile  # noqa: PLC0415 -- imported here so the module stays import-light
+
+    root = tmp_path_factory.getbasetemp() / "tempfile"
+    root.mkdir(exist_ok=True)
+    previous_tempdir = tempfile.tempdir
+    previous_env = {key: os.environ.get(key) for key in ("TMPDIR", "TMP", "TEMP")}
+    tempfile.tempdir = str(root)
+    for key in previous_env:
+        os.environ[key] = str(root)
+    try:
+        yield root
+    finally:
+        tempfile.tempdir = previous_tempdir
+        for key, value in previous_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 # ------------------------------------------------------------------------------------------------

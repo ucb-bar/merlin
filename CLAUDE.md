@@ -118,6 +118,16 @@ timestamp-first (`<TS>_<method>_seed<NNN>_<sha7>`), products are topic-first
 groups together. Keep inner file names identical across targets (e.g. `perf_results.json`, `findings.csv`,
 `manifest.yaml`) so target-vs-target diffs are trivial.
 
+**Disk cost is a property of the layout, not an afterthought.** `merlin-storage report` prices the
+root and says how much of it is the *same bytes under several names*; `merlin-storage prune` (dry-run
+by default) reclaims only classes whose safety is a property — an unreferenced content-store object, an
+input closure abandoned mid-copy, a declared-regenerable cache. Two incidents came from mechanisms that
+copied bytes nobody asked for: a per-run deep copy of each run's declared input closure (12.8 GB/run,
+235 GiB per campaign, for byte-identical inputs — now hard-linked from a content store), and unbounded
+temp retention. Never delete run output on a "modified recently" liveness proxy: a purge's own
+deletions update the mtimes of the units it touched, so the rule reports the units you just edited as
+the live ones. See `docs/guides/storage.md`.
+
 **Enforcement** (do not bypass without cause): a PreToolUse hook
 (`.claude/hooks/guard_artifact_writes.py`) blocks generated writes outside the `out/` root;
 `build_tools/scripts/check_artifact_layout.py` lints tracked-file violations (pre-commit / Stop hook).

@@ -57,6 +57,10 @@ triton = ["triton==3.7.1"]
 [project.scripts]
 merlin-opt = "merlin.xdsl_dialects.opt:main"
 merlin-verify = "merlin.verify.cli:main"
+# What the generated-output root costs and why, plus the reclaim classes whose safety is a property
+# (an unreferenced store object, an abandoned input closure, a declared-regenerable cache) rather
+# than a judgement about whether a run is finished.
+merlin-storage = "merlin.common.storage_cli:main"
 merlin-lit-suite = "merlin.targetgen.lit_suite:main"
 kernel-index = "merlin.kernels.cli_index:main"
 kernel-extract = "merlin.kernels.cli_extract:main"
@@ -135,6 +139,15 @@ markers = [
 # heavy compiles (e.g. whole-model lowering) finish well within it; only true hangs trip it.
 timeout = 900
 timeout_method = "signal"
+
+# Temp-dir retention. pytest keeps the last THREE runs' `tmp_path` trees by default, for every test
+# whether it passed or not. This suite's temp trees are not small -- an rvv lowering test writes a
+# workload bundle, MLIR at each stage, an object file and a disassembly -- so three full retained
+# runs is gigabytes that nothing ever reclaims, and the conftest fixture below deliberately routes
+# every bare `tempfile.mkdtemp()` into the same managed root. Keep only what a failure needs to be
+# diagnosed: the failing test's tree, from the last run.
+tmp_path_retention_count = 1
+tmp_path_retention_policy = "failed"
 
 [tool.mypy]
 cache_dir = "out/build/cache/mypy"
