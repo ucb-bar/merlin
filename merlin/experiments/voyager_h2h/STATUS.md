@@ -226,14 +226,18 @@ What is verified right now. Each line names its evidence; nothing here is a perf
 
   | capsule | Voyager | reference | v1_l1 | v1_la1 | v1_la1b | v1_hoist | v1_grp |
   |---|---|---|---|---|---|---|---|
+  | A0 (16x16x16) | 481 | - | - | 482 | 481 | - | - |
   | A3 | 652 | 669 | 669 | 650 | **648** | - | - |
+  | A4 (int8 readout) | 499 | - | - | 501 | 499 | - | - |
+  | B0 | 660 | - | - | 659 | **657** | - | - |
   | C0 | 2070 | 2326 | 1909 | **1876** | 1906 | 2044 | 2147 |
   | C2 | **861** | 933 | 933 | 968 | 1025 | 933 | 862 |
   | GM0 | 56577 | 46604 | 46604 | **45589** | 49625 | - | - |
   | GM1 | 59057 | 56921 | - | **54146** | - | - | - |
 
-  - Best merlin variant per capsule vs Voyager: geomean **0.922** (7.8% fewer cycles), 4 wins and a
-    one-cycle loss on C2 (862 vs 861).
+  - All 8 distinct shapes of the corpus are covered. Best merlin variant per capsule vs Voyager:
+    geomean **0.950** (5.0% fewer cycles), 5 wins, 2 ties, and a one-cycle loss on C2 (862 vs 861).
+    As ONE fixed policy, `v1_la1` gives **0.965** (5 wins; C2 by 12.4%, A0 and A4 by under 0.5%).
   - **Real memory reorders the verdict.** The same ELF costs 1.55-2.08x its Verilator cycles, and C2
     flips outright: merlin's lookahead order wins in Verilator (459 vs 469) and loses on the FPGA
     (968 vs 861). Rank compilers on the timed substrate, never on the fast-memory simulator alone.
@@ -290,9 +294,10 @@ What is verified right now. Each line names its evidence; nothing here is a perf
   - Suggested cell: "L3, clean-room bridge; 18 exact matched capsules & Voyager uses 1.4% fewer
     cycles than the certified backend (0.986); Merlin 1.38x faster on deep-K GEMMs; applying
     Voyager's load-once lesson reverses it (Merlin 2.3% fewer)".
-  - **On the FPGA** (5 capsules measured on the pinned bitstream, outputs byte-identical to the
-    certified Verilator results): the best merlin variant per capsule uses **7.8% fewer cycles**
-    than Voyager (geomean 0.922; 4 wins, one 1-cycle loss). That row must say which substrate it is,
+  - **On the FPGA** (all 8 distinct shapes on the pinned bitstream, outputs byte-identical to the
+    certified Verilator results): the best merlin variant per capsule uses **5.0% fewer cycles**
+    than Voyager (geomean 0.950; 5 wins, 2 ties, one 1-cycle loss), or 3.5% as a single fixed
+    policy (0.965). That row must say which substrate it is,
     since the same ELFs rank differently in Verilator, and must label the per-capsule variant choice
     as tuned.
 - **Verification mutation study** (`scripts/mutation_study.py`, e21dfb4f; product
