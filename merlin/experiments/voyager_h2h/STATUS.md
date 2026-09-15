@@ -227,8 +227,24 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     an out-of-bounds tap, so halo rows keep whatever the scratchpad held; Spike zeroes the scratchpad
     and hides it, the RTL does not. Mismatches are exactly the border pixels (896/2048 elements on
     the 3x3 s1 probe). Voyager's arm is exact because its halo is an MVIN from DRAM address 0, which
-    `LoadController.scala` routes to the zero writer. **The conv capsule in the corpus is too small
-    to expose this**, which is a corpus gap, not just a backend bug.
+    `LoadController.scala` routes to the zero writer.
+  - **Why the corpus misses it** (measured, and narrower than "the capsule is too small"): the conv
+    capsule `GC7_conv2d_pad_i8` DOES have out-of-bounds taps, but the capsule harness calls the
+    kernel exactly once from reset, so the skipped rows still hold post-reset zeros and the wrong
+    answer coincides with the right one. Fork B's bundle exposes it only because it runs an untimed
+    warm-up first, leaving real pixels in those rows. **A single-invocation, single-conv capsule
+    cannot catch this class of fault at all.** Proposed (not added; the corpus is another session's):
+    GC7's shape and dtype with TWO conv2d commands sharing weights over two different non-zero
+    inputs, so the first conv writes real pixels into exactly the rows the second conv's halo skips.
+  - **Fixed and proven on RTL** (`gemmini_xdsl_rtl_v1_convzero`, one edit: an out-of-bounds tap now
+    loads zeros from address 0 instead of being skipped; zero path confirmed at
+    `LoadController.scala:72`, `Scratchpad.scala:360-377`, `ZeroWriter.scala`). Both small probes go
+    from wrong (896/2048 and 224/512 elements) to exact on Verilator; the 1x1 probe is unchanged,
+    as it must be. Cost of correctness: +5.2% and +3.1% cycles.
+  - **The conv arms are now both correct**, and merlin's is 2.9-4.6x slower than Voyager's schedule
+    on these shapes (s3s1 47,022 vs 10,157; s3s2 14,129 vs 4,949; s1s1 12,080 vs 3,666). Voyager's
+    1x1 arm builds only after the accumulate fix (f93df00d), which validates that fix on RTL rather
+    than only in numpy.
   - **`lower_conv` dropped one accumulate per run** (our bridge): a run's "already initialised" flag
     was read before the pending run was flushed, so the first row of each 16-row run overwrote
     instead of accumulating. Fixed below; with the fix all six probes are exact.
