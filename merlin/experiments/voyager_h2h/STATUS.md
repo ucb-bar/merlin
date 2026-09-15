@@ -218,6 +218,28 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **Voyager's accelerator is drafted as a merlin target** (b214fb42; fact map in
+  `VOYAGER_ACCEL_TARGET.md`, descriptor under `targets/voyager_accel/`, capability residual under
+  `merlin/targets/voyager_accel/contracts/`). Every value cites the release's file:line, derived
+  against the built INT8 16x16 instance.
+  - **Geometry:** 16x16 = 256 MACs, int8 x int8 -> **int24** (int32 is a different `-D` build), bf16
+    vector lanes, 128-bit DRAM ports. **Memory:** 32 KiB input + 32 KiB weight ping-pong + 48 KiB
+    accumulator = 112 KiB, and NO software-addressable on-chip memory.
+  - **The command ABI is source-derived, not RTL-derived:** the generated Verilog shows one 64-bit
+    port and a passthrough blackbox, so the field layout exists only in `Params.h`. The derived
+    `MatrixParams` is 1010 bits = 16 words, which reproduces the release's own declared width (a
+    self-check). A vector op is always a pair (params + instruction config) = 42 words. There is no
+    opcode, length, tag or framing: a unit pops exactly its struct's word count.
+  - **The matrix unit cannot write memory** -- every store is the vector unit's, so one matmul
+    reaching DRAM is two submissions on two queues. Completion is a data-less start/done pulse: no
+    interrupt, no status register, no op id.
+  - **10 UNKNOWNs recorded rather than guessed**, including DRAM latency and bandwidth: the release's
+    testbench never stalls, so every published cycle count is against perfect memory.
+  - **Discrepancy to fix in our own ledger:** `perf_reference_targets.yaml:247` labels this design
+    `sram96KB`, which matches neither the INT8 build's 112 KiB nor INT8_32's 128 KiB.
+  - **11 gaps in merlin's target contract** (three measured), e.g. `endpoint_kind` and `kind` are
+    coupled so `encoding_required` cannot be cleared; the schedule -- the thing plane B measures --
+    is not expressible in a `MATMUL` command; a closed-vocabulary field cannot say UNKNOWN.
 - **The measured scheduling knobs are now a library pass** (`merlin/python/merlin/compile/scheduling/
   block_schedule.py`, 950a20b9): load-on-index-change, lookahead depth, intra-step operand order,
   load grouping (nest order vs by operand) and region placement, over geometry DERIVED from the

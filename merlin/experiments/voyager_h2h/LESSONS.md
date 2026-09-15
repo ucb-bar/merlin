@@ -219,6 +219,16 @@ What merlin does that this lacks: a declared endpoint kind per target (RoCC `.in
 buffer) in its target contract, a documented command-buffer ABI, and facts/capabilities DERIVED from
 the RTL instead of `-D` knobs and hand-written mappers.
 
+What expressing THEIR hardware exposed in merlin's own contract (measured while drafting the
+`voyager_accel` target, STATUS.md): `endpoint_kind` is coupled to `kind`, so a command-buffer target
+cannot clear `encoding_required`; the schedule -- the very thing a plane B comparison measures -- is
+not expressible in a `MATMUL` command; there is no vocabulary for per-unit queues, for units that
+master their own memory with no addressable scratchpad, or for a data-less completion pulse; and a
+closed-vocabulary field cannot record UNKNOWN, which forces a guess exactly where honesty matters.
+Their ABI is also only source-derivable: the generated RTL shows one 64-bit port, so no fact
+extractor can recover the field layout. A target contract that admits "derived from source, not
+RTL" (with the provenance to match) is the honest shape.
+
 What merlin should take from it:
 - **H1.** An IR that marks, per operation, which work is control-processor and which is datapath, with
   explicit async regions and semaphores. merlin's command buffer is a flat list; the host lane and the
