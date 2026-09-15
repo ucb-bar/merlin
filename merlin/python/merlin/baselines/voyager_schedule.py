@@ -824,14 +824,15 @@ class _Lowerer:
             key = (coord["LOOP_FY"], coord["LOOP_FX"], coord["LOOP_IC"], coord["LOOP_OC"])
             in_row = self.input_row(lhs, key[2], oy * sh + key[0] * dh, ox * sw + key[1] * dw)
             acc_row = base + key[3] * pixels + oy * tow + ox
-            ready = acc_row in initialized
             if (run and run[0] == key and in_row == run[1] + run[3] and acc_row == run[2] + run[3]
-                    and run[3] < d and ready == run[4]):
+                    and run[3] < d and (acc_row in initialized) == run[4]):
                 run[3] += 1
                 continue
             if run:
                 resident = self._flush(run, weight, resident, initialized)
-            run = [key, in_row, acc_row, 1, ready]
+            # Read "already written" AFTER the flush, never before it: the run just flushed may be
+            # what initialised these rows, and a run starting on them must accumulate, not overwrite.
+            run = [key, in_row, acc_row, 1, acc_row in initialized]
         if run:
             self._flush(run, weight, resident, initialized)
         self._bind(comp, dest, tail, group["acc_scale"])
@@ -974,14 +975,16 @@ class _Lowerer:
             for _, key, oy, ox in group:
                 in_row = self.input_row(lhs, key[2], oy * sh + key[0] * dh, ox * sw + key[1] * dw)
                 acc_row = slot[key[3]] + local[(oy, ox)]
-                ready = acc_row in initialized
                 if (run and run[0] == key and in_row == run[1] + run[3]
-                        and acc_row == run[2] + run[3] and run[3] < d and ready == run[4]):
+                        and acc_row == run[2] + run[3] and run[3] < d
+                        and (acc_row in initialized) == run[4]):
                     run[3] += 1
                     continue
                 if run:
                     resident = self._flush(run, weight, resident, initialized)
-                run = [key, in_row, acc_row, 1, ready]
+                # After the flush, never before it (see the pass above): consecutive reduction steps
+                # revisit the same accumulator rows, and the second must accumulate onto the first.
+                run = [key, in_row, acc_row, 1, acc_row in initialized]
             if run:
                 resident = self._flush(run, weight, resident, initialized)
             on, oh0, ow0, oc_start = out_start

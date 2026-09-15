@@ -9,6 +9,7 @@ resident-block change.
 """
 from __future__ import annotations
 
+import copy
 import json
 from dataclasses import replace
 
@@ -192,6 +193,59 @@ def test_an_output_ring_deeper_than_the_accumulator_is_made_shallower_exactly() 
     tiny = Geometry(dim=16, spad_rows=16384, spad_row_bytes=16, acc_rows=256)
     with pytest.raises(UnsupportedConstruct, match="larger than the accumulator"):
         lower_conv(_trace(name), tiny)
+
+
+def _drop_conv_bias(model: dict) -> int:
+    """Remove every convolution's bias operand, and the loads that fill it, in place.
+
+    Returns how many bias buffers were removed. The removed loads take their semaphore signals with
+    them, so the mutated program replays with the semaphore oracle off.
+    """
+    bias_nodes: set[str] = set()
+    stack: list = [model]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            target, kwargs = node.get("target"), node.get("kwargs")
+            if isinstance(target, str) and target.endswith("conv2d") and isinstance(kwargs, dict):
+                operand = kwargs.pop("bias", None)
+                if operand:
+                    bias_nodes.add(operand["tensor_box"]["box"]["node"])
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+
+    def fills_a_dropped_bias(op) -> bool:
+        prim = op.get("prim") if isinstance(op, dict) else None
+        if not isinstance(prim, dict) or prim.get("target") != "voyager::async_copy":
+            return False
+        destination = (prim.get("kwargs") or {}).get("dst") or {}
+        return destination.get("tensor_box", {}).get("box", {}).get("node") in bias_nodes
+
+    stack = [model]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, dict):
+            if isinstance(node.get("ops"), list):
+                node["ops"] = [op for op in node["ops"] if not fills_a_dropped_bias(op)]
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
+    return len(bias_nodes)
+
+
+def test_a_conv_without_bias_accumulates_every_reduction_step() -> None:
+    # Regression: the "already written" flag was read BEFORE the pending run was flushed, so where
+    # consecutive IC steps revisit the same accumulator rows, the first row of each run overwrote the
+    # previous step's partial instead of accumulating onto it. A bias hides the fault -- it
+    # initialises every row -- so this fixture's bias is dropped to expose it.
+    name = "conv1x1_28x28x64x256"
+    model = copy.deepcopy(load_model(FIXTURES / name / "model.json"))
+    assert _drop_conv_bias(model) > 0
+    schedule = lower_conv(replay(model, check_semaphores=False), GEOMETRY)
+    assert not any(isinstance(op, AccMvin) for op in schedule.ops)
+    (lhs, weight, bias), expected = _conv_case(name)
+    assert np.array_equal(execute(schedule, lhs, weight), (expected - bias).astype(np.int32))
 
 
 def test_a_gemm_trace_is_not_lowered_as_a_convolution() -> None:
