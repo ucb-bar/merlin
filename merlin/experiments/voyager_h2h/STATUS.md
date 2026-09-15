@@ -218,6 +218,24 @@ What is verified right now. Each line names its evidence; nothing here is a perf
     both: offsetting the weights past the inputs' in-bank span (`v1_la1_pb1off`) matches the bank end
     on C2 (459) but gives A0 303, A4 271 and C0 1,129 (worse than both). Placement is therefore a
     per-shape knob to choose by measurement, which is why the best-of result above stays "tuned".
+- **Bridged conv schedules build as FireSim-ready Gemmini programs, and running them found two bugs**
+  (`scripts/emit_gemmini_c.py`, 2300b9c3 + 76e04bfc). Each probe becomes a phase-2-shaped bundle (one
+  untimed warm-up, one measured `rdcycle` window, operands and golden embedded, console under ~1 KB)
+  and runs on Spike and Verilator; the merlin arm's emitted LLVM is byte-identical to the package's
+  own, so the arms differ only in the command stream.
+  - **merlin's certified conv lowering is wrong on real RTL.** `_conv_loop_trace` skips the MVIN for
+    an out-of-bounds tap, so halo rows keep whatever the scratchpad held; Spike zeroes the scratchpad
+    and hides it, the RTL does not. Mismatches are exactly the border pixels (896/2048 elements on
+    the 3x3 s1 probe). Voyager's arm is exact because its halo is an MVIN from DRAM address 0, which
+    `LoadController.scala` routes to the zero writer. **The conv capsule in the corpus is too small
+    to expose this**, which is a corpus gap, not just a backend bug.
+  - **`lower_conv` dropped one accumulate per run** (our bridge): a run's "already initialised" flag
+    was read before the pending run was flushed, so the first row of each 16-row run overwrote
+    instead of accumulating. Fixed below; with the fix all six probes are exact.
+  - **First conv cycles** (Verilator, warm measured): on 8x8x64->32 3x3 s1 Voyager's schedule takes
+    10,157 cycles vs merlin's 44,711 (which was also wrong), reading 28,672 DMA bytes against
+    merlin's 80,384; merlin's arm refuses the 28x28 probes entirely. On conv, merlin's current
+    backend is behind Voyager's schedule, and that is the honest whole-model starting point.
 - **Voyager's accelerator is drafted as a merlin target** (b214fb42; fact map in
   `VOYAGER_ACCEL_TARGET.md`, descriptor under `targets/voyager_accel/`, capability residual under
   `merlin/targets/voyager_accel/contracts/`). Every value cites the release's file:line, derived
