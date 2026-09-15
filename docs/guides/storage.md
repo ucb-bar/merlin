@@ -24,6 +24,11 @@ merlin-storage prune                 # dry run: what is provably safe to reclaim
 merlin-storage prune --apply caches  # act on one class
 ```
 
+A console script is generated at install time, so `merlin-storage` appears after the next
+`uv sync`. Until then — and in any checkout sharing a `.venv` with another one, where re-installing
+would repoint that venv's editable path at whichever tree ran it last — invoke the module directly:
+`.venv/bin/python -m merlin.common.storage_cli report`.
+
 ## Why it grows
 
 **1. Per-run input closures (the big one).** Every agent run freezes the input closure its bundle
