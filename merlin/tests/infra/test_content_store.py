@@ -125,7 +125,11 @@ def test_a_source_edit_after_the_freeze_does_not_reach_either_snapshot(tmp_path,
     assert (tmp_path / "frozen" / "top.txt").read_text() == "top\n"
 
 
-def test_a_non_regular_file_is_refused_rather_than_silently_dropped(tmp_path):
+def test_a_non_regular_file_is_refused_rather_than_silently_dropped(tmp_path, monkeypatch):
+    # The store is redirected here for the same reason as in every other test in this file, and this
+    # one went without it: `store_root()` with no override is the LIVE store that ~13 sessions share,
+    # so the two files this places before it reaches the fifo were landing in it for real.
+    monkeypatch.setenv(CS.LOCATION_ENV, str(tmp_path / "store"))
     source = _tree(tmp_path / "src")
     os.mkfifo(source / "pipe")
     with pytest.raises(RuntimeError, match="not a regular file or directory"):
@@ -194,3 +198,21 @@ def test_runs_racing_on_the_same_content_all_get_the_same_correct_bytes(tmp_path
     # Whichever writer won the rename, every run ends up on ONE object -- that is the saving.
     assert len({ino for _, _, ino in results}) == 1
     assert not any(p.name.endswith(".pending") for p in store.rglob("*")), "staging file left behind"
+
+
+def test_no_test_in_this_file_writes_to_the_live_store():
+    """The store is shared by every session on this host, and a test that forgets to redirect it
+    leaves objects in it for real -- which is how a 7-byte object whose bytes disagreed with its own
+    name came to sit in the live store. Checked structurally, because the symptom is invisible: the
+    test passes either way, and only the shared store is worse off."""
+    import ast
+
+    source = Path(__file__).read_text(encoding="utf-8")
+    leaking = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.FunctionDef) or not node.name.startswith("test_"):
+            continue
+        body = ast.dump(node)
+        if ("store_root" in body or "default_root" in body) and "LOCATION_ENV" not in body:
+            leaking.append(node.name)
+    assert leaking == [], f"these resolve the live store without redirecting it: {leaking}"

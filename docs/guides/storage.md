@@ -3,10 +3,12 @@ title: Disk under out/ — why it grows and what is safe to reclaim
 kind: guide
 status: current
 owner: infra
-last_verified: 2026-09-15
+last_verified: 2026-09-16
 related: [reproducibility, getting_started, gemmini_experiment]
 code_refs: [merlin/python/merlin/common/content_store.py,
             merlin/python/merlin/common/storage_cli.py,
+            merlin/contract/storage.yaml,
+            .claude/hooks/guard_artifact_writes.py,
             merlin/python/merlin/targetgen/sandbox/bwrap.py,
             merlin/tests/conftest.py]
 ---
@@ -25,6 +27,9 @@ merlin-storage experiments --match phase2 # ...for one campaign, across concerns
 merlin-storage layout                     # what sits under out/ the convention does not name
 merlin-storage prune                      # dry run: what is provably safe to reclaim
 merlin-storage prune --apply caches       # act on one class
+merlin-storage dedup                      # dry run: bytes held under more than one name
+merlin-storage retain --keep 20           # dry run: what a retention depth would drop
+merlin-storage organize                   # dry run: fold stray dirs into their declared concern
 ```
 
 ## Is it bloat, or is it accumulation?
@@ -44,11 +49,18 @@ de-duplication will fix it. Measured 2026-09-15:
 | phase 2, across concerns (`--match phase2`) | 178 | 29.3 GB | 174 MB |
 | phase 1, across concerns (`--match phase1`) | 7 | 0.12 GB | 17 MB |
 
-So perf-bench is large by accumulation, not by bloat. The one real outlier the report found is a
-single 33.6 GB product unit holding **19 whole-model ELFs of ~1.21 GB each** (a TinyLlama binary
-embeds its weights); only 4 of the 19 are byte-identical, so the rest are genuinely distinct builds
-being kept as a *product*. Compiled output belongs under `out/build/`, and a product should
-reference a binary rather than embed nineteen of them.
+So perf-bench looks large by accumulation — but see *Where things are supposed to live* below: 448
+of its 475 unit directories are named outside the convention, which means it is really a working
+directory that grew inside a product tree, and no retention depth can place its contents.
+
+The one real outlier is a single 33.6 GB product unit holding **19 whole-model ELFs of ~1.21 GB
+each** (a TinyLlama binary embeds its weights), their weight blobs, and three multi-GB zips. What
+makes that a defect rather than a big result is the unit's own manifest: it declares **43 small
+receipts and logs**, and `layout` prices everything in the directory that the manifest does not list
+— **35.06 GiB, 94% of the unit**. This is the one drift number that needs no threshold, because the
+producer already declared the answer; the 9.53 GiB delivery bundle beside it reports 0% undeclared,
+which is what makes the metric trustworthy. Compiled output belongs under `out/build/`, referenced by
+digest rather than embedded.
 
 A `v<n>` level is deliberately not a unit: it sits between the axis and the unit, and pricing it as
 one experiment reports a whole version series as a single run.
@@ -125,6 +137,49 @@ directory, so relocating a workspace is an edit to data. Losing the contract deg
 [the generated-output convention](../../CLAUDE.md)); being purgeable is not the same as being purged.
 `merlin-storage report` prices them so the decision is informed.
 
+## The same bytes under several names
+
+The content store gets the saving at the moment a tree is frozen, which does nothing for the trees
+written before it existed — and those are most of the root. `merlin-storage dedup` finds files that
+hold bytes another file already holds and re-points each name at one store object. Nothing is
+removed: every name still resolves, verified by digest before the swap. Measured 2026-09-15 over
+`out/artifacts` and `out/runs`, files ≥1 MiB: **65.9 GiB across 1,196 content groups**, the largest
+being a per-run agent home's plugin cache replicated 445 times, whole-model `const_blob.o` weight
+blobs duplicated across validation directories, and shipped `.zip` bundles byte-identical to the
+unpacked trees beside them.
+
+Two things to know before running it with `--apply`:
+
+- **An adopted file becomes read-only, and its mode is then shared** with every other name for those
+  bytes. That is correct for a frozen product and wrong for anything a later step rewrites in place.
+  It is also why a tree whose own integrity check reads the file mode must be skipped — chmod follows
+  the inode, so one holder's change would break every other holder's verification. The seal that
+  marks such a tree is named in `merlin/contract/storage.yaml` under `mode_verified_seals`, and
+  `dedup` prunes those subtrees from the walk.
+- Only files that **share a size** with another file are digested. Two files of different sizes cannot
+  have the same content, and that prefilter is what makes a whole-root scan affordable; it is an
+  optimisation, never the test. `--min-bytes` (1 MiB by default) keeps the walk off the long tail
+  where the saving cannot repay the inode.
+
+## Retention
+
+`merlin-storage retain --keep N` reports which units a retention depth would drop, per group, newest
+kept. Ordering comes from the `YYYYMMDDTHHMMSSZ` token the naming convention puts in the unit's own
+name — **never from mtime**, because a purge's own deletions update the mtimes of the units it walks,
+so a "modified recently = live" rule reports the units you just edited as the ones to keep. Two rules
+make it fail closed:
+
+- a unit whose name carries **no timestamp** is never dropped: it cannot be placed in the order, so it
+  cannot be shown to be old;
+- whatever a `latest` symlink resolves to is never dropped, so a consumer following that name never
+  finds a dangling pointer.
+
+The second rule has a consequence worth reading as a finding: 472 of `perf-bench`'s 505 unit
+directories are named outside the convention (`development_phase2_global_encoding_20260908`,
+`full_graph_attempt1`), so no retention depth can place them. That concern is not an accumulation
+problem with a policy answer — it is a working directory that grew inside a *product* tree, and the
+fix is in the producer, not here.
+
 ## Where things are supposed to live
 
 `merlin-storage layout` checks the root against the convention: three top-level dirs
@@ -133,9 +188,20 @@ linted by `check_artifact_layout.py`, and generated output is gitignored by desi
 held in the index and drifted freely underneath it — measured 2026-09-15, **4 undeclared top-level
 roots and 52 undeclared concerns against 16 declared ones**, the undeclared ones holding 35.8 GB.
 
-`layout` reports and never moves. A product's path is quoted in reports, manifests and docs, so a
-tidier tree bought with broken references is a poor trade; each undeclared concern needs a decision —
-fold it into a declared one, promote it to a real concern in the convention, or retire it.
+Most of those 52 were well-formed `<concern>/<axis>/<unit>` products whose only fault was that the
+roster was a literal inside `storage_cli.py` that nobody edited. It is data now —
+`merlin/contract/storage.yaml` declares the three roots, every concern with a line saying what it
+holds, and where a directory that predates the roster belongs — and three things read it: the tool,
+the `test_storage_accounting.py` tests that hold it against CLAUDE.md, and the PreToolUse write guard,
+which now refuses a write into an undeclared concern. That last one is what stops concern number 53:
+the cost of a new concern is a reviewed line at the moment it is created, not a cleanup fifty later.
+
+`merlin-storage organize` applies the declared folds. A fold **moves** the directory and leaves a
+relative symlink at the old name, because a product's path is quoted in manifests, reports, figures
+and docs this repo does not own and cannot rewrite — the tree gets organized and every existing
+citation still resolves. Folds merge (two old names can belong to one concern) and a unit-name
+collision aborts that fold and rolls it back rather than silently choosing a winner. The symlink is
+not a permanent fixture; it can be dropped once nothing resolves through it.
 
 ## What `prune` will and will not touch
 
@@ -146,6 +212,10 @@ Only classes whose safety is a *property* rather than a judgement:
 | `store-orphans` | content-store objects with one remaining link | no snapshot references them; the next run that needs those bytes re-copies them |
 | `pending-snapshots` | `bundle_inputs.pending/` trees | materialization unwinds these on failure; a survivor is a run killed mid-copy and was never a complete closure |
 | `caches` | `out/artifacts/cache/<ns>/` | declared regenerable by the layout convention (the content store is excluded — wiping it wholesale is wasteful, not unsafe) |
+
+`dedup` and `organize` sit beside `prune` rather than inside it because neither removes anything:
+`dedup` collapses names onto shared bytes and `organize` moves a directory and leaves a link. `retain`
+does remove, which is why its two fail-closed rules are properties rather than heuristics.
 
 Everything else is **reported and left alone.** Whether a run directory is finished is not a property
 this tool can read off the filesystem, and "modified recently" is not a proxy for it — a purge's own

@@ -165,7 +165,10 @@ def check(root: Path, staged: bool) -> list[str]:
     art = root / "out" / "artifacts"
     if art.is_dir():
         for v in art.glob("*/v*"):
-            if not v.is_dir():
+            # `v*` must mean a VERSION level -- v1, v12 -- not merely a directory whose name starts
+            # with the letter. `out/artifacts/probes/verify/` matched the glob and every unit under
+            # it was then reported as a product dir missing a manifest.
+            if not v.is_dir() or not v.name[1:].isdigit():
                 continue
             latest = v / "latest"
             if latest.is_symlink():

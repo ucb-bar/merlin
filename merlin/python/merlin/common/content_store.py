@@ -211,3 +211,57 @@ def orphans(root: Path | None = None) -> tuple[list[Path], int]:
             found.append(path)
             total += stat.st_size
     return found, total
+
+
+def adopt(path: Path, root: Path | None) -> int:
+    """Re-point ``path`` at the store object holding its bytes. Returns the bytes this freed.
+
+    ``place_file`` gets the saving at the moment a tree is frozen. This gets it afterwards, for the
+    trees that were written before the store existed: the bytes are already on disk under some name,
+    and the copy that made them a duplicate has already been paid for. Digest the file, put it in the
+    store if it is not there yet, and swap the directory entry for a link to the object -- after
+    which every other name holding those bytes that gets adopted costs nothing.
+
+    The swap is ``os.replace`` onto a link staged in the same directory, so the name never disappears
+    and a reader that already has the file open keeps reading the inode it opened. Nothing is removed
+    if the link cannot be made; the original entry stays exactly as it was.
+
+    **Adoption makes the file read-only, and its mode is then shared with every other name for those
+    bytes.** That is correct for a frozen tree and wrong for anything a later step rewrites in place,
+    so the caller decides what is eligible -- ``merlin-storage dedup`` refuses any tree whose own
+    integrity check reads the file mode, because chmod follows the inode and would reach into the
+    other holders' trees. Returns 0 when nothing changed, including when ``path`` already IS the
+    store's inode.
+    """
+    if root is None or path.is_symlink() or not path.is_file():
+        return 0
+    try:
+        before = path.stat(follow_symlinks=False)
+    except OSError:
+        return 0
+    obj = object_for(root, path)
+    if obj is None:
+        return 0
+    try:
+        held = obj.stat(follow_symlinks=False)
+    except OSError:
+        return 0
+    if (held.st_dev, held.st_ino) == (before.st_dev, before.st_ino):
+        return 0                            # already the store's inode: this name is the saving
+    try:
+        handle, staged = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.",
+                                          suffix=".adopt")
+    except OSError:
+        return 0                            # no write permission on the directory; leave it alone
+    os.close(handle)
+    link = Path(staged)
+    try:
+        link.unlink()
+        os.link(obj, link)
+        os.replace(link, path)
+    except OSError:
+        link.unlink(missing_ok=True)
+        return 0
+    # Freed only if this name was the last one holding the old inode. When it was not, the bytes go
+    # when the other names are adopted too, and counting them here would report the saving twice.
+    return before.st_size if before.st_nlink == 1 else 0

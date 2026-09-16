@@ -172,7 +172,7 @@ def test_hook_denies_generated_outside_roots(path):
 
 
 @pytest.mark.parametrize("path", [
-    "out/artifacts/plots/foo.png", "out/runs/gemmini/s/r/perf_results.json",
+    "out/artifacts/presentation/set-a/foo.png", "out/runs/gemmini/s/r/perf_results.json",
     "merlin/python/merlin/x.py", "output/AGENT.md", "out/build/x.o",
 ])
 def test_hook_allows_sanctioned_and_source(path):
@@ -181,3 +181,45 @@ def test_hook_allows_sanctioned_and_source(path):
 
 def test_hook_ignores_non_write_tools():
     assert _hook("Read", "output/foo.png").returncode == 0
+
+
+# The out/ root's own shape. The guard blocked writes OUTSIDE out/, so nothing was watching what
+# happened inside it: four undeclared top-level roots and 52 undeclared concerns accumulated against
+# 16 declared ones, none of which the tracked-file linter can see because generated output is
+# gitignored by design. The roster the guard reads is merlin/contract/storage.yaml, so a new concern
+# costs a reviewed line in that file at the moment it is created.
+
+
+@pytest.mark.parametrize("path", [
+    "out/artifacts/a-concern-nobody-declared/axis/run/result.json",
+    "out/a-root-nobody-declared/some-study/report.md",
+    "out/scratch/whatever.json",
+])
+def test_hook_denies_undeclared_destinations_inside_out(path):
+    # These names are deliberately ones no fold has created. The hook resolves the path first, so a
+    # write through a symlink an `organize` fold left behind lands in the DECLARED concern it points
+    # at and is allowed -- which is the behaviour that makes the folds safe, not a hole in the rule.
+    result = _hook("Write", path)
+    assert result.returncode == 2
+    assert "storage.yaml" in result.stderr
+
+
+def test_hook_allows_every_concern_the_contract_declares():
+    """Derived from the roster rather than a second list of names: a copy would drift from it, which
+    is the exact failure this rule exists to stop."""
+    from merlin.common import storage_cli as SC
+
+    for concern in SC.declared_concerns():
+        path = f"out/artifacts/{concern}/axis/unit/result.json"
+        assert _hook("Write", path).returncode == 0, f"{concern} is declared but blocked"
+
+
+def test_hook_still_allows_writes_when_the_roster_cannot_be_read(tmp_path):
+    """The guard's standing contract is to never block on input it cannot read. A checkout without
+    the contract -- or with one this small parser does not understand -- must not become unwritable."""
+    payload = json.dumps({"tool_name": "Write",
+                          "tool_input": {"file_path": "out/artifacts/anything/a/b.json"}})
+    env = {**os.environ, "MERLIN_REPO_ROOT": str(tmp_path)}
+    result = subprocess.run([sys.executable, str(HOOK)], input=payload, capture_output=True,
+                            text=True, cwd=REPO, env=env)
+    assert result.returncode == 0

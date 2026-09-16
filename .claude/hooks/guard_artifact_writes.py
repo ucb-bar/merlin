@@ -49,6 +49,53 @@ def _allowlisted(rel: str, root: Path) -> bool:
     return False
 
 
+def _declared(root: Path) -> tuple[set, set]:
+    """``(out roots, concerns)`` from merlin/contract/storage.yaml.
+
+    Read with a deliberately small parser rather than a YAML library: this hook runs under whatever
+    interpreter the harness gives it, and a missing import here would either crash the hook or,
+    worse, teach someone to delete the check. Anything it does not recognise yields empty sets, and
+    an empty roster disables the rule -- the guard's standing contract is to never block on input it
+    cannot read.
+    """
+    path = root / "merlin" / "contract" / "storage.yaml"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return set(), set()
+    found: dict[str, set] = {"out_roots": set(), "concerns": set()}
+    section = None
+    for line in lines:
+        if line[:1] not in (" ", "\t", "#", ""):
+            section = line.split(":", 1)[0] if line.rstrip().endswith(":") else None
+            continue
+        if section not in found or not line.strip() or line.lstrip().startswith("#"):
+            continue
+        if not line.startswith("  ") or line.startswith("   "):
+            continue                      # a continuation of the previous entry's value, not a key
+        entry = line.strip()
+        name = entry[2:] if entry.startswith("- ") else entry.split(":", 1)[0]
+        name = name.strip().strip("'\"")
+        if name and "/" not in name:
+            found[section].add(name)
+    return found["out_roots"], found["concerns"]
+
+
+def _undeclared_destination(rel_posix: str, root: Path) -> str | None:
+    """The part of this path the storage contract does not name, or None if it is all declared."""
+    parts = rel_posix.split("/")
+    if parts[0] != "out" or len(parts) < 3:
+        return None                       # tmp/, or a file sitting directly in the out/ root
+    roots, concerns = _declared(root)
+    if not roots:
+        return None                       # no readable roster: the rule is off, not failing closed
+    if parts[1] not in roots:
+        return f"out/{parts[1]}/, an undeclared top-level root"
+    if parts[1] == "artifacts" and len(parts) >= 4 and parts[2] not in concerns:
+        return f"the undeclared concern out/artifacts/{parts[2]}/"
+    return None
+
+
 def _target_path(data: dict) -> str | None:
     ti = data.get("tool_input") or {}
     return ti.get("file_path") or ti.get("notebook_path") or ti.get("path")
@@ -87,6 +134,18 @@ def main() -> int:
         return 0
     # 2) sanctioned roots allowed (artifacts/presentation/ beats the /presentation/ deny)
     if any(rel_posix.startswith(r) for r in SANCTIONED_ROOTS):
+        undeclared = _undeclared_destination(rel_posix, root)
+        if undeclared:
+            sys.stderr.write(
+                f"BLOCKED by guard_artifact_writes: '{rel_posix}' writes into {undeclared}, which\n"
+                "merlin/contract/storage.yaml does not declare. The out/ root has three roots and a\n"
+                "closed set of concerns; the roster drifted to 52 undeclared concerns against 16\n"
+                "declared ones because nothing checked it at the moment one was created.\n"
+                "Write into a declared concern, or add this one to that file with a line saying what\n"
+                "it holds (`merlin-storage layout` prices the drift, `organize` folds a stray one in).\n"
+                "Escape hatch: export MERLIN_ALLOW_ARTIFACT_WRITE=1.\n"
+            )
+            return 2
         return 0
     if "/_qa_ws/" in slashed:
         return 0

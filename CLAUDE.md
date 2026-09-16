@@ -89,7 +89,21 @@ Root names come from `merlin.common.paths` — `out_dir()` / `runs_dir()` / `art
   `measurements/<substrate>/<model>/<exp>_v<ver>_<TS>_<sha>/` (substrate = `k1_spacemit` /
   `firesim_<bitstream>` / `baremetal_<verilator-design>` / `zephyr_<design>` / `spike_<config>`,
   via `new_measurement(...)`), `recaptures/`, `perf-bench/<target>/`, `capsule-bench/<target>/`,
-  `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`.
+  `targets/<target>/`, `presentation/`, `cache/`, `selfcheck/`. Also `delivery/` (bundles shipped
+  outside the repo), `applications/<target>/`, `audits/` (readiness studies), `protocols/` (frozen
+  experiment protocols), `verification/<target>/`, `target-evolution/<target>/`, `source-data/<model>/`,
+  `rvv-development-corpus/<target>/`, `agentic-report/`, `handoff/`, `targetgen-evals/<target>/`, `perf-studies/` (ledgers, calibration,
+  settling, counters, ablations beside the campaign), `archive/` (still cited, no longer active), and
+  `probes/` (one-off diagnostics — a standing concern and an afternoon's debugging should not be
+  neighbours at the same level).
+
+  **The roster is data, not prose.** `merlin/contract/storage.yaml` declares the three roots, every
+  concern with what it holds, and where a directory that predates the roster belongs; this section is
+  a restatement of it and a test holds the two together. A concern list that lived in code drifted to
+  52 undeclared directories against 16 declared ones before anyone noticed, so adding a concern is a
+  reviewed edit to that file, and `merlin-storage organize` folds a stray one into place — moving the
+  directory and leaving a relative symlink, because a product's path is quoted in manifests and
+  reports this repo does not own.
 
   **`out/artifacts/targets/<target>/<package_id>/`** is the codegen-package home (schedules/knobs/dialects
   minted by `merlin-rvv-mine` / `merlin-rvv-autotune` / `merlin-targetgen`). It **replaces the retired

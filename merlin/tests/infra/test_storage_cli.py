@@ -19,11 +19,19 @@ from merlin.targetgen.sandbox import bwrap as BW
 
 @pytest.fixture
 def rooted(tmp_path, monkeypatch):
-    """An isolated out/ root and content store, so the assertions are about known bytes."""
+    """An isolated out/ root and content store, so the assertions are about known bytes.
+
+    The declared workspace scan roots are dropped for the same reason: they are absolute paths into
+    the live checkout, so a report run inside a test would otherwise price 27 real input closures
+    alongside the two the test wrote. The rest of the contract -- the roster this module reads -- is
+    left exactly as it ships.
+    """
     monkeypatch.setenv("MERLIN_OUT_ROOT", str(tmp_path / "out"))
     monkeypatch.setenv("MERLIN_BUNDLE_CAS", str(tmp_path / "out" / "artifacts" / "cache"
                                                / CS.NAMESPACE))
     (tmp_path / "out" / "artifacts" / "cache").mkdir(parents=True)
+    declared = dict(SC.contract(), scan_roots=[])
+    monkeypatch.setattr(SC, "contract", lambda: declared)
     return tmp_path
 
 
