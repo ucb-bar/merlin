@@ -212,3 +212,104 @@ def test_the_schedule_pass_refuses_an_in_datapath_accumulator_by_name():
         pytest.skip("no derived store list for atlas in this checkout")
     with pytest.raises(BlockScheduleError, match="in_datapath"):
         Geometry.from_address_space(space)
+
+
+# ---------------------------------------------------------------------------- declared counts
+
+
+def _declared(memory):
+    return AS.derive_address_space(
+        "t_declared",
+        facts={
+            "schema_version": "2.0",
+            "inputs": {},
+            "facts": {
+                "arrays": [{"name": "grid", "rows": 16, "cols": 16}],
+                "datapaths": [{"name": "in", "dtype": "i8", "evidence": "m smem UInt<8>"}],
+                "memories": [memory],
+            },
+        },
+    )
+
+
+def _unknowns(space, quantity):
+    return [u.reason for u in space.unknowns if u.quantity == quantity]
+
+
+def test_declared_counts_that_agree_are_recorded_and_change_nothing():
+    base = {"name": "m", "bytes": 262144, "depth": 4096}
+    plain, declared = _declared(base), _declared({**base, "rows": 16384, "banks": 4})
+    a, b = plain.stores[0], declared.stores[0]
+    assert (a.total_rows, a.banks) == (b.total_rows, b.banks) == (16384, 4)
+    assert "total_rows=16384" in b.sources["declared_counts"] and not _unknowns(declared, "banks")
+
+
+@pytest.mark.parametrize("field, value, quantity", [("rows", 16000, "total_rows"), ("banks", 8, "banks")])
+def test_a_declared_count_that_disagrees_withholds_the_quantity(field, value, quantity):
+    space = _declared({"name": "m", "bytes": 262144, "depth": 4096, field: value})
+    assert getattr(space.stores[0], quantity) is None
+    assert any("neither is used" in reason for reason in _unknowns(space, quantity))
+
+
+def test_a_row_width_declared_in_bytes_and_in_bits_is_compared_in_one_unit():
+    agree = _declared({"name": "m", "bytes": 262144, "depth": 4096, "row_bytes": 16, "row_bits_rtl": 128})
+    assert agree.stores[0].row_bytes == 16 and not _unknowns(agree, "row_bytes")
+    clash = AS.derive_address_space(
+        "t_clash",
+        facts={
+            "schema_version": "2.0",
+            "inputs": {},
+            "facts": {
+                "memories": [{"name": "m", "bytes": 262144, "depth": 4096, "row_bytes": 16, "row_bits_rtl": 256}]
+            },
+        },
+    )
+    assert any("disagree" in reason for reason in _unknowns(clash, "row_bytes"))
+
+
+def test_a_declared_bank_count_agreeing_with_a_declared_row_width_is_accepted():
+    """The atlas shape: row width from the RTL's declared bits, banks declared, no datapath link."""
+    declared = {"name": "m", "bytes": 1572864, "depth": 8192, "row_bits_rtl": 256, "banks": 6}
+    space = AS.derive_address_space(
+        "t_fill", facts={"schema_version": "2.0", "inputs": {}, "facts": {"memories": [declared]}}
+    )
+    assert (space.stores[0].total_rows, space.stores[0].banks) == (49152, 6)
+    assert not _unknowns(space, "banks")
+
+
+def test_element_width_declarations_on_a_port_are_not_read_as_an_element_type():
+    """A byte enable's lane width is not what the store holds; the extractor says so, so it stays UNKNOWN."""
+    space = AS.derive_address_space(
+        "t_port",
+        facts={
+            "schema_version": "2.0",
+            "inputs": {},
+            "facts": {
+                "arrays": [{"name": "grid", "rows": 32, "cols": 32}],
+                "datapaths": [{"name": "accumulator", "dtype": "bf16", "module": "PE"}],
+                "memories": [
+                    {
+                        "name": "vmem",
+                        "bytes": 1572864,
+                        "depth": 8192,
+                        "row_bits_rtl": 256,
+                        "row_elems": 32,
+                        "elem_bits": 8,
+                        "banks": 6,
+                    }
+                ],
+            },
+        },
+    )
+    store = space.stores[0]
+    assert store.element_bits is None and store.element_dtype is None
+    assert (store.row_bytes, store.total_rows, store.banks) == (32, 49152, 6)
+
+
+def test_the_gemmini_family_geometry_does_not_move():
+    for target in ("gemmini", "gemmini_universal"):
+        space = AS.derive_address_space(target)
+        if space.stores_status != AS.DERIVED:
+            continue
+        rows = {s.name: (s.row_bytes, s.total_rows, s.depth, s.banks) for s in space.stores}
+        assert rows == {"scratchpad": (16, 16384, 4096, 4), "accumulator": (64, 1024, 512, 2)}, target

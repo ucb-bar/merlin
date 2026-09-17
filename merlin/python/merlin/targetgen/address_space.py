@@ -535,10 +535,29 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
             if isinstance(declared_bits, int) and declared_bits > 0 and declared_bits % 8 == 0
             else None
         )
+        # The same width may be declared in BYTES (`row_bytes`) instead of bits. Two spellings of one
+        # quantity are read into one unit before anything compares them -- mixing them is a factor-of-8
+        # error -- and two declarations that disagree are surfaced, not ranked.
+        declared_field = "row_bits_rtl"
+        stated_bytes = mem.get("row_bytes")
+        stated_bytes = int(stated_bytes) if isinstance(stated_bytes, int) and stated_bytes > 0 else None
+        if stated_bytes and declared_bytes and stated_bytes != declared_bytes:
+            unknowns.append(
+                Unknown(
+                    "row_bytes",
+                    f"this store declares its row as {declared_bits} bits AND as {stated_bytes} "
+                    "bytes; the two declarations disagree",
+                    name,
+                )
+            )
+            declared_bytes = None
+        elif stated_bytes and not declared_bytes:
+            declared_bits, declared_bytes, declared_field = stated_bytes * 8, stated_bytes, "row_bytes"
         if row_bytes is None and declared_bytes:
             row_bytes = declared_bytes
             srcs_row_bytes = (
-                f"memories[{name!r}].row_bits_rtl ({declared_bits} bits): the row width this store's own RTL declares"
+                f"memories[{name!r}].{declared_field} ({declared_bits} bits): the row width "
+                f"this store's own RTL declares"
             )
         elif row_bytes and declared_bytes and declared_bytes != row_bytes:
             unknowns.append(
@@ -590,6 +609,43 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
             # element type -- `Store.capacity_rows(dtype)` -- so this is not an unknown, and recording
             # it as one would report a derivable quantity as missing.
             pass
+        # DECLARED COUNTS. Some extractors write the row total and bank count they read off the RTL
+        # (`rows`, `banks`) beside the bytes/depth this derives them from. Where both exist they are two
+        # measurements of one quantity: agreement is recorded, disagreement withholds the quantity with
+        # an Unknown rather than preferring either. (A declared count never has a gap to fill: wherever
+        # it would be consistent with bytes, row width and depth, those already derive it.) Element-level
+        # fields (`row_elems`,
+        # `elem_bits`) are deliberately NOT read: on a port-derived memory they are the WRITE GRANULARITY
+        # a byte enable declares, not the element type the store holds, and an extractor says so.
+        declared_counts = {}
+        for key, quantity in (("rows", "total_rows"), ("banks", "banks")):
+            value = mem.get(key)
+            if isinstance(value, int) and value > 0:
+                declared_counts[quantity] = value
+        if "total_rows" in declared_counts:
+            stated = declared_counts["total_rows"]
+            if total_rows is not None and stated != total_rows:
+                unknowns.append(
+                    Unknown(
+                        "total_rows",
+                        f"derived {total_rows} rows but the facts declare {stated}; one of them "
+                        "is wrong, so neither is used",
+                        name,
+                    )
+                )
+                total_rows = banks = None
+        if "banks" in declared_counts:
+            stated = declared_counts["banks"]
+            if banks is not None and stated != banks:
+                unknowns.append(
+                    Unknown(
+                        "banks",
+                        f"derived {banks} banks but the facts declare {stated}; one of them is wrong, "
+                        "so neither is used",
+                        name,
+                    )
+                )
+                banks = None
         srcs = {"bytes_depth": str(mem.get("source") or "facts.memories")}
         if how:
             srcs["element_dtype"] = how
@@ -597,6 +653,8 @@ def derive_address_space(target: str, *, facts: dict[str, Any] | None = None) ->
             srcs["row_bytes"] = srcs_row_bytes
         elif row_bytes:
             srcs["row_bytes"] = f"array cols {row_elems} x {dtype} ({bits} bits)"
+        if declared_counts:
+            srcs["declared_counts"] = ", ".join(f"{q}={v}" for q, v in declared_counts.items())
         stores.append(
             Store(
                 name=name,
