@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Sample one process tree's CPU, RSS, virtual memory, threads, and procfs I/O as JSONL."""
+
 from __future__ import annotations
 
 import argparse
@@ -27,8 +28,7 @@ def _tree(root: int, table: dict[int, tuple[int, list[str]]]) -> set[int]:
     selected, frontier = {root}, [root]
     while frontier:
         parent = frontier.pop()
-        children = [pid for pid, (ppid, _fields) in table.items()
-                    if ppid == parent and pid not in selected]
+        children = [pid for pid, (ppid, _fields) in table.items() if ppid == parent and pid not in selected]
         selected.update(children)
         frontier.extend(children)
     return selected
@@ -41,8 +41,15 @@ def sample(root: int) -> dict | None:
     pids = _tree(root, table)
     ticks = os.sysconf("SC_CLK_TCK")
     page = os.sysconf("SC_PAGE_SIZE")
-    totals = {"user_cpu_s": 0.0, "system_cpu_s": 0.0, "rss_bytes": 0,
-              "virtual_bytes": 0, "threads": 0, "read_bytes": 0, "write_bytes": 0}
+    totals = {
+        "user_cpu_s": 0.0,
+        "system_cpu_s": 0.0,
+        "rss_bytes": 0,
+        "virtual_bytes": 0,
+        "threads": 0,
+        "read_bytes": 0,
+        "write_bytes": 0,
+    }
     for pid in pids:
         try:
             fields = table[pid][1]
@@ -60,9 +67,15 @@ def sample(root: int) -> dict | None:
         except (OSError, ValueError, IndexError):
             continue
     load = os.getloadavg()
-    return {"sampled_at": datetime.now(timezone.utc).isoformat(), "root_pid": root,
-            "processes": len(pids), **totals,
-            "host_load_1m": load[0], "host_load_5m": load[1], "host_load_15m": load[2]}
+    return {
+        "sampled_at": datetime.now(timezone.utc).isoformat(),
+        "root_pid": root,
+        "processes": len(pids),
+        **totals,
+        "host_load_1m": load[0],
+        "host_load_5m": load[1],
+        "host_load_15m": load[2],
+    }
 
 
 def main() -> int:

@@ -9,6 +9,7 @@ The merlin side checks its numpy semantics against this file (``merlin/tests/ir`
 Writes ``golden.npz`` (bfloat16 values widened to float32, integers as int64) and ``manifest.json``
 (compiler revision, torch version, and the exact call behind every entry) into ``--out``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -43,12 +44,15 @@ def main(argv: list[str] | None = None) -> int:
     # quantize: x / scale in bfloat16, then the int8 table (round half to even, saturate).
     scale = torch.tensor(0.01184082, dtype=bf16)
     x = (torch.randn(8192) * 2.0).to(bf16)
-    data.update(quantize_x=_np(x), quantize_scale=_np(scale),
-                quantize_y=_np(ops.quantize(x, scale, qmap=get_quantization_map("int8"))))
+    data.update(
+        quantize_x=_np(x),
+        quantize_scale=_np(scale),
+        quantize_y=_np(ops.quantize(x, scale, qmap=get_quantization_map("int8"))),
+    )
     calls["quantize"] = "quantized_ops.quantize(x, scale, qmap=get_quantization_map('int8'))"
 
     # dequantize: int32 input (including magnitudes past 2**24) times a bfloat16 scale.
-    xi = torch.randint(-2**27, 2**27, (8192,), dtype=torch.int32)
+    xi = torch.randint(-(2**27), 2**27, (8192,), dtype=torch.int32)
     dscale = torch.tensor(0.00024986, dtype=bf16)
     y = ops.dequantize(xi, dscale)
     data.update(dequantize_x=_np(xi), dequantize_scale=_np(dscale), dequantize_y=_np(y))
@@ -62,14 +66,20 @@ def main(argv: list[str] | None = None) -> int:
     tile[:, 1:, 1:, :] = src
     y = ops.max_pool2d(tile, [3, 3], [2, 2], [0, 0], [1, 1], False)
     data.update(max_pool_x=_np(src), max_pool_y=_np(y))
-    calls["max_pool2d"] = ("quantized_ops.max_pool2d(tile, [3,3], [2,2], [0,0], [1,1], False) on a "
-                           f"tile padded before by {pad_before} with {pad_value}")
+    calls["max_pool2d"] = (
+        "quantized_ops.max_pool2d(tile, [3,3], [2,2], [0,0], [1,1], False) on a "
+        f"tile padded before by {pad_before} with {pad_value}"
+    )
 
     # adaptive_avg_pool2d, the global (1, 1) case ResNet uses and a general (2, 3) window grid.
     a = torch.randn(1, 7, 7, 64).to(bf16) * 4
     b = torch.randn(1, 6, 5, 16).to(bf16)
-    data.update(avg_pool_x=_np(a), avg_pool_y=_np(ops.adaptive_avg_pool2d(a, [1, 1])),
-                avg_pool23_x=_np(b), avg_pool23_y=_np(ops.adaptive_avg_pool2d(b, [2, 3])))
+    data.update(
+        avg_pool_x=_np(a),
+        avg_pool_y=_np(ops.adaptive_avg_pool2d(a, [1, 1])),
+        avg_pool23_x=_np(b),
+        avg_pool23_y=_np(ops.adaptive_avg_pool2d(b, [2, 3])),
+    )
     calls["adaptive_avg_pool2d"] = "quantized_ops.adaptive_avg_pool2d(x, [1,1]) and (x, [2,3])"
 
     # linear as the graph's classifier runs it: int8 activations and weights in bfloat16, an int32
@@ -78,22 +88,27 @@ def main(argv: list[str] | None = None) -> int:
     lx = torch.randint(-128, 128, (1, 512)).to(bf16)
     lw = torch.randint(-128, 128, (48, 512), dtype=torch.int8)
     small = torch.randint(-200, 200, (48,), dtype=torch.int32)
-    big = torch.randint(-2**20, 2**20, (48,), dtype=torch.int32)
-    data.update(linear_x=_np(lx), linear_w=_np(lw), linear_b_small=_np(small), linear_b_big=_np(big),
-                linear_y_small=_np(torch.ops.aten.linear(lx, lw.to(bf16), small.to(bf16))),
-                linear_y_big_bf16bias=_np(torch.ops.aten.linear(lx, lw.to(bf16), big.to(bf16))),
-                linear_y_big_fp32=_np(torch.ops.aten.linear(lx.float(), lw.float(),
-                                                            big.float()).to(bf16)))
-    calls["linear"] = ("aten.linear(x_bf16, w.to(bf16), b.to(bf16)) [small, big bias] and "
-                       "aten.linear(fp32...).to(bf16) [big bias]")
+    big = torch.randint(-(2**20), 2**20, (48,), dtype=torch.int32)
+    data.update(
+        linear_x=_np(lx),
+        linear_w=_np(lw),
+        linear_b_small=_np(small),
+        linear_b_big=_np(big),
+        linear_y_small=_np(torch.ops.aten.linear(lx, lw.to(bf16), small.to(bf16))),
+        linear_y_big_bf16bias=_np(torch.ops.aten.linear(lx, lw.to(bf16), big.to(bf16))),
+        linear_y_big_fp32=_np(torch.ops.aten.linear(lx.float(), lw.float(), big.float()).to(bf16)),
+    )
+    calls["linear"] = (
+        "aten.linear(x_bf16, w.to(bf16), b.to(bf16)) [small, big bias] and aten.linear(fp32...).to(bf16) [big bias]"
+    )
 
     args.out.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.out / "golden.npz", **data)
     root = Path(os.environ["MERLIN_EXT_VOYAGER_COMPILER"]).resolve()
-    commit = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True,
-                            text=True, check=True).stdout.strip()
-    manifest = {"voyager_commit": commit, "torch": torch.__version__, "seed": args.seed,
-                "calls": calls}
+    commit = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    manifest = {"voyager_commit": commit, "torch": torch.__version__, "seed": args.seed, "calls": calls}
     (args.out / "manifest.json").write_text(json.dumps(manifest, indent=1, sort_keys=True) + "\n")
     print(json.dumps({"out": str(args.out), "entries": sorted(data)}))
     return 0

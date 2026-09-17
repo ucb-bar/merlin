@@ -78,6 +78,7 @@ Usage::
     perf_calibrate.py --target T --counters FILE        # calibrate against hardware counter readings
     perf_calibrate.py --target T --dry-run              # print, write nothing
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,8 +88,8 @@ from pathlib import Path
 
 import _common as C  # noqa: E402 -- bootstraps merlin/python and resolves the ACTIVE target
 
-from merlin.common import artifacts as A                                        # noqa: E402
-from merlin.perf import calibration as CAL                                      # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.perf import calibration as CAL  # noqa: E402
 
 #: The product topic. ``perf-calibration`` is its own concern: the ledger records what a run cost,
 #: this records what the MODEL was fitted against, and conflating them would let a stale calibration
@@ -103,6 +104,7 @@ RECORD_NAME = "calibration.json"
 def _contract(target: str) -> dict:
     """The target's capability contract, through the registry rather than by path."""
     from merlin.targetgen import target_registry as TR
+
     return TR.load_contract(target)
 
 
@@ -114,6 +116,7 @@ def _fsm_registers(target: str) -> list:
     synthesis: an inventory that is not on disk stays absent rather than being approximated.
     """
     from merlin.targetgen.rtl.fsm import fsm_inventory
+
     try:
         return list(fsm_inventory(target))
     except OSError:
@@ -127,6 +130,7 @@ def _capsule_dirs(target: str) -> dict[str, Path]:
     in 173 capsules from seven targets and reported ``1/84`` when that target's suite is 36.
     """
     import yaml
+
     from merlin.targetgen.corpora import graded_capsule_roots
 
     out: dict[str, Path] = {}
@@ -147,18 +151,21 @@ def _regimes(target: str, dirs: dict[str, Path]) -> tuple[dict, dict]:
     from merlin.targetgen import memory_regime as MR
 
     store, capacity = MR.operand_store(target)
-    by_capsule = {name: MR.capsule_regime(d, target, store=store, capacity=capacity)
-                  for name, d in sorted(dirs.items())}
+    by_capsule = {
+        name: MR.capsule_regime(d, target, store=store, capacity=capacity) for name, d in sorted(dirs.items())
+    }
     by_regime: dict[str, list[str]] = {}
     largest = {"name": None, "rows": 0, "fraction_of_capacity": 0.0}
     for name, got in by_capsule.items():
         by_regime.setdefault(got.get("regime") or MR.UNKNOWN, []).append(name)
         if int(got.get("rows") or 0) > int(largest["rows"] or 0):
-            largest = {"name": name, "rows": got.get("rows"),
-                       "fraction_of_capacity": got.get("fraction_of_capacity")}
-    corpus = {"by_regime": {k: sorted(v) for k, v in sorted(by_regime.items())},
-              "capacity_rows": int(capacity) if capacity else None,
-              "largest_working_set": largest, "n_capsules": len(by_capsule)}
+            largest = {"name": name, "rows": got.get("rows"), "fraction_of_capacity": got.get("fraction_of_capacity")}
+    corpus = {
+        "by_regime": {k: sorted(v) for k, v in sorted(by_regime.items())},
+        "capacity_rows": int(capacity) if capacity else None,
+        "largest_working_set": largest,
+        "n_capsules": len(by_capsule),
+    }
     return corpus, by_capsule
 
 
@@ -174,22 +181,28 @@ def _load_traces(where: Path) -> list[CAL.MechanismTrace]:
     out: list[CAL.MechanismTrace] = []
     for p in paths:
         doc = json.loads(p.read_text(encoding="utf-8"))
-        for raw in (doc if isinstance(doc, list) else [doc]):
+        for raw in doc if isinstance(doc, list) else [doc]:
             if not isinstance(raw, dict) or not isinstance(raw.get("columns"), dict):
                 raise SystemExit(f"{p}: not a trace object (needs a 'columns' mapping)")
             name = str(raw.get("capsule") or p.stem)
-            out.append(CAL.MechanismTrace(
-                capsule=name,
-                columns={str(k): [str(x) for x in v] for k, v in raw["columns"].items()},
-                binding={str(k): str(v) for k, v in (raw.get("binding") or {}).items()},
-                port_columns=tuple(str(x) for x in (raw.get("port_columns") or ())),
-                state_columns=tuple(str(x) for x in (raw.get("state_columns") or ())),
-                unmeasured_units=tuple(str(x) for x in (raw.get("unmeasured_units") or ())),
-                work=(None if raw.get("work") is None else str(raw["work"])),
-                completion_observable=raw.get("completion_observable"),
-                port_low=(tuple(str(x) for x in raw["port_low"]) if raw.get("port_low") is not None
-                          else CAL.DEFAULT_PORT_LOW),
-                provenance=str(raw.get("provenance") or f"trace file {p.name}")))
+            out.append(
+                CAL.MechanismTrace(
+                    capsule=name,
+                    columns={str(k): [str(x) for x in v] for k, v in raw["columns"].items()},
+                    binding={str(k): str(v) for k, v in (raw.get("binding") or {}).items()},
+                    port_columns=tuple(str(x) for x in (raw.get("port_columns") or ())),
+                    state_columns=tuple(str(x) for x in (raw.get("state_columns") or ())),
+                    unmeasured_units=tuple(str(x) for x in (raw.get("unmeasured_units") or ())),
+                    work=(None if raw.get("work") is None else str(raw["work"])),
+                    completion_observable=raw.get("completion_observable"),
+                    port_low=(
+                        tuple(str(x) for x in raw["port_low"])
+                        if raw.get("port_low") is not None
+                        else CAL.DEFAULT_PORT_LOW
+                    ),
+                    provenance=str(raw.get("provenance") or f"trace file {p.name}"),
+                )
+            )
     return out
 
 
@@ -209,8 +222,9 @@ def _load_counter_readings(where: Path, target: str) -> list[CAL.CounterReading]
 
     found = HC.counters_for_target(target)
     if found.get("status") != "derived":
-        raise SystemExit(f"{target}: no combination-counter block could be derived "
-                         f"({found.get('status')}): {found.get('why')}")
+        raise SystemExit(
+            f"{target}: no combination-counter block could be derived ({found.get('status')}): {found.get('why')}"
+        )
     counters = HC.derive_occupancy_counters(Path(found["header"]).read_text(encoding="utf-8"))
 
     paths = sorted(where.glob("*.json")) if where.is_dir() else [where]
@@ -225,7 +239,8 @@ def _load_counter_readings(where: Path, target: str) -> list[CAL.CounterReading]
             if recorded is not None and list(recorded) != list(counters.engines):
                 raise SystemExit(
                     f"{p}: recorded over engines {list(recorded)} but this target's header now "
-                    f"derives {list(counters.engines)}; the reading and the counter set disagree")
+                    f"derives {list(counters.engines)}; the reading and the counter set disagree"
+                )
             items = doc["readings"]
         else:
             items = doc if isinstance(doc, list) else [doc]
@@ -236,22 +251,25 @@ def _load_counter_readings(where: Path, target: str) -> list[CAL.CounterReading]
             if not raw["values"]:
                 dropped.append(f"{name}: {raw.get('dropped') or 'no counter value was recorded'}")
                 continue
-            out.append(CAL.CounterReading(
-                workload=name,
-                values={str(k): int(v) for k, v in raw["values"].items()},
-                counters=counters,
-                total_cycles=(None if raw.get("total_cycles") is None
-                              else int(raw["total_cycles"])),
-                kind_of=({str(k): str(v) for k, v in raw["kind_of"].items()}
-                         if raw.get("kind_of") else None),
-                completion_observable=raw.get("completion_observable"),
-                provenance=str(raw.get("provenance") or f"counter file {p.name}")))
+            out.append(
+                CAL.CounterReading(
+                    workload=name,
+                    values={str(k): int(v) for k, v in raw["values"].items()},
+                    counters=counters,
+                    total_cycles=(None if raw.get("total_cycles") is None else int(raw["total_cycles"])),
+                    kind_of=({str(k): str(v) for k, v in raw["kind_of"].items()} if raw.get("kind_of") else None),
+                    completion_observable=raw.get("completion_observable"),
+                    provenance=str(raw.get("provenance") or f"counter file {p.name}"),
+                )
+            )
     for why in dropped:
         print(f"  counter reading DROPPED -- {why}")
     print(f"  counter readings usable: {len(out)}")
     if not out:
-        raise SystemExit(f"{where}: every supplied counter reading was dropped; nothing to calibrate "
-                         f"against. A dropped reading is not a run with no overlap")
+        raise SystemExit(
+            f"{where}: every supplied counter reading was dropped; nothing to calibrate "
+            f"against. A dropped reading is not a run with no overlap"
+        )
     return out
 
 
@@ -273,11 +291,18 @@ def _counter_source_provenance(where: Path) -> list[dict]:
             out.append({"file": p.name, "unreadable": f"{type(exc).__name__}: {exc}"})
             continue
         block = doc.get("provenance") if isinstance(doc, dict) else None
-        out.append({"file": p.name,
-                    "provenance": block if block else None,
-                    "note": ("" if block else
-                             "this counter file records NO hardware provenance, so which revision "
-                             "its numbers are about is UNRECORDED here too")})
+        out.append(
+            {
+                "file": p.name,
+                "provenance": block if block else None,
+                "note": (
+                    ""
+                    if block
+                    else "this counter file records NO hardware provenance, so which revision "
+                    "its numbers are about is UNRECORDED here too"
+                ),
+            }
+        )
     return out
 
 
@@ -298,9 +323,10 @@ def _provenance(target: str, dirs: dict[str, Path], extra: dict | None = None) -
     from merlin.common import provenance as P
     from merlin.targetgen.provenance import declared_pins
     from merlin.targetgen.rtl.facts import target_contract_path
+
     try:
         sources = [target_contract_path(target)]
-    except Exception:                                        # noqa: BLE001 -- no contract path
+    except Exception:  # noqa: BLE001 -- no contract path
         sources = []
     sources += [d / "capsule.yaml" for d in sorted(dirs.values())]
     present = [Path(s).resolve() for s in sources if Path(s).is_file()]
@@ -308,51 +334,57 @@ def _provenance(target: str, dirs: dict[str, Path], extra: dict | None = None) -
     for name in declared_pins(target):
         try:
             pins[name] = P.verify(name)
-        except Exception as exc:                             # noqa: BLE001 -- unverifiable is UNKNOWN
+        except Exception as exc:  # noqa: BLE001 -- unverifiable is UNKNOWN
             refused[name] = f"{type(exc).__name__}: {exc}"
     extra = dict(extra or {})
     if refused:
         extra["pins_unverifiable"] = refused
     try:
         from merlin.common.paths import repo_root
+
         got = P.record(sources=[str(s) for s in present], pins=pins, extra=extra)
         # The digest is taken over the ABSOLUTE paths, so it is over bytes that were actually read;
         # the NAMES are then rewritten repo-relative, because an absolute path in a published artifact
         # says where one machine kept its checkout, which is not provenance.
         root = Path(repo_root()).resolve()
-        got["sources"] = [str(s.relative_to(root)) if s.is_relative_to(root) else str(s)
-                          for s in present]
+        got["sources"] = [str(s.relative_to(root)) if s.is_relative_to(root) else str(s) for s in present]
         return got
-    except Exception as exc:                                 # noqa: BLE001 -- registry unusable
+    except Exception as exc:  # noqa: BLE001 -- registry unusable
         return {"unavailable": f"{type(exc).__name__}: {exc}"}
 
 
 def _print(rec: dict) -> None:
     inv = rec["engine_inventory"]
-    print(f"target={rec['target']}  traces={rec['n_traces']}  "
-          f"ran_against_traces={rec['ran_against_traces']}  "
-          f"counter_runs={rec['n_counter_runs']}  "
-          f"ran_against_counters={rec['ran_against_counters']}")
+    print(
+        f"target={rec['target']}  traces={rec['n_traces']}  "
+        f"ran_against_traces={rec['ran_against_traces']}  "
+        f"counter_runs={rec['n_counter_runs']}  "
+        f"ran_against_counters={rec['ran_against_counters']}"
+    )
     print(f"  engines declared={inv['n_declared']} observable={inv['observable']}")
     for eng, why in inv["unobservable"].items():
         print(f"    UNOBSERVABLE {eng}: {why[:150]}")
-    print(f"  fsm registers detected={inv['n_detected']} "
-          f"undeclared={len(inv['detected_undeclared'])}")
+    print(f"  fsm registers detected={inv['n_detected']} undeclared={len(inv['detected_undeclared'])}")
     mr = rec["memory_regimes"]
-    print(f"  operand store capacity_rows={mr['capacity_rows']} "
-          f"regimes={ {k: len(v) for k, v in mr['by_regime'].items()} }")
+    print(
+        f"  operand store capacity_rows={mr['capacity_rows']} "
+        f"regimes={ {k: len(v) for k, v in mr['by_regime'].items()} }"
+    )
     cs = rec["calibration_set"]
-    print(f"  cover: calibrated={cs['n_calibrated']} uncovered={cs['n_uncovered']} "
-          f"uncalibratable={cs['n_uncalibratable']}")
+    print(
+        f"  cover: calibrated={cs['n_calibrated']} uncovered={cs['n_uncovered']} "
+        f"uncalibratable={cs['n_uncalibratable']}"
+    )
     for cell in cs["cells"]:
-        print(f"    [{cell['state']:<15s}] {cell['axis']}:{cell['key']} "
-              f"-> {list(cell['capsules'])}")
+        print(f"    [{cell['state']:<15s}] {cell['axis']}:{cell['key']} -> {list(cell['capsules'])}")
         print(f"        {cell['why'][:220]}")
     for cap in rec["capsules"]:
         eta = cap["eta"]
-        shown = (f"{eta['value']:.4f}" if eta["state"] == CAL.MEASURED else "UNKNOWN")
-        print(f"  {cap['capsule']:<28s} eta={shown} overlap_observable={cap['overlap_observable']} "
-              f"live={list(cap['live_engines'])}")
+        shown = f"{eta['value']:.4f}" if eta["state"] == CAL.MEASURED else "UNKNOWN"
+        print(
+            f"  {cap['capsule']:<28s} eta={shown} overlap_observable={cap['overlap_observable']} "
+            f"live={list(cap['live_engines'])}"
+        )
         if eta["state"] != CAL.MEASURED:
             print(f"        why: {eta['why'][:220]}")
     comp = rec["composition"]
@@ -360,26 +392,30 @@ def _print(rec: dict) -> None:
         entry = comp.get(axis) or {}
         op, eta = entry.get("operator") or {}, entry.get("eta") or {}
         shown = op.get("value") if op.get("state") == CAL.MEASURED else "UNKNOWN"
-        eta_shown = (f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN")
+        eta_shown = f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN"
         print(f"  composition[{axis}]: operator={shown} eta={eta_shown}")
         if op.get("state") != CAL.MEASURED:
             print(f"        why: {str(op.get('why'))[:220]}")
     cc = rec.get("counter_calibration") or {}
-    print(f"  counters: runs={cc.get('n_runs')} engines={cc.get('engines')} "
-          f"(AGGREGATE instrument -- not a per-cycle trace, never compared with one)")
+    print(
+        f"  counters: runs={cc.get('n_runs')} engines={cc.get('engines')} "
+        f"(AGGREGATE instrument -- not a per-cycle trace, never compared with one)"
+    )
     for run in cc.get("runs") or ():
         eta = run.get("eta") or {}
-        shown = (f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN")
+        shown = f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN"
         busy = run.get("busy_cycles") or {}
-        print(f"    {str(run.get('workload')):<24s} eta={shown} "
-              f"busy={busy.get('value') if busy.get('state') == CAL.MEASURED else 'UNKNOWN'}")
+        print(
+            f"    {str(run.get('workload')):<24s} eta={shown} "
+            f"busy={busy.get('value') if busy.get('state') == CAL.MEASURED else 'UNKNOWN'}"
+        )
         if eta.get("state") != CAL.MEASURED:
             print(f"        why: {str(eta.get('why'))[:220]}")
     for axis in ("engine_axis", "kind_axis"):
         entry = cc.get(axis) or {}
         op, eta = entry.get("operator") or {}, entry.get("eta") or {}
         shown = op.get("value") if op.get("state") == CAL.MEASURED else "UNKNOWN"
-        eta_shown = (f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN")
+        eta_shown = f"{eta['value']:.4f}" if eta.get("state") == CAL.MEASURED else "UNKNOWN"
         print(f"  counter_composition[{axis}]: operator={shown} eta={eta_shown}")
         if op.get("state") != CAL.MEASURED:
             print(f"        why: {str(op.get('why'))[:220]}")
@@ -389,29 +425,47 @@ def _print(rec: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Measure the mechanisms an analytical performance model must be calibrated "
-                    "against, and report which mechanisms nothing in this corpus can calibrate.")
+        "against, and report which mechanisms nothing in this corpus can calibrate."
+    )
     # OPTIONAL, defaulting to the harness's active target. The overnight runner invokes this script
     # with no arguments (`stage_calibration` in run_overnight.py), and a required flag would have made
     # that stage exit 2 and be journalled as a failed calibration -- a tooling limit wearing a
     # measurement's clothes, which is the failure mode this repo keeps re-finding. The active target
     # is the one _common already resolved from MERLIN_TARGET_EXPERIMENT, so both callers agree.
-    ap.add_argument("--target", default=C.TARGET,
-                    help="target name (its contract and corpus are looked up); defaults to the "
-                         f"harness's active target ({C.TARGET!r}, from MERLIN_TARGET_EXPERIMENT)")
-    ap.add_argument("--traces", type=Path, default=None,
-                    help="per-cycle trace file or directory (see the module docstring for the shape); "
-                         "omitted = plan mode, every eta UNKNOWN")
-    ap.add_argument("--counters", type=Path, default=None,
-                    help="hardware combination-counter readings (a counter_occupancy.json record, a "
-                         "list of readings, or a directory of either). Fills counter_calibration ONLY: "
-                         "it never sets ran_against_traces and never enters the capsule cover")
-    ap.add_argument("--declared-idle-value", default=None,
-                    help="the value the PRODUCER states its state registers hold when idle. Used ONLY "
-                         "if the cycle-exact derivation refuses, never as a default, and stamped "
-                         "declared_by_producer on every number downstream of it")
-    ap.add_argument("--points-per-cell", type=int, default=CAL.POINTS_PER_CELL,
-                    help="capsules per calibration cell (default 2: one point cannot separate a rate "
-                         "from a fixed intercept)")
+    ap.add_argument(
+        "--target",
+        default=C.TARGET,
+        help="target name (its contract and corpus are looked up); defaults to the "
+        f"harness's active target ({C.TARGET!r}, from MERLIN_TARGET_EXPERIMENT)",
+    )
+    ap.add_argument(
+        "--traces",
+        type=Path,
+        default=None,
+        help="per-cycle trace file or directory (see the module docstring for the shape); "
+        "omitted = plan mode, every eta UNKNOWN",
+    )
+    ap.add_argument(
+        "--counters",
+        type=Path,
+        default=None,
+        help="hardware combination-counter readings (a counter_occupancy.json record, a "
+        "list of readings, or a directory of either). Fills counter_calibration ONLY: "
+        "it never sets ran_against_traces and never enters the capsule cover",
+    )
+    ap.add_argument(
+        "--declared-idle-value",
+        default=None,
+        help="the value the PRODUCER states its state registers hold when idle. Used ONLY "
+        "if the cycle-exact derivation refuses, never as a default, and stamped "
+        "declared_by_producer on every number downstream of it",
+    )
+    ap.add_argument(
+        "--points-per-cell",
+        type=int,
+        default=CAL.POINTS_PER_CELL,
+        help="capsules per calibration cell (default 2: one point cannot separate a rate from a fixed intercept)",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the record, write nothing")
     ap.add_argument("--notes", default="")
     args = ap.parse_args(argv)
@@ -425,27 +479,43 @@ def main(argv: list[str] | None = None) -> int:
     counters = _load_counter_readings(args.counters, args.target) if args.counters else []
 
     rec = CAL.calibrate(
-        target=args.target, contract=contract, traces=traces, counter_readings=counters,
-        corpus_regimes=corpus, regime_by_capsule=by_capsule,
+        target=args.target,
+        contract=contract,
+        traces=traces,
+        counter_readings=counters,
+        corpus_regimes=corpus,
+        regime_by_capsule=by_capsule,
         fsm_registers=_fsm_registers(args.target),
         declared_idle_value=args.declared_idle_value,
         points_per_cell=args.points_per_cell,
-        provenance=_provenance(args.target, dirs, extra={
-            "trace_instrument": (f"{len(traces)} trace(s) through the MechanismTrace seam"
-                                 if traces else "none supplied"),
-            "counter_instrument": (
-                f"{len(counters)} run(s) through the CounterReading seam, from "
-                f"{args.counters}" if counters else "none supplied"),
-            "counter_source_provenance": (_counter_source_provenance(args.counters)
-                                          if counters else []),
-        }), notes=args.notes)
+        provenance=_provenance(
+            args.target,
+            dirs,
+            extra={
+                "trace_instrument": (
+                    f"{len(traces)} trace(s) through the MechanismTrace seam" if traces else "none supplied"
+                ),
+                "counter_instrument": (
+                    f"{len(counters)} run(s) through the CounterReading seam, from {args.counters}"
+                    if counters
+                    else "none supplied"
+                ),
+                "counter_source_provenance": (_counter_source_provenance(args.counters) if counters else []),
+            },
+        ),
+        notes=args.notes,
+    )
     _print(rec)
 
     if args.dry_run:
         print("\n--dry-run: nothing written")
         return 0
-    pd = A.new_product(TOPIC, version=PRODUCT_VERSION, target=args.target,
-                       notes=args.notes or "mechanism calibration for the analytical performance model")
+    pd = A.new_product(
+        TOPIC,
+        version=PRODUCT_VERSION,
+        target=args.target,
+        notes=args.notes or "mechanism calibration for the analytical performance model",
+    )
     out = pd.add_artifact(RECORD_NAME)
     out.write_text(json.dumps(rec, indent=1, sort_keys=False) + "\n", encoding="utf-8")
     pd.write_manifest()

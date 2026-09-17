@@ -12,7 +12,9 @@ network, no claude invocation — just the agent's tool environment.
 
 Usage: preflight_sandbox.py [--arm merlin_rtlchecks|merlin|baseline]
 """
+
 from __future__ import annotations
+
 import argparse
 import os
 import signal
@@ -55,8 +57,7 @@ def _screen_completion(verdict: dict) -> tuple[bool, str]:
     n_passed = verdict.get("n_passed")
     n_certified = verdict.get("n_certified")
     n_screened = verdict.get("n_screened_only")
-    counts_are_explicit = all(isinstance(v, int) for v in (
-        n_capsules, n_passed, n_certified, n_screened))
+    counts_are_explicit = all(isinstance(v, int) for v in (n_capsules, n_passed, n_certified, n_screened))
     complete = bool(
         counts_are_explicit
         and n_capsules > 0
@@ -64,15 +65,16 @@ def _screen_completion(verdict: dict) -> tuple[bool, str]:
         and n_passed == n_capsules
         and n_certified + n_screened == n_capsules
         and verdict.get("all_pass") is (n_certified == n_capsules)
-        and all(row.get("pass") is True
-                and row.get("barrier_tier")
-                and row.get("barrier_status") == "pass"
-                for row in rows)
+        and all(
+            row.get("pass") is True and row.get("barrier_tier") and row.get("barrier_status") == "pass" for row in rows
+        )
     )
     tiers = sorted({str(row.get("barrier_tier")) for row in rows if row.get("barrier_tier")})
-    detail = (f"measured={n_passed}/{n_capsules} certified={n_certified} "
-              f"screened_only={n_screened} all_pass={verdict.get('all_pass')} "
-              f"tiers={','.join(tiers) or 'none'}")
+    detail = (
+        f"measured={n_passed}/{n_capsules} certified={n_certified} "
+        f"screened_only={n_screened} all_pass={verdict.get('all_pass')} "
+        f"tiers={','.join(tiers) or 'none'}"
+    )
     return complete, detail
 
 
@@ -98,6 +100,7 @@ def _run(ws, bundle, inner, timeout=180):
 def _descriptor() -> dict:
     """The SELECTED target's target_experiment.yaml, as data."""
     import yaml
+
     d = C.EXP / "target_experiment.yaml"
     try:
         return yaml.safe_load(d.read_text(encoding="utf-8")) or {}
@@ -112,6 +115,7 @@ def _declares_bespoke_sim() -> bool:
     model and never shells out to spike / riscv-gcc / a chipyard verilator binary. Derived, not a
     target-name branch -- a new endpoint's answer falls out of its own descriptor.
     """
+
     def _find(node):
         """`sim_via` is nested (gemmini declares it under `toolchain`); find it wherever it sits."""
         if isinstance(node, dict):
@@ -135,6 +139,7 @@ def _broker_sim() -> str:
     """
     try:
         from merlin.targetgen.capsule_runner import qa_loop_adapters
+
         tiers = sorted(qa_loop_adapters(C.TARGET))
     except Exception:  # noqa: BLE001 -- an unresolvable adapter set is not this probe's business
         tiers = []
@@ -153,11 +158,12 @@ def _probe_capsule() -> str:
     corpus root comes from the descriptor's ``capsule_corpus``, so each target answers for itself.
     """
     import yaml
+
     root = _descriptor().get("capsule_corpus")
     roots = [C.REPO / root] if isinstance(root, str) and root.strip() else [C.REPO / "merlin/contract/capsules"]
     for base in roots:
         for cy in sorted(base.rglob("capsule.yaml")):
-            if "hidden" in cy.parts:                      # never probe a held-out capsule
+            if "hidden" in cy.parts:  # never probe a held-out capsule
                 continue
             try:
                 y = yaml.safe_load(cy.read_text(encoding="utf-8")) or {}
@@ -165,8 +171,10 @@ def _probe_capsule() -> str:
                 continue
             if str(y.get("label", "")).strip() == "public":
                 return cy.parent.name
-    raise SystemExit(f"no public capsule found for {C.TARGET} under {[str(r) for r in roots]}; "
-                     f"the sandbox probe cannot be constructed without one")
+    raise SystemExit(
+        f"no public capsule found for {C.TARGET} under {[str(r) for r in roots]}; "
+        f"the sandbox probe cannot be constructed without one"
+    )
 
 
 def _verilator_design() -> str:
@@ -189,7 +197,7 @@ def main(argv=None):
     bundle = _load_bundle_by_id(ARM_BUNDLE[a.arm])
     print(f"=== sandbox test — arm={a.arm} bundle={ARM_BUNDLE[a.arm]} ===")
 
-    with tempfile.TemporaryDirectory() as td:            # honours TMPDIR; bwrap masks via tmpfs, not a /tmp bind
+    with tempfile.TemporaryDirectory() as td:  # honours TMPDIR; bwrap masks via tmpfs, not a /tmp bind
         ws = Path(td) / "workspace"
         RX.assemble_workspace(bundle, ws)
 
@@ -198,9 +206,13 @@ def main(argv=None):
         # a denied answer kernel from the target's example suite (chipyard <target>-rocc-tests) must be
         # masked; resolve the real sim repo (falls back to a nonexistent stand-in), target from _common.
         from merlin.common.paths import ext_path
+
         _cy = ext_path("chipyard")
-        _suite_kernel = (str(_cy / f"generators/{C.TARGET}/software/{C.TARGET}-rocc-tests/bareMetalC/conv.c")
-                         if _cy else f"/nonexistent/{C.TARGET}-rocc-tests/bareMetalC/conv.c")
+        _suite_kernel = (
+            str(_cy / f"generators/{C.TARGET}/software/{C.TARGET}-rocc-tests/bareMetalC/conv.c")
+            if _cy
+            else f"/nonexistent/{C.TARGET}-rocc-tests/bareMetalC/conv.c"
+        )
         masks = {
             "public golden": C.REPO / "merlin/contract/capsules/isa/A4_acc_scale_i8/golden.yaml",
             "hidden capsules": C.REPO / "merlin/contract/capsules/hidden",
@@ -229,28 +241,30 @@ def main(argv=None):
         # of surfaces; one bwrap per path would make the gate too slow to run before every launch).
         from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces as _surfaces
         from merlin.targetgen.target_experiment import load_target_experiment
+
         _declared = _surfaces(load_target_experiment(C.DESCRIPTOR))
         if _declared:
             _probe = (
-                'while IFS= read -r p; do\n'
+                "while IFS= read -r p; do\n"
                 '  if [ -d "$p" ]; then\n'
                 '    if [ "$(find "$p" -type f 2>/dev/null | wc -l)" = "0" ]; then s=masked; else s=VISIBLE; fi\n'
                 '  elif head -c1 "$p" >/dev/null 2>&1 && [ -s "$p" ]; then s=VISIBLE; else s=masked; fi\n'
                 '  echo "$s|$p"\n'
-                "done <<'__SURFACES__'\n"
-                + "\n".join(str(s.path) for s in _declared)
-                + "\n__SURFACES__\n")
+                "done <<'__SURFACES__'\n" + "\n".join(str(s.path) for s in _declared) + "\n__SURFACES__\n"
+            )
             rc, out, err = _run(ws, bundle, _probe, timeout=300)
-            verdicts = dict((ln.split("|", 1)[1], ln.split("|", 1)[0])
-                            for ln in out.splitlines() if "|" in ln)
+            verdicts = dict((ln.split("|", 1)[1], ln.split("|", 1)[0]) for ln in out.splitlines() if "|" in ln)
             by_origin: dict[str, list] = {}
             for s in _declared:
                 by_origin.setdefault(s.origin, []).append(s)
             for origin, surfs in sorted(by_origin.items()):
                 # A surface with NO verdict line is not a pass: the probe never reached it.
                 leaked = [s.label for s in surfs if verdicts.get(str(s.path)) != "masked"]
-                _ok(f"masked: every declared {origin} surface ({len(surfs)})", not leaked,
-                    "all masked" if not leaked else f"VISIBLE: {', '.join(leaked[:4])}")
+                _ok(
+                    f"masked: every declared {origin} surface ({len(surfs)})",
+                    not leaked,
+                    "all masked" if not leaked else f"VISIBLE: {', '.join(leaked[:4])}",
+                )
 
         # --- TOOLS: must work ---
         print("\n-- tools (must work) --")
@@ -271,35 +285,50 @@ def main(argv=None):
             checks += [
                 ("spike", "spike --help 2>&1 | head -1"),
                 ("riscv64-unknown-elf-gcc", "riscv64-unknown-elf-gcc --version | head -1"),
-                ("verilator L3 sim",
-                 f'test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-{_verilator_design()} && echo present'),
+                (
+                    "verilator L3 sim",
+                    f"test -x {TC.CHIPYARD_VERILATOR}/simulator-chipyard.harness-{_verilator_design()} && echo present",
+                ),
             ]
         else:
-            print(f"  [n/a ] RISC-V/chipyard toolchain — {C.TARGET} declares no bespoke sim "
-                  f"(sim_via empty); its RTL tier is an in-process model")
+            print(
+                f"  [n/a ] RISC-V/chipyard toolchain — {C.TARGET} declares no bespoke sim "
+                f"(sim_via empty); its RTL tier is an in-process model"
+            )
         for label, inner in checks:
             rc, out, err = _run(ws, bundle, inner, timeout=120)
             _ok(f"tool: {label}", rc == 0 and out, (out or err).splitlines()[0][:70] if (out or err) else f"rc={rc}")
         # merlin infra: required for the xDSL arms, MUST be absent for the C++ baseline (no merlin tools)
-        rc, out, err = _run(ws, bundle, 'python3 -c "import merlin.targetgen.oot_starterkit, xdsl; print(42)"', timeout=120)
+        rc, out, err = _run(
+            ws, bundle, 'python3 -c "import merlin.targetgen.oot_starterkit, xdsl; print(42)"', timeout=120
+        )
         merlin_ok = "42" in out
         if a.arm == "baseline":
             _ok("merlin infra ABSENT for baseline (control)", not merlin_ok, "correctly unavailable")
         else:
-            _ok("tool: import oot_starterkit (+xdsl)", merlin_ok, (out or err).splitlines()[-1][:70] if (out or err) else f"rc={rc}")
+            _ok(
+                "tool: import oot_starterkit (+xdsl)",
+                merlin_ok,
+                (out or err).splitlines()[-1][:70] if (out or err) else f"rc={rc}",
+            )
 
         # --- END-TO-END: the agent's real in-sandbox capability = compile + run on spike ---
         # (golden grading is DRIVER-SIDE/redacted, outside the sandbox — the target's runtime backend
         # imports the oracle, so it is correctly absent here. In-sandbox the agent authors -> compiles -> runs spike.)
         if _declares_bespoke_sim():
             print("\n-- end-to-end (compile with riscv-gcc + curated harness, run on spike) --")
-            e2e = (f'cd /tmp && printf "int main(){{return 0;}}" > t.c && '
-                   f'riscv64-unknown-elf-gcc -I {TC.CURATED_HARNESS}/include -c t.c -o t.o && echo COMPILED && '
-                   f'riscv64-unknown-elf-gcc -march=rv64gc -o t.elf t.c -nostartfiles -e main 2>/dev/null; '
-                   f'spike --help >/dev/null 2>&1 && echo SPIKE_OK')
+            e2e = (
+                f'cd /tmp && printf "int main(){{return 0;}}" > t.c && '
+                f"riscv64-unknown-elf-gcc -I {TC.CURATED_HARNESS}/include -c t.c -o t.o && echo COMPILED && "
+                f"riscv64-unknown-elf-gcc -march=rv64gc -o t.elf t.c -nostartfiles -e main 2>/dev/null; "
+                f"spike --help >/dev/null 2>&1 && echo SPIKE_OK"
+            )
             rc, out, err = _run(ws, bundle, e2e, timeout=120)
-            _ok("riscv-gcc compiles (curated harness) + spike runnable",
-                "COMPILED" in out and "SPIKE_OK" in out, (out or err).replace("\n", " ")[:80])
+            _ok(
+                "riscv-gcc compiles (curated harness) + spike runnable",
+                "COMPILED" in out and "SPIKE_OK" in out,
+                (out or err).replace("\n", " ")[:80],
+            )
         else:
             print(f"\n-- end-to-end: n/a — {C.TARGET} compiles no RISC-V host program (no bespoke sim) --")
 
@@ -308,7 +337,9 @@ def main(argv=None):
         #     to prove the in-sandbox->broker->redacted-verdict path on a real package.)
         print("\n-- async oracle (simjob) through bwrap: real spike L2=pass + oracle masked --")
         import shutil as _sh
-        ch = ws / ".qa_channel"; ch.mkdir(parents=True, exist_ok=True)
+
+        ch = ws / ".qa_channel"
+        ch.mkdir(parents=True, exist_ok=True)
         (ch / "STOP").unlink(missing_ok=True)
         # stage BOTH shims (unlink symlink first — copy-onto-symlink would clobber the real scripts)
         for src, dstn in (("selfcheck_shim.py", "agent_selfcheck.py"), ("simjob_shim.py", "simjob.py")):
@@ -324,14 +355,19 @@ def main(argv=None):
         sub.symlink_to(ref)
         # start_new_session=True makes the broker its OWN process-group leader, so teardown can kill
         # exactly the sims IT spawned (scoped) instead of a broad pkill on a shared host.
-        broker = subprocess.Popen([sys.executable, str(SCRIPTS_DIR / "simjob_broker.py"), "--ws", str(ws)],
-                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                  start_new_session=True)
+        broker = subprocess.Popen(
+            [sys.executable, str(SCRIPTS_DIR / "simjob_broker.py"), "--ws", str(ws)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
         try:
             # submit (async) from INSIDE the sandbox, then poll to a real verdict
-            rc, out, err = _run(ws, bundle,
-                                f'python3 simjob.py submit --sim {_broker_sim()} --capsules {_probe_capsule()}', timeout=60)
+            rc, out, err = _run(
+                ws, bundle, f"python3 simjob.py submit --sim {_broker_sim()} --capsules {_probe_capsule()}", timeout=60
+            )
             import json as _json
+
             jid = None
             try:
                 jid = _json.loads(out.strip().splitlines()[-1])["job_id"]
@@ -341,7 +377,7 @@ def main(argv=None):
             verdict = {}
             if jid:
                 for _ in range(40):
-                    rc, pout, _e = _run(ws, bundle, f'python3 simjob.py poll --job-id {jid}', timeout=60)
+                    rc, pout, _e = _run(ws, bundle, f"python3 simjob.py poll --job-id {jid}", timeout=60)
                     try:
                         d = _json.loads(pout.strip().splitlines()[-1])
                     except Exception:
@@ -351,12 +387,14 @@ def main(argv=None):
                         break
                     time.sleep(5)
             screen_ok, screen_detail = _screen_completion(verdict)
-            _ok("async oracle job -> complete measured-tier pass through bwrap",
-                screen_ok, screen_detail)
+            _ok("async oracle job -> complete measured-tier pass through bwrap", screen_ok, screen_detail)
             # the oracle must NOT have become readable in-box during the brokered run
-            rc2, oout, _ = _run(ws, bundle,
-                                f'head -c1 "{C.REPO}/merlin/python/merlin/runtime/reference.py" >/dev/null 2>&1 && echo LEAK || echo masked',
-                                timeout=60)
+            rc2, oout, _ = _run(
+                ws,
+                bundle,
+                f'head -c1 "{C.REPO}/merlin/python/merlin/runtime/reference.py" >/dev/null 2>&1 && echo LEAK || echo masked',
+                timeout=60,
+            )
             _ok("oracle stays masked during brokered async run", oout.strip().endswith("masked"), oout.strip())
         finally:
             (ch / "STOP").write_text("stop")
@@ -373,15 +411,19 @@ def main(argv=None):
                 pass
 
     n = sum(1 for _, ok in results if ok)
-    print(f"\n{'='*56}\nSANDBOX TEST: {n}/{len(results)} passed")
+    print(f"\n{'=' * 56}\nSANDBOX TEST: {n}/{len(results)} passed")
     go = n == len(results)
-    print("🟢 sandbox GO — tools work, answers masked; safe to relaunch under --sandbox bwrap"
-          if go else "🔴 sandbox NO-GO — fix the FAILs before relaunching")
+    print(
+        "🟢 sandbox GO — tools work, answers masked; safe to relaunch under --sandbox bwrap"
+        if go
+        else "🔴 sandbox NO-GO — fix the FAILs before relaunching"
+    )
     return 0 if go else 1
 
 
 def _load_bundle_by_id(bundle_id: str) -> dict:
     import yaml
+
     p = C.BUNDLES / bundle_id / "input_bundle_manifest.yaml"
     return yaml.safe_load(p.read_text())
 

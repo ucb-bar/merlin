@@ -12,12 +12,16 @@ loader). This finds every embedded ELF, disassembles it, and reports the custom-
 
 Usage: verify_gemmini_asm.py <elf> [<elf> ...]   ->  PASS if any embedded dispatch has >0 custom-3 ops.
 """
+
 from __future__ import annotations
-import re, subprocess, sys
+
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 OBJDUMP = "/path/to/chipyard/.conda-env/riscv-tools/bin/riscv64-unknown-elf-objdump"
-CUSTOM = {0x0b: "custom-0", 0x2b: "custom-1", 0x5b: "custom-2", 0x7b: "custom-3 (gemmini RoCC)"}
+CUSTOM = {0x0B: "custom-0", 0x2B: "custom-1", 0x5B: "custom-2", 0x7B: "custom-3 (gemmini RoCC)"}
 
 
 def _embedded_elfs(data: bytes) -> list[tuple[int, bytes]]:
@@ -30,7 +34,7 @@ def _embedded_elfs(data: bytes) -> list[tuple[int, bytes]]:
         # EI_CLASS==2 (ELF64), e_machine==243 (RISC-V) at offset+18 (LE u16)
         if data[off + 4] != 2:
             continue
-        mach = int.from_bytes(data[off + 18:off + 20], "little")
+        mach = int.from_bytes(data[off + 18 : off + 20], "little")
         if mach != 243:
             continue
         out.append((off, data[off:]))
@@ -38,17 +42,20 @@ def _embedded_elfs(data: bytes) -> list[tuple[int, bytes]]:
 
 
 def _custom_hist(elf_bytes: bytes) -> tuple[int, dict]:
-    p = Path("/tmp/_vg_dispatch.elf"); p.write_bytes(elf_bytes)
+    p = Path("/tmp/_vg_dispatch.elf")
+    p.write_bytes(elf_bytes)
     try:
         dis = subprocess.run([OBJDUMP, "-d", str(p)], capture_output=True, text=True).stdout
     except FileNotFoundError:
-        print(f"  (objdump not found at {OBJDUMP})"); return 0, {}
-    total = 0; hist = {}
+        print(f"  (objdump not found at {OBJDUMP})")
+        return 0, {}
+    total = 0
+    hist = {}
     for ln in dis.splitlines():
         m = re.match(r"\s*[0-9a-f]+:\s+([0-9a-f]{8})\s", ln)
         if m:
             total += 1
-            op = int(m.group(1), 16) & 0x7f
+            op = int(m.group(1), 16) & 0x7F
             if op in CUSTOM:
                 hist[op] = hist.get(op, 0) + 1
     return total, hist
@@ -61,20 +68,23 @@ def verify(elf: Path) -> bool:
     gemmini_total = 0
     for off, blob in embedded:
         total, hist = _custom_hist(blob)
-        g = hist.get(0x7b, 0)
+        g = hist.get(0x7B, 0)
         gemmini_total += g
         pretty = ", ".join(f"{CUSTOM[op]}={n}" for op, n in sorted(hist.items())) or "none"
         print(f"  dispatch@{off}: {total} insns decoded; custom: {pretty}")
     ok = gemmini_total > 0
-    print(f"  -> {'PASS' if ok else 'FAIL'}: {gemmini_total} gemmini custom-3 (0x7b) ops "
-          f"({'offloaded to systolic array' if ok else 'NO gemmini ops — fell back to CPU?'})")
+    print(
+        f"  -> {'PASS' if ok else 'FAIL'}: {gemmini_total} gemmini custom-3 (0x7b) ops "
+        f"({'offloaded to systolic array' if ok else 'NO gemmini ops — fell back to CPU?'})"
+    )
     return ok
 
 
 def main(argv=None):
     args = argv or sys.argv[1:]
     if not args:
-        print(__doc__); return 2
+        print(__doc__)
+        return 2
     results = {a: verify(Path(a)) for a in args}
     return 0 if all(results.values()) else 1
 

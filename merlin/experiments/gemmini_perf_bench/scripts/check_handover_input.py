@@ -20,6 +20,7 @@ Run it on every input before measuring:
 
     check_handover_input.py --package <submission> --input model.interface.mlir
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,35 +59,41 @@ def inspect(package: Path, source: Path) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "command_buffer.json"
         proc = subprocess.run(
-            [sys.executable, str(tool), "--convert-iface-to-gemmini",
-             f"--emit-command-buffer={out}", str(source)],
-            capture_output=True, text=True, timeout=600)
+            [sys.executable, str(tool), "--convert-iface-to-gemmini", f"--emit-command-buffer={out}", str(source)],
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
         if proc.returncode != 0:
-            return {"status": "refused_by_compiler", "returncode": proc.returncode,
-                    "stderr": (proc.stderr or "")[-2000:],
-                    "reason": "the compiler rejected this input, which is an honest failure"}
+            return {
+                "status": "refused_by_compiler",
+                "returncode": proc.returncode,
+                "stderr": (proc.stderr or "")[-2000:],
+                "reason": "the compiler rejected this input, which is an honest failure",
+            }
         if not out.is_file():
-            return {"status": "no_command_buffer",
-                    "reason": "the compiler exited 0 but emitted no command buffer"}
+            return {"status": "no_command_buffer", "reason": "the compiler exited 0 but emitted no command buffer"}
         buffer = json.loads(out.read_text(encoding="utf-8"))
     commands = buffer.get("commands")
     declined = buffer.get(DECLINED)
     n = len(commands) if isinstance(commands, list) else 0
     if declined or n == 0:
         return {
-            "status": "empty_kernel", "commands": n, "declined": declined,
-            "reason": ("the compiler ACCEPTED this input and emitted no work. Measuring it would "
-                       "report a near-zero cycle count and read as an enormous speedup. The input "
-                       "is not in the interface dialect this compiler consumes, or uses an "
-                       "operation it does not route."),
+            "status": "empty_kernel",
+            "commands": n,
+            "declined": declined,
+            "reason": (
+                "the compiler ACCEPTED this input and emitted no work. Measuring it would "
+                "report a near-zero cycle count and read as an enormous speedup. The input "
+                "is not in the interface dialect this compiler consumes, or uses an "
+                "operation it does not route."
+            ),
         }
-    return {"status": "ok", "commands": n,
-            "reason": f"the compiler emitted {n} command(s); this input is measurable"}
+    return {"status": "ok", "commands": n, "reason": f"the compiler emitted {n} command(s); this input is measurable"}
 
 
 def main(argv: "Sequence[str] | None" = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--package", required=True, type=Path, help="the submission tree to check")
     ap.add_argument("--input", required=True, nargs="+", type=Path, help="interface MLIR file(s)")
     ap.add_argument("--json", type=Path, default=None)
@@ -113,8 +120,9 @@ def main(argv: "Sequence[str] | None" = None) -> int:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(rows, indent=1), encoding="utf-8")
     if worst == 2:
-        print("\nDO NOT MEASURE the refused input(s): an empty kernel reports a fast cycle count "
-              "for work it never did.")
+        print(
+            "\nDO NOT MEASURE the refused input(s): an empty kernel reports a fast cycle count for work it never did."
+        )
     return worst
 
 

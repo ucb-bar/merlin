@@ -17,6 +17,7 @@ Same verdict discipline as the PK analyzer, deliberately:
 The contract is immutable launch data.  Thresholds are read, never defaulted: a contract that omits
 one is REFUSED rather than silently scored against a bound this module chose.
 """
+
 from __future__ import annotations
 
 import copy
@@ -98,7 +99,7 @@ def _ols(points: Sequence[tuple[float, float]]) -> tuple[float, float, float] | 
     sxx = sum(x * x for x, _ in points)
     sxy = sum(x * y for x, y in points)
     denominator = n * sxx - sx * sx
-    if denominator == 0:                     # every point shares one x: a slope is not identifiable
+    if denominator == 0:  # every point shares one x: a slope is not identifiable
         return None
     slope = (n * sxy - sx * sy) / denominator
     intercept = (sy - slope * sx) / n
@@ -124,8 +125,7 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
         if not isinstance(perf, Mapping):
             return _fail("a descriptor carries no performance block")
         if perf.get("claim") != "PREDICTS":
-            return _fail("this procedure decides PREDICTS claims only",
-                         observed_claim=perf.get("claim"))
+            return _fail("this procedure decides PREDICTS claims only", observed_claim=perf.get("claim"))
         families.add(str(perf.get("family")))
         contracts.append(perf.get("acceptance"))
     if len(families) != 1:
@@ -138,8 +138,7 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
 
     contract: Mapping[str, Any] = first
     if contract.get("analyzer") != ANALYZER:
-        return _fail("the contract names a different analyzer",
-                     declared=contract.get("analyzer"), this=ANALYZER)
+        return _fail("the contract names a different analyzer", declared=contract.get("analyzer"), this=ANALYZER)
     fit = contract.get("fit")
     thresholds = contract.get("thresholds")
     cohort = contract.get("cohort")
@@ -154,16 +153,14 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
 
     exact_points = cohort.get("exact_points")
     if isinstance(exact_points, bool) or not isinstance(exact_points, int) or len(descriptors) != exact_points:
-        return _fail("the cohort is not the exact predeclared size",
-                     expected=exact_points, observed=len(descriptors))
+        return _fail("the cohort is not the exact predeclared size", expected=exact_points, observed=len(descriptors))
 
     xs: dict[str, int] = {}
     for d in descriptors:
         name = str(d.get("name") or "")
         value = independent_value(d, source)
         if value is None or value <= 0:
-            return _fail("the independent variable is not derivable from a member's declared shapes",
-                         capsule=name)
+            return _fail("the independent variable is not derivable from a member's declared shapes", capsule=name)
         xs[name] = value
 
     observations: list[tuple[float, float]] = []
@@ -176,13 +173,13 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
             return _fail("a result row names a capsule outside the cohort", capsule=capsule)
         replicate = str(row.get("replicate") or "")
         if (capsule, replicate) in seen:
-            return _fail("a (capsule, replicate) pair is reported twice",
-                         capsule=capsule, replicate=replicate)
+            return _fail("a (capsule, replicate) pair is reported twice", capsule=capsule, replicate=replicate)
         seen.add((capsule, replicate))
         cycles = row.get(metric)
         if not isinstance(cycles, (int, float)) or isinstance(cycles, bool) or cycles <= 0:
-            return _fail("a result row carries no positive value for the dependent metric",
-                         capsule=capsule, metric=metric)
+            return _fail(
+                "a result row carries no positive value for the dependent metric", capsule=capsule, metric=metric
+            )
         observations.append((float(xs[capsule]), float(cycles)))
 
     # COMPLETENESS IS PER MEMBER, NOT A ROW TOTAL. Counting rows lets evidence that covers only
@@ -195,20 +192,31 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
     if not isinstance(replicates, Mapping):
         return _fail("the contract does not declare its replicate cohort")
     identities = replicates.get("identities")
-    if (not isinstance(identities, Sequence) or isinstance(identities, str) or not identities
-            or any(not isinstance(i, str) or not i for i in identities)):
+    if (
+        not isinstance(identities, Sequence)
+        or isinstance(identities, str)
+        or not identities
+        or any(not isinstance(i, str) or not i for i in identities)
+    ):
         return _fail("the contract does not freeze its replicate identities")
     count = replicates.get("exact_count")
     if isinstance(count, bool) or not isinstance(count, int) or count != len(identities):
-        return _fail("the contract's replicate count does not match its frozen identities",
-                     exact_count=count, identities=len(identities))
+        return _fail(
+            "the contract's replicate count does not match its frozen identities",
+            exact_count=count,
+            identities=len(identities),
+        )
     expected_pairs = {(name, str(identity)) for name in xs for identity in identities}
     if seen != expected_pairs:
         absent = sorted(expected_pairs - seen)
         extra = sorted(seen - expected_pairs)
-        return _fail("the evidence is not the exact predeclared (capsule, replicate) cohort",
-                     missing=absent[:8], unexpected=extra[:8],
-                     n_missing=len(absent), n_unexpected=len(extra))
+        return _fail(
+            "the evidence is not the exact predeclared (capsule, replicate) cohort",
+            missing=absent[:8],
+            unexpected=extra[:8],
+            n_missing=len(absent),
+            n_unexpected=len(extra),
+        )
 
     fitted = _ols(observations)
     if fitted is None:
@@ -232,13 +240,16 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
         residual = abs(y - (intercept + slope * x))
         allowed = max(float(floor), float(fraction) * y)
         if residual > allowed:
-            breaches.append({"x": x, "observed_cycles": y, "residual": residual,
-                             "allowed": allowed})
+            breaches.append({"x": x, "observed_cycles": y, "residual": residual, "allowed": allowed})
 
-    measured = {"intercept_cycles": intercept, "slope_cycles_per_unit": slope,
-                "r_squared": r_squared, "n_observations": len(observations),
-                "independent_variable": fit.get("independent_variable"),
-                "distinct_x": sorted({x for x, _ in observations})}
+    measured = {
+        "intercept_cycles": intercept,
+        "slope_cycles_per_unit": slope,
+        "r_squared": r_squared,
+        "n_observations": len(observations),
+        "independent_variable": fit.get("independent_variable"),
+        "distinct_x": sorted({x for x, _ in observations}),
+    }
     reasons = []
     if not slope > float(slope_min):
         reasons.append(f"slope {slope:.6g} is not above the predeclared floor {slope_min}")
@@ -247,8 +258,13 @@ def analyze_affine_claim(descriptors: object, results: object) -> dict[str, Any]
     if breaches:
         reasons.append(f"{len(breaches)} observation(s) exceed the predeclared residual bound")
     if reasons:
-        return {"verdict": REFUTED, "reasons": reasons, "measured": measured,
-                "breaches": breaches[:8], "family": sorted(families)[0]}
+        return {
+            "verdict": REFUTED,
+            "reasons": reasons,
+            "measured": measured,
+            "breaches": breaches[:8],
+            "family": sorted(families)[0],
+        }
     return {"verdict": ACCEPTED, "measured": measured, "family": sorted(families)[0]}
 
 
@@ -324,8 +340,7 @@ def _shape_of(descriptor: Mapping[str, Any], name: str) -> tuple[int, ...]:
     extents = []
     for extent in shape:
         if isinstance(extent, bool) or not isinstance(extent, int) or extent <= 0:
-            raise _Refusal(
-                f"member {descriptor.get('name')!r} operand {name!r} has a non-positive extent")
+            raise _Refusal(f"member {descriptor.get('name')!r} operand {name!r} has a non-positive extent")
         extents.append(int(extent))
     return tuple(extents)
 
@@ -335,8 +350,7 @@ def _shape_of(descriptor: Mapping[str, Any], name: str) -> tuple[int, ...]:
 #: that part of its control silently skipped -- an unread control is not a control.
 def _fixed_field(descriptor: Mapping[str, Any], field: str) -> Any:
     operation = _mapping(descriptor.get("operation"), f"member {descriptor.get('name')!r} operation")
-    attributes = _mapping(operation.get("attributes"),
-                          f"member {descriptor.get('name')!r} operation attributes")
+    attributes = _mapping(operation.get("attributes"), f"member {descriptor.get('name')!r} operation attributes")
     if field == "operation":
         return operation.get("op")
     if field == "operand_dtype":
@@ -348,11 +362,11 @@ def _fixed_field(descriptor: Mapping[str, Any], field: str) -> Any:
         return list(attributes.get("epilogue") or [])
     raise _Refusal(
         f"the cohort control names a fixed field {field!r} this procedure cannot read from a "
-        "descriptor; it would be declared and never checked")
+        "descriptor; it would be declared and never checked"
+    )
 
 
-def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]],
-                                                         dict[str, Any], dict[str, Any]]:
+def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]], dict[str, Any], dict[str, Any]]:
     """Admit the cohort, or raise the first reason it is inadmissible."""
     rows = _sequence(descriptors, "affine descriptors")
     if not rows:
@@ -370,7 +384,8 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
         if performance.get("claim") != "PREDICTS":
             raise _Refusal(
                 f"descriptor {name!r} declares {performance.get('claim')!r}; this procedure "
-                "decides PREDICTS claims only")
+                "decides PREDICTS claims only"
+            )
         families.add(str(performance.get("family")))
         contracts.append(performance.get("acceptance"))
         names.append(name)
@@ -383,14 +398,14 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
     if any(entry != contract for entry in contracts):
         raise _Refusal("members disagree about the frozen acceptance contract")
     if contract.get("analyzer") != ANALYZER:
-        raise _Refusal(
-            f"the contract names analyzer {contract.get('analyzer')!r}, not {ANALYZER!r}")
+        raise _Refusal(f"the contract names analyzer {contract.get('analyzer')!r}, not {ANALYZER!r}")
 
     fit = _mapping(contract.get("fit"), "the contract's fit block")
     if fit.get("form") != "affine":
         raise _Refusal(
             f"the contract fits a {fit.get('form')!r} form; this procedure fits an affine law and "
-            "will not score a declaration against a law it did not state")
+            "will not score a declaration against a law it did not state"
+        )
     source = _mapping(fit.get("variable_source"), "the contract's fit.variable_source")
     if source.get("kind") not in _VARIABLE_KINDS:
         raise _Refusal("the contract does not declare how to read its independent variable")
@@ -403,20 +418,22 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
     if isinstance(exact_points, bool) or not isinstance(exact_points, int) or exact_points < 2:
         raise _Refusal("the contract does not declare a cohort of at least two points")
     if len(members) != exact_points:
-        raise _Refusal(
-            f"the cohort is {len(members)} member(s) against a predeclared {exact_points}")
+        raise _Refusal(f"the cohort is {len(members)} member(s) against a predeclared {exact_points}")
 
     thresholds = _mapping(contract.get("thresholds"), "the contract's thresholds block")
     if not _is_number(thresholds.get("slope_min_exclusive")) or not _is_number(
-            thresholds.get("r_squared_min_inclusive")):
-        raise _Refusal("the contract omits a slope or r-squared threshold; a bound this module "
-                       "chose itself would be its opinion wearing the contract's authority")
+        thresholds.get("r_squared_min_inclusive")
+    ):
+        raise _Refusal(
+            "the contract omits a slope or r-squared threshold; a bound this module "
+            "chose itself would be its opinion wearing the contract's authority"
+        )
     bound = _mapping(thresholds.get("residual_bound"), "the contract's residual bound")
-    if not _is_number(bound.get("absolute_floor_cycles")) or not _is_number(
-            bound.get("observed_cycle_fraction")):
+    if not _is_number(bound.get("absolute_floor_cycles")) or not _is_number(bound.get("observed_cycle_fraction")):
         raise _Refusal("the residual bound is not fully specified")
 
     from merlin.perf import claim_reach
+
     try:
         schedule = claim_reach.replicate_contract(members[0]["performance"])
     except ValueError as exc:
@@ -426,16 +443,17 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
     if schedule.exact_count is None or not schedule.identities:
         raise _Refusal(
             "an affine law is fitted over ALL of its replicates, so the cohort it is fitted over "
-            "must be frozen; this contract declares only a floor")
+            "must be frozen; this contract declares only a floor"
+        )
     if schedule.minimum_count < 2:
         raise _Refusal(
             f"the contract schedules {schedule.minimum_count} replicate(s); one leaves the "
-            "replicate dispersion UNDETERMINABLE rather than zero")
+            "replicate dispersion UNDETERMINABLE rather than zero"
+        )
 
     evidence = _mapping(contract.get("evidence"), "the contract's evidence block")
     lanes = []
-    for simulator_key, tier_key in (("correctness_simulator", "correctness_tier"),
-                                    ("timing_simulator", "timing_tier")):
+    for simulator_key, tier_key in (("correctness_simulator", "correctness_tier"), ("timing_simulator", "timing_tier")):
         simulator, tier = evidence.get(simulator_key), evidence.get(tier_key)
         if not isinstance(simulator, str) or not simulator or not isinstance(tier, str) or not tier:
             raise _Refusal(f"the contract's evidence omits its {simulator_key}/{tier_key}")
@@ -448,13 +466,13 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
         name = str(descriptor.get("name"))
         value = independent_value(descriptor, source)
         if value is None or value <= 0:
-            raise _Refusal(
-                f"the independent variable is not derivable from member {name!r}'s declared shapes")
+            raise _Refusal(f"the independent variable is not derivable from member {name!r}'s declared shapes")
         xs[name] = int(value)
     if len(set(xs.values())) < 2:
         raise _Refusal(
             "every member shares one value of the independent variable, so no slope is "
-            "identifiable and the law could not be refuted by any measurement")
+            "identifiable and the law could not be refuted by any measurement"
+        )
 
     for field in _sequence(cohort.get("fixed_fields") or (), "the cohort's fixed_fields"):
         observed = {repr(_fixed_field(descriptor, str(field))) for descriptor in members}
@@ -465,15 +483,14 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
         for descriptor in members:
             if _fixed_field(descriptor, "operation") != declared_operation:
                 raise _Refusal(
-                    f"member {descriptor.get('name')!r} is not the declared "
-                    f"{declared_operation!r} cohort operation")
+                    f"member {descriptor.get('name')!r} is not the declared {declared_operation!r} cohort operation"
+                )
 
     operands = {name for descriptor in members for name in _inputs_by_name(descriptor)}
     tracking: list[dict[str, Any]] = []
     for operand in sorted(operands):
         allowed = free.get(operand, set())
-        shapes = {str(descriptor.get("name")): _shape_of(descriptor, operand)
-                  for descriptor in members}
+        shapes = {str(descriptor.get("name")): _shape_of(descriptor, operand) for descriptor in members}
         ranks = {len(shape) for shape in shapes.values()}
         if len(ranks) != 1:
             raise _Refusal(f"operand {operand!r} changes rank across the cohort")
@@ -495,12 +512,11 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
                 raise _Refusal(
                     f"the cohort control does not hold operand {operand!r} axis {axis} fixed, and "
                     "it does not move in proportion to the declared independent variable either; "
-                    "more than one quantity varies across this cohort")
-            tracking.append({"operand": operand, "axis": axis,
-                             "ratio_to_independent_variable": str(ratios.pop())})
+                    "more than one quantity varies across this cohort"
+                )
+            tracking.append({"operand": operand, "axis": axis, "ratio_to_independent_variable": str(ratios.pop())})
 
-    falsifier = _mapping(members[0]["performance"].get("falsifier"),
-                         "the family's falsifier")
+    falsifier = _mapping(members[0]["performance"].get("falsifier"), "the family's falsifier")
     control = falsifier.get("negative_control")
     if not isinstance(control, str) or not control:
         raise _Refusal("the family declares no negative control")
@@ -518,8 +534,7 @@ def _validated_declaration(descriptors: object) -> tuple[list[Mapping[str, Any]]
         "replicate_source": schedule.source,
         "evidence_lanes": [{"simulator": simulator, "tier": tier} for simulator, tier in lanes],
     }
-    return members, cohort_record, {"contract": contract, "lanes": lanes,
-                                    "identities": schedule.identities}
+    return members, cohort_record, {"contract": contract, "lanes": lanes, "identities": schedule.identities}
 
 
 def preflight_affine_claim(descriptors: object) -> dict[str, Any]:
@@ -543,11 +558,18 @@ def preflight_affine_claim(descriptors: object) -> dict[str, Any]:
             "expected_identities": [],
             "refusal_reasons": [str(exc)],
         }
-    expected = [{"family": family, "capsule": str(descriptor.get("name")),
-                 "simulator": simulator, "replicate": replicate, "tier": tier}
-                for descriptor in members
-                for replicate in resolved["identities"]
-                for simulator, tier in resolved["lanes"]]
+    expected = [
+        {
+            "family": family,
+            "capsule": str(descriptor.get("name")),
+            "simulator": simulator,
+            "replicate": replicate,
+            "tier": tier,
+        }
+        for descriptor in members
+        for replicate in resolved["identities"]
+        for simulator, tier in resolved["lanes"]
+    ]
     return {
         "schema_version": SCHEMA_VERSION,
         "family": family,

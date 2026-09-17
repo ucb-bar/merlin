@@ -9,6 +9,7 @@ That seam has bitten this repo before in the opposite direction: an evaluator th
 `sys.executable` from the caller ran under the wrong interpreter and reported a KNOWN-GOOD reference
 kernel as wrong. So the caller resolves merlin's interpreter explicitly and never inherits it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,8 +30,9 @@ REPO = _repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import _track as T                                                    # noqa: E402
-from merlin.targetgen import plugins as _plugins                      # noqa: E402
+import _track as T  # noqa: E402
+
+from merlin.targetgen import plugins as _plugins  # noqa: E402
 
 #: The study target's reference-program tool (seed template, bareMetalC build, run, golden). It lives in
 #: the target's own package and is resolved through that package's contract (plugin.reference_programs).
@@ -85,12 +87,15 @@ _DIALECT = """
 
 #: What AutoComp's own harness supplies around an agent's kernel. Nothing else is added: the wrapper
 #: must not change the computation, only make a FRAGMENT compilable.
-_PROLOGUE = """#include <stdint.h>
+_PROLOGUE = (
+    """#include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "include/gemmini_testutils.h"
-""" + _DIALECT
+"""
+    + _DIALECT
+)
 
 
 def _as_program(text: str) -> str:
@@ -124,9 +129,12 @@ def _as_program(text: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--emit-seed", action="store_true",
-                    help="print the cycle-instrumented seed kernel and exit (also crosses the "
-                         "interpreter seam: the template lives in merlin's venv)")
+    ap.add_argument(
+        "--emit-seed",
+        action="store_true",
+        help="print the cycle-instrumented seed kernel and exit (also crosses the "
+        "interpreter seam: the template lives in merlin's venv)",
+    )
     ap.add_argument("--source", help="path to the candidate .c")
     ap.add_argument("--name")
     ap.add_argument("--workdir")
@@ -148,8 +156,7 @@ def main(argv: list[str] | None = None) -> int:
         anchors = ("  tiled_matmul_auto(", "  gemmini_fence();\n", '  printf("OUT C %d %d"')
         for anc in anchors:
             if anc not in src:
-                raise SystemExit(f"seed template changed shape: {anc!r} not found; refusing to "
-                                 f"instrument blindly")
+                raise SystemExit(f"seed template changed shape: {anc!r} not found; refusing to instrument blindly")
         # `unsigned long`, NOT `uint64_t`. MEASURED failure: 8 of 10 AutoComp candidates failed to
         # compile with `unknown type name 'uint64_t'` on this injected line, because the model
         # restructures the file and drops `#include <stdint.h>`. That is a defect in the
@@ -157,14 +164,18 @@ def main(argv: list[str] | None = None) -> int:
         # would have blamed the agent for the harness. `unsigned long` is 64-bit on rv64 and needs no
         # header, so the timing bracket survives any include the agent removes.
         src = src.replace(anchors[0], "  unsigned long _c0 = read_cycles();\n" + anchors[0], 1)
-        src = src.replace(anchors[1], anchors[1] + "  unsigned long _c1 = read_cycles();\n"
-                          '  printf("METRIC cycles %lu\\n", _c1 - _c0);\n', 1)
+        src = src.replace(
+            anchors[1],
+            anchors[1] + '  unsigned long _c1 = read_cycles();\n  printf("METRIC cycles %lu\\n", _c1 - _c0);\n',
+            1,
+        )
         sys.stdout.write(src)
         return 0
     if not (a.source and a.name and a.workdir):
         raise SystemExit("--source, --name and --workdir are required unless --emit-seed")
 
     import os
+
     if a.simulator == "gsim":
         os.environ.update(T.gsim_env())
 
@@ -174,14 +185,20 @@ def main(argv: list[str] | None = None) -> int:
         elf = BC.build(src, a.name, Path(a.workdir))
         out["compiled"] = True
     except Exception as exc:
-        print(json.dumps({**out, "compiled": False, "correct": False, "cycles": None,
-                          "detail": f"Compile error: {exc}"[-3000:]}))
+        print(
+            json.dumps(
+                {**out, "compiled": False, "correct": False, "cycles": None, "detail": f"Compile error: {exc}"[-3000:]}
+            )
+        )
         return 0
     try:
         res = BC.run(elf, a.simulator, timeout=a.timeout)
     except Exception as exc:
-        print(json.dumps({**out, "compiled": True, "correct": False, "cycles": None,
-                          "detail": f"Run error: {exc}"[-3000:]}))
+        print(
+            json.dumps(
+                {**out, "compiled": True, "correct": False, "cycles": None, "detail": f"Run error: {exc}"[-3000:]}
+            )
+        )
         return 0
 
     golden = BC._matmul_golden(a.name_a, a.name_b, a.M, a.K, a.N)
@@ -192,25 +209,44 @@ def main(argv: list[str] | None = None) -> int:
     if got is None:
         detail, ok = "no outputs were parsed from the console", False
     else:
-        flat_c = ([int(v) for row in got for v in (row if isinstance(row, list) else [row])]
-                  if got and isinstance(got[0], list) else [int(v) for v in got])
+        flat_c = (
+            [int(v) for row in got for v in (row if isinstance(row, list) else [row])]
+            if got and isinstance(got[0], list)
+            else [int(v) for v in got]
+        )
         if len(flat_c) != len(flat_g):
             ok = False
-            detail = (f"output has {len(flat_c)} elements, expected {len(flat_g)} "
-                      f"({a.M}x{a.N})")
+            detail = f"output has {len(flat_c)} elements, expected {len(flat_g)} ({a.M}x{a.N})"
         else:
             bad = next((i for i, (x, y) in enumerate(zip(flat_c, flat_g)) if x != y), None)
             ok = bad is None
-            detail = "" if ok else (f"first mismatch at flat index {bad} (row {bad // a.N}, "
-                                    f"col {bad % a.N}): got {flat_c[bad]}, expected {flat_g[bad]}")
+            detail = (
+                ""
+                if ok
+                else (
+                    f"first mismatch at flat index {bad} (row {bad // a.N}, "
+                    f"col {bad % a.N}): got {flat_c[bad]}, expected {flat_g[bad]}"
+                )
+            )
     cycles = res.get("cycles")
     # A kernel that runs but reports no cycle count is NOT a zero-cycle kernel.
     if ok and not isinstance(cycles, int):
         ok = False
-        detail = ("the run produced no 'METRIC cycles' line, so it has no measured cost — the "
-                  "read_cycles() bracket and its printf must be preserved")
-    print(json.dumps({**out, "compiled": True, "correct": ok,
-                      "cycles": cycles if isinstance(cycles, int) else None, "detail": detail}))
+        detail = (
+            "the run produced no 'METRIC cycles' line, so it has no measured cost — the "
+            "read_cycles() bracket and its printf must be preserved"
+        )
+    print(
+        json.dumps(
+            {
+                **out,
+                "compiled": True,
+                "correct": ok,
+                "cycles": cycles if isinstance(cycles, int) else None,
+                "detail": detail,
+            }
+        )
+    )
     return 0
 
 

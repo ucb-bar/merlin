@@ -27,6 +27,7 @@ Its sound uses are the two ceilings and the headroom RANKING between shapes.
 partial-overlap machine -- see :func:`schedule_ordering`, which is wired and tested precisely so that
 refusal is visible rather than rediscovered.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,8 +93,8 @@ def structural_ceiling(rtl_facts_path: Path, target: str) -> tuple[int | None, s
     """
     try:
         from merlin.perf.contract import derive_contract  # noqa: PLC0415
-        contract = derive_contract(
-            target, facts=json.loads(Path(rtl_facts_path).read_text(encoding="utf-8")))
+
+        contract = derive_contract(target, facts=json.loads(Path(rtl_facts_path).read_text(encoding="utf-8")))
     except Exception as exc:  # noqa: BLE001 - an underivable ceiling is reported, never guessed
         return None, f"peak is not derivable from this target's RTL facts ({type(exc).__name__})"
     peaks = []
@@ -136,8 +137,10 @@ def harvest_measured_points(run_root: Path) -> tuple[list[MeasuredPoint], list[s
             continue  # no cycle-oracle verdict here; not an error, just not a measured point
         buffer_path = result.parent / "generated" / "command_buffer.json"
         if not buffer_path.is_file():
-            skipped.append(f"{result.parent.name}: measured {cycles} cycles but emitted no "
-                           "command buffer, so its work cannot be priced")
+            skipped.append(
+                f"{result.parent.name}: measured {cycles} cycles but emitted no "
+                "command buffer, so its work cannot be priced"
+            )
             continue
         try:
             command_buffer = json.loads(buffer_path.read_text(encoding="utf-8"))
@@ -146,13 +149,21 @@ def harvest_measured_points(run_root: Path) -> tuple[list[MeasuredPoint], list[s
             skipped.append(f"{result.parent.name}: command buffer did not price ({type(exc).__name__})")
             continue
         if work.is_lower_bound or not work.exact_macs or work.exact_macs <= 0:
-            skipped.append(f"{result.parent.name}: work is a lower bound or zero "
-                           f"({len(work.refusals)} refusal(s)), so no rate may be built from it")
+            skipped.append(
+                f"{result.parent.name}: work is a lower bound or zero "
+                f"({len(work.refusals)} refusal(s)), so no rate may be built from it"
+            )
             continue
-        points.setdefault(result.parent.name,
-                          MeasuredPoint(result.parent.name, int(work.exact_macs), cycles,
-                                        str(result.parent),
-                                        _command_reduction_depths(command_buffer)))
+        points.setdefault(
+            result.parent.name,
+            MeasuredPoint(
+                result.parent.name,
+                int(work.exact_macs),
+                cycles,
+                str(result.parent),
+                _command_reduction_depths(command_buffer),
+            ),
+        )
     return sorted(points.values(), key=lambda p: p.capsule), skipped
 
 
@@ -172,8 +183,12 @@ def _command_reduction_depths(command_buffer: Mapping[str, Any]) -> tuple[int, .
     def shape(name: Any) -> tuple[int, ...] | None:
         spec = tensors.get(name) if isinstance(name, str) else None
         raw = spec.get("shape") if isinstance(spec, Mapping) else None
-        if (not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw
-                or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in raw)):
+        if (
+            not isinstance(raw, Sequence)
+            or isinstance(raw, (str, bytes))
+            or not raw
+            or any(not isinstance(v, int) or isinstance(v, bool) or v <= 0 for v in raw)
+        ):
             return None
         return tuple(int(v) for v in raw)
 
@@ -200,8 +215,11 @@ def _command_reduction_depths(command_buffer: Mapping[str, Any]) -> tuple[int, .
         elif opcode == "BATCHED_MATMUL":
             try:
                 geometry = batched_matmul_geometry(
-                    shape(operands.get("a")), shape(operands.get("w")),
-                    shape(operands.get("dst")), op="BATCHED_MATMUL reduction depth")
+                    shape(operands.get("a")),
+                    shape(operands.get("w")),
+                    shape(operands.get("dst")),
+                    op="BATCHED_MATMUL reduction depth",
+                )
             except ValueError:
                 return ()
             depths.append(geometry.k)
@@ -235,12 +253,10 @@ def achievable_ceiling(points: Sequence[MeasuredPoint], *, provenance: str) -> P
     """
     if not points:
         return Peak.unknown(COMPUTE, "mac", "no measured point priced its work", provenance=provenance)
-    return Peak.observed_ceiling(COMPUTE, [(p.macs, p.cycles) for p in points],
-                                 unit="mac", provenance=provenance)
+    return Peak.observed_ceiling(COMPUTE, [(p.macs, p.cycles) for p in points], unit="mac", provenance=provenance)
 
 
-def rank_headroom(points: Iterable[MeasuredPoint], *, achievable: Peak,
-                  structural: int) -> list[Headroom]:
+def rank_headroom(points: Iterable[MeasuredPoint], *, achievable: Peak, structural: int) -> list[Headroom]:
     """Every measured shape, worst utilisation first -- the optimisation order.
 
     The ranking is against the ACHIEVABLE ceiling, because that is the rate something on this machine
@@ -249,8 +265,9 @@ def rank_headroom(points: Iterable[MeasuredPoint], *, achievable: Peak,
     """
     if not achievable.known:
         return []
-    return sorted((Headroom(p, float(achievable.value), structural) for p in points),
-                  key=lambda h: h.share_of_achievable)
+    return sorted(
+        (Headroom(p, float(achievable.value), structural) for p in points), key=lambda h: h.share_of_achievable
+    )
 
 
 def prediction_error(points: Sequence[MeasuredPoint], peak: Peak) -> dict[str, Any]:
@@ -264,16 +281,27 @@ def prediction_error(points: Sequence[MeasuredPoint], peak: Peak) -> dict[str, A
     rows = []
     for p in points:
         predicted = resource_time(
-            ResourceDemand(COMPUTE, ResourceKind.COMPUTE, p.macs, "mac", Basis.MOVED), peak).cycles
-        rows.append({"capsule": p.capsule, "macs": p.macs, "measured_cycles": p.cycles,
-                     "predicted_cycles": predicted,
-                     "relative_error": (predicted - p.cycles) / p.cycles})
+            ResourceDemand(COMPUTE, ResourceKind.COMPUTE, p.macs, "mac", Basis.MOVED), peak
+        ).cycles
+        rows.append(
+            {
+                "capsule": p.capsule,
+                "macs": p.macs,
+                "measured_cycles": p.cycles,
+                "predicted_cycles": predicted,
+                "relative_error": (predicted - p.cycles) / p.cycles,
+            }
+        )
     errors = sorted(row["relative_error"] for row in rows)
-    return {"status": "measured", "n": len(rows),
-            "mean_relative_error": sum(errors) / len(errors),
-            "median_relative_error": errors[len(errors) // 2],
-            "worst_relative_error": errors[0], "best_relative_error": errors[-1],
-            "rows": sorted(rows, key=lambda r: r["relative_error"])}
+    return {
+        "status": "measured",
+        "n": len(rows),
+        "mean_relative_error": sum(errors) / len(errors),
+        "median_relative_error": errors[len(errors) // 2],
+        "worst_relative_error": errors[0],
+        "best_relative_error": errors[-1],
+        "rows": sorted(rows, key=lambda r: r["relative_error"]),
+    }
 
 
 def derive(run_root: Path, rtl_facts_path: Path, target: str) -> dict[str, Any]:
@@ -292,14 +320,19 @@ def derive(run_root: Path, rtl_facts_path: Path, target: str) -> dict[str, Any]:
         "structural_basis": structural_basis,
         "achievable_mac_per_cycle": (float(peak.value) if peak.known else None),
         "achievable_basis": (peak.provenance if peak.known else peak.reason),
-        "achievable_share_of_structural": (
-            float(peak.value) / structural if peak.known and structural else None),
-        "headroom": [{"capsule": h.point.capsule, "macs": h.point.macs,
-                      "measured_cycles": h.point.cycles,
-                      "achieved_mac_per_cycle": h.point.achieved_rate,
-                      "share_of_achievable": h.share_of_achievable,
-                      "share_of_structural": h.share_of_structural,
-                      "factor_to_achievable": h.factor_to_achievable} for h in ranked],
+        "achievable_share_of_structural": (float(peak.value) / structural if peak.known and structural else None),
+        "headroom": [
+            {
+                "capsule": h.point.capsule,
+                "macs": h.point.macs,
+                "measured_cycles": h.point.cycles,
+                "achieved_mac_per_cycle": h.point.achieved_rate,
+                "share_of_achievable": h.share_of_achievable,
+                "share_of_structural": h.share_of_structural,
+                "factor_to_achievable": h.factor_to_achievable,
+            }
+            for h in ranked
+        ],
         "prediction_error": prediction_error(points, peak),
     }
 
@@ -314,25 +347,32 @@ def render(model: Mapping[str, Any], *, limit: int = 12) -> str:
         out.append(f"  achievable ceiling UNAVAILABLE: {model.get('achievable_basis')}")
         return "\n".join(out)
     share = model.get("achievable_share_of_structural") or 0.0
-    out.append(f"  achievable ceiling {achievable:.2f} mac/cycle  "
-               f"({100 * share:.1f}% of structural -- the rest is not reachable by any measured program)")
+    out.append(
+        f"  achievable ceiling {achievable:.2f} mac/cycle  "
+        f"({100 * share:.1f}% of structural -- the rest is not reachable by any measured program)"
+    )
     error = model.get("prediction_error") or {}
     if error.get("status") == "measured":
-        out.append(f"  pricing work against that single rate is wrong by "
-                   f"{100 * error['mean_relative_error']:+.1f}% on average "
-                   f"(worst {100 * error['worst_relative_error']:+.1f}%), so it ballparks and does "
-                   f"not replace the oracle")
+        out.append(
+            f"  pricing work against that single rate is wrong by "
+            f"{100 * error['mean_relative_error']:+.1f}% on average "
+            f"(worst {100 * error['worst_relative_error']:+.1f}%), so it ballparks and does "
+            f"not replace the oracle"
+        )
     out.append(f"  furthest from the achievable ceiling:")
     for row in (model.get("headroom") or [])[:limit]:
-        out.append(f"    {row['capsule'][:34]:34} {row['achieved_mac_per_cycle']:7.2f} mac/cyc "
-                   f"{100 * row['share_of_achievable']:6.1f}% of achievable "
-                   f"-> {row['factor_to_achievable']:5.1f}x headroom")
+        out.append(
+            f"    {row['capsule'][:34]:34} {row['achieved_mac_per_cycle']:7.2f} mac/cyc "
+            f"{100 * row['share_of_achievable']:6.1f}% of achievable "
+            f"-> {row['factor_to_achievable']:5.1f}x headroom"
+        )
     return "\n".join(out)
+
 
 # --- overlap: the falsifier this archetype's family contract is written against -------------------
 
-def overlap_observation(label: str, counter_overlap: Mapping[str, Any], *,
-                        work: str | None = None) -> Any:
+
+def overlap_observation(label: str, counter_overlap: Mapping[str, Any], *, work: str | None = None) -> Any:
     """Turn this target's OWN hardware counter reading into a falsifier observation.
 
     **The denominator is a deliberate choice, recorded here.** ``merlin.perf.falsifier`` documents
@@ -354,20 +394,37 @@ def overlap_observation(label: str, counter_overlap: Mapping[str, Any], *,
     available = counter_overlap.get("available_cycles")
     busy = dict(counter_overlap.get("busy_cycles") or {})
     engines = tuple(counter_overlap.get("engines") or sorted(busy))
-    detail = (f"hardware counters over {counter_overlap.get('measurement_cycles')} cycles; "
-              f"available_cycles is the >=2-busy bound from merlin.perf.hw_counters")
+    detail = (
+        f"hardware counters over {counter_overlap.get('measurement_cycles')} cycles; "
+        f"available_cycles is the >=2-busy bound from merlin.perf.hw_counters"
+    )
     if not isinstance(realised, int) or not isinstance(available, int) or available <= 0:
-        return EtaObservation(label=label, realised_cycles=None, available_cycles=None,
-                              engines=engines, busy=busy, axis=ENGINE_AXIS, work=work,
-                              detail="the counter reading carries no usable overlap denominator")
-    return EtaObservation(label=label, realised_cycles=realised, available_cycles=available,
-                          engines=engines, busy=busy,
-                          sampled_cycles=int(counter_overlap.get("measurement_cycles") or 0),
-                          axis=ENGINE_AXIS, work=work, detail=detail)
+        return EtaObservation(
+            label=label,
+            realised_cycles=None,
+            available_cycles=None,
+            engines=engines,
+            busy=busy,
+            axis=ENGINE_AXIS,
+            work=work,
+            detail="the counter reading carries no usable overlap denominator",
+        )
+    return EtaObservation(
+        label=label,
+        realised_cycles=realised,
+        available_cycles=available,
+        engines=engines,
+        busy=busy,
+        sampled_cycles=int(counter_overlap.get("measurement_cycles") or 0),
+        axis=ENGINE_AXIS,
+        work=work,
+        detail=detail,
+    )
 
 
-def overlap_verdict(baseline: Any, candidate: Any, *, bit_exact: bool | None,
-                    invariants_held: bool | None = None) -> dict[str, Any]:
+def overlap_verdict(
+    baseline: Any, candidate: Any, *, bit_exact: bool | None, invariants_held: bool | None = None
+) -> dict[str, Any]:
     """Did the change actually buy overlap, or merely survive the hardware?
 
     Delegates to :func:`merlin.perf.falsifier.ab_decision`. Bit-exactness alone is explicitly NOT
@@ -377,30 +434,34 @@ def overlap_verdict(baseline: Any, candidate: Any, *, bit_exact: bool | None,
     """
     from merlin.perf.falsifier import ab_decision  # noqa: PLC0415
 
-    decision = ab_decision(baseline, candidate, bit_exact=bit_exact,
-                           invariants_held=invariants_held)
-    return {"state": getattr(decision, "state", None),
-            "reason": getattr(decision, "reason", ""),
-            "baseline_eta": baseline.eta if hasattr(baseline, "eta") else None,
-            "candidate_eta": candidate.eta if hasattr(candidate, "eta") else None}
+    decision = ab_decision(baseline, candidate, bit_exact=bit_exact, invariants_held=invariants_held)
+    return {
+        "state": getattr(decision, "state", None),
+        "reason": getattr(decision, "reason", ""),
+        "baseline_eta": baseline.eta if hasattr(baseline, "eta") else None,
+        "candidate_eta": candidate.eta if hasattr(candidate, "eta") else None,
+    }
 
 
 def _composed_detail(c: Any) -> dict[str, Any]:
     """Everything a composed bound knows about itself, so a refusal can be read, not guessed."""
-    return {"cycles": getattr(c, "cycles", None),
-            "partial_cycles": getattr(c, "partial_cycles", None),
-            "floor_cycles": getattr(c, "floor_cycles", None),
-            "operator": getattr(getattr(c, "operator", None), "name", None),
-            "eta": getattr(c, "eta", None),
-            "overlap_saving": getattr(c, "overlap_saving", None),
-            "unresolved": sorted(getattr(c, "unresolved", ()) or ()),
-            "workload_fixed_cycles": getattr(c, "workload_fixed_cycles", None),
-            "serial_fixed_cycles": getattr(c, "serial_fixed_cycles", None),
-            "clamped_to_floor": getattr(c, "clamped_to_floor", None)}
+    return {
+        "cycles": getattr(c, "cycles", None),
+        "partial_cycles": getattr(c, "partial_cycles", None),
+        "floor_cycles": getattr(c, "floor_cycles", None),
+        "operator": getattr(getattr(c, "operator", None), "name", None),
+        "eta": getattr(c, "eta", None),
+        "overlap_saving": getattr(c, "overlap_saving", None),
+        "unresolved": sorted(getattr(c, "unresolved", ()) or ()),
+        "workload_fixed_cycles": getattr(c, "workload_fixed_cycles", None),
+        "serial_fixed_cycles": getattr(c, "serial_fixed_cycles", None),
+        "clamped_to_floor": getattr(c, "clamped_to_floor", None),
+    }
 
 
-def _cancellation_proof(a: Any, b: Any, demands_a: Mapping[str, Any] | None,
-                        demands_b: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def _cancellation_proof(
+    a: Any, b: Any, demands_a: Mapping[str, Any] | None, demands_b: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
     """Per unresolved resource: the work each side asks of it, and whether the unknown cancels.
 
     This is the whole basis of an ordering verdict. Two schedules can be ordered without pricing
@@ -409,6 +470,7 @@ def _cancellation_proof(a: Any, b: Any, demands_a: Mapping[str, Any] | None,
     difference. Reporting the per-resource evidence makes a refusal diagnosable instead of a verdict
     the reader has to take on faith.
     """
+
     def amount(demands: Mapping[str, Any] | None, name: str) -> Any:
         entry = (demands or {}).get(name)
         return getattr(entry, "amount", entry)
@@ -416,15 +478,27 @@ def _cancellation_proof(a: Any, b: Any, demands_a: Mapping[str, Any] | None,
     rows = []
     for name in sorted(set(getattr(a, "unresolved", ()) or ()) | set(getattr(b, "unresolved", ()) or ())):
         left, right = amount(demands_a, name), amount(demands_b, name)
-        rows.append({"resource": name, "demand_a": left, "demand_b": right,
-                     "stated_on_both": left is not None and right is not None,
-                     "cancels": left is not None and right is not None and left == right})
+        rows.append(
+            {
+                "resource": name,
+                "demand_a": left,
+                "demand_b": right,
+                "stated_on_both": left is not None and right is not None,
+                "cancels": left is not None and right is not None and left == right,
+            }
+        )
     return rows
 
 
-def schedule_ordering(a: Any, b: Any, *, demands_a: Mapping[str, Any] | None = None,
-                      demands_b: Mapping[str, Any] | None = None,
-                      label_a: str = "a", label_b: str = "b") -> dict[str, Any]:
+def schedule_ordering(
+    a: Any,
+    b: Any,
+    *,
+    demands_a: Mapping[str, Any] | None = None,
+    demands_b: Mapping[str, Any] | None = None,
+    label_a: str = "a",
+    label_b: str = "b",
+) -> dict[str, Any]:
     """Rank two composed schedules without pricing either -- WHERE THE OPERATOR ALLOWS IT.
 
     ⚠️ Measured on gemmini 2026-09-03: this REFUSES on this target. The machine's composition is
@@ -441,19 +515,25 @@ def schedule_ordering(a: Any, b: Any, *, demands_a: Mapping[str, Any] | None = N
     from merlin.perf.differential import REFUSED, comparable, compare  # noqa: PLC0415
 
     ok, why = comparable(a, b, demands_a=demands_a, demands_b=demands_b)
-    result = compare(a, b, demands_a=demands_a, demands_b=demands_b,
-                     label_a=label_a, label_b=label_b)
-    return {"basis": result.basis, "faster": result.faster,
-            "delta_cycles": result.delta_cycles, "reason": result.reason,
-            "usable": result.basis != REFUSED,
-            "comparable": ok, "comparable_reason": why,
-            "cancelled": list(getattr(result, "cancelled", ()) or ()),
-            "cancellation_proof": _cancellation_proof(a, b, demands_a, demands_b),
-            label_a: _composed_detail(a), label_b: _composed_detail(b)}
+    result = compare(a, b, demands_a=demands_a, demands_b=demands_b, label_a=label_a, label_b=label_b)
+    return {
+        "basis": result.basis,
+        "faster": result.faster,
+        "delta_cycles": result.delta_cycles,
+        "reason": result.reason,
+        "usable": result.basis != REFUSED,
+        "comparable": ok,
+        "comparable_reason": why,
+        "cancelled": list(getattr(result, "cancelled", ()) or ()),
+        "cancellation_proof": _cancellation_proof(a, b, demands_a, demands_b),
+        label_a: _composed_detail(a),
+        label_b: _composed_detail(b),
+    }
 
 
-def rank_candidates(candidates: Mapping[str, Any], *,
-                    demands: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+def rank_candidates(
+    candidates: Mapping[str, Any], *, demands: Mapping[str, Mapping[str, Any]] | None = None
+) -> dict[str, Any]:
     """Order candidates best-first, and report every pair that could NOT be compared.
 
     ``rank_schedules`` deliberately keeps an incomparable candidate in the ranking rather than
@@ -463,17 +543,23 @@ def rank_candidates(candidates: Mapping[str, Any], *,
     from merlin.perf.differential import rank_schedules  # noqa: PLC0415
 
     if not candidates:
-        return {"status": "unavailable", "reason": "no candidate was composed",
-                "order": [], "refusals": []}
+        return {"status": "unavailable", "reason": "no candidate was composed", "order": [], "refusals": []}
     order, refusals = rank_schedules(candidates, demands=demands)
-    return {"status": "ranked", "order": list(order),
-            "refusals": [{"reason": r.reason, "basis": r.basis} for r in refusals],
-            "fully_comparable": not refusals}
+    return {
+        "status": "ranked",
+        "order": list(order),
+        "refusals": [{"reason": r.reason, "basis": r.basis} for r in refusals],
+        "fully_comparable": not refusals,
+    }
 
 
-def compare_per_engine(a: Mapping[str, Any], b: Mapping[str, Any], *,
-                       demands_a: Mapping[str, Mapping[str, Any]] | None = None,
-                       demands_b: Mapping[str, Mapping[str, Any]] | None = None) -> dict[str, Any]:
+def compare_per_engine(
+    a: Mapping[str, Any],
+    b: Mapping[str, Any],
+    *,
+    demands_a: Mapping[str, Mapping[str, Any]] | None = None,
+    demands_b: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Order two schedules ENGINE BY ENGINE, so a trade is visible instead of averaged away.
 
     A single scalar verdict hides the case that matters most to a compiler: a change that speeds one
@@ -486,16 +572,23 @@ def compare_per_engine(a: Mapping[str, Any], b: Mapping[str, Any], *,
     if not a or not b:
         return {"status": "unavailable", "reason": "one side composed no engine"}
     v = compare_by_engine(a, b, demands_a=demands_a, demands_b=demands_b)
-    return {"status": "compared", "faster": v.faster, "basis": v.basis, "reason": v.reason,
-            "total_delta_cycles": v.total_delta_cycles,
-            "undecided_engines": list(v.undecided_engines or ()),
-            "traded": bool(v.traded),
-            "per_engine": {k: {"basis": c.basis, "faster": c.faster,
-                               "delta_cycles": c.delta_cycles, "reason": c.reason}
-                           for k, c in (v.per_engine or {}).items()}}
+    return {
+        "status": "compared",
+        "faster": v.faster,
+        "basis": v.basis,
+        "reason": v.reason,
+        "total_delta_cycles": v.total_delta_cycles,
+        "undecided_engines": list(v.undecided_engines or ()),
+        "traded": bool(v.traded),
+        "per_engine": {
+            k: {"basis": c.basis, "faster": c.faster, "delta_cycles": c.delta_cycles, "reason": c.reason}
+            for k, c in (v.per_engine or {}).items()
+        },
+    }
 
 
 # --- what an oracle query COSTS, and whether this shape may be asked ------------------------------
+
 
 def fit_oracle_cost_law(run_root: Path, *, substrate: str) -> Any:
     """Fit ``seconds = a + b*cycles + c*words`` from timing a completed run already recorded.
@@ -515,23 +608,35 @@ def fit_oracle_cost_law(run_root: Path, *, substrate: str) -> Any:
     samples = []
     for result in Path(run_root).rglob("capsule_result.json"):
         try:
-            tier = ((json.loads(result.read_text(encoding="utf-8")).get("tiers") or {})
-                    .get("L3") or {})
+            tier = (json.loads(result.read_text(encoding="utf-8")).get("tiers") or {}).get("L3") or {}
         except Exception:  # noqa: BLE001
             continue
         cycles, seconds = tier.get("cycles"), (tier.get("timing") or {}).get("sim_active_s")
-        if (isinstance(cycles, int) and not isinstance(cycles, bool) and cycles > 0
-                and isinstance(seconds, (int, float)) and seconds > 0):
-            samples.append(CostSample(seconds=float(seconds), cycles=int(cycles), words=0,
-                                      concurrency=1, kind=ProbeKind.CORPUS,
-                                      label=result.parent.name))
+        if (
+            isinstance(cycles, int)
+            and not isinstance(cycles, bool)
+            and cycles > 0
+            and isinstance(seconds, (int, float))
+            and seconds > 0
+        ):
+            samples.append(
+                CostSample(
+                    seconds=float(seconds),
+                    cycles=int(cycles),
+                    words=0,
+                    concurrency=1,
+                    kind=ProbeKind.CORPUS,
+                    label=result.parent.name,
+                )
+            )
     if not samples:
         return None
     return fit_cost_law(samples, substrate=substrate)
 
 
-def oracle_affordability(law: Any, *, predicted_cycles: float,
-                         budget_seconds: float, program_words: int = 0) -> dict[str, Any]:
+def oracle_affordability(
+    law: Any, *, predicted_cycles: float, budget_seconds: float, program_words: int = 0
+) -> dict[str, Any]:
     """Would asking the cycle oracle about this shape cost more than the budget allows?
 
     This is the gate that keeps a large shape out of the expensive tier BEFORE the tier is spent,
@@ -543,8 +648,12 @@ def oracle_affordability(law: Any, *, predicted_cycles: float,
     never hidden.
     """
     if law is None:
-        return {"status": "undeterminable", "reason": "no oracle cost law could be fitted",
-                "seconds": None, "affordable": None}
+        return {
+            "status": "undeterminable",
+            "reason": "no oracle cost law could be fitted",
+            "seconds": None,
+            "affordable": None,
+        }
     estimate = law.estimate(int(max(0, predicted_cycles)), int(program_words))
     seconds = float(estimate.seconds)
     return {
@@ -554,16 +663,19 @@ def oracle_affordability(law: Any, *, predicted_cycles: float,
         "affordable": seconds <= float(budget_seconds),
         "is_lower_bound": bool(getattr(estimate, "is_lower_bound", False)),
         "excluded_terms": list(getattr(estimate, "excluded", ()) or ()),
-        "reason": (f"the cycle oracle would need ~{seconds:,.0f} s for ~{predicted_cycles:,.0f} "
-                   f"cycles against a {budget_seconds:,.0f} s budget"),
+        "reason": (
+            f"the cycle oracle would need ~{seconds:,.0f} s for ~{predicted_cycles:,.0f} "
+            f"cycles against a {budget_seconds:,.0f} s budget"
+        ),
     }
 
 
 # --- activity: the one type five more modules are waiting on --------------------------------------
 
-def activity_source_from_counters(workload: str, overlap: Mapping[str, Any],
-                                  kinds: Mapping[str, str], *,
-                                  provenance: str = "") -> Any:
+
+def activity_source_from_counters(
+    workload: str, overlap: Mapping[str, Any], kinds: Mapping[str, str], *, provenance: str = ""
+) -> Any:
     """Build the per-resource activity record that the corpus-level analyses all consume.
 
     ``merlin.perf.attribution``, ``composer``, ``workload_roles`` and ``roofline`` every one take an
@@ -581,18 +693,25 @@ def activity_source_from_counters(workload: str, overlap: Mapping[str, Any],
     """
     from merlin.perf.decompose import ActivitySource, Resource, ResourceKind  # noqa: PLC0415
 
-    by_name = {"compute": ResourceKind.COMPUTE, "movement": ResourceKind.MOVEMENT,
-               "fixed": ResourceKind.FIXED}
+    by_name = {"compute": ResourceKind.COMPUTE, "movement": ResourceKind.MOVEMENT, "fixed": ResourceKind.FIXED}
     busy = dict(overlap.get("busy_cycles") or {})
     resources = tuple(
-        Resource(name=engine, kind=by_name.get(str(kinds.get(engine, "")).lower(),
-                                               ResourceKind.OTHER),
-                 busy_cycles=int(cycles))
-        for engine, cycles in sorted(busy.items()))
+        Resource(
+            name=engine,
+            kind=by_name.get(str(kinds.get(engine, "")).lower(), ResourceKind.OTHER),
+            busy_cycles=int(cycles),
+        )
+        for engine, cycles in sorted(busy.items())
+    )
     total = int(overlap.get("measurement_cycles") or 0)
-    return ActivitySource(workload=workload, total_cycles=total, resources=resources,
-                          partitioned=False, completion_observable=None,
-                          provenance=provenance or "hardware counters, per-combination layout")
+    return ActivitySource(
+        workload=workload,
+        total_cycles=total,
+        resources=resources,
+        partitioned=False,
+        completion_observable=None,
+        provenance=provenance or "hardware counters, per-combination layout",
+    )
 
 
 def classify_roles(sources: Sequence[Any]) -> dict[str, Any]:
@@ -609,18 +728,31 @@ def classify_roles(sources: Sequence[Any]) -> dict[str, Any]:
         return {"status": "unavailable", "reason": "no activity source was built", "roles": {}}
     split = classify_workloads(sources)
     entries = split.roles.values() if hasattr(split.roles, "values") else split.roles
-    rows = [{"workload": r.workload, "role": r.role.name, "binding": r.binding,
-             "binding_kind": str(r.binding_kind), "binding_share": r.binding_share,
-             "headroom_cycles": r.headroom_cycles, "headroom_share": r.headroom_share,
-             "rule": r.rule} for r in entries]
-    return {"status": "classified",
-            "modal_binding_kind": str(split.modal_binding_kind),
-            "quantum_cycles": split.quantum_cycles,
-            "headroom_floor_cycles": split.headroom_floor_cycles,
-            "unavailable": [str(u) for u in (split.unavailable or ())],
-            "by_role": {role: [r["workload"] for r in rows if r["role"] == role]
-                        for role in ("OPTIMIZE", "CALIBRATION", "NO_LEVER", "UNKNOWN")},
-            "rows": rows}
+    rows = [
+        {
+            "workload": r.workload,
+            "role": r.role.name,
+            "binding": r.binding,
+            "binding_kind": str(r.binding_kind),
+            "binding_share": r.binding_share,
+            "headroom_cycles": r.headroom_cycles,
+            "headroom_share": r.headroom_share,
+            "rule": r.rule,
+        }
+        for r in entries
+    ]
+    return {
+        "status": "classified",
+        "modal_binding_kind": str(split.modal_binding_kind),
+        "quantum_cycles": split.quantum_cycles,
+        "headroom_floor_cycles": split.headroom_floor_cycles,
+        "unavailable": [str(u) for u in (split.unavailable or ())],
+        "by_role": {
+            role: [r["workload"] for r in rows if r["role"] == role]
+            for role in ("OPTIMIZE", "CALIBRATION", "NO_LEVER", "UNKNOWN")
+        },
+        "rows": rows,
+    }
 
 
 def attribute_gap(source: Any, *, envelope: Any = None) -> dict[str, Any]:
@@ -636,16 +768,24 @@ def attribute_gap(source: Any, *, envelope: Any = None) -> dict[str, Any]:
     kinds = {r.name: r.kind for r in source.resources}
     buckets = buckets_from_kinds(kinds, fixed_bucket="control", other_bucket="host")
     result = attribute(source, buckets=buckets, envelope=envelope)
-    return {"workload": getattr(result, "workload", source.workload),
-            "components": [{"bucket": c.bucket, "measured_cycles": c.measured_cycles,
-                            "structural_cycles": c.structural_cycles,
-                            "gap_cycles": c.gap_cycles,
-                            "family": str(getattr(c, "family", "")),
-                            "evidence_kind": getattr(c, "evidence_kind", "")}
-                           for c in getattr(result, "components", ())]}
+    return {
+        "workload": getattr(result, "workload", source.workload),
+        "components": [
+            {
+                "bucket": c.bucket,
+                "measured_cycles": c.measured_cycles,
+                "structural_cycles": c.structural_cycles,
+                "gap_cycles": c.gap_cycles,
+                "family": str(getattr(c, "family", "")),
+                "evidence_kind": getattr(c, "evidence_kind", ""),
+            }
+            for c in getattr(result, "components", ())
+        ],
+    }
 
 
 # --- schedulability: may this shape be asked at all, and at what price -----------------------------
+
 
 def machine_budget(rtl_facts_path: Path, target: str) -> Any:
     """The machine limits a workload is checked against, derived from the target's own RTL.
@@ -672,11 +812,15 @@ def machine_budget(rtl_facts_path: Path, target: str) -> Any:
         return max(1, int(digits) // 8) if digits else fallback
 
     return MachineBudget(
-        tile_rows=geometry.rows, tile_cols=geometry.cols,
+        tile_rows=geometry.rows,
+        tile_cols=geometry.cols,
         operand_bytes=_bytes(dtypes.get("input", ""), 1),
         accum_bytes=_bytes(dtypes.get("accumulator", ""), 4),
-        dram_window=None, imem_words=None, dram_base=0,
-        provenance=f"rtl facts: arrays geometry ({geometry.source}) + datapath dtypes")
+        dram_window=None,
+        imem_words=None,
+        dram_base=0,
+        provenance=f"rtl facts: arrays geometry ({geometry.source}) + datapath dtypes",
+    )
 
 
 def tile_pass_rate(points: Sequence[MeasuredPoint], *, budget: Any) -> Any:
@@ -693,18 +837,23 @@ def tile_pass_rate(points: Sequence[MeasuredPoint], *, budget: Any) -> Any:
     return rate_from_observations(observations, note="fitted from harvested (work, cycles) points")
 
 
-def preflight_shape(name: str, *, m: int, k: int, n: int, budget: Any, rate: Any = None,
-                    laws: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def preflight_shape(
+    name: str, *, m: int, k: int, n: int, budget: Any, rate: Any = None, laws: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """Decide, before any oracle runs, whether this shape may be scheduled and what it would cost."""
     from merlin.perf.preflight import preflight_matmul  # noqa: PLC0415
 
     pf = preflight_matmul(name, m=m, k=k, n=n, budget=budget, rate=rate, laws=dict(laws or {}))
-    return {"workload": name, "ok": bool(pf.ok), "tile_passes": pf.tile_passes,
-            "projected_cycles": pf.projected_cycles,
-            "useful_bytes": pf.useful_bytes, "footprint_bytes": pf.footprint_bytes,
-            "refusals": [{"code": r.code, "detail": r.detail} for r in pf.refusals],
-            "wall_seconds": {tier: getattr(est, "seconds", None)
-                             for tier, est in (pf.wall or {}).items()}}
+    return {
+        "workload": name,
+        "ok": bool(pf.ok),
+        "tile_passes": pf.tile_passes,
+        "projected_cycles": pf.projected_cycles,
+        "useful_bytes": pf.useful_bytes,
+        "footprint_bytes": pf.footprint_bytes,
+        "refusals": [{"code": r.code, "detail": r.detail} for r in pf.refusals],
+        "wall_seconds": {tier: getattr(est, "seconds", None) for tier, est in (pf.wall or {}).items()},
+    }
 
 
 def counter_availability(target: str) -> dict[str, Any]:
@@ -719,26 +868,36 @@ def counter_availability(target: str) -> dict[str, Any]:
         record = counters_for_target(target)
     except Exception as exc:  # noqa: BLE001
         return {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
-    return {"status": record.get("status"),
-            "reason": str(record.get("reason") or record.get("detail")
-                          or f"counters_for_target reported {record.get('status')!r}"),
-            "header": record.get("header"), "header_sha256": record.get("header_sha256"),
-            "event_codes": sorted((record.get("event_codes") or {}))[:12]}
+    return {
+        "status": record.get("status"),
+        "reason": str(
+            record.get("reason") or record.get("detail") or f"counters_for_target reported {record.get('status')!r}"
+        ),
+        "header": record.get("header"),
+        "header_sha256": record.get("header_sha256"),
+        "event_codes": sorted((record.get("event_codes") or {}))[:12],
+    }
 
 
-def falsifier_evidence(identity: Any, baseline: Any, candidate: Any, *, bit_exact: bool | None,
-                       negative_control: bool, invariants_held: bool | None = None) -> Any:
+def falsifier_evidence(
+    identity: Any,
+    baseline: Any,
+    candidate: Any,
+    *,
+    bit_exact: bool | None,
+    negative_control: bool,
+    invariants_held: bool | None = None,
+) -> Any:
     """Hand the overlap verdict to the campaign record in the shape it already expects."""
     from merlin.perf.campaign import FalsifierEvidence  # noqa: PLC0415
     from merlin.perf.falsifier import ab_decision  # noqa: PLC0415
 
-    decision = ab_decision(baseline, candidate, bit_exact=bit_exact,
-                           invariants_held=invariants_held)
-    return FalsifierEvidence.from_ab_decision(identity, decision,
-                                              negative_control=negative_control)
+    decision = ab_decision(baseline, candidate, bit_exact=bit_exact, invariants_held=invariants_held)
+    return FalsifierEvidence.from_ab_decision(identity, decision, negative_control=negative_control)
 
 
 # --- the capability report: every analysis module, invoked, with what it could establish -----------
+
 
 class NotApplicable:
     """An analysis the target's own facts say does not apply here.
@@ -774,10 +933,14 @@ def _try(fn) -> dict[str, Any]:
     return {"status": "derived", "value": value}
 
 
-def capability_report(target: str, *, rtl_facts_path: Path | None = None,
-                      run_root: Path | None = None,
-                      interface_mlir: Path | None = None,
-                      capsules: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+def capability_report(
+    target: str,
+    *,
+    rtl_facts_path: Path | None = None,
+    run_root: Path | None = None,
+    interface_mlir: Path | None = None,
+    capsules: Sequence[Mapping[str, Any]] = (),
+) -> dict[str, Any]:
     """Call every performance analysis this repo has, and report what each one can establish here.
 
     This exists because "is the tooling used?" was answerable only by reading imports. Now it is a
@@ -789,13 +952,22 @@ def capability_report(target: str, *, rtl_facts_path: Path | None = None,
     self-hosted ISA cannot encode a kernel for it; a target with no vector unit has no vector term;
     and the SIMT analyses are for a SIMT cluster. Each says so in its own words.
     """
+    from merlin.perf import bus_beat_probe as BUS  # noqa: PLC0415
+    from merlin.perf import calibration as CAL
+    from merlin.perf import calibration_plan as CPLAN
+    from merlin.perf import command_stream_gen as CSG
+    from merlin.perf import comparand as CMP
+    from merlin.perf import composer as COMP
+    from merlin.perf import counter_binding as CBIND
+    from merlin.perf import depgraph as DG
+    from merlin.perf import handshake as HS
+    from merlin.perf import harvest as HV
+    from merlin.perf import receipt_bridge as RB
+    from merlin.perf import roofline as RF
+    from merlin.perf import simt_occupancy as SIMT
+    from merlin.perf import vector_cycles as VC
+    from merlin.perf import workload_gen as WG
     from merlin.perf.headroom import Composition as _COMPOSITION  # noqa: PLC0415
-    from merlin.perf import (bus_beat_probe as BUS, calibration as CAL,  # noqa: PLC0415
-                             calibration_plan as CPLAN, command_stream_gen as CSG,
-                             comparand as CMP, composer as COMP, counter_binding as CBIND,
-                             depgraph as DG, handshake as HS, harvest as HV,
-                             receipt_bridge as RB, roofline as RF, simt_occupancy as SIMT,
-                             vector_cycles as VC, workload_gen as WG)
 
     facts_path = Path(rtl_facts_path) if rtl_facts_path else None
     report: dict[str, Any] = {"target": target, "analyses": {}}
@@ -805,6 +977,7 @@ def capability_report(target: str, *, rtl_facts_path: Path | None = None,
     A["structural_ceiling"] = _try(lambda: structural_ceiling(facts_path, target))
     A["counters"] = _try(lambda: counter_availability(target))
     A["fill_drain_depth"] = _try(lambda: str(HS.measure_fill_depth(target)))
+
     # Asked through the derived compute units, so a systolic-only design is told it has no
     # vector unit instead of being handed an external manifest error about lane width.
     def _vector() -> Any:
@@ -814,18 +987,21 @@ def capability_report(target: str, *, rtl_facts_path: Path | None = None,
         if report["status"] != "derived":
             raise ValueError(str(report.get("reason"))[:160])
         return report["terms"]
+
     A["vector_term"] = _try(_vector)
     A["simt_geometry"] = _try(lambda: SIMT.geometry_for_target(target).get("status"))
+
     # The dependence analysis needs a machine, an op selection, a measured control-flow probe and a
     # measured settle -- each of which refuses on its own terms when absent. Called through the real
     # signature so the reported reason is the analysis's, not a mistake in this probe.
     def _dependence() -> str:
         facts = WG.machine_facts(target)
         ops = WG.candidate_ops(facts.isa)
-        plan = WG.plan_matmul(facts, ops, m=16, k=16, n=16,
-                              control_flow=WG.probe_control_flow(facts),
-                              settle=WG.probe_settle(facts))
+        plan = WG.plan_matmul(
+            facts, ops, m=16, k=16, n=16, control_flow=WG.probe_control_flow(facts), settle=WG.probe_settle(facts)
+        )
         return f"program of {len(plan.words)} words over {plan.tiles} tiles"
+
     A["schedule_dependence"] = _try(_dependence)
     A["comparand_groups"] = _try(lambda: CMP.declared_groups(list(capsules)))
     # Every one of these is INVOKED. Reading a signature would prove the module imports, which is
@@ -836,63 +1012,88 @@ def capability_report(target: str, *, rtl_facts_path: Path | None = None,
         candidate = Path(str(source.get("hw_mlir") or source.get("fir_path") or ""))
         if candidate.is_file():
             hw_text = candidate.read_text(encoding="utf-8", errors="replace")
-    raw_facts = (json.loads(facts_path.read_text(encoding="utf-8"))
-                 if facts_path is not None and facts_path.is_file() else {})
-    A["counter_binding"] = _try(lambda: sorted(CBIND.extract_external_additive_counters(
-        hw_text, "", top_module="", counter_module="", counter_file_module="",
-        external_port_prefix="", external_base_define="", declared_unit="cycles")))
+    raw_facts = (
+        json.loads(facts_path.read_text(encoding="utf-8")) if facts_path is not None and facts_path.is_file() else {}
+    )
+    A["counter_binding"] = _try(
+        lambda: sorted(
+            CBIND.extract_external_additive_counters(
+                hw_text,
+                "",
+                top_module="",
+                counter_module="",
+                counter_file_module="",
+                external_port_prefix="",
+                external_base_define="",
+                declared_unit="cycles",
+            )
+        )
+    )
     A["bus_beat_monitors"] = _try(lambda: sorted(BUS.derive_counter_beat_monitors(hw_text, {})))
+
     # `build` REPORTS its problems rather than raising, so a bare call always "succeeds"; the issue
     # count is the verdict, and a non-zero one is an unavailable, not a pass.
     def _bridge() -> str:
-        issues = RB.build(Path("/unreached"), Path("/unreached"), Path("/unreached"),
-                          Path("/unreached"))[-1]
+        issues = RB.build(Path("/unreached"), Path("/unreached"), Path("/unreached"), Path("/unreached"))[-1]
         if issues:
             raise ValueError(f"{issues} input(s) could not be loaded")
         return "built"
+
     A["receipt_bridge"] = _try(_bridge)
     A["harvest_authority"] = _try(lambda: HV.MeasurementAuthority(target=target).cycles_tier)
-    A["calibration_plan"] = _try(
-        lambda: CPLAN.build_calibration_plan_from_rtl(raw_facts, {}).__class__.__name__)
+    A["calibration_plan"] = _try(lambda: CPLAN.build_calibration_plan_from_rtl(raw_facts, {}).__class__.__name__)
     A["mechanism_calibration"] = _try(
-        lambda: CAL.calibrate(target=target, contract={}, traces=()).get("ran_against_traces"))
-    A["corpus_composition"] = _try(lambda: COMP.compose_corpus(
-        [], times={}, operator=_COMPOSITION.PARTIAL, eta=0.0).__class__.__name__)
+        lambda: CAL.calibrate(target=target, contract={}, traces=()).get("ran_against_traces")
+    )
+    A["corpus_composition"] = _try(
+        lambda: COMP.compose_corpus([], times={}, operator=_COMPOSITION.PARTIAL, eta=0.0).__class__.__name__
+    )
+
     def _roofline() -> Any:
         if run_root is None:
             raise ValueError("no completed run was supplied to harvest observations from")
         from merlin.perf.headroom import Composition  # noqa: PLC0415
+
         report = empirical_roofline_report(
-            Path(run_root), operand_bytes=1, composition=Composition.PARTIAL,
+            Path(run_root),
+            operand_bytes=1,
+            composition=Composition.PARTIAL,
             composition_eta=0.16666666666666666,
-            composition_provenance="measured hardware counters (EX/LD/ST)")
+            composition_provenance="measured hardware counters (EX/LD/ST)",
+        )
         if report.get("status") != "derived":
             raise ValueError(str(report.get("reason"))[:160])
-        return (f"{report['resolved']}/{report['expected']} resolved, "
-                f"share {report['cycle_weighted_resolved_share']:.2f}")
+        return (
+            f"{report['resolved']}/{report['expected']} resolved, share {report['cycle_weighted_resolved_share']:.2f}"
+        )
+
     A["empirical_roofline"] = _try(_roofline)
     if interface_mlir is not None:
         A["reorder_pair"] = _try(
-            lambda: sorted(CSG.pair_from_interface(Path(interface_mlir).read_text(encoding="utf-8"))))
+            lambda: sorted(CSG.pair_from_interface(Path(interface_mlir).read_text(encoding="utf-8")))
+        )
     if run_root is not None:
         A["measured_points"] = _try(lambda: len(harvest_measured_points(Path(run_root))[0]))
         A["oracle_cost_law"] = _try(
-            lambda: getattr(fit_oracle_cost_law(Path(run_root), substrate="gsim").per_cycle, "value", None))
+            lambda: getattr(fit_oracle_cost_law(Path(run_root), substrate="gsim").per_cycle, "value", None)
+        )
 
     derived = sum(1 for v in A.values() if v["status"] == "derived")
     not_applicable = sum(1 for v in A.values() if v["status"] == "not_applicable")
-    report["summary"] = {"analyses": len(A), "derived": derived,
-                         "not_applicable": not_applicable,
-                         "unavailable": len(A) - derived - not_applicable,
-                         "applicable": len(A) - not_applicable}
+    report["summary"] = {
+        "analyses": len(A),
+        "derived": derived,
+        "not_applicable": not_applicable,
+        "unavailable": len(A) - derived - not_applicable,
+        "applicable": len(A) - not_applicable,
+    }
     return report
 
 
 def render_capabilities(report: Mapping[str, Any]) -> str:
     """One line per analysis: what it established here, or the reason it could not."""
     summary = report["summary"]
-    head = (f"performance analyses for {report['target']}: "
-            f"{summary['derived']}/{summary['applicable']} established")
+    head = f"performance analyses for {report['target']}: {summary['derived']}/{summary['applicable']} established"
     if summary.get("not_applicable"):
         head += f" ({summary['not_applicable']} not applicable to this target)"
     out = [head]
@@ -905,6 +1106,7 @@ def render_capabilities(report: Mapping[str, Any]) -> str:
 
 
 # --- the ISA a RoCC target derives from its own decoder --------------------------------------------
+
 
 def isa_model_from_rocc_facts(target: str, rtl_facts_path: Path) -> Any:
     """This target's ISA, derived from its own decode table -- see the library implementation.
@@ -920,6 +1122,7 @@ def isa_model_from_rocc_facts(target: str, rtl_facts_path: Path) -> Any:
 
 # --- traffic: what the emitted program actually moved, from its own decoded trace -----------------
 
+
 def moved_elements_from_trace(trace: Mapping[str, Any]) -> tuple[int, int]:
     """(elements moved, instructions that declared a movement) from a decoded instruction trace.
 
@@ -932,7 +1135,7 @@ def moved_elements_from_trace(trace: Mapping[str, Any]) -> tuple[int, int]:
     say which. :func:`traffic_demand` applies the operand width and says so.
     """
     elements = counted = 0
-    for instruction in (trace.get("instructions") or ()):
+    for instruction in trace.get("instructions") or ():
         decoded = instruction.get("decoded") if isinstance(instruction, dict) else None
         if not isinstance(decoded, dict):
             continue
@@ -954,15 +1157,25 @@ def traffic_demand(trace: Mapping[str, Any], *, operand_bytes: int) -> Any:
     from merlin.perf.envelope import Basis, ResourceDemand  # noqa: PLC0415
 
     elements, counted = moved_elements_from_trace(trace)
-    return ResourceDemand("movement", ResourceKind.MOVEMENT, elements * max(1, operand_bytes),
-                          "bytes", Basis.MOVED, None,
-                          f"{counted} decoded transfers declaring rows x cols, "
-                          f"at {operand_bytes} B per element")
+    return ResourceDemand(
+        "movement",
+        ResourceKind.MOVEMENT,
+        elements * max(1, operand_bytes),
+        "bytes",
+        Basis.MOVED,
+        None,
+        f"{counted} decoded transfers declaring rows x cols, at {operand_bytes} B per element",
+    )
 
 
-def empirical_roofline_report(run_root: Path, *, operand_bytes: int,
-                              composition: Any = None, composition_eta: float | None = None,
-                              composition_provenance: str = "") -> dict[str, Any]:
+def empirical_roofline_report(
+    run_root: Path,
+    *,
+    operand_bytes: int,
+    composition: Any = None,
+    composition_eta: float | None = None,
+    composition_provenance: str = "",
+) -> dict[str, Any]:
     """The measured roofline for a completed run: per workload, its bound and WHAT LIMITS IT.
 
     ``merlin.perf.roofline`` admits only an achievable ceiling (``n_samples >= 4`` and
@@ -981,8 +1194,7 @@ def empirical_roofline_report(run_root: Path, *, operand_bytes: int,
     """
     from merlin.perf.decompose import ResourceKind  # noqa: PLC0415
     from merlin.perf.envelope import Basis, Peak, ResourceDemand  # noqa: PLC0415
-    from merlin.perf.roofline import (EmpiricalObservation, EvidenceReceipt,  # noqa: PLC0415
-                                      empirical_roofline)
+    from merlin.perf.roofline import EmpiricalObservation, EvidenceReceipt, empirical_roofline  # noqa: PLC0415
 
     points, _skipped = harvest_measured_points(Path(run_root))
     observations, receipts, traffic, fixed = [], {}, [], {}
@@ -991,48 +1203,78 @@ def empirical_roofline_report(run_root: Path, *, operand_bytes: int,
         trace_path = Path(point.source) / "generated" / "instruction_trace.json"
         if not trace_path.is_file():
             continue
-        demand = traffic_demand(json.loads(trace_path.read_text(encoding="utf-8")),
-                                operand_bytes=operand_bytes)
+        demand = traffic_demand(json.loads(trace_path.read_text(encoding="utf-8")), operand_bytes=operand_bytes)
         if demand.amount <= 0:
             continue
-        work = ResourceDemand(COMPUTE, ResourceKind.COMPUTE, point.macs, "mac", Basis.MOVED, None,
-                              "compiler command buffer via merlin.perf.work_volume")
-        observations.append(EmpiricalObservation(
-            point.capsule, point.cycles, work, (demand,),
-            "measured cycles from the functional run + traffic from its own decoded trace"))
+        work = ResourceDemand(
+            COMPUTE,
+            ResourceKind.COMPUTE,
+            point.macs,
+            "mac",
+            Basis.MOVED,
+            None,
+            "compiler command buffer via merlin.perf.work_volume",
+        )
+        observations.append(
+            EmpiricalObservation(
+                point.capsule,
+                point.cycles,
+                work,
+                (demand,),
+                "measured cycles from the functional run + traffic from its own decoded trace",
+            )
+        )
         traffic.append((demand.amount, point.cycles))
-        fixed[point.capsule] = ()          # explicit: zero MEASURED fixed terms, not "unknown"
-        for key, kind in ((f"observation:{point.capsule}", "rtl_cycle_measurement"),
-                          (f"work:{point.capsule}:{COMPUTE}", "compiler_ir"),
-                          (f"traffic:{point.capsule}:movement", "physical_counter"),
-                          (f"fixed:{point.capsule}", "calibration_fit")):
+        fixed[point.capsule] = ()  # explicit: zero MEASURED fixed terms, not "unknown"
+        for key, kind in (
+            (f"observation:{point.capsule}", "rtl_cycle_measurement"),
+            (f"work:{point.capsule}:{COMPUTE}", "compiler_ir"),
+            (f"traffic:{point.capsule}:movement", "physical_counter"),
+            (f"fixed:{point.capsule}", "calibration_fit"),
+        ):
             receipts[key] = EvidenceReceipt("0" * 64, kind, sample_ids)
     if not observations:
-        return {"status": "unavailable",
-                "reason": "no measured point carried both priced work and decoded traffic"}
+        return {"status": "unavailable", "reason": "no measured point carried both priced work and decoded traffic"}
     compute_peak = achievable_ceiling(points, provenance=f"harvested from {Path(run_root).name}")
-    movement_peak = Peak.observed_ceiling("movement", traffic, unit="bytes",
-                                          provenance="decoded-trace traffic vs measured cycles")
+    movement_peak = Peak.observed_ceiling(
+        "movement", traffic, unit="bytes", provenance="decoded-trace traffic vs measured cycles"
+    )
     receipts[f"peak:{COMPUTE}"] = EvidenceReceipt("2" * 64, "calibration_fit", sample_ids)
     receipts["peak:movement"] = EvidenceReceipt("4" * 64, "calibration_fit", sample_ids)
     receipts["composition"] = EvidenceReceipt("5" * 64, "rtl_counter_partition", sample_ids)
     report = empirical_roofline(
-        observations, peaks={COMPUTE: compute_peak, "movement": movement_peak},
-        fixed_terms=fixed, evidence_receipts=receipts,
+        observations,
+        peaks={COMPUTE: compute_peak, "movement": movement_peak},
+        fixed_terms=fixed,
+        evidence_receipts=receipts,
         expected_workloads=tuple(o.workload for o in observations),
-        composition=composition, composition_eta=composition_eta,
-        composition_provenance=composition_provenance)
+        composition=composition,
+        composition_eta=composition_eta,
+        composition_provenance=composition_provenance,
+    )
     coverage = report.coverage
-    rows = [{"workload": name, "measured_cycles": p.measured_cycles,
-             "bound_cycles": p.bound_cycles, "efficiency": p.efficiency,
-             "limiter": str(p.limiter), "margin_share": p.margin_share}
-            for name, p in report.points.items() if isinstance(p.efficiency, (int, float))]
-    return {"status": "derived", "observations": len(observations),
-            "resolved": len(coverage.resolved), "expected": len(coverage.expected),
-            "cycle_weighted_resolved_share": coverage.cycle_weighted_resolved_share,
-            "compute_ceiling": float(compute_peak.value) if compute_peak.known else None,
-            "movement_ceiling": float(movement_peak.value) if movement_peak.known else None,
-            "rows": sorted(rows, key=lambda r: r["efficiency"])}
+    rows = [
+        {
+            "workload": name,
+            "measured_cycles": p.measured_cycles,
+            "bound_cycles": p.bound_cycles,
+            "efficiency": p.efficiency,
+            "limiter": str(p.limiter),
+            "margin_share": p.margin_share,
+        }
+        for name, p in report.points.items()
+        if isinstance(p.efficiency, (int, float))
+    ]
+    return {
+        "status": "derived",
+        "observations": len(observations),
+        "resolved": len(coverage.resolved),
+        "expected": len(coverage.expected),
+        "cycle_weighted_resolved_share": coverage.cycle_weighted_resolved_share,
+        "compute_ceiling": float(compute_peak.value) if compute_peak.known else None,
+        "movement_ceiling": float(movement_peak.value) if movement_peak.known else None,
+        "rows": sorted(rows, key=lambda r: r["efficiency"]),
+    }
 
 
 def compute_units_of(target: str) -> list[tuple[str, str]]:
@@ -1042,7 +1284,8 @@ def compute_units_of(target: str) -> list[tuple[str, str]]:
     vector lane gains the unit here without anything being re-declared, and one that loses it stops
     claiming it. That is what lets a per-unit analysis be ASKED only where the machine has the unit.
     """
-    from merlin.targetgen import capability_manifests as CM, compute_units as CU  # noqa: PLC0415
+    from merlin.targetgen import capability_manifests as CM  # noqa: PLC0415
+    from merlin.targetgen import compute_units as CU
 
     try:
         return [(u.name, u.kind) for u in CU.compute_units(CM.manifest_for(target))]
@@ -1068,19 +1311,25 @@ def vector_term_for(target: str, instructions: Sequence[Any] = ()) -> dict[str, 
     units = [name for name, kind in compute_units_of(target) if kind == "vector"]
     if not units:
         declared = ", ".join(f"{n} ({k})" for n, k in compute_units_of(target)) or "none"
-        return {"status": "not_applicable",
-                "reason": (f"{target!r} evidences no vector compute unit in its derived units "
-                           f"({declared}), so it has no vector term"),
-                "units": []}
+        return {
+            "status": "not_applicable",
+            "reason": (
+                f"{target!r} evidences no vector compute unit in its derived units "
+                f"({declared}), so it has no vector term"
+            ),
+            "units": [],
+        }
     results = {}
     for name in units:
         try:
             term = vector_term(target, list(instructions), unit=name)
-            results[name] = {"cycles": term.cycles, "instructions": term.instructions,
-                             "complete": term.complete,
-                             "unmapped": list(getattr(term, "unmapped", ()) or ()),
-                             "provenance": getattr(term, "provenance", "")}
+            results[name] = {
+                "cycles": term.cycles,
+                "instructions": term.instructions,
+                "complete": term.complete,
+                "unmapped": list(getattr(term, "unmapped", ()) or ()),
+                "provenance": getattr(term, "provenance", ""),
+            }
         except Exception as exc:  # noqa: BLE001 - a unit that cannot be priced says why
-            results[name] = {"status": "unavailable",
-                             "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
+            results[name] = {"status": "unavailable", "reason": f"{type(exc).__name__}: {str(exc)[:180]}"}
     return {"status": "derived", "units": units, "terms": results}

@@ -10,7 +10,10 @@ here costs a second and names the offending capsules.
 
 Exit 0 = every discovered member is provenance-clean and inside the envelope.
 """
-import sys, pathlib
+
+import pathlib
+import sys
+
 
 def main() -> int:
     descriptor, certificate = sys.argv[1], sys.argv[2]
@@ -20,7 +23,10 @@ def main() -> int:
     selected = None
     if len(sys.argv) > 3 and sys.argv[3].strip() and sys.argv[3].strip() != "all":
         selected = {name.strip() for name in sys.argv[3].split(",") if name.strip()}
-    import perf_agent_stage as S, perf_gsim_gate as G, run_paired_perf_bench as PAIR
+    import perf_agent_stage as S
+    import perf_gsim_gate as G
+    import run_paired_perf_bench as PAIR
+
     from merlin.targetgen.target_experiment import load_target_experiment
 
     te = load_target_experiment(descriptor)
@@ -28,9 +34,11 @@ def main() -> int:
         corpus = S.discover_performance_corpus(te)
     except Exception as exc:
         print(f"PREFLIGHT FAIL: the corpus does not discover: {exc}", file=sys.stderr)
-        print("  the generated/hand_authored split in MANIFEST.yaml must list every capsule under\n"
-              "  the performance phase; regenerate the corpus rather than editing it by hand.",
-              file=sys.stderr)
+        print(
+            "  the generated/hand_authored split in MANIFEST.yaml must list every capsule under\n"
+            "  the performance phase; regenerate the corpus rather than editing it by hand.",
+            file=sys.stderr,
+        )
         return 2
 
     cert = G.load_certificate(certificate)
@@ -39,14 +47,17 @@ def main() -> int:
     if selected is not None:
         unknown = selected - {m.capsule for m in corpus.capsules}
         if unknown:
-            print(f"PREFLIGHT FAIL: selection names {len(unknown)} capsule(s) not in the corpus: "
-                  f"{' '.join(sorted(unknown))}", file=sys.stderr)
+            print(
+                f"PREFLIGHT FAIL: selection names {len(unknown)} capsule(s) not in the corpus: "
+                f"{' '.join(sorted(unknown))}",
+                file=sys.stderr,
+            )
             return 4
     for member in sorted(members, key=lambda row: (row.family, row.capsule)):
-        decision = G.plan_evaluation(cert, PAIR._gsim_workload(member),
-                                     phase="development_correctness", gsim_available=True)
-        if not (decision.admitted and decision.eligible
-                and decision.selected_engine == "gsim" and decision.use_gsim):
+        decision = G.plan_evaluation(
+            cert, PAIR._gsim_workload(member), phase="development_correctness", gsim_available=True
+        )
+        if not (decision.admitted and decision.eligible and decision.selected_engine == "gsim" and decision.use_gsim):
             outside.append(f"{member.family}/{member.capsule}")
 
     # SHARED WORKLOAD IDENTITIES are legal and intended: several families measure the same workload
@@ -54,27 +65,31 @@ def main() -> int:
     # refused -- a 1:1 assumption in `_verify_tuning_certificate` used to refuse the launch over
     # exactly this, and the three capsules below are each REQUIRED by their own family.
     import collections as _collections
+
     _by_identity = _collections.defaultdict(list)
     for member in members:
-        _by_identity[G.workload_sha256(PAIR._gsim_workload(member))].append(
-            f"{member.family}/{member.capsule}")
+        _by_identity[G.workload_sha256(PAIR._gsim_workload(member))].append(f"{member.family}/{member.capsule}")
     for _ident, _names in sorted(_by_identity.items()):
         if len(_names) > 1:
-            print(f"  shared workload {_ident[:16]}: {' '.join(sorted(_names))} "
-                  f"(measured once, by design)")
+            print(f"  shared workload {_ident[:16]}: {' '.join(sorted(_names))} (measured once, by design)")
 
     excluded = len(corpus.capsules) - len(members)
-    print(f"preflight: {len(members)} member(s) to measure"
-          + (f" ({excluded} deliberately excluded of {len(corpus.capsules)})" if excluded else "")
-          + f", {len(cert.members)} certified workloads, {len(outside)} outside the envelope")
+    print(
+        f"preflight: {len(members)} member(s) to measure"
+        + (f" ({excluded} deliberately excluded of {len(corpus.capsules)})" if excluded else "")
+        + f", {len(cert.members)} certified workloads, {len(outside)} outside the envelope"
+    )
     if outside:
-        print("PREFLIGHT FAIL: these capsules have no certified workload, so the stage would "
-              "refuse the whole corpus:", file=sys.stderr)
+        print(
+            "PREFLIGHT FAIL: these capsules have no certified workload, so the stage would refuse the whole corpus:",
+            file=sys.stderr,
+        )
         for name in outside:
             print(f"  - {name}", file=sys.stderr)
         print("  capture and certify them, or take them out of the performance phase.", file=sys.stderr)
         return 3
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

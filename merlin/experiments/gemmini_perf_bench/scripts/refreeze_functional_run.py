@@ -39,6 +39,7 @@ current one.
 
 Every step fails closed.  Nothing here writes a value it did not observe.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,11 +109,11 @@ def _capsule_names(score: Mapping, *, label: str) -> list[str]:
         if row.get("status") != "pass":
             raise RefreezeError(
                 f"source {label} capsule {row.get('capsule')!r} did not pass; refusing to re-freeze "
-                "a run that was not already certified")
+                "a run that was not already certified"
+            )
         tiers = row.get("tiers") or {}
         if tiers.get("L2") != "pass" or tiers.get("L3") != "pass":
-            raise RefreezeError(
-                f"source {label} capsule {row.get('capsule')!r} did not earn both L2 and L3")
+            raise RefreezeError(f"source {label} capsule {row.get('capsule')!r} did not earn both L2 and L3")
         names.append(str(row["capsule"]))
     if len(set(names)) != len(names):
         raise RefreezeError(f"source {label} score repeats a capsule identity")
@@ -138,17 +139,21 @@ def migrate_qa_loop_summary(summary: Mapping) -> tuple[dict, dict]:
     if not isinstance(rounds, list) or not rounds:
         raise RefreezeError("source QA summary has no completed round")
     for row in rounds:
-        if (not isinstance(row, Mapping) or row.get("answer_access_clean") is not True
-                or row.get("audit_hits") != []):
+        if not isinstance(row, Mapping) or row.get("answer_access_clean") is not True or row.get("audit_hits") != []:
             raise RefreezeError(
                 "source QA round failed its answer-access audit; a re-freeze cannot clear an audit "
-                "hit recorded against the original authoring session")
+                "hit recorded against the original authoring session"
+            )
     final = rounds[-1]
     if summary.get("converged") is not True:
         raise RefreezeError("source QA loop did not converge")
     finalize = summary.get("finalize")
-    if (not isinstance(finalize, Mapping) or finalize.get("answer_access_clean") is not True
-            or finalize.get("audit_hits") != [] or finalize.get("regrade_all_pass") is not True):
+    if (
+        not isinstance(finalize, Mapping)
+        or finalize.get("answer_access_clean") is not True
+        or finalize.get("audit_hits") != []
+        or finalize.get("regrade_all_pass") is not True
+    ):
         raise RefreezeError("source finalization did not pass its clean regrade and audit gates")
 
     if final.get("all_pass") is not True:
@@ -163,15 +168,15 @@ def migrate_qa_loop_summary(summary: Mapping) -> tuple[dict, dict]:
     migrated = dict(summary)
     provenance: dict[str, str] = {}
     for key, source_key, value in (
-            ("numeric_all_pass", "rounds[-1].all_pass", True),
-            ("workflow_conformant", "rounds[-1].conformance.conformant", True)):
+        ("numeric_all_pass", "rounds[-1].all_pass", True),
+        ("workflow_conformant", "rounds[-1].conformance.conformant", True),
+    ):
         present = summary.get(key)
         if present is None:
             migrated[key] = value
             provenance[key] = f"schema migration: read from {source_key}"
         elif present is not value:
-            raise RefreezeError(
-                f"source QA summary records {key}={present!r} while {source_key} says {value!r}")
+            raise RefreezeError(f"source QA summary records {key}={present!r} while {source_key} says {value!r}")
         else:
             provenance[key] = f"present in source summary (agrees with {source_key})"
     return migrated, provenance
@@ -181,6 +186,7 @@ def migrate_qa_loop_summary(summary: Mapping) -> tuple[dict, dict]:
 def materialize_snapshot(ws: Path, bundle: Mapping, repo: Path) -> tuple[Path, dict]:
     """Build (or re-verify) the immutable v2 bundle-input snapshot through the real bwrap machinery."""
     from merlin.targetgen.sandbox import bwrap as BW
+
     ws.mkdir(parents=True, exist_ok=True)
     BW.materialize_bundle_inputs(ws, dict(bundle), repo=repo)
     BW.verify_bundle_snapshot(ws, dict(bundle), repo=repo)
@@ -202,8 +208,7 @@ def host_lane_record(te, snapshot_root: Path, run_snapshot: Mapping) -> dict:
 
 
 # ------------------------------------------------------------------------------- cohort staging
-def stage_public_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str],
-                        dest: Path) -> list[str]:
+def stage_public_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str], dest: Path) -> list[str]:
     """Materialize exactly the named public capsules FROM THE SNAPSHOT via the real materializer.
 
     ``materialize_public_capsules`` is handed the snapshot's own corpus roots and the complement of
@@ -212,8 +217,8 @@ def stage_public_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str
     No ``.cohort_admission.json`` is written: this cohort is the reproduced source-run denominator,
     not the descriptor's current admission boundary, and sealing it as the latter would be a lie.
     """
-    from merlin.targetgen.contract.materialize import (_public_capsule_dirs_in,
-                                                       materialize_public_capsules)
+    from merlin.targetgen.contract.materialize import _public_capsule_dirs_in, materialize_public_capsules
+
     snapshot_repo = snapshot_root / "repo"
     roots = [snapshot_repo / te.capsule_corpus.relative_to(repo)]
     roots += [snapshot_repo / rel.rstrip("/") for rel in te.corpus_siblings()]
@@ -225,19 +230,19 @@ def stage_public_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str
     if absent:
         raise RefreezeError(
             f"the source run's public cohort names capsule(s) the frozen corpus no longer holds: "
-            f"{absent}; the original grade cannot be reproduced against these inputs")
+            f"{absent}; the original grade cannot be reproduced against these inputs"
+        )
     if dest.exists():
         shutil.rmtree(dest)
     written = materialize_public_capsules(
-        dest, tier_ceiling="L3", corpus_roots=roots, exclude=tuple(sorted(present - set(names))))
+        dest, tier_ceiling="L3", corpus_roots=roots, exclude=tuple(sorted(present - set(names)))
+    )
     if sorted(written) != sorted(names):
-        raise RefreezeError(
-            f"reproduced public cohort {sorted(written)} is not the source cohort {sorted(names)}")
+        raise RefreezeError(f"reproduced public cohort {sorted(written)} is not the source cohort {sorted(names)}")
     return sorted(written)
 
 
-def stage_hidden_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str],
-                        dest: Path) -> list[str]:
+def stage_hidden_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str], dest: Path) -> list[str]:
     """Copy exactly the named hidden capsules out of the immutable snapshot.
 
     Hidden capsules have no materializer (the harness hands the grader the snapshot directory as-is),
@@ -260,7 +265,8 @@ def stage_hidden_cohort(te, snapshot_root: Path, repo: Path, names: Sequence[str
         if src.is_symlink() or not src.is_dir() or not (src / "capsule.yaml").is_file():
             raise RefreezeError(
                 f"the source run's hidden cohort names {name!r}, which the frozen hidden corpus "
-                "does not hold; the original grade cannot be reproduced against these inputs")
+                "does not hold; the original grade cannot be reproduced against these inputs"
+            )
         shutil.copytree(src, dest / name, symlinks=False)
         # copytree replays the snapshot's cleared write bits onto the copy; restore owner-write on the
         # copy (including its own root) so this run-private cohort stays removable.
@@ -294,7 +300,8 @@ def descriptor_task_scope(te, repo: Path, *, sandbox: str = "bwrap") -> dict:
     if not public:
         raise RefreezeError(
             f"{te.target}: descriptor-derived public/dev task scope is empty; refusing to write a "
-            "vacuous completion target")
+            "vacuous completion target"
+        )
     return {
         "target": te.target,
         "required_public_dev_capsules": len(public),
@@ -304,9 +311,15 @@ def descriptor_task_scope(te, repo: Path, *, sandbox: str = "bwrap") -> dict:
     }
 
 
-def build_environment(source_env: Mapping, *, new_run_id: str, snapshot_record: Mapping,
-                      host_lane: Mapping, refreeze: Mapping,
-                      task_scope: Mapping) -> dict:
+def build_environment(
+    source_env: Mapping,
+    *,
+    new_run_id: str,
+    snapshot_record: Mapping,
+    host_lane: Mapping,
+    refreeze: Mapping,
+    task_scope: Mapping,
+) -> dict:
     env = dict(source_env)
     env["run_id"] = new_run_id
     env["bundle_input_snapshot"] = dict(snapshot_record)
@@ -321,9 +334,16 @@ def build_environment(source_env: Mapping, *, new_run_id: str, snapshot_record: 
 def _copy_carried_provenance(source_dir: Path, run_dir: Path) -> list[str]:
     """Copy the ORIGINAL authoring evidence forward verbatim. Score files are deliberately absent."""
     carried: list[str] = []
-    for name in ("TASK.md", "input_bundle_manifest.yaml", "cost_time_toolcalls.yaml",
-                 "transcript.jsonl", "selfcheck_log.jsonl", "oracle_preflight.yaml",
-                 "codegen_smoke.yaml", "qa_loop_state.yaml"):
+    for name in (
+        "TASK.md",
+        "input_bundle_manifest.yaml",
+        "cost_time_toolcalls.yaml",
+        "transcript.jsonl",
+        "selfcheck_log.jsonl",
+        "oracle_preflight.yaml",
+        "codegen_smoke.yaml",
+        "qa_loop_state.yaml",
+    ):
         src = source_dir / name
         if src.is_file() and not src.is_symlink():
             shutil.copy2(src, run_dir / name)
@@ -355,12 +375,11 @@ def purge_interpreter_bytecode(submission: Path, expected_digest: str) -> list[s
     bytes the grade was earned on.
     """
     submission = Path(submission)
-    kept = [str(path) for path in submission.rglob("*")
-            if {"build", ".git"} & set(path.relative_to(submission).parts)]
+    kept = [str(path) for path in submission.rglob("*") if {"build", ".git"} & set(path.relative_to(submission).parts)]
     if kept:
         raise RefreezeError(
-            f"submission carries non-bytecode digest-excluded state this tool will not remove: "
-            f"{sorted(kept)[:5]}")
+            f"submission carries non-bytecode digest-excluded state this tool will not remove: {sorted(kept)[:5]}"
+        )
     removed: list[str] = []
     for path in sorted(submission.rglob("__pycache__"), key=lambda p: len(p.parts), reverse=True):
         if path.is_symlink() or not path.is_dir():
@@ -373,21 +392,43 @@ def purge_interpreter_bytecode(submission: Path, expected_digest: str) -> list[s
         path.unlink()
         removed.append(str(path.relative_to(submission)))
     from merlin.benchharness import hash_tree
+
     observed = hash_tree(submission)["sha256"]
     if observed != expected_digest:
         raise RefreezeError(
             f"removing interpreter bytecode changed the submission digest ({expected_digest} -> "
-            f"{observed}); the tree held more than bytecode and is no longer the graded artifact")
+            f"{observed}); the tree held more than bytecode and is no longer the graded artifact"
+        )
     return sorted(removed)
 
 
 # ------------------------------------------------------------------------------------- the grade
-def run_official_grade(repo: Path, run_dir: Path, *, arm: str, model: str, public_root: Path,
-                       hidden_root: Path, snapshot_root: Path, descriptor: Path) -> int:
+def run_official_grade(
+    repo: Path,
+    run_dir: Path,
+    *,
+    arm: str,
+    model: str,
+    public_root: Path,
+    hidden_root: Path,
+    snapshot_root: Path,
+    descriptor: Path,
+) -> int:
     """Invoke the official post-freeze grader -- the same entry point the live harness uses."""
-    cmd = [sys.executable, str(_harness_dir(repo) / "grade_agent_run.py"),
-           "--run-dir", str(run_dir), "--arm", arm, "--model", model,
-           "--capsules", str(public_root), "--hidden-capsules", str(hidden_root)]
+    cmd = [
+        sys.executable,
+        str(_harness_dir(repo) / "grade_agent_run.py"),
+        "--run-dir",
+        str(run_dir),
+        "--arm",
+        arm,
+        "--model",
+        model,
+        "--capsules",
+        str(public_root),
+        "--hidden-capsules",
+        str(hidden_root),
+    ]
     env = dict(os.environ)
     env["MERLIN_TARGET_EXPERIMENT"] = str(descriptor)
     env["MERLIN_MODEL_HOST_LANE_SNAPSHOT_ROOT"] = str(snapshot_root)
@@ -398,21 +439,32 @@ def run_official_grade(repo: Path, run_dir: Path, *, arm: str, model: str, publi
 
 # ------------------------------------------------------------------------------------------ main
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--source-run-id", required=True,
-                    help="the already-certified functional run to re-verify")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--source-run-id", required=True, help="the already-certified functional run to re-verify")
     ap.add_argument("--new-run-id", required=True, help="run id for the re-freeze record")
-    ap.add_argument("--descriptor", default=None,
-                    help="target_experiment.yaml (default: MERLIN_TARGET_EXPERIMENT / harness default)")
-    ap.add_argument("--bundle-dir", default=None,
-                    help="input bundle directory to snapshot (default: the bundle the source run names)")
-    ap.add_argument("--reason", default="unblock the performance campaign input gate: the source run "
-                                        "predates the immutable bundle-input snapshot v2 schema")
-    ap.add_argument("--skip-grade", action="store_true",
-                    help="stage the snapshot + cohorts and stop (does NOT produce a gate-valid record)")
-    ap.add_argument("--verify-only", action="store_true",
-                    help="only run the campaign gate against an existing re-freeze record")
+    ap.add_argument(
+        "--descriptor",
+        default=None,
+        help="target_experiment.yaml (default: MERLIN_TARGET_EXPERIMENT / harness default)",
+    )
+    ap.add_argument(
+        "--bundle-dir",
+        default=None,
+        help="input bundle directory to snapshot (default: the bundle the source run names)",
+    )
+    ap.add_argument(
+        "--reason",
+        default="unblock the performance campaign input gate: the source run "
+        "predates the immutable bundle-input snapshot v2 schema",
+    )
+    ap.add_argument(
+        "--skip-grade",
+        action="store_true",
+        help="stage the snapshot + cohorts and stop (does NOT produce a gate-valid record)",
+    )
+    ap.add_argument(
+        "--verify-only", action="store_true", help="only run the campaign gate against an existing re-freeze record"
+    )
     a = ap.parse_args(argv)
 
     if a.descriptor:
@@ -420,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
     from merlin.benchharness import hash_tree
     from merlin.common.paths import repo_root
     from merlin.targetgen.target_experiment import load_target_experiment
+
     # The capsule-bench harness modules (_common, grade_agent_run, freeze_run) are a script package,
     # not an installed one; put their home on the path before importing the target selector.
     sys.path.insert(0, str(_harness_dir(repo_root())))
@@ -463,59 +516,67 @@ def main(argv: list[str] | None = None) -> int:
 
     source_digest = str(source_manifest.get("submission_sha256") or "")
     observed = hash_tree(source_dir / "submission")["sha256"]
-    recorded = {"run_manifest": source_manifest.get("submission_sha256"),
-                "freeze": source_freeze.get("submission_sha256"),
-                "freeze_recheck": source_freeze.get("submission_sha256_recheck"),
-                "submission_tree": observed}
+    recorded = {
+        "run_manifest": source_manifest.get("submission_sha256"),
+        "freeze": source_freeze.get("submission_sha256"),
+        "freeze_recheck": source_freeze.get("submission_sha256_recheck"),
+        "submission_tree": observed,
+    }
     if not source_digest or any(v != source_digest for v in recorded.values()):
         raise RefreezeError(f"source submission digest does not match every record: {recorded}")
 
     te = load_target_experiment(C.DESCRIPTOR)
-    bundle_dir = (Path(a.bundle_dir).expanduser().resolve() if a.bundle_dir
-                  else C.BUNDLES / bundle_id)
+    bundle_dir = Path(a.bundle_dir).expanduser().resolve() if a.bundle_dir else C.BUNDLES / bundle_id
     bundle_manifest_path = bundle_dir / "input_bundle_manifest.yaml"
     bundle = _load_yaml(bundle_manifest_path)
     if str(bundle.get("bundle_id")) != bundle_id:
         raise RefreezeError(
-            f"bundle at {bundle_dir} declares {bundle.get('bundle_id')!r}, not the source run's "
-            f"{bundle_id!r}")
+            f"bundle at {bundle_dir} declares {bundle.get('bundle_id')!r}, not the source run's {bundle_id!r}"
+        )
     host_pkg_rel = te.host_lane.package.rstrip("/") if te.host_lane else None
     granted = {str(e.get("path", "")).rstrip("/") for e in bundle.get("allowed", [])}
-    if host_pkg_rel and not any(host_pkg_rel == g or host_pkg_rel.startswith(g + "/")
-                                for g in granted if g):
+    if host_pkg_rel and not any(host_pkg_rel == g or host_pkg_rel.startswith(g + "/") for g in granted if g):
         raise RefreezeError(
             f"bundle {bundle_id!r} at {bundle_dir} does not grant the descriptor's host-lane package "
             f"{host_pkg_rel!r}; its snapshot could not contain the package the gate requires. Point "
-            "--bundle-dir at a bundle that grants it (the generated bundle does).")
+            "--bundle-dir at a bundle that grants it (the generated bundle does)."
+        )
 
     archived = source_dir / "input_bundle_manifest.yaml"
-    archived_granted = sorted(
-        {str(e.get("path", "")).rstrip("/") for e in (_load_yaml(archived).get("allowed") or [])}
-    ) if archived.is_file() else []
+    archived_granted = (
+        sorted({str(e.get("path", "")).rstrip("/") for e in (_load_yaml(archived).get("allowed") or [])})
+        if archived.is_file()
+        else []
+    )
 
     run_dir.mkdir(parents=True)
     print(f"[refreeze] run dir: {run_dir}", flush=True)
 
     # 1. the submission bytes, unchanged and re-hashed.
-    shutil.copytree(source_dir / "submission", run_dir / "submission",
-                    symlinks=False, ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
+    shutil.copytree(
+        source_dir / "submission",
+        run_dir / "submission",
+        symlinks=False,
+        ignore=shutil.ignore_patterns("build", "__pycache__", ".git"),
+    )
     copied = hash_tree(run_dir / "submission")["sha256"]
     if copied != source_digest:
-        raise RefreezeError(
-            f"copied submission digest {copied} does not match the source {source_digest}")
+        raise RefreezeError(f"copied submission digest {copied} does not match the source {source_digest}")
 
     carried = _copy_carried_provenance(source_dir, run_dir)
-    (run_dir / "qa_loop_summary.yaml").write_text(
-        yaml.safe_dump(migrated_summary, sort_keys=False), encoding="utf-8")
+    (run_dir / "qa_loop_summary.yaml").write_text(yaml.safe_dump(migrated_summary, sort_keys=False), encoding="utf-8")
 
     # 2. the immutable bundle-input snapshot, through the real bwrap machinery.
     ws = run_dir / "refreeze_ws" / "workspace"
     print(f"[refreeze] materializing bundle-input snapshot beside {ws} ...", flush=True)
     started = _dt.datetime.now(_dt.timezone.utc)
     snapshot_root, snapshot = materialize_snapshot(ws, bundle, repo)
-    print(f"[refreeze] snapshot: {snapshot_root} "
-          f"({snapshot['n_files']} files, {snapshot['n_bytes']} bytes, "
-          f"{(_dt.datetime.now(_dt.timezone.utc) - started).total_seconds():.1f}s)", flush=True)
+    print(
+        f"[refreeze] snapshot: {snapshot_root} "
+        f"({snapshot['n_files']} files, {snapshot['n_bytes']} bytes, "
+        f"{(_dt.datetime.now(_dt.timezone.utc) - started).total_seconds():.1f}s)",
+        flush=True,
+    )
     host_lane = host_lane_record(te, snapshot_root, snapshot)
 
     # 3. the reproduced graded cohorts, taken from the frozen bytes.
@@ -524,8 +585,11 @@ def main(argv: list[str] | None = None) -> int:
     hidden_root = cohort_root / "hidden_capsules"
     stage_public_cohort(te, snapshot_root, repo, public_names, public_root)
     stage_hidden_cohort(te, snapshot_root, repo, hidden_names, hidden_root)
-    print(f"[refreeze] cohort: {len(public_names)} public + {len(hidden_names)} hidden "
-          f"(reproduced from the source run's own score files)", flush=True)
+    print(
+        f"[refreeze] cohort: {len(public_names)} public + {len(hidden_names)} hidden "
+        f"(reproduced from the source run's own score files)",
+        flush=True,
+    )
 
     refreeze = {
         "version": 1,
@@ -561,28 +625,35 @@ def main(argv: list[str] | None = None) -> int:
             "descriptor_expected_source_capsules": te.graded_expected_source_capsules,
             "descriptor_expected_admitted_capsules": te.graded_expected_admitted_capsules,
             "note": "this re-freeze reproduces the ORIGINAL run's denominator so the re-verified "
-                    "claim has the same scope as the claim it re-verifies. It is NOT a grade against "
-                    "the descriptor's current admitted cohort, which is larger.",
+            "claim has the same scope as the claim it re-verifies. It is NOT a grade against "
+            "the descriptor's current admitted cohort, which is larger.",
         },
         "bundle": {
             "bundle_id": bundle_id,
             "snapshotted_manifest": str(bundle_manifest_path),
             "archived_manifest": str(archived) if archived.is_file() else None,
-            "grants_added_since_the_source_run": sorted(
-                {g for g in granted if g} - set(archived_granted)),
-            "grants_removed_since_the_source_run": sorted(
-                set(archived_granted) - {g for g in granted if g}),
+            "grants_added_since_the_source_run": sorted({g for g in granted if g} - set(archived_granted)),
+            "grants_removed_since_the_source_run": sorted(set(archived_granted) - {g for g in granted if g}),
             "note": "the snapshot pins the inputs THIS re-grade consumed, taken from the bundle that "
-                    "grants the descriptor's host lane; the source run's own archived manifest is "
-                    "carried beside it unchanged.",
+            "grants the descriptor's host lane; the source run's own archived manifest is "
+            "carried beside it unchanged.",
         },
     }
     task_scope = descriptor_task_scope(te, repo)
-    print(f"[refreeze] task scope (descriptor-derived): "
-          f"{task_scope['required_public_dev_capsules']} public/dev, "
-          f"{task_scope['held_out_capsules']} held out", flush=True)
-    env = build_environment(source_env, new_run_id=a.new_run_id, snapshot_record=snapshot,
-                            host_lane=host_lane, refreeze=refreeze, task_scope=task_scope)
+    print(
+        f"[refreeze] task scope (descriptor-derived): "
+        f"{task_scope['required_public_dev_capsules']} public/dev, "
+        f"{task_scope['held_out_capsules']} held out",
+        flush=True,
+    )
+    env = build_environment(
+        source_env,
+        new_run_id=a.new_run_id,
+        snapshot_record=snapshot,
+        host_lane=host_lane,
+        refreeze=refreeze,
+        task_scope=task_scope,
+    )
     (run_dir / "environment.yaml").write_text(yaml.safe_dump(env, sort_keys=False), encoding="utf-8")
 
     if a.skip_grade:
@@ -591,26 +662,41 @@ def main(argv: list[str] | None = None) -> int:
 
     # 4. the real re-grade (public -> freeze -> hidden), by the official post-freeze grader.
     grade_started = _dt.datetime.now(_dt.timezone.utc)
-    rc = run_official_grade(repo, run_dir, arm=str(source_manifest.get("arm") or "unknown"),
-                            model=str(source_env.get("model") or "unknown"),
-                            public_root=public_root, hidden_root=hidden_root,
-                            snapshot_root=snapshot_root, descriptor=C.DESCRIPTOR)
+    rc = run_official_grade(
+        repo,
+        run_dir,
+        arm=str(source_manifest.get("arm") or "unknown"),
+        model=str(source_env.get("model") or "unknown"),
+        public_root=public_root,
+        hidden_root=hidden_root,
+        snapshot_root=snapshot_root,
+        descriptor=C.DESCRIPTOR,
+    )
     elapsed = (_dt.datetime.now(_dt.timezone.utc) - grade_started).total_seconds()
     print(f"[refreeze] re-grade returned {rc} after {elapsed:.1f}s", flush=True)
     swept = purge_interpreter_bytecode(run_dir / "submission", source_digest)
     if swept:
-        print(f"[refreeze] swept grader-written bytecode from the frozen submission: {swept}",
-              flush=True)
-    (run_dir / "refreeze_regrade.json").write_text(json.dumps({
-        "started_at": grade_started.isoformat(), "wall_seconds": elapsed,
-        "grader_returncode": rc, "public_capsules": public_names,
-        "hidden_capsules": hidden_names,
-        "interpreter_bytecode_swept": swept,
-        "interpreter_bytecode_note": (
-            "grade_agent_run imports the submitted package, so CPython writes __pycache__ into the "
-            "frozen tree. hash_tree excludes those names, so the digest is unchanged; the campaign "
-            "gate refuses them as unhashed executable state. Removed after grading, digest "
-            "re-verified.")}, indent=2), encoding="utf-8")
+        print(f"[refreeze] swept grader-written bytecode from the frozen submission: {swept}", flush=True)
+    (run_dir / "refreeze_regrade.json").write_text(
+        json.dumps(
+            {
+                "started_at": grade_started.isoformat(),
+                "wall_seconds": elapsed,
+                "grader_returncode": rc,
+                "public_capsules": public_names,
+                "hidden_capsules": hidden_names,
+                "interpreter_bytecode_swept": swept,
+                "interpreter_bytecode_note": (
+                    "grade_agent_run imports the submitted package, so CPython writes __pycache__ into the "
+                    "frozen tree. hash_tree excludes those names, so the digest is unchanged; the campaign "
+                    "gate refuses them as unhashed executable state. Removed after grading, digest "
+                    "re-verified."
+                ),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
     # environment.yaml is rewritten last: the grader owns run_manifest/freeze, and the run id must
     # agree across all three.
@@ -619,6 +705,7 @@ def main(argv: list[str] | None = None) -> int:
 
 def _verify(runs_root: Path, run_id: str, run_dir: Path) -> int:
     import perf_campaign as PC
+
     manifest = _load_yaml(run_dir / "run_manifest.yaml")
     digest = str(manifest.get("submission_sha256") or "")
     # Idempotent, and repeated deliberately: ANY process that imports the submitted package writes
@@ -632,9 +719,11 @@ def _verify(runs_root: Path, run_id: str, run_dir: Path) -> int:
     except PC.CampaignGateError as exc:
         print(f"REFUSED  {run_id}  digest={digest}\n  {exc}")
         return 1
-    print(f"ACCEPTED {run_id}  digest={record.digest}  "
-          f"public={record.public_capsules} hidden={record.hidden_capsules}  "
-          f"frozen_at={record.frozen_at}")
+    print(
+        f"ACCEPTED {run_id}  digest={record.digest}  "
+        f"public={record.public_capsules} hidden={record.hidden_capsules}  "
+        f"frozen_at={record.frozen_at}"
+    )
     print(f"  bundle_input_snapshot: {record.bundle_input_snapshot['path']}")
     print(f"  model_host_lane_package: {record.model_host_package}")
     return 0

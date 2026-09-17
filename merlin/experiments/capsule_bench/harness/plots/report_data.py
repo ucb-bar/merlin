@@ -18,6 +18,7 @@ Three measurement traps are handled here rather than at the figure, because ever
   says. Under bwrap the materializer caps ``required_oracle_tiers`` at L2, so a failing L3 is recorded
   and then ignored by the pass computation. We read the as-graded manifest and report both.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -32,6 +33,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import _common as C  # noqa: E402  (the SELECTED target's descriptor; defaults per the harness)
+
 from merlin.common.paths import repo_root  # noqa: E402  (re-exported for callers of this module)
 
 # Both ride the descriptor-selected target, never a literal: this module is shared by every target's
@@ -40,12 +42,21 @@ RUNS = C.RUNS / "merlin_assisted"
 SUITE = f"{C.TARGET}-capsule-bench"
 
 # planes where the SUBMISSION's CLI / manifest / packaging is wrong (it never reached the compiler's math)
-CONTRACT_PLANES = {"build", "parse", "interface_to_target", "target_to_command_buffer",
-                   "command_buffer_schema", "emit_target_artifact", "command_buffer", "contract",
-                   "integrity", "schema", "trace_check"}
+CONTRACT_PLANES = {
+    "build",
+    "parse",
+    "interface_to_target",
+    "target_to_command_buffer",
+    "command_buffer_schema",
+    "emit_target_artifact",
+    "command_buffer",
+    "contract",
+    "integrity",
+    "schema",
+    "trace_check",
+}
 # planes that are the HARNESS failing, never the submission
-INFRA_PLANES = {"runner_internal", "oracle_unavailable", "declared_tier_unreachable",
-                "not_gradeable_no_oracle"}
+INFRA_PLANES = {"runner_internal", "oracle_unavailable", "declared_tier_unreachable", "not_gradeable_no_oracle"}
 
 
 def _yaml(p: Path) -> dict:
@@ -65,13 +76,22 @@ def _blame(detail: str, run: str) -> str:
     capsule set, which is a grading-directory defect and says nothing about the model."""
     d = detail or ""
     if "backend target must be" in d and "got '" in d:
-        return "harness"                       # cross-target contamination of the grading dir
+        return "harness"  # cross-target contamination of the grading dir
     if "SimulationError" in d or "RUNNER_CRASH" in d:
-        return "harness"                       # the harness simulator lacks an opcode it was handed
-    model_marks = (f"/{run}/submission/", "./submission/", "/_qa_ws/", "/generated/run_lowering.py",
-                   "available dialects", "does not have a custom format",
-                   # the MLIR "available dialects" list, which arrives mid-string after a tool prefix
-                   "dlti, emitc, func", "llvm.inline_asm", "MLIRError", "Unable to parse module")
+        return "harness"  # the harness simulator lacks an opcode it was handed
+    model_marks = (
+        f"/{run}/submission/",
+        "./submission/",
+        "/_qa_ws/",
+        "/generated/run_lowering.py",
+        "available dialects",
+        "does not have a custom format",
+        # the MLIR "available dialects" list, which arrives mid-string after a tool prefix
+        "dlti, emitc, func",
+        "llvm.inline_asm",
+        "MLIRError",
+        "Unable to parse module",
+    )
     if any(m in d for m in model_marks):
         return "model"
     return "unclear"
@@ -101,10 +121,19 @@ def _capsule_rows(base: Path, run: str) -> list[dict]:
             kind = "compute"
         else:
             kind = f"other:{plane}/{cat}"
-        rows.append({"capsule": r.get("capsule"), "status": r.get("status"), "kind": kind,
-                     "plane": plane, "category": cat, "tiers": tiers, "mandatory": mand,
-                     "trace_violations": (r.get("trace_check") or {}).get("violations") or [],
-                     "detail": (f.get("detail") or "")[:600]})
+        rows.append(
+            {
+                "capsule": r.get("capsule"),
+                "status": r.get("status"),
+                "kind": kind,
+                "plane": plane,
+                "category": cat,
+                "tiers": tiers,
+                "mandatory": mand,
+                "trace_violations": (r.get("trace_check") or {}).get("violations") or [],
+                "detail": (f.get("detail") or "")[:600],
+            }
+        )
     return rows
 
 
@@ -120,8 +149,17 @@ def _diagnostics(d: Path) -> dict:
     """How much of what the AGENT was shown survived redaction. The digit scrubber rewrote every numeral,
     so `tensor<16x16xi8>` reached the model as `tensor<#x#xi#>` and `rc=0` as `rc=#`. This only bites a
     model that FAILS and must iterate, which is why it has to be measured per cell rather than assumed."""
-    out = {"rounds": 0, "verdicts": 0, "redacted": 0, "shape_lost": 0, "identity_lost": 0,
-           "rc_lost": 0, "near_empty": 0, "localized": 0, "unusable": 0}
+    out = {
+        "rounds": 0,
+        "verdicts": 0,
+        "redacted": 0,
+        "shape_lost": 0,
+        "identity_lost": 0,
+        "rc_lost": 0,
+        "near_empty": 0,
+        "localized": 0,
+        "unusable": 0,
+    }
     vs = sorted((d / "qa_history").glob("verdict_round_*.json"))
     out["rounds"] = len(vs)
     for v in vs:
@@ -129,7 +167,7 @@ def _diagnostics(d: Path) -> dict:
             y = json.loads(v.read_text())
         except Exception:  # noqa: BLE001
             continue
-        for c in (y.get("per_capsule") or []):
+        for c in y.get("per_capsule") or []:
             # Only a FAILING capsule has a diagnostic to damage. A passing capsule carries no detail,
             # and counting its empty string as "no content" would score a converged run as the worst
             # informed of all — exactly backwards.
@@ -138,7 +176,7 @@ def _diagnostics(d: Path) -> dict:
             det = c.get("failure_detail") or ""
             out["verdicts"] += 1
             if "#" in det or len(det.strip()) < 45:
-                out["unusable"] += 1        # numerals destroyed, or no content at all
+                out["unusable"] += 1  # numerals destroyed, or no content at all
             if "#" in det:
                 out["redacted"] += 1
             if "<#" in det or "x#" in det or "i#" in det:
@@ -186,10 +224,14 @@ def _transcript_stats(d: Path) -> dict:
                 elif b.get("type") == "text":
                     texts.append(len(b.get("text") or ""))
     uniq = len(set(cmds))
-    return {"tools": tools, "n_shell": len(cmds), "unique_shell": uniq,
-            "repeat_frac": round(1 - uniq / len(cmds), 4) if cmds else None,
-            "n_text": len(texts),
-            "median_text_chars": sorted(texts)[len(texts) // 2] if texts else 0}
+    return {
+        "tools": tools,
+        "n_shell": len(cmds),
+        "unique_shell": uniq,
+        "repeat_frac": round(1 - uniq / len(cmds), 4) if cmds else None,
+        "n_text": len(texts),
+        "median_text_chars": sorted(texts)[len(texts) // 2] if texts else 0,
+    }
 
 
 @lru_cache(maxsize=1)
@@ -198,8 +240,15 @@ def _allowed_tool_linesets() -> tuple[tuple[str, frozenset[str]], ...]:
     edited it. GLM-5 x Claude Code, for example, copied ``interface_emit.py`` verbatim and appended a
     ten-line MOVEMENT handler: not authored structure, and not a pure copy either."""
     out = []
-    roots = ["targetgen/contract", "targetgen/oot_starterkit", "targetgen/synthesize",
-             "targetgen/generate", "targetgen/rtl", "xdsl_dialects", "kernels"]
+    roots = [
+        "targetgen/contract",
+        "targetgen/oot_starterkit",
+        "targetgen/synthesize",
+        "targetgen/generate",
+        "targetgen/rtl",
+        "xdsl_dialects",
+        "kernels",
+    ]
     for r in roots:
         base = repo_root() / "merlin" / "python" / "merlin" / r
         if not base.exists():
@@ -230,8 +279,15 @@ def _vendored_from(body: str) -> str | None:
 def _allowed_tool_hashes() -> frozenset[str]:
     """Content hashes of every merlin file the assisted bundle grants read access to, so a submission
     that vendors one verbatim can be told apart from one that wrote it."""
-    roots = ["targetgen/contract", "targetgen/oot_starterkit", "targetgen/synthesize",
-             "targetgen/generate", "targetgen/rtl", "xdsl_dialects", "kernels"]
+    roots = [
+        "targetgen/contract",
+        "targetgen/oot_starterkit",
+        "targetgen/synthesize",
+        "targetgen/generate",
+        "targetgen/rtl",
+        "xdsl_dialects",
+        "kernels",
+    ]
     out = set()
     for r in roots:
         base = repo_root() / "merlin" / "python" / "merlin" / r
@@ -284,8 +340,7 @@ def _submission(d: Path) -> dict:
         # work and must not be credited as one — the same false positive that makes the conformance
         # checker report `no_regex_ok: False` for a model that merely vendored merlin's own regex-using
         # interface_emit.py.
-        if (hashlib.sha256(body.encode("utf-8", "replace")).hexdigest() in vendored_hashes
-                or _vendored_from(body)):
+        if hashlib.sha256(body.encode("utf-8", "replace")).hexdigest() in vendored_hashes or _vendored_from(body):
             kinds["vendored"].append(stem)
         elif "GENERATED from RTL facts" in body:
             kinds["generated"].append(stem)
@@ -297,10 +352,15 @@ def _submission(d: Path) -> dict:
             kinds["monolith"].append(stem)
         else:
             kinds["structure"].append(stem)
-    return {"n_modules": len(pys), "n_lines": lines, "rtl_generated_modules": generated,
-            "uses_starterkit": "oot_starterkit" in txt, "uses_xdsl": ("xdsl" in txt or "irdl" in txt),
-            "kinds": {k: sorted(v) for k, v in kinds.items()},
-            "modules": sorted(str(p.relative_to(sub)) for p in pys)}
+    return {
+        "n_modules": len(pys),
+        "n_lines": lines,
+        "rtl_generated_modules": generated,
+        "uses_starterkit": "oot_starterkit" in txt,
+        "uses_xdsl": ("xdsl" in txt or "irdl" in txt),
+        "kinds": {k: sorted(v) for k, v in kinds.items()},
+        "modules": sorted(str(p.relative_to(sub)) for p in pys),
+    }
 
 
 def _harness_health(d: Path, driver: str | None) -> dict:
@@ -346,8 +406,12 @@ def _harness_health(d: Path, driver: str | None) -> dict:
     config_ok = None
     if driver == "opencode" and agents:
         config_ok = agents.get("merlinbench", 0) > agents.get("build", 0)
-    return {"agents_seen": agents, "config_delivered": config_ok,
-            "bridge_toolconfig_400s": bridge_400, "rounds_with_no_usage_record": unpriced}
+    return {
+        "agents_seen": agents,
+        "config_delivered": config_ok,
+        "bridge_toolconfig_400s": bridge_400,
+        "rounds_with_no_usage_record": unpriced,
+    }
 
 
 def _stop_reason(d: Path) -> dict:
@@ -384,8 +448,7 @@ def _stop_reason(d: Path) -> dict:
         why = "budget_exhausted"
     else:
         why = "unknown"
-    return {"rounds_run": rounds, "why": why,
-            "externally_truncated": why == "cost_cap"}
+    return {"rounds_run": rounds, "why": why, "externally_truncated": why == "cost_cap"}
 
 
 def _conformance(d: Path) -> dict:
@@ -408,14 +471,17 @@ def _conformance(d: Path) -> dict:
     # and let the report show that as a third state rather than as a violation.
     hit_files = sorted({h.get("file") for h in hits if h.get("file")})
     vend = {m.split("/")[-1] for m in (_submission(d).get("kinds", {}).get("vendored") or [])}
-    all_vendored = bool(hit_files) and all(
-        pathlib.PurePath(f).stem in vend for f in hit_files)
-    return {"rounds_scored": len(confs),
-            "rounds_conformant": sum(1 for c in confs if c.get("conformant")),
-            "ever": ever, "regex_hit_files": hit_files,
-            "regex_only_in_vendored": all_vendored,
-            "progression": [{"round": r.get("round"), "n_passed": r.get("n_passed"),
-                             "n_capsules": r.get("n_capsules")} for r in rounds]}
+    all_vendored = bool(hit_files) and all(pathlib.PurePath(f).stem in vend for f in hit_files)
+    return {
+        "rounds_scored": len(confs),
+        "rounds_conformant": sum(1 for c in confs if c.get("conformant")),
+        "ever": ever,
+        "regex_hit_files": hit_files,
+        "regex_only_in_vendored": all_vendored,
+        "progression": [
+            {"round": r.get("round"), "n_passed": r.get("n_passed"), "n_capsules": r.get("n_capsules")} for r in rounds
+        ],
+    }
 
 
 def _canonical_public_set() -> set[str]:
@@ -454,9 +520,11 @@ def collect() -> dict:
         # A grading dir can be contaminated with another target's capsules (a discovery race staged
         # atlas / mx_gemmini / saturn_opu capsules beside gemmini's). Those are not this submission's
         # work and must not dilute its denominator; they are reported separately.
-        foreign = [r for r in pub
-                   if "backend target must be" in (r.get("detail") or "")
-                   or (canonical and r["capsule"] not in canonical)]
+        foreign = [
+            r
+            for r in pub
+            if "backend target must be" in (r.get("detail") or "") or (canonical and r["capsule"] not in canonical)
+        ]
         pub = [r for r in pub if r not in foreign]
         hid_base = d / "grading_hidden" / "runs" / SUITE
         hid = _capsule_rows(hid_base, d.name) if hid_base.exists() else []
@@ -469,36 +537,56 @@ def collect() -> dict:
         bar = []
         for rm in sorted(pub_base.glob("*/run_manifest.yaml"))[:1]:
             bar = (_yaml(rm).get("metadata") or _yaml(rm)).get("required_oracle_tiers") or []
-        cells.append({
-            "run": d.name, "model": env.get("model"), "driver": env.get("driver"),
-            "bundle": env.get("bundle_id"), "sandbox": env.get("sandbox"),
-            "n_public": len(pub), "n_passed": sum(1 for r in pub if r["status"] == "pass"),
-            "foreign_capsules_in_grading_dir": len(foreign),
-            "n_hidden": len(hid), "hidden_passed": sum(1 for r in hid if r["status"] == "pass"),
-            "pass_bar_tiers": bar,
-            "tier_reached": score.get("tier_reached") or {},
-            # What the passes REST ON, carried beside the counts rather than left to be reconstructed
-            # from tier_reached by whoever reads this. `headline` is the quotable form built once in
-            # capsule_grade._headline; `pass_evidence` is the rtl_backed/cheap_tier_only split behind it.
-            "headline": score.get("headline"),
-            "pass_evidence": score.get("pass_evidence") or {},
-            "public": pub, "hidden": hid,
-            "first_fail_tier": {r["capsule"]: _first_fail_tier(r["tiers"]) for r in pub},
-            "kinds": {k: sum(1 for r in pub if r["kind"] == k) for k in {r["kind"] for r in pub}},
-            "diagnostics": _diagnostics(d),
-            "behaviour": _transcript_stats(d),
-            "submission": _submission(d),
-            "conformance": _conformance(d),
-            "harness_health": _harness_health(d, env.get("driver")),
-            "stop": _stop_reason(d),
-            "tokens": {k: cost.get(k) for k in ("tokens_input", "tokens_fresh_input",
-                                                "tokens_cache_write", "tokens_cached", "tokens_output",
-                                                "tokens_reasoning", "usage_complete",
-                                                "tool_calls", "usage_source", "billing_mode",
-                                                "estimated_cost_usd", "subscription_notional_usd")},
-            "wall_minutes": round((man.get("process") or {}).get("wall_time_seconds") or 0, 1) / 60,
-            "integrity": man.get("integrity_status"),
-        })
+        cells.append(
+            {
+                "run": d.name,
+                "model": env.get("model"),
+                "driver": env.get("driver"),
+                "bundle": env.get("bundle_id"),
+                "sandbox": env.get("sandbox"),
+                "n_public": len(pub),
+                "n_passed": sum(1 for r in pub if r["status"] == "pass"),
+                "foreign_capsules_in_grading_dir": len(foreign),
+                "n_hidden": len(hid),
+                "hidden_passed": sum(1 for r in hid if r["status"] == "pass"),
+                "pass_bar_tiers": bar,
+                "tier_reached": score.get("tier_reached") or {},
+                # What the passes REST ON, carried beside the counts rather than left to be reconstructed
+                # from tier_reached by whoever reads this. `headline` is the quotable form built once in
+                # capsule_grade._headline; `pass_evidence` is the rtl_backed/cheap_tier_only split behind it.
+                "headline": score.get("headline"),
+                "pass_evidence": score.get("pass_evidence") or {},
+                "public": pub,
+                "hidden": hid,
+                "first_fail_tier": {r["capsule"]: _first_fail_tier(r["tiers"]) for r in pub},
+                "kinds": {k: sum(1 for r in pub if r["kind"] == k) for k in {r["kind"] for r in pub}},
+                "diagnostics": _diagnostics(d),
+                "behaviour": _transcript_stats(d),
+                "submission": _submission(d),
+                "conformance": _conformance(d),
+                "harness_health": _harness_health(d, env.get("driver")),
+                "stop": _stop_reason(d),
+                "tokens": {
+                    k: cost.get(k)
+                    for k in (
+                        "tokens_input",
+                        "tokens_fresh_input",
+                        "tokens_cache_write",
+                        "tokens_cached",
+                        "tokens_output",
+                        "tokens_reasoning",
+                        "usage_complete",
+                        "tool_calls",
+                        "usage_source",
+                        "billing_mode",
+                        "estimated_cost_usd",
+                        "subscription_notional_usd",
+                    )
+                },
+                "wall_minutes": round((man.get("process") or {}).get("wall_time_seconds") or 0, 1) / 60,
+                "integrity": man.get("integrity_status"),
+            }
+        )
     return {"cells": cells, "runs_root": str(RUNS)}
 
 

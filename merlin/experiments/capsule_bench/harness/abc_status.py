@@ -5,11 +5,18 @@ Usage:
   python abc_status.py --tag abc9
   watch -n 60 'python abc_status.py'   # refresh every minute
 """
+
 from __future__ import annotations
-import argparse, json, re, subprocess, time
+
+import argparse
+import json
+import re
+import subprocess
+import time
 from pathlib import Path
 
 import _common as C  # noqa: E402 — active target (descriptor-driven)
+
 EXP = C.EXP
 RUNS = C.RUNS
 # Every rung the launcher can stamp, so a batch that includes one is not invisible here. The C++
@@ -24,11 +31,13 @@ RUNS = C.RUNS
 _INFRA = ("mlir_scaffold", "target_repo", "llvm_plan")
 _ASSISTED = ("isa_tools", "cca_contract", "action_catalog")
 _RTL = ("gen_isa_module", "gen_rtl_digest", "gen_numeric_facts")
-ARMS = [("baseline", "raw_baseline", "rb", ()),
-        ("cpp+infra", "cpp_merlininfra", "rbinfra", _INFRA),
-        ("merlin", "merlin_assisted", "merlin", _ASSISTED),
-        ("merlin+CIRCT", "merlin_assisted", "merlincirct", _ASSISTED + _RTL),
-        ("merlin+eqsat", "merlin_assisted", "merlineqsat", _ASSISTED + ("eqsat",))]
+ARMS = [
+    ("baseline", "raw_baseline", "rb", ()),
+    ("cpp+infra", "cpp_merlininfra", "rbinfra", _INFRA),
+    ("merlin", "merlin_assisted", "merlin", _ASSISTED),
+    ("merlin+CIRCT", "merlin_assisted", "merlincirct", _ASSISTED + _RTL),
+    ("merlin+eqsat", "merlin_assisted", "merlineqsat", _ASSISTED + ("eqsat",)),
+]
 
 
 def _alive(runid):
@@ -90,16 +99,17 @@ def main(argv=None):
     a = ap.parse_args(argv)
     tag = a.tag or _newest_tag()
     if not tag:
-        print("no batch found"); return 1
+        print("no batch found")
+        return 1
     now = time.time()
     print(f"=== A/B batch '{tag}'  ({time.strftime('%H:%M:%S')}) ===")
-    print(f"{'arm':14s} {'alive':5s} {'round':7s} {'last':>6s} {'grades (spike L0-L2)':28s} "
-          f"{'L3 cert':14s} tools")
+    print(f"{'arm':14s} {'alive':5s} {'round':7s} {'last':>6s} {'grades (spike L0-L2)':28s} {'L3 cert':14s} tools")
     for label, sub, prefix, tokens in ARMS:
         rid = _runid(prefix, tag)
         d = _run_dir(sub, rid)
         if not d.is_dir():
-            print(f"{label:14s} (no run dir)"); continue
+            print(f"{label:14s} (no run dir)")
+            continue
         rounds = sorted((d / "rounds").glob("round_*.transcript.jsonl"))
         cur = rounds[-1].stem.split(".")[0].replace("round_", "r") if rounds else "init"
         age = f"{int(now - rounds[-1].stat().st_mtime)}s" if rounds else "-"
@@ -116,17 +126,21 @@ def main(argv=None):
             try:
                 cj = json.loads(vcp.read_text())
                 last = cj.get("attempts", [{}])[-1] if cj.get("attempts") else {}
-                l3 = f"{last.get('n_passed','?')}/{last.get('n_capsules','?')} pass={cj.get('final_all_pass')}"
+                l3 = f"{last.get('n_passed', '?')}/{last.get('n_capsules', '?')} pass={cj.get('final_all_pass')}"
             except Exception:
                 pass
         tooled = _tool_call_count(d, tokens)
         alive = "yes" if _alive(rid) else "DEAD"
         print(f"{label:14s} {alive:5s} {cur:7s} {age:>6s} {str(grades) or 'none yet':28.28s} {l3:14s} {tooled}")
-    print("\n  grades = spike L0/L1/trace/L2 per graded round; L3 = cycle-accurate verilator cert "
-          "(non-terminal). 'converged' when L3 all-pass.")
-    print("  tools  = Bash calls invoking THIS arm's granted tooling ('n/a' = the rung grants none, "
-          "so there is nothing to fire). A rung sitting at 0 has an untreated treatment: its score is "
-          "not evidence about the tool.")
+    print(
+        "\n  grades = spike L0/L1/trace/L2 per graded round; L3 = cycle-accurate verilator cert "
+        "(non-terminal). 'converged' when L3 all-pass."
+    )
+    print(
+        "  tools  = Bash calls invoking THIS arm's granted tooling ('n/a' = the rung grants none, "
+        "so there is nothing to fire). A rung sitting at 0 has an untreated treatment: its score is "
+        "not evidence about the tool."
+    )
     return 0
 
 

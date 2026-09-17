@@ -4,6 +4,7 @@
 Called between the public grading phase and the hidden phase, so the hidden set is graded against an
 immutable, hashed artifact (you cannot tune on hidden).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -11,9 +12,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import yaml
-
 import _common as C
+import yaml
 
 
 def freeze(run_dir: Path) -> dict:
@@ -34,8 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--run-dir", required=True)
     a = ap.parse_args(argv)
     rec = freeze(Path(a.run_dir))
-    print(f"froze {a.run_dir}: sha={ (rec['submission_sha256'] or 'none')[:16] } "
-          f"files={rec['submission_files']}")
+    print(f"froze {a.run_dir}: sha={(rec['submission_sha256'] or 'none')[:16]} files={rec['submission_files']}")
     return 0
 
 

@@ -22,6 +22,7 @@ Honesty rules this file enforces rather than documents:
 Usage:
   agg_by_model.py [--tag SUBSTR] [--arm merlin_rtlchecks] [--out-dir DIR]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,8 +33,8 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _common as C                      # noqa: E402 — active target (descriptor-driven)
-import agg_agentic_results as AAR        # noqa: E402 — reuse arm detection + the per-run loader
+import _common as C  # noqa: E402 — active target (descriptor-driven)
+import agg_agentic_results as AAR  # noqa: E402 — reuse arm detection + the per-run loader
 
 UNKNOWN_MODEL = "(unrecorded)"
 
@@ -69,9 +70,13 @@ def _codex_facts(d: Path) -> dict:
             complete += 1
         else:
             incomplete += 1
-    return {"driver": "codex", "billing_mode": billing,
-            "rounds_with_usage": complete, "rounds_without_usage": incomplete,
-            "tokens_are_lower_bound": incomplete > 0}
+    return {
+        "driver": "codex",
+        "billing_mode": billing,
+        "rounds_with_usage": complete,
+        "rounds_without_usage": incomplete,
+        "tokens_are_lower_bound": incomplete > 0,
+    }
 
 
 def billing_mode(env: dict, codex: dict) -> str:
@@ -119,8 +124,7 @@ def _score(man: dict, key: str) -> dict:
             n = total = None
     elif isinstance(raw, int):
         n = raw
-    return {"passed": raw, "n": n,
-            "total": total if total is not None else (blk.get("n_capsules") or blk.get("total"))}
+    return {"passed": raw, "n": n, "total": total if total is not None else (blk.get("n_capsules") or blk.get("total"))}
 
 
 def _conformance(d: Path) -> dict:
@@ -135,15 +139,17 @@ def _conformance(d: Path) -> dict:
     keys = ("no_regex_ok", "isa_tools_used", "cca_used", "full_selfcheck")
     ever, last = {k: False for k in keys}, {k: None for k in keys}
     for r in rounds:
-        checks = ((r.get("conformance") or {}).get("checks") or {})
+        checks = (r.get("conformance") or {}).get("checks") or {}
         for k in keys:
             if checks.get(k):
                 ever[k] = True
             if k in checks:
                 last[k] = checks.get(k)
-    return {"last_round": last, "ever": ever,
-            "conformant_rounds": sum(1 for r in rounds
-                                     if (r.get("conformance") or {}).get("conformant"))}
+    return {
+        "last_round": last,
+        "ever": ever,
+        "conformant_rounds": sum(1 for r in rounds if (r.get("conformance") or {}).get("conformant")),
+    }
 
 
 def _tier_reach(d: Path) -> dict:
@@ -161,14 +167,13 @@ def _tier_reach(d: Path) -> dict:
     if not score.is_file():
         return {}
     try:
-        per = (json.loads(score.read_text()).get("per_capsule") or [])
+        per = json.loads(score.read_text()).get("per_capsule") or []
     except Exception:  # noqa: BLE001 — a run killed mid-write leaves this truncated
         return {}
     reach: dict = {}
     for c in per:
         tiers = c.get("tiers") or {}
-        passed = [t for t, v in tiers.items()
-                  if (v.get("status") if isinstance(v, dict) else v) == "pass"]
+        passed = [t for t, v in tiers.items() if (v.get("status") if isinstance(v, dict) else v) == "pass"]
         top = max(passed) if passed else "none"
         reach[top] = reach.get(top, 0) + 1
     return reach
@@ -218,10 +223,14 @@ def _behaviour(d: Path) -> dict:
     writes = {"write", "edit", "patch", "apply_patch"}
     first = next((i for i, n in enumerate(acts) if n in writes), None)
     n_write = sum(1 for n in acts if n in writes)
-    return {"actions": len(acts), "recon_before_first_write": first,
-            "recon_fraction": round(first / len(acts), 3) if first is not None else None,
-            "writes": n_write, "invalid_calls": sum(1 for n in acts if n == "invalid"),
-            "distinct_tools": len(set(acts))}
+    return {
+        "actions": len(acts),
+        "recon_before_first_write": first,
+        "recon_fraction": round(first / len(acts), 3) if first is not None else None,
+        "writes": n_write,
+        "invalid_calls": sum(1 for n in acts if n == "invalid"),
+        "distinct_tools": len(set(acts)),
+    }
 
 
 def _sink_check(d: Path) -> dict:
@@ -271,35 +280,45 @@ def collect(tag: str | None, arm_filter: str | None) -> list[dict]:
             ct = _y(d / "cost_time_toolcalls.yaml")
             env = _y(d / "environment.yaml")
             model = man.get("model") or env.get("model") or UNKNOWN_MODEL
-            rows.append({
-                "run_id": d.name, "arm": arm, "model": model,
-                "bundle_id": env.get("bundle_id"),
-                "driver": env.get("driver"), "provider": env.get("provider"),
-                "converged": r["converged"], "n_rounds": r["n_rounds"],
-                "public": _score(man, "public_dev"), "hidden": _score(man, "hidden"),
-                "integrity_status": man.get("integrity_status"),
-                "highest_tier": (man.get("public_dev") or {}).get("highest_tier"),
-                "oracle_mode": man.get("oracle_mode"),
-                "gradeable": man.get("gradeable"),
-                "first_failure_planes": _first_planes(man),
-                "wall_s": r["wall_s"], "active_wall_s": (ct.get("active_wall_s")),
-                "rate_limit_wait_s": ct.get("rate_limit_wait_s"),
-                "tool_calls": r["tool_calls"],
-                "tokens_total": r["tokens_total"], "tokens_input": r["tokens_input"],
-                "tokens_output": r["tokens_output"], "tokens_cached": r["tokens_cached"],
-                "tokens_by_model": ct.get("tokens_native_by_model"),
-                "cost_usd": r["cost_usd"],
-                # A seat run leaves estimated_cost_usd null on purpose; its dollars live here. Without
-                # reading it the table printed $0.00 notional for runs that cost $5-8 of equivalent
-                # traffic, which reads as "free" rather than "not billed per token".
-                "notional_usd": ct.get("subscription_notional_usd"),
-                "sink": _sink_check(d),
-                "conformance": _conformance(d),
-                "tier_reach": _tier_reach(d),
-                "behaviour": _behaviour(d),
-                "codex": _codex_facts(d),
-                "billing_mode": billing_mode(env, _codex_facts(d)),
-            })
+            rows.append(
+                {
+                    "run_id": d.name,
+                    "arm": arm,
+                    "model": model,
+                    "bundle_id": env.get("bundle_id"),
+                    "driver": env.get("driver"),
+                    "provider": env.get("provider"),
+                    "converged": r["converged"],
+                    "n_rounds": r["n_rounds"],
+                    "public": _score(man, "public_dev"),
+                    "hidden": _score(man, "hidden"),
+                    "integrity_status": man.get("integrity_status"),
+                    "highest_tier": (man.get("public_dev") or {}).get("highest_tier"),
+                    "oracle_mode": man.get("oracle_mode"),
+                    "gradeable": man.get("gradeable"),
+                    "first_failure_planes": _first_planes(man),
+                    "wall_s": r["wall_s"],
+                    "active_wall_s": (ct.get("active_wall_s")),
+                    "rate_limit_wait_s": ct.get("rate_limit_wait_s"),
+                    "tool_calls": r["tool_calls"],
+                    "tokens_total": r["tokens_total"],
+                    "tokens_input": r["tokens_input"],
+                    "tokens_output": r["tokens_output"],
+                    "tokens_cached": r["tokens_cached"],
+                    "tokens_by_model": ct.get("tokens_native_by_model"),
+                    "cost_usd": r["cost_usd"],
+                    # A seat run leaves estimated_cost_usd null on purpose; its dollars live here. Without
+                    # reading it the table printed $0.00 notional for runs that cost $5-8 of equivalent
+                    # traffic, which reads as "free" rather than "not billed per token".
+                    "notional_usd": ct.get("subscription_notional_usd"),
+                    "sink": _sink_check(d),
+                    "conformance": _conformance(d),
+                    "tier_reach": _tier_reach(d),
+                    "behaviour": _behaviour(d),
+                    "codex": _codex_facts(d),
+                    "billing_mode": billing_mode(env, _codex_facts(d)),
+                }
+            )
     return rows
 
 
@@ -307,15 +326,29 @@ def by_model(rows: list[dict]) -> dict:
     """Group per-run records by model, keeping metered and subscription spend separate."""
     out: dict[str, dict] = {}
     for r in rows:
-        m = out.setdefault(r["model"], {
-            "model": r["model"], "n_runs": 0, "runs": [],
-            "best_public": None, "best_hidden": None, "best_public_n": -1, "best_hidden_n": -1,
-            "metered_cost_usd": 0.0, "unpriced_runs": 0,
-            "notional_cost_usd": 0.0, "unknown_billing_cost_usd": 0.0,
-            "subscription_notional_runs": 0, "unknown_billing_runs": 0, "notional_unpriced_runs": 0,
-            "lower_bound_token_runs": 0,
-            "tokens_total": 0, "tool_calls": 0, "planes": {},
-        })
+        m = out.setdefault(
+            r["model"],
+            {
+                "model": r["model"],
+                "n_runs": 0,
+                "runs": [],
+                "best_public": None,
+                "best_hidden": None,
+                "best_public_n": -1,
+                "best_hidden_n": -1,
+                "metered_cost_usd": 0.0,
+                "unpriced_runs": 0,
+                "notional_cost_usd": 0.0,
+                "unknown_billing_cost_usd": 0.0,
+                "subscription_notional_runs": 0,
+                "unknown_billing_runs": 0,
+                "notional_unpriced_runs": 0,
+                "lower_bound_token_runs": 0,
+                "tokens_total": 0,
+                "tool_calls": 0,
+                "planes": {},
+            },
+        )
         m["n_runs"] += 1
         m["runs"].append(r["run_id"])
         for k, sk in (("best_public", "public"), ("best_hidden", "hidden")):
@@ -324,8 +357,8 @@ def by_model(rows: list[dict]) -> dict:
             if n is None:
                 continue
             if m[k] is None or n > m[k + "_n"]:
-                m[k] = blk.get("passed")          # keep the printed "20/20" form
-                m[k + "_n"] = n                   # rank on the COUNT, never the string
+                m[k] = blk.get("passed")  # keep the printed "20/20" form
+                m[k + "_n"] = n  # rank on the COUNT, never the string
         bm = r["billing_mode"]
         if bm == "subscription_notional":
             m["subscription_notional_runs"] += 1
@@ -333,10 +366,10 @@ def by_model(rows: list[dict]) -> dict:
             if r.get("notional_usd") is None:
                 m["notional_unpriced_runs"] += 1
         elif r["cost_usd"] is None:
-            m["unpriced_runs"] += 1          # cost unavailable - NOT zero
+            m["unpriced_runs"] += 1  # cost unavailable - NOT zero
         elif bm == "metered":
             m["metered_cost_usd"] += float(r["cost_usd"])
-        else:                                 # provider not recorded: keep it OUT of the metered total
+        else:  # provider not recorded: keep it OUT of the metered total
             m["unknown_billing_runs"] += 1
             m["unknown_billing_cost_usd"] += float(r["cost_usd"])
         if (r["codex"] or {}).get("tokens_are_lower_bound"):
@@ -351,8 +384,10 @@ def by_model(rows: list[dict]) -> dict:
 
 def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
     L = [f"# capsule-bench by model - target `{C.TARGET}`" + (f", arm `{arm}`" if arm else ""), ""]
-    L += ["| model | runs | best public | best hidden | rounds | tool calls | tokens | cost |",
-          "|---|---|---|---|---|---|---|---|"]
+    L += [
+        "| model | runs | best public | best hidden | rounds | tool calls | tokens | cost |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     for name in sorted(models):
         m = models[name]
         rd = [r["n_rounds"] for r in rows if r["model"] == name and r["n_rounds"]]
@@ -376,16 +411,28 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
             if m["unpriced_runs"]:
                 cost += f" (+{m['unpriced_runs']} unpriced)"
         tok = f"{m['tokens_total']:,}" + (" (lower bound)" if m["lower_bound_token_runs"] else "")
-        L.append(f"| `{name}` | {m['n_runs']} | {m['best_public']} | {m['best_hidden']} | "
-                 f"{max(rd) if rd else '-'} | {m['tool_calls']:,} | {tok} | {cost} |")
-    L += ["", "## per run (a best-of row hides a run that diverged)", "",
-          "| run | model | public | hidden | tier | rounds | tokens | cost |", "|---|---|---|---|---|---|---|---|"]
+        L.append(
+            f"| `{name}` | {m['n_runs']} | {m['best_public']} | {m['best_hidden']} | "
+            f"{max(rd) if rd else '-'} | {m['tool_calls']:,} | {tok} | {cost} |"
+        )
+    L += [
+        "",
+        "## per run (a best-of row hides a run that diverged)",
+        "",
+        "| run | model | public | hidden | tier | rounds | tokens | cost |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     for r in sorted(rows, key=lambda x: (x["model"], x["run_id"])):
-        c = (f"${r['notional_usd']:.2f} notional" if r.get("notional_usd")
-             else (f"${r['cost_usd']:.2f}" if r.get("cost_usd") else "—"))
-        L.append(f"| `{r['run_id']}` | `{r['model']}` | {(r['public'] or {}).get('passed')} | "
-                 f"{(r['hidden'] or {}).get('passed')} | {r.get('highest_tier') or '—'} | "
-                 f"{r['n_rounds']} | {(r['tokens_total'] or 0):,} | {c} |")
+        c = (
+            f"${r['notional_usd']:.2f} notional"
+            if r.get("notional_usd")
+            else (f"${r['cost_usd']:.2f}" if r.get("cost_usd") else "—")
+        )
+        L.append(
+            f"| `{r['run_id']}` | `{r['model']}` | {(r['public'] or {}).get('passed')} | "
+            f"{(r['hidden'] or {}).get('passed')} | {r.get('highest_tier') or '—'} | "
+            f"{r['n_rounds']} | {(r['tokens_total'] or 0):,} | {c} |"
+        )
     # PARTIAL CREDIT. Two runs can both read 0/20 while one never parsed and the other passed the numeric
     # and trace tiers on most capsules and lost only on the hardware encoding. The ladder already knows the
     # difference, so print it rather than let a single pass/fail number flatten it.
@@ -393,39 +440,54 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
     for r in sorted(rows, key=lambda x: str(x.get("model"))):
         reach = r.get("tier_reach") or {}
         if reach:
-            L.append(f"- `{r['run_id']}` ({r.get('model')}): "
-                     + ", ".join(f"{k}={v}" for k, v in sorted(reach.items())))
+            L.append(
+                f"- `{r['run_id']}` ({r.get('model')}): " + ", ".join(f"{k}={v}" for k, v in sorted(reach.items()))
+            )
 
     # CONFORMANCE. On this arm these flags separated the runs more sharply than the score did: the 20/20
     # run used the RTL-derived tooling every round; a 0/20 run that reached the simulator never touched it.
-    L += ["", "## arm conformance (did the run use the RTL-derived tooling it was given?)", "",
-          "| run | model | rounds conformant | isa_tools | cca | no-regex | full self-check |",
-          "|---|---|---|---|---|---|---|"]
+    L += [
+        "",
+        "## arm conformance (did the run use the RTL-derived tooling it was given?)",
+        "",
+        "| run | model | rounds conformant | isa_tools | cca | no-regex | full self-check |",
+        "|---|---|---|---|---|---|---|",
+    ]
+
     def _m(v):
         return {True: "yes", False: "no", None: "—"}.get(v, str(v))
+
     for r in sorted(rows, key=lambda x: str(x.get("model"))):
         c = r.get("conformance") or {}
         ever = c.get("ever") or {}
         if not ever:
             continue
-        L.append(f"| `{r['run_id']}` | `{r.get('model')}` | {c.get('conformant_rounds', 0)} | "
-                 f"{_m(ever.get('isa_tools_used'))} | {_m(ever.get('cca_used'))} | "
-                 f"{_m(ever.get('no_regex_ok'))} | {_m(ever.get('full_selfcheck'))} |")
+        L.append(
+            f"| `{r['run_id']}` | `{r.get('model')}` | {c.get('conformant_rounds', 0)} | "
+            f"{_m(ever.get('isa_tools_used'))} | {_m(ever.get('cca_used'))} | "
+            f"{_m(ever.get('no_regex_ok'))} | {_m(ever.get('full_selfcheck'))} |"
+        )
 
     # HOW THE RUN WAS SPENT. Token and tool-call totals were similar or larger for the runs that failed;
     # what differed was the shape -- how long they investigated before editing, and how much they rewrote.
-    L += ["", "## how the run was spent", "",
-          "| run | model | actions | recon before 1st write | writes | invalid calls | distinct tools |",
-          "|---|---|---|---|---|---|---|"]
+    L += [
+        "",
+        "## how the run was spent",
+        "",
+        "| run | model | actions | recon before 1st write | writes | invalid calls | distinct tools |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for r in sorted(rows, key=lambda x: str(x.get("model"))):
         b = r.get("behaviour") or {}
         if not b:
             continue
         frac = b.get("recon_fraction")
-        L.append(f"| `{r['run_id']}` | `{r.get('model')}` | {b.get('actions')} | "
-                 f"{b.get('recon_before_first_write')}"
-                 f"{f' ({frac:.0%})' if isinstance(frac, float) else ''} | "
-                 f"{b.get('writes')} | {b.get('invalid_calls')} | {b.get('distinct_tools')} |")
+        L.append(
+            f"| `{r['run_id']}` | `{r.get('model')}` | {b.get('actions')} | "
+            f"{b.get('recon_before_first_write')}"
+            f"{f' ({frac:.0%})' if isinstance(frac, float) else ''} | "
+            f"{b.get('writes')} | {b.get('invalid_calls')} | {b.get('distinct_tools')} |"
+        )
 
     L += ["", "## where capsules die (first failure plane, summed over runs)", ""]
     for name in sorted(models):
@@ -446,19 +508,30 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
         if own and sink and abs(own - sink) > max(1000, 0.01 * own):
             bad.append((r["run_id"], f"sink {sink:,} vs run {own:,} input tokens"))
     L += ["", "## telemetry reconciliation", ""]
-    L += ([f"- ⚠️ `{rid}`: {why}" for rid, why in bad] if bad
-          else ["- every run wrote a sink and its token totals agree with the run's own accounting"])
+    L += (
+        [f"- ⚠️ `{rid}`: {why}" for rid, why in bad]
+        if bad
+        else ["- every run wrote a sink and its token totals agree with the run's own accounting"]
+    )
 
-    L += ["", "## spend", "",
-          f"- metered (counts against the budget ceiling): **${metered:.2f}**",
-          f"- notional (subscription; tokens real, dollars not billed per-token): ${notional:.2f}",
-          f"- billing mode unrecorded (older runs; NOT added to the metered total): ${unknown:.2f}"]
-    L += ["", "## caveats", "",
-          "- `notional (subscription)` = a ChatGPT/Claude-subscription run: tokens are real, dollars are notional.",
-          "- `unpriced` means the price table has no rate for that model - it is NOT zero spend.",
-          "- `(lower bound)` = at least one round ended without the provider reporting usage.", ""]
+    L += [
+        "",
+        "## spend",
+        "",
+        f"- metered (counts against the budget ceiling): **${metered:.2f}**",
+        f"- notional (subscription; tokens real, dollars not billed per-token): ${notional:.2f}",
+        f"- billing mode unrecorded (older runs; NOT added to the metered total): ${unknown:.2f}",
+    ]
+    L += [
+        "",
+        "## caveats",
+        "",
+        "- `notional (subscription)` = a ChatGPT/Claude-subscription run: tokens are real, dollars are notional.",
+        "- `unpriced` means the price table has no rate for that model - it is NOT zero spend.",
+        "- `(lower bound)` = at least one round ended without the provider reporting usage.",
+        "",
+    ]
     return "\n".join(L)
-
 
 
 # ------------------------------------------------------------------------------------------------
@@ -470,15 +543,28 @@ def markdown(models: dict, rows: list[dict], arm: str | None) -> str:
 # any harness, and this is the view that separates them: rows are models, columns are harnesses, and
 # reading DOWN a column isolates the model while reading ACROSS a row isolates the harness.
 
+
 def by_cell(rows: list[dict]) -> dict:
     """Group per-run records by (model, driver). The key is the experimental CELL, not the model."""
     out: dict[str, dict] = {}
     for r in rows:
         key = f"{r['model']}::{r.get('driver') or UNKNOWN_MODEL}"
-        c = out.setdefault(key, {"model": r["model"], "harness": r.get("driver"), "runs": [],
-                                 "best_passed": 0, "n_capsules": None, "best_tier": None,
-                                 "metered_usd": 0.0, "notional_usd": 0.0, "tool_calls": 0,
-                                 "tokens_total": 0, "bridged": None})
+        c = out.setdefault(
+            key,
+            {
+                "model": r["model"],
+                "harness": r.get("driver"),
+                "runs": [],
+                "best_passed": 0,
+                "n_capsules": None,
+                "best_tier": None,
+                "metered_usd": 0.0,
+                "notional_usd": 0.0,
+                "tool_calls": 0,
+                "tokens_total": 0,
+                "bridged": None,
+            },
+        )
         c["runs"].append(r["run_id"])
         # _score parses "20/20" into n (count passed) and total. Reading `passed` here would take the
         # raw STRING and compare it as an int -- which is how a 20/20 codex cell rendered as 0/20.
@@ -519,30 +605,42 @@ def matrix_markdown(cells: dict) -> str:
     """The harness x model table, plus the two readings that make it evidence."""
     models = sorted({c["model"] for c in cells.values()})
     harnesses = sorted({c["harness"] for c in cells.values() if c["harness"]})
-    L = ["## Harness x model", "",
-         "Rows are models, columns are harnesses. Reading DOWN a column holds the harness fixed and",
-         "varies the model; reading ACROSS a row holds the model fixed and varies the harness. A cell",
-         "marked (b) was reached through the LiteLLM bridge, which carries its own caveats (no prompt",
-         "caching, a different system-prompt preamble) -- see agent_bridge.", "",
-         "| model | " + " | ".join(harnesses) + " |",
-         "|---|" + "---|" * len(harnesses)]
+    L = [
+        "## Harness x model",
+        "",
+        "Rows are models, columns are harnesses. Reading DOWN a column holds the harness fixed and",
+        "varies the model; reading ACROSS a row holds the model fixed and varies the harness. A cell",
+        "marked (b) was reached through the LiteLLM bridge, which carries its own caveats (no prompt",
+        "caching, a different system-prompt preamble) -- see agent_bridge.",
+        "",
+        "| model | " + " | ".join(harnesses) + " |",
+        "|---|" + "---|" * len(harnesses),
+    ]
     for m in models:
         cs = []
         for h in harnesses:
             c = cells.get(f"{m}::{h}")
             if not c:
-                cs.append("—"); continue
+                cs.append("—")
+                continue
             n = c["n_capsules"] or "?"
             tier = c["best_tier"] or "none"
             mark = " (b)" if c["bridged"] else ""
             cs.append(f"{c['best_passed']}/{n} @{tier}{mark}")
         L.append(f"| `{m}` | " + " | ".join(cs) + " |")
-    L += ["", "### Cost and effort per cell", "",
-          "| cell | runs | actions | tokens | metered | notional |", "|---|---|---|---|---|---|"]
+    L += [
+        "",
+        "### Cost and effort per cell",
+        "",
+        "| cell | runs | actions | tokens | metered | notional |",
+        "|---|---|---|---|---|---|",
+    ]
     for k in sorted(cells):
         c = cells[k]
-        L.append(f"| `{k}` | {len(c['runs'])} | {c['tool_calls']} | {c['tokens_total']:,} | "
-                 f"${c['metered_usd']:.2f} | ${c['notional_usd']:.2f} |")
+        L.append(
+            f"| `{k}` | {len(c['runs'])} | {c['tool_calls']} | {c['tokens_total']:,} | "
+            f"${c['metered_usd']:.2f} | ${c['notional_usd']:.2f} |"
+        )
     return "\n".join(L) + "\n"
 
 
@@ -558,8 +656,15 @@ def main(argv=None) -> int:
     cells = by_cell(rows)
     out_dir = Path(a.out_dir) if a.out_dir else C.REPORTS
     out_dir.mkdir(parents=True, exist_ok=True)
-    payload = {"target": C.TARGET, "arm_filter": a.arm, "tag_filter": a.tag,
-               "n_runs": len(rows), "models": models, "cells": cells, "runs": rows}
+    payload = {
+        "target": C.TARGET,
+        "arm_filter": a.arm,
+        "tag_filter": a.tag,
+        "n_runs": len(rows),
+        "models": models,
+        "cells": cells,
+        "runs": rows,
+    }
     (out_dir / "by_model.json").write_text(json.dumps(payload, indent=2))
     md = markdown(models, rows, a.arm) + "\n" + matrix_markdown(cells)
     (out_dir / "by_model.md").write_text(md)

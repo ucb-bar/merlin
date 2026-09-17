@@ -9,8 +9,7 @@ from pathlib import Path
 def run(run_dir: Path, manifest: dict) -> dict:
     target = manifest["target"]
     golden_mock = (
-        Path(__file__).parent.parent / "datasets" / target
-        / "tests" / "runtime_mock" / "matmul_exact_i8_i32.json"
+        Path(__file__).parent.parent / "datasets" / target / "tests" / "runtime_mock" / "matmul_exact_i8_i32.json"
     )
     generated_mock = run_dir / "generated" / f"{target}-mlir" / "runtime_mock" / "matmul_exact_i8_i32.json"
 
@@ -28,8 +27,7 @@ def run(run_dir: Path, manifest: dict) -> dict:
 
     if not generated_mock.exists():
         metrics["errors"].append(
-            "Generated runtime mock not found; "
-            "method has not produced runtime_mock/matmul_exact_i8_i32.json"
+            "Generated runtime mock not found; method has not produced runtime_mock/matmul_exact_i8_i32.json"
         )
         return metrics
 

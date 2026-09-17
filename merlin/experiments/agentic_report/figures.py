@@ -8,6 +8,7 @@ tidier study than the one we ran.
 
     figures.py [--facts PATH] [--out DIR] [--only NAME]...
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,19 +19,31 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 import matplotlib
+
 matplotlib.use("Agg")
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-import matplotlib.pyplot as plt                                              # noqa: E402
-import numpy as np                                                           # noqa: E402
-from matplotlib.lines import Line2D                                          # noqa: E402
-from matplotlib.patches import Patch                                         # noqa: E402
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
 
-from merlin.plotting.merlin_plotstyle import (BLUE, GOLD, INK, MAUVE, NAVY,       # noqa: E402
-                                              SAGE, SERIF, SLATE, suptitle, title,
-                                              use_merlin_style, vbars)
-from merlin.plotting.merlin_plotstyle import style_ax as _house_style_ax             # noqa: E402
+from merlin.plotting.merlin_plotstyle import (  # noqa: E402
+    BLUE,
+    GOLD,
+    INK,
+    MAUVE,
+    NAVY,
+    SAGE,
+    SERIF,
+    SLATE,
+    suptitle,
+    title,
+    use_merlin_style,
+    vbars,
+)
+from merlin.plotting.merlin_plotstyle import style_ax as _house_style_ax  # noqa: E402
 
 #: The house palette carries the series identity; the page does not. These figures are read on a
 #: white page and in a white slide deck, so the canvas is white while every ink, bar and accent stays
@@ -41,13 +54,18 @@ PAGE_BG = "#FFFFFF"
 EMPTY_FILL = "#EDE7E0"
 
 ARM_ORDER = ["arm1", "arm2", "arm3", "arm4", "eqsat", "UNKNOWN"]
-ARM_COLOR = {"arm1": MAUVE, "arm2": NAVY, "arm3": SLATE, "arm4": SAGE,
-             "eqsat": BLUE, "UNKNOWN": "#bdb2a4"}
-ARM_LABEL = {"arm1": "arm 1 · raw C++", "arm2": "arm 2 · C++ & infra",
-             "arm3": "arm 3 · Merlin Python", "arm4": "arm 4 · Merlin & CIRCT",
-             "eqsat": "e-graph seam", "UNKNOWN": "unclassified"}
+ARM_COLOR = {"arm1": MAUVE, "arm2": NAVY, "arm3": SLATE, "arm4": SAGE, "eqsat": BLUE, "UNKNOWN": "#bdb2a4"}
+ARM_LABEL = {
+    "arm1": "arm 1 · raw C++",
+    "arm2": "arm 2 · C++ & infra",
+    "arm3": "arm 3 · Merlin Python",
+    "arm4": "arm 4 · Merlin & CIRCT",
+    "eqsat": "e-graph seam",
+    "UNKNOWN": "unclassified",
+}
 #: One hatch, one meaning: this cell is not a measurement.
 GAP_HATCH = "//"
+
 
 def style_ax(ax, *, grid="y"):
     """The house axes treatment, on a white canvas.
@@ -77,9 +95,11 @@ def figure(name, *, needs="facts"):
     whole point, since no single run covers a corpus. The declaration keeps that explicit instead
     of letting a figure reach for a second source on its own.
     """
+
     def wrap(fn):
         _REGISTRY[name] = (fn, needs)
         return fn
+
     return wrap
 
 
@@ -93,8 +113,7 @@ def _save(fig, out: Path, name: str) -> None:
 
 def _caption(ax, text: str, y: float = -0.16) -> None:
     """Provenance line under ONE axes. Use `_figcaption` when several panels share a figure."""
-    ax.text(0.0, y, text, transform=ax.transAxes, ha="left", va="top",
-            fontsize=8.0, color=INK, alpha=0.78, wrap=True)
+    ax.text(0.0, y, text, transform=ax.transAxes, ha="left", va="top", fontsize=8.0, color=INK, alpha=0.78, wrap=True)
 
 
 def _figcaption(fig, text: str, y: float = 0.008) -> None:
@@ -117,6 +136,7 @@ def _cost(f: dict) -> tuple[float | None, str]:
 
 
 # --------------------------------------------------------------------------- figures
+
 
 @figure("fig01_arm_ladder")
 def arm_ladder(facts, out):
@@ -148,17 +168,16 @@ def arm_ladder(facts, out):
             if f is None:
                 # A rung nobody ran is a GAP, not a score. Drawn as a low hatched stub so it can
                 # never be read off the value axis.
-                ax.bar(x, total * 0.06, 0.62, color="none", edgecolor=INK, lw=1.0,
-                       hatch=GAP_HATCH, zorder=3)
+                ax.bar(x, total * 0.06, 0.62, color="none", edgecolor=INK, lw=1.0, hatch=GAP_HATCH, zorder=3)
                 ax.text(x, total * 0.10, "not run", ha="center", fontsize=8.0, color=MAUVE)
                 ticks.append(f"arm {a[-1]}\n—")
                 continue
             ax.bar(x, f["passed"], 0.62, color=ARM_COLOR[a], edgecolor=INK, lw=1.2, zorder=3)
-            ax.text(x, f["passed"] + total * 0.035, str(f["passed"]), ha="center",
-                    fontsize=11, color=INK, fontweight="bold")
+            ax.text(
+                x, f["passed"] + total * 0.035, str(f["passed"]), ha="center", fontsize=11, color=INK, fontweight="bold"
+            )
             cost, kind = _cost(f)
-            money = "unpriced" if cost is None else (
-                f"${cost:.0f}" if kind == "metered" else f"~${cost:.0f}")
+            money = "unpriced" if cost is None else (f"${cost:.0f}" if kind == "metered" else f"~${cost:.0f}")
             hours = (f.get("active_wall_s") or 0) / 3600.0
             clock = f"{hours:.1f} h" if hours else "no clock"
             ticks.append(f"arm {a[-1]}\n{money}\n{clock}")
@@ -169,8 +188,7 @@ def arm_ladder(facts, out):
         style_ax(ax)
         target, _, tag = key.split("/")
         quality = ladders[key][0].get("ladder_quality", "full")
-        badge = {"full": "", "patch": "  ·  PATCH LADDER",
-                 "null": "  ·  NULL CELL"}.get(quality, "")
+        badge = {"full": "", "patch": "  ·  PATCH LADDER", "null": "  ·  NULL CELL"}.get(quality, "")
         title(ax, f"{target} · {tag}{badge}\n{total} capsules", fs=10.5, pad=8)
         if quality != "full":
             # Dim a ladder that is not a from-scratch contrast, so it cannot be read as one at a
@@ -180,14 +198,17 @@ def arm_ladder(facts, out):
             # Wrapped to the panel, not clipped at a character count: an unwrapped note runs into
             # the neighbouring panel's note and the two become one unreadable line.
             wrapped = "\n".join(textwrap.wrap(note, width=44)[:4])
-            ax.text(0.0, -0.34, wrapped, transform=ax.transAxes, ha="left", va="top",
-                    fontsize=7.0, color=MAUVE)
-    _figcaption(fig, "Only tag-matched ladders are shown: every rung in a panel was graded against "
-                     "the same corpus with the same model, so the bars are comparable. Cost (~ = "
-                     "notional) and active wall are under each rung. Fractions from DIFFERENT panels "
-                     "are not comparable — the corpora differ. A shaded panel is not a from-scratch "
-                     "contrast: PATCH means its rungs adjusted an existing compiler, NULL means every "
-                     "rung scored zero.", y=0.02)
+            ax.text(0.0, -0.34, wrapped, transform=ax.transAxes, ha="left", va="top", fontsize=7.0, color=MAUVE)
+    _figcaption(
+        fig,
+        "Only tag-matched ladders are shown: every rung in a panel was graded against "
+        "the same corpus with the same model, so the bars are comparable. Cost (~ = "
+        "notional) and active wall are under each rung. Fractions from DIFFERENT panels "
+        "are not comparable — the corpora differ. A shaded panel is not a from-scratch "
+        "contrast: PATCH means its rungs adjusted an existing compiler, NULL means every "
+        "rung scored zero.",
+        y=0.02,
+    )
     suptitle(fig, "The ladder, where a like-for-like ladder exists", y=1.02)
     fig.subplots_adjust(bottom=0.32, top=0.83, wspace=0.30)
     _save(fig, out, "fig01_arm_ladder")
@@ -206,10 +227,8 @@ def best_per_cell(facts, out):
         y = targets.index(f["target"])
         x = ARM_ORDER.index(f["arm"])
         frac = f["passed"] / f["capsules"]
-        ax.scatter(x, y, s=140 + 900 * frac, color=ARM_COLOR[f["arm"]], edgecolor=INK, lw=1.0,
-                   alpha=0.9, zorder=3)
-        ax.text(x, y - 0.30, f"{f['passed']}/{f['capsules']}", ha="center", fontsize=9.2,
-                color=INK, fontweight="bold")
+        ax.scatter(x, y, s=140 + 900 * frac, color=ARM_COLOR[f["arm"]], edgecolor=INK, lw=1.0, alpha=0.9, zorder=3)
+        ax.text(x, y - 0.30, f"{f['passed']}/{f['capsules']}", ha="center", fontsize=9.2, color=INK, fontweight="bold")
     ax.set_xticks(range(4))
     ax.set_xticklabels([ARM_LABEL[a] for a in ARM_ORDER[:4]], fontsize=9)
     ax.set_yticks(range(len(targets)))
@@ -217,10 +236,13 @@ def best_per_cell(facts, out):
     ax.set_xlim(-0.6, 3.6)
     ax.set_ylim(-0.7, len(targets) - 0.3)
     style_ax(ax, grid="both")
-    _figcaption(fig, "Marker area is the pass fraction; the label carries its denominator. Cells are "
-                     "NOT comparable across rows or columns — each was graded against whatever corpus "
-                     "that target had when the run happened, and the corpus grew from 11 to 96 over "
-                     "the study. An empty cell had no graded run at all.")
+    _figcaption(
+        fig,
+        "Marker area is the pass fraction; the label carries its denominator. Cells are "
+        "NOT comparable across rows or columns — each was graded against whatever corpus "
+        "that target had when the run happened, and the corpus grew from 11 to 96 over "
+        "the study. An empty cell had no graded run at all.",
+    )
     suptitle(fig, "Best run in each target × arm cell")
     fig.subplots_adjust(bottom=0.26)
     _save(fig, out, "fig01b_best_per_cell")
@@ -251,9 +273,9 @@ def capsules_over_time(facts, out):
         if not f.get("selected") or not ms:
             continue
         if max(m["n_passed"] for m in ms) == 0:
-            continue                                   # never passed anything
+            continue  # never passed anything
         if f.get("ladder_quality") == "patch":
-            continue                                   # inherited its result
+            continue  # inherited its result
         lanes.append(f)
     # One lane per (target, arm): the best score, then the longer record. Two runs of the same arm in
     # one panel would draw the same colour twice and read as a single erratic line.
@@ -262,8 +284,7 @@ def capsules_over_time(facts, out):
         key = (f["target"], f["arm"])
         cur = best.get(key)
         rank = ((f["passed"] or 0) / max(f["capsules"] or 1, 1), len(f["pass_milestones"]))
-        if cur is None or rank > ((cur["passed"] or 0) / max(cur["capsules"] or 1, 1),
-                                  len(cur["pass_milestones"])):
+        if cur is None or rank > ((cur["passed"] or 0) / max(cur["capsules"] or 1, 1), len(cur["pass_milestones"])):
             best[key] = f
     lanes = sorted(best.values(), key=lambda f: (f["target"], f["arm"]))
     if not lanes:
@@ -284,17 +305,38 @@ def capsules_over_time(facts, out):
             end_min = max((f.get("pass_wall_s") or 0) / 60.0, xs[-1])
             xs, ys = [0.0] + xs + [end_min], [ys[0]] + ys + [ys[-1]]
             in_ladder = bool(f.get("ladder"))
-            ax.step(xs, ys, where="post", color=ARM_COLOR[f["arm"]], lw=2.1 if in_ladder else 1.6,
-                    ls="-" if in_ladder else (0, (4, 2.5)), zorder=3)
-            ax.plot([xs[-1]], [ys[-1]], "o", color=ARM_COLOR[f["arm"]], ms=5.5,
-                    markeredgecolor=INK, markeredgewidth=0.7, zorder=4)
+            ax.step(
+                xs,
+                ys,
+                where="post",
+                color=ARM_COLOR[f["arm"]],
+                lw=2.1 if in_ladder else 1.6,
+                ls="-" if in_ladder else (0, (4, 2.5)),
+                zorder=3,
+            )
+            ax.plot(
+                [xs[-1]],
+                [ys[-1]],
+                "o",
+                color=ARM_COLOR[f["arm"]],
+                ms=5.5,
+                markeredgecolor=INK,
+                markeredgewidth=0.7,
+                zorder=4,
+            )
             ly = ys[-1]
-            while any(abs(ly - py) < 0.055 and abs(xs[-1] - px) < 0.28 * max(end_min, 1)
-                      for px, py in placed):
+            while any(abs(ly - py) < 0.055 and abs(xs[-1] - px) < 0.28 * max(end_min, 1) for px, py in placed):
                 ly += 0.055
             placed.append((xs[-1], ly))
-            ax.text(xs[-1], ly, f"  {f['passed']}/{total}", va="center", fontsize=8.6,
-                    color=ARM_COLOR[f["arm"]], fontweight="bold")
+            ax.text(
+                xs[-1],
+                ly,
+                f"  {f['passed']}/{total}",
+                va="center",
+                fontsize=8.6,
+                color=ARM_COLOR[f["arm"]],
+                fontweight="bold",
+            )
         ax.set_ylim(0, 1.12)
         ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
         ax.set_yticklabels(["0", "", "50%", "", "100%"] if target == targets[0] else [])
@@ -304,28 +346,45 @@ def capsules_over_time(facts, out):
         style_ax(ax, grid="both")
         n_ladder = sum(1 for f in here if f.get("ladder"))
         title(ax, f"{target}   ({n_ladder} of {len(here)} share one corpus)", fs=12)
-        ax.legend(handles=[Line2D([0], [0], color=ARM_COLOR[f["arm"]],
-                                  lw=2.1 if f.get("ladder") else 1.6,
-                                  ls="-" if f.get("ladder") else (0, (4, 2.5)),
-                                  label=f"{ARM_LABEL[f['arm']].split('·')[0].strip()} · "
-                                        f"{max(m['n_capsules'] for m in f['pass_milestones'])} caps")
-                           for f in here],
-                  loc="lower right", fontsize=8, framealpha=0.95)
+        ax.legend(
+            handles=[
+                Line2D(
+                    [0],
+                    [0],
+                    color=ARM_COLOR[f["arm"]],
+                    lw=2.1 if f.get("ladder") else 1.6,
+                    ls="-" if f.get("ladder") else (0, (4, 2.5)),
+                    label=f"{ARM_LABEL[f['arm']].split('·')[0].strip()} · "
+                    f"{max(m['n_capsules'] for m in f['pass_milestones'])} caps",
+                )
+                for f in here
+            ],
+            loc="lower right",
+            fontsize=8,
+            framealpha=0.95,
+        )
 
-    dropped_null = sum(1 for f in facts if f.get("selected") and f.get("pass_milestones")
-                       and max(m["n_passed"] for m in f["pass_milestones"]) == 0)
-    dropped_patch = sum(1 for f in facts if f.get("selected") and f.get("pass_milestones")
-                        and f.get("ladder_quality") == "patch")
-    n_mtime = sum(1 for f in lanes
-                  if f.get("availability", {}).get("passes", {}).get("kind") == "derived")
-    _figcaption(fig, f"{len(lanes)} run(s) drawn, best per target and arm. {dropped_null} that never "
-                     f"passed a capsule and {dropped_patch} that inherited a compiler are omitted — "
-                     f"both are real results, and both are reported in the ladder figure instead. "
-                     f"SOLID lanes belong to a tag-matched ladder and were graded against the SAME "
-                     f"corpus, so their heights are comparable; DASHED lanes were graded against "
-                     f"their own suite, whose size is in the legend, and their heights are not. "
-                     f"{n_mtime} of {len(lanes)} lanes take their clock from verdict-file mtimes "
-                     f"rather than a stamp the run wrote.", y=0.015)
+    dropped_null = sum(
+        1
+        for f in facts
+        if f.get("selected") and f.get("pass_milestones") and max(m["n_passed"] for m in f["pass_milestones"]) == 0
+    )
+    dropped_patch = sum(
+        1 for f in facts if f.get("selected") and f.get("pass_milestones") and f.get("ladder_quality") == "patch"
+    )
+    n_mtime = sum(1 for f in lanes if f.get("availability", {}).get("passes", {}).get("kind") == "derived")
+    _figcaption(
+        fig,
+        f"{len(lanes)} run(s) drawn, best per target and arm. {dropped_null} that never "
+        f"passed a capsule and {dropped_patch} that inherited a compiler are omitted — "
+        f"both are real results, and both are reported in the ladder figure instead. "
+        f"SOLID lanes belong to a tag-matched ladder and were graded against the SAME "
+        f"corpus, so their heights are comparable; DASHED lanes were graded against "
+        f"their own suite, whose size is in the legend, and their heights are not. "
+        f"{n_mtime} of {len(lanes)} lanes take their clock from verdict-file mtimes "
+        f"rather than a stamp the run wrote.",
+        y=0.015,
+    )
     suptitle(fig, "Capsules passing over time", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.86, wspace=0.10)
     _save(fig, out, "fig02_capsules_over_time")
@@ -343,16 +402,20 @@ def spend_over_time(facts, out):
     Only curves whose endpoint agrees with the total the harness recorded independently are drawn.
     A rate keyed on the wrong spelling of a model id produces a curve that looks perfectly reasonable
     and is off by a constant factor, so the cross-check is what makes this publishable."""
-    metered = [f for f in facts if f.get("selected") and f.get("cost_curve")
-               and f.get("cost_kind") == "metered"]
-    notional = [f for f in facts if f.get("selected") and f.get("cost_curve")
-                and f.get("cost_kind") == "subscription_notional"]
+    metered = [f for f in facts if f.get("selected") and f.get("cost_curve") and f.get("cost_kind") == "metered"]
+    notional = [
+        f for f in facts if f.get("selected") and f.get("cost_curve") and f.get("cost_kind") == "subscription_notional"
+    ]
     if not metered and not notional:
         return
-    panels = [(rows, name, ylab) for rows, name, ylab in (
-        (metered, "metered spend", "cost (USD, billed)"),
-        (notional, "notional spend", "cost (USD, notional —\na seat is not billed per token)"))
-        if rows]
+    panels = [
+        (rows, name, ylab)
+        for rows, name, ylab in (
+            (metered, "metered spend", "cost (USD, billed)"),
+            (notional, "notional spend", "cost (USD, notional —\na seat is not billed per token)"),
+        )
+        if rows
+    ]
     fig, axes = plt.subplots(1, len(panels), figsize=(6.2 * len(panels), 4.8), squeeze=False)
     for ax, (rows, name, ylab) in zip(axes[0], panels):
         for f in rows:
@@ -360,21 +423,30 @@ def spend_over_time(facts, out):
             xs = [p["t_s"] / 3600.0 for p in pts]
             ys = [p["usd"] for p in pts]
             ax.plot(xs, ys, color=ARM_COLOR[f["arm"]], lw=1.8, alpha=0.95)
-            ax.plot([xs[-1]], [ys[-1]], "o", color=ARM_COLOR[f["arm"]], ms=5,
-                    markeredgecolor=INK, markeredgewidth=0.6)
-            ax.text(xs[-1], ys[-1], f"  {f['target'][:3]}·{f['arm'][-1]}", fontsize=7.8,
-                    color=ARM_COLOR[f["arm"]], va="center")
+            ax.plot([xs[-1]], [ys[-1]], "o", color=ARM_COLOR[f["arm"]], ms=5, markeredgecolor=INK, markeredgewidth=0.6)
+            ax.text(
+                xs[-1],
+                ys[-1],
+                f"  {f['target'][:3]}·{f['arm'][-1]}",
+                fontsize=7.8,
+                color=ARM_COLOR[f["arm"]],
+                va="center",
+            )
         ax.set_xlabel("active wall time (h)")
         ax.set_ylabel(ylab)
         style_ax(ax, grid="both")
         title(ax, f"{name} — {len(rows)} run(s)", fs=12.5)
     n_refused = sum(1 for f in facts if f.get("selected") and not f.get("cost_curve"))
-    _figcaption(fig, f"Each line is priced from that run's own token buckets over time — fresh input, "
-                     f"output, cache read and cache write each at their own rate — so the slope is "
-                     f"the real burn rate rather than an average. {n_refused} selected run(s) are "
-                     f"absent: either the model has no per-bucket rate, or the priced endpoint "
-                     f"disagreed with the total the harness recorded, in which case the curve is not "
-                     f"drawn rather than drawn wrong.", y=0.02)
+    _figcaption(
+        fig,
+        f"Each line is priced from that run's own token buckets over time — fresh input, "
+        f"output, cache read and cache write each at their own rate — so the slope is "
+        f"the real burn rate rather than an average. {n_refused} selected run(s) are "
+        f"absent: either the model has no per-bucket rate, or the priced endpoint "
+        f"disagreed with the total the harness recorded, in which case the curve is not "
+        f"drawn rather than drawn wrong.",
+        y=0.02,
+    )
     suptitle(fig, "What the runs cost, as they spent it", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.86, wspace=0.28)
     _save(fig, out, "fig03_spend_over_time")
@@ -389,10 +461,12 @@ def token_accounting(facts, out):
         return
     fig, ax = plt.subplots(figsize=(12, 0.42 * len(sel) + 2.2))
     ys = np.arange(len(sel))
-    series = [("cache_read_tokens", SLATE, "cache read"),
-              ("cache_creation_tokens", GOLD, "cache write"),
-              ("input_tokens", NAVY, "fresh input"),
-              ("output_tokens", MAUVE, "output")]
+    series = [
+        ("cache_read_tokens", SLATE, "cache read"),
+        ("cache_creation_tokens", GOLD, "cache write"),
+        ("input_tokens", NAVY, "fresh input"),
+        ("output_tokens", MAUVE, "output"),
+    ]
     left = np.zeros(len(sel))
     for key, colour, label in series:
         vals = np.array([max(f.get(key) or 0, 0) for f in sel], dtype=float)
@@ -401,8 +475,7 @@ def token_accounting(facts, out):
     for y, f in zip(ys, sel):
         split = f.get("availability", {}).get("token_split", {}).get("kind")
         if split != "measured":
-            ax.text(left[y] * 1.02, y, "  reads and writes not separable", va="center",
-                    fontsize=7.2, color=MAUVE)
+            ax.text(left[y] * 1.02, y, "  reads and writes not separable", va="center", fontsize=7.2, color=MAUVE)
     ax.set_yticks(ys)
     ax.set_yticklabels([f"{f['target'][:8]} {f['arm']} {f['run_id'][:26]}" for f in sel], fontsize=7.6)
     ax.invert_yaxis()
@@ -410,9 +483,13 @@ def token_accounting(facts, out):
     style_ax(ax, grid="x")
     ax.legend(loc="lower right", fontsize=9)
     n_split = sum(1 for f in sel if f.get("availability", {}).get("token_split", {}).get("kind") == "measured")
-    _caption(ax, f"{n_split} of {len(sel)} run(s) recorded cache reads and writes separately; the rest "
-                 f"recorded only their sum, which cannot be undone after the fact — reads and writes "
-                 f"are billed about an order of magnitude apart.", y=-0.10)
+    _caption(
+        ax,
+        f"{n_split} of {len(sel)} run(s) recorded cache reads and writes separately; the rest "
+        f"recorded only their sum, which cannot be undone after the fact — reads and writes "
+        f"are billed about an order of magnitude apart.",
+        y=-0.10,
+    )
     suptitle(fig, "Token accounting: the run is mostly re-reading its own context")
     _save(fig, out, "fig04_token_accounting")
 
@@ -431,8 +508,17 @@ def where_the_wall_went(facts, out):
         tool_h = min((f.get("tool_seconds") or 0) / 3600.0, wall_h)
         rl_h = (f.get("rate_limit_wait_s") or 0) / 3600.0
         ax.barh(y, tool_h, color=SAGE, edgecolor=INK, lw=0.7, height=0.62, label="_")
-        ax.barh(y, max(wall_h - tool_h, 0), left=tool_h, color="none", edgecolor=INK, lw=0.7,
-                height=0.62, hatch=GAP_HATCH, label="_")
+        ax.barh(
+            y,
+            max(wall_h - tool_h, 0),
+            left=tool_h,
+            color="none",
+            edgecolor=INK,
+            lw=0.7,
+            height=0.62,
+            hatch=GAP_HATCH,
+            label="_",
+        )
         if rl_h > 0:
             ax.barh(y, rl_h, left=wall_h, color=MAUVE, edgecolor=INK, lw=0.7, height=0.62, alpha=0.55)
         if f.get("span_source") == "":
@@ -442,13 +528,21 @@ def where_the_wall_went(facts, out):
     ax.invert_yaxis()
     ax.set_xlabel("hours")
     style_ax(ax, grid="x")
-    ax.legend(handles=[Patch(facecolor=SAGE, edgecolor=INK, label="occupied by a tool call"),
-                       Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
-                             label="clock not attributed to any span"),
-                       Patch(facecolor=MAUVE, edgecolor=INK, alpha=0.55, label="rate-limit wait")],
-              loc="lower right", fontsize=9)
-    _caption(ax, "The hatched remainder is the agent thinking, plus any tool call whose duration the "
-                 "stream could not preserve — it is unattributed time, not idle time.", y=-0.10)
+    ax.legend(
+        handles=[
+            Patch(facecolor=SAGE, edgecolor=INK, label="occupied by a tool call"),
+            Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH, label="clock not attributed to any span"),
+            Patch(facecolor=MAUVE, edgecolor=INK, alpha=0.55, label="rate-limit wait"),
+        ],
+        loc="lower right",
+        fontsize=9,
+    )
+    _caption(
+        ax,
+        "The hatched remainder is the agent thinking, plus any tool call whose duration the "
+        "stream could not preserve — it is unattributed time, not idle time.",
+        y=-0.10,
+    )
     suptitle(fig, "Where the wall clock went")
     _save(fig, out, "fig05_where_the_wall_went")
 
@@ -456,19 +550,29 @@ def where_the_wall_went(facts, out):
 @figure("fig06_concurrency")
 def concurrency_fig(facts, out):
     """Overlap share per run, split by arm. The parallelism question, answered per run."""
-    usable = [f for f in facts
-              if f.get("availability", {}).get("concurrency", {}).get("kind") in ("measured", "derived")
-              and (f.get("span_wall_s") or 0) > 60]
+    usable = [
+        f
+        for f in facts
+        if f.get("availability", {}).get("concurrency", {}).get("kind") in ("measured", "derived")
+        and (f.get("span_wall_s") or 0) > 60
+    ]
     if not usable:
         return
-    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(12, 4.6),
-                                  gridspec_kw={"width_ratios": [1.35, 1]})
+    fig, (ax, ax2) = plt.subplots(1, 2, figsize=(12, 4.6), gridspec_kw={"width_ratios": [1.35, 1]})
     arms = [a for a in ARM_ORDER if any(f["arm"] == a for f in usable)]
     for i, arm in enumerate(arms):
         vals = [f["overlap_share"] for f in usable if f["arm"] == arm]
         jitter = (np.random.default_rng(7).random(len(vals)) - 0.5) * 0.26
-        ax.scatter(np.full(len(vals), i) + jitter, vals, s=26, color=ARM_COLOR[arm],
-                   edgecolor=INK, lw=0.5, alpha=0.85, zorder=3)
+        ax.scatter(
+            np.full(len(vals), i) + jitter,
+            vals,
+            s=26,
+            color=ARM_COLOR[arm],
+            edgecolor=INK,
+            lw=0.5,
+            alpha=0.85,
+            zorder=3,
+        )
         if vals:
             ax.plot([i - 0.3, i + 0.3], [np.median(vals)] * 2, color=INK, lw=2.2, zorder=4)
     ax.set_xticks(range(len(arms)))
@@ -487,9 +591,14 @@ def concurrency_fig(facts, out):
         peaks = sorted(f["max_concurrent"] for f in phases[p])
         med_peak = int(np.median(peaks))
         n_over = sum(1 for f in phases[p] if f["overlap_share"] > 0)
-        ax2.text(x, shares[x] + 0.035,
-                 f"{n_over}/{len(phases[p])} runs overlap\nmedian peak {med_peak}, max {peaks[-1]}",
-                 ha="center", fontsize=9, color=INK)
+        ax2.text(
+            x,
+            shares[x] + 0.035,
+            f"{n_over}/{len(phases[p])} runs overlap\nmedian peak {med_peak}, max {peaks[-1]}",
+            ha="center",
+            fontsize=9,
+            color=INK,
+        )
     ax2.set_xticks(xs)
     ax2.set_xticklabels(labels)
     ax2.set_ylim(0, 1.0)
@@ -499,14 +608,17 @@ def concurrency_fig(facts, out):
     # The outlier sentence is DERIVED. It was hardcoded once and went stale the moment the flush
     # guard tightened, which is the exact drift this kit exists to prevent.
     peakiest = max(usable, key=lambda f: (f["max_concurrent"], -f["overlap_share"]))
-    _figcaption(fig, f"{len(usable)} run(s) whose overlap survived the flush check (left bar = "
-                     f"median). A run whose overlap moved when flush-suspect spans were dropped is "
-                     f"excluded: an overlap that depends on those was measuring the reader, not the "
-                     f"agent. The right panel counts RUNS rather than reporting a peak, because peak "
-                     f"concurrency is carried by single outliers — the deepest here reaches "
-                     f"{peakiest['max_concurrent']} while occupying "
-                     f"{peakiest['overlap_share']:.1%} of its wall "
-                     f"({peakiest['target']} {peakiest['arm']}, {peakiest['run_id'][:30]}).")
+    _figcaption(
+        fig,
+        f"{len(usable)} run(s) whose overlap survived the flush check (left bar = "
+        f"median). A run whose overlap moved when flush-suspect spans were dropped is "
+        f"excluded: an overlap that depends on those was measuring the reader, not the "
+        f"agent. The right panel counts RUNS rather than reporting a peak, because peak "
+        f"concurrency is carried by single outliers — the deepest here reaches "
+        f"{peakiest['max_concurrent']} while occupying "
+        f"{peakiest['overlap_share']:.1%} of its wall "
+        f"({peakiest['target']} {peakiest['arm']}, {peakiest['run_id'][:30]}).",
+    )
     suptitle(fig, "Does the agent do things in parallel?", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.86)
     _save(fig, out, "fig06_concurrency")
@@ -536,28 +648,55 @@ def tier_cost(facts, out):
     for i, (phase, tier) in enumerate(groups):
         vals = [v for p, t, v, _ in rows if (p, t) == (phase, tier)]
         jitter = (np.random.default_rng(3).random(len(vals)) - 0.5) * 0.3
-        ax.scatter(np.full(len(vals), i) + jitter, vals, s=30,
-                   color=NAVY if phase == "phase1" else SAGE, edgecolor=INK, lw=0.5, zorder=3)
+        ax.scatter(
+            np.full(len(vals), i) + jitter,
+            vals,
+            s=30,
+            color=NAVY if phase == "phase1" else SAGE,
+            edgecolor=INK,
+            lw=0.5,
+            zorder=3,
+        )
         ax.plot([i - 0.32, i + 0.32], [np.median(vals)] * 2, color=INK, lw=2.2, zorder=4)
         # Beside the group, not through it: a label at median*k lands inside the point cloud.
-        ax.text(i + 0.36, np.median(vals), f"{np.median(vals):.3g}s\nn={len(vals)}",
-                ha="left", va="center", fontsize=8.4, color=INK, fontweight="bold", zorder=5)
+        ax.text(
+            i + 0.36,
+            np.median(vals),
+            f"{np.median(vals):.3g}s\nn={len(vals)}",
+            ha="left",
+            va="center",
+            fontsize=8.4,
+            color=INK,
+            fontweight="bold",
+            zorder=5,
+        )
     ax.set_yscale("log")
     ax.set_xlim(-0.6, len(groups) - 0.15)
     ax.set_xticks(xs)
     ax.set_xticklabels([f"{t}\n{p}" for p, t in groups], fontsize=9)
     ax.set_ylabel("median seconds to grade one capsule (log)")
     style_ax(ax, grid="y")
-    ax.legend(handles=[Patch(facecolor=NAVY, edgecolor=INK, label="functional lane"),
-                       Patch(facecolor=SAGE, edgecolor=INK, label="performance lane")],
-              loc="upper left", fontsize=9)
-    tail = ("" if not dropped else
-            " Omitted for having a single observation: "
-            + ", ".join(f"{t} ({p})" for p, t in dropped) + ".")
-    _figcaption(fig, "Passing capsules only: a failing capsule aborts in hundredths of a second, so "
-                     "pooling the two yields a median about the pass rate rather than the cost. "
-                     "Build + simulation; queueing excluded. Carried certificates record no duration "
-                     "and are not counted." + tail, y=0.02)
+    ax.legend(
+        handles=[
+            Patch(facecolor=NAVY, edgecolor=INK, label="functional lane"),
+            Patch(facecolor=SAGE, edgecolor=INK, label="performance lane"),
+        ],
+        loc="upper left",
+        fontsize=9,
+    )
+    tail = (
+        ""
+        if not dropped
+        else " Omitted for having a single observation: " + ", ".join(f"{t} ({p})" for p, t in dropped) + "."
+    )
+    _figcaption(
+        fig,
+        "Passing capsules only: a failing capsule aborts in hundredths of a second, so "
+        "pooling the two yields a median about the pass rate rather than the cost. "
+        "Build + simulation; queueing excluded. Carried certificates record no duration "
+        "and are not counted." + tail,
+        y=0.02,
+    )
     suptitle(fig, "The certifying tier is the whole cost of a grade", y=1.0)
     fig.subplots_adjust(bottom=0.26, top=0.88)
     _save(fig, out, "fig07_tier_cost")
@@ -608,20 +747,39 @@ def phase_tools(facts, out):
     ax.set_ylim(-0.7, len(shown) - 0.3)
     ax.set_xlabel("total seconds across all trials (log)")
     style_ax(ax, grid="x")
-    ax.legend(handles=[Patch(facecolor=c, edgecolor=INK, label=k)
-                       for k, c in family_colour.items() if any(a.startswith(k) for a in shown)],
-              loc="lower right", fontsize=8.6, title="family", title_fontsize=8.6)
+    ax.legend(
+        handles=[
+            Patch(facecolor=c, edgecolor=INK, label=k)
+            for k, c in family_colour.items()
+            if any(a.startswith(k) for a in shown)
+        ],
+        loc="lower right",
+        fontsize=8.6,
+        title="family",
+        title_fontsize=8.6,
+    )
     free = [a for a in shown if seconds.get(a, 0.0) > 0 and seconds[a] < 1.0]
     dear = max(seconds, key=seconds.get) if seconds else ""
-    _figcaption(fig, f"{len(actions)} actions, derived per run from the frozen candidate's own "
-                     f"manifest plus descriptor-declared probes and read from STAGE_CONTEXT rather "
-                     f"than hardcoded. Phase 1 hands the agent a shell and a simulator it drives "
-                     f"itself; phase 2 hands it only this list."
-                     + (f" `{dear}` accounts for {seconds[dear] / max(sum(seconds.values()), 1):.0%} "
-                        f"of all brokered time" if dear else "")
-                     + (f", while {', '.join('`' + a + '`' for a in free)} cost under a second in "
-                        f"total — reading only the candidate's own emitted buffers, which is the "
-                        f"point of adding it." if free else "."), y=0.02)
+    _figcaption(
+        fig,
+        f"{len(actions)} actions, derived per run from the frozen candidate's own "
+        f"manifest plus descriptor-declared probes and read from STAGE_CONTEXT rather "
+        f"than hardcoded. Phase 1 hands the agent a shell and a simulator it drives "
+        f"itself; phase 2 hands it only this list."
+        + (
+            f" `{dear}` accounts for {seconds[dear] / max(sum(seconds.values()), 1):.0%} of all brokered time"
+            if dear
+            else ""
+        )
+        + (
+            f", while {', '.join('`' + a + '`' for a in free)} cost under a second in "
+            f"total — reading only the candidate's own emitted buffers, which is the "
+            f"point of adding it."
+            if free
+            else "."
+        ),
+        y=0.02,
+    )
     suptitle(fig, "Phase 2's closed action set, and where its time goes", y=1.0)
     fig.subplots_adjust(bottom=0.24, top=0.90, left=0.30)
     _save(fig, out, "fig08_phase_tools")
@@ -641,6 +799,7 @@ def coverage_matrix(facts, out):
         for j, name in enumerate(fields):
             grid[i, j] = kind_val.get(f.get("availability", {}).get(name, {}).get("kind"), 0)
     from matplotlib.colors import ListedColormap
+
     fig, ax = plt.subplots(figsize=(8.4, 0.36 * len(sel) + 2.4))
     ax.imshow(grid, cmap=ListedColormap([EMPTY_FILL, GOLD, SAGE]), aspect="auto", vmin=0, vmax=2)
     ax.set_xticks(range(len(fields)))
@@ -651,10 +810,16 @@ def coverage_matrix(facts, out):
     ax.set_yticks(np.arange(-0.5, len(sel), 1), minor=True)
     ax.grid(which="minor", color=PAGE_BG, lw=1.6)
     ax.tick_params(which="minor", length=0)
-    ax.legend(handles=[Patch(facecolor=SAGE, label="measured"),
-                       Patch(facecolor=GOLD, label="derived"),
-                       Patch(facecolor=EMPTY_FILL, label="unavailable")],
-              loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=9)
+    ax.legend(
+        handles=[
+            Patch(facecolor=SAGE, label="measured"),
+            Patch(facecolor=GOLD, label="derived"),
+            Patch(facecolor=EMPTY_FILL, label="unavailable"),
+        ],
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        fontsize=9,
+    )
     # Grouped by FIELD, not by reason text: every reason names the run it came from, so the strings
     # are all distinct and a "commonest causes" tally over them is a list of one-offs.
     missing = Counter()
@@ -668,10 +833,13 @@ def coverage_matrix(facts, out):
                 derived_n[name] += 1
     parts = [f"{n} run(s) cannot supply `{k}`" for k, n in missing.most_common()]
     dparts = [f"`{k}` is reconstructed for {n}" for k, n in derived_n.most_common(3)]
-    _figcaption(fig, "Gaps are drawn, not dropped — an absent row would read as 'no such run', which "
-                     "is a different claim. " + ("; ".join(parts) + ". " if parts else "")
-                     + ("Where a value is derived rather than read: " + "; ".join(dparts) + "."
-                        if dparts else ""))
+    _figcaption(
+        fig,
+        "Gaps are drawn, not dropped — an absent row would read as 'no such run', which "
+        "is a different claim. "
+        + ("; ".join(parts) + ". " if parts else "")
+        + ("Where a value is derived rather than read: " + "; ".join(dparts) + "." if dparts else ""),
+    )
     suptitle(fig, "What each selected run can actually tell us", y=1.0)
     fig.subplots_adjust(bottom=0.16, top=0.93)
     _save(fig, out, "fig09_coverage_matrix")
@@ -685,8 +853,9 @@ def rate_panels(facts, out):
     tokens moved. Only runs whose reconstructed token curve AGREES with the total the harness
     recorded independently are drawn, because a rate curve is the easiest thing here to draw
     plausibly and wrongly."""
-    rows = [f for f in facts if f.get("selected") and f.get("token_curve_can_rate")
-            and (f.get("span_wall_s") or 0) > 60]
+    rows = [
+        f for f in facts if f.get("selected") and f.get("token_curve_can_rate") and (f.get("span_wall_s") or 0) > 60
+    ]
     rows.sort(key=lambda f: (f["target"], f["arm"]))
     if not rows:
         return
@@ -703,11 +872,18 @@ def rate_panels(facts, out):
             bx = [b["t_s"] / 60.0 for b in band]
             by = [b["occupied"] for b in band]
             ax.fill_between(bx, 0, by, color=SAGE, alpha=0.45, lw=0, step="mid")
-            ax.fill_between(bx, by, 1.0, color="none", edgecolor=INK, lw=0.0,
-                            hatch=GAP_HATCH, alpha=0.30, step="mid")
+            ax.fill_between(bx, by, 1.0, color="none", edgecolor=INK, lw=0.0, hatch=GAP_HATCH, alpha=0.30, step="mid")
         else:
-            ax.text(0.5, 0.5, "no tool spans to place on this axis", transform=ax.transAxes,
-                    ha="center", va="center", fontsize=8, color=MAUVE)
+            ax.text(
+                0.5,
+                0.5,
+                "no tool spans to place on this axis",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=8,
+                color=MAUVE,
+            )
         ax.set_ylim(0, 1)
         ax.set_yticks([0, 1])
         ax.set_ylabel("share", fontsize=8)
@@ -737,28 +913,45 @@ def rate_panels(facts, out):
                 ax.axvline(t, color=GOLD, lw=1.4, ls=(0, (4, 3)), alpha=0.9)
         cost, kind = _cost(f)
         money = "unpriced" if cost is None else (f"${cost:.0f}" if kind == "metered" else f"~${cost:.0f}")
-        ax.text(0.004, 1.06, f"{f['target']} · {ARM_LABEL[f['arm']]} · {f['run_id'][:30]}  —  "
-                             f"{span_end:.0f} min · {money} · "
-                             f"{(f.get('total_tokens') or 0) / 1e6:.0f}M tok · "
-                             f"final {f.get('passed')}/{f.get('capsules')}",
-                transform=ax.transAxes, va="bottom", fontsize=8.2, color=INK)
+        ax.text(
+            0.004,
+            1.06,
+            f"{f['target']} · {ARM_LABEL[f['arm']]} · {f['run_id'][:30]}  —  "
+            f"{span_end:.0f} min · {money} · "
+            f"{(f.get('total_tokens') or 0) / 1e6:.0f}M tok · "
+            f"final {f.get('passed')}/{f.get('capsules')}",
+            transform=ax.transAxes,
+            va="bottom",
+            fontsize=8.2,
+            color=INK,
+        )
         ax.set_xlim(0, span_end)
         style_ax(ax, grid="x")
     axes[-1, 0].set_xlabel("Time (min)")
-    fig.legend(handles=[Patch(facecolor=SAGE, alpha=0.30, label="occupied by a tool call"),
-                        Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
-                              label="thinking / duration not preserved"),
-                        Line2D([0], [0], color=NAVY, lw=1.7, label="output tok/min"),
-                        Line2D([0], [0], color=SLATE, lw=1.7, label="cached input tok/min"),
-                        Line2D([0], [0], color=GOLD, lw=1.4, ls=(0, (4, 3)), label="capsule-pass milestone")],
-               loc="lower center", ncol=5, fontsize=8.5, frameon=True)
+    fig.legend(
+        handles=[
+            Patch(facecolor=SAGE, alpha=0.30, label="occupied by a tool call"),
+            Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH, label="thinking / duration not preserved"),
+            Line2D([0], [0], color=NAVY, lw=1.7, label="output tok/min"),
+            Line2D([0], [0], color=SLATE, lw=1.7, label="cached input tok/min"),
+            Line2D([0], [0], color=GOLD, lw=1.4, ls=(0, (4, 3)), label="capsule-pass milestone"),
+        ],
+        loc="lower center",
+        ncol=5,
+        fontsize=8.5,
+        frameon=True,
+    )
     skipped = sum(1 for f in facts if f.get("selected") and not f.get("token_curve_can_rate"))
-    _figcaption(fig, f"{len(rows)} of the selected runs carry a token curve that agrees with the "
-                     f"total the harness recorded independently; {skipped} do not and are omitted "
-                     f"rather than drawn from an unverified reconstruction. The green band is the "
-                     f"share of each time slice covered by a tool call, from measured span overlap; "
-                     f"the hatched remainder is the agent thinking plus any call whose duration the "
-                     f"stream could not preserve — the two are not separable here.", y=0.045)
+    _figcaption(
+        fig,
+        f"{len(rows)} of the selected runs carry a token curve that agrees with the "
+        f"total the harness recorded independently; {skipped} do not and are omitted "
+        f"rather than drawn from an unverified reconstruction. The green band is the "
+        f"share of each time slice covered by a tool call, from measured span overlap; "
+        f"the hatched remainder is the agent thinking plus any call whose duration the "
+        f"stream could not preserve — the two are not separable here.",
+        y=0.045,
+    )
     suptitle(fig, "Activity and token rate over the run", y=0.995)
     fig.subplots_adjust(top=0.95, bottom=0.10, hspace=0.75)
     _save(fig, out, "fig10_rate_panels")
@@ -773,8 +966,9 @@ def granted_vs_used(facts, out):
     name, so a zero there means the shim was never invoked. Path grants expose no such name and their
     use is invisible to this reader — they are shown as granted-but-unmeasurable rather than as zero,
     because drawing them at zero would assert something the data cannot support."""
-    rows = [f for f in facts if f.get("selected") and f["phase"] != "phase2"
-            and f.get("granted_tools") and f.get("n_spans")]
+    rows = [
+        f for f in facts if f.get("selected") and f["phase"] != "phase2" and f.get("granted_tools") and f.get("n_spans")
+    ]
     rows.sort(key=lambda f: (f["arm"], f["target"]))
     if not rows:
         return
@@ -792,20 +986,39 @@ def granted_vs_used(facts, out):
         for x, name in enumerate(order):
             t = have.get(name)
             if t is None:
-                continue                       # not granted to this arm: leave the cell empty
+                continue  # not granted to this arm: leave the cell empty
             if not t["invocable"]:
-                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76, facecolor="none",
-                                           edgecolor=INK, lw=0.7, hatch=GAP_HATCH, alpha=0.45))
+                ax.add_patch(
+                    plt.Rectangle(
+                        (x - 0.42, y - 0.38),
+                        0.84,
+                        0.76,
+                        facecolor="none",
+                        edgecolor=INK,
+                        lw=0.7,
+                        hatch=GAP_HATCH,
+                        alpha=0.45,
+                    )
+                )
                 continue
             n = t["invocations"]
             if n == 0:
-                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
-                                           facecolor=EMPTY_FILL, edgecolor=INK, lw=0.7))
+                ax.add_patch(
+                    plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76, facecolor=EMPTY_FILL, edgecolor=INK, lw=0.7)
+                )
                 ax.text(x, y, "0", ha="center", va="center", fontsize=8, color=MAUVE)
             else:
-                ax.add_patch(plt.Rectangle((x - 0.42, y - 0.38), 0.84, 0.76,
-                                           facecolor=SAGE, edgecolor=INK, lw=0.7,
-                                           alpha=min(0.35 + 0.09 * n, 1.0)))
+                ax.add_patch(
+                    plt.Rectangle(
+                        (x - 0.42, y - 0.38),
+                        0.84,
+                        0.76,
+                        facecolor=SAGE,
+                        edgecolor=INK,
+                        lw=0.7,
+                        alpha=min(0.35 + 0.09 * n, 1.0),
+                    )
+                )
                 ax.text(x, y, str(n), ha="center", va="center", fontsize=8, color=INK)
     ax.set_xticks(range(len(order)))
     ax.set_xticklabels(order, fontsize=8.4, rotation=28, ha="right")
@@ -815,30 +1028,40 @@ def granted_vs_used(facts, out):
     ax.set_ylim(-0.6, len(rows) - 0.4)
     ax.invert_yaxis()
     style_ax(ax, grid="")
-    ax.legend(handles=[Patch(facecolor=SAGE, edgecolor=INK, label="invoked (count shown)"),
-                       Patch(facecolor=EMPTY_FILL, edgecolor=INK, label="granted, never invoked"),
-                       Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH,
-                             label="path grant — use is invisible"),
-                       Patch(facecolor=PAGE_BG, edgecolor=INK, lw=0.5, label="blank = not granted to this arm")],
-              loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=8.4)
+    ax.legend(
+        handles=[
+            Patch(facecolor=SAGE, edgecolor=INK, label="invoked (count shown)"),
+            Patch(facecolor=EMPTY_FILL, edgecolor=INK, label="granted, never invoked"),
+            Patch(facecolor="none", edgecolor=INK, hatch=GAP_HATCH, label="path grant — use is invisible"),
+            Patch(facecolor=PAGE_BG, edgecolor=INK, lw=0.5, label="blank = not granted to this arm"),
+        ],
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        fontsize=8.4,
+    )
     # Which rungs left every brokered tool untouched is DERIVED, not asserted: it is the sentence a
     # reader will quote, so it has to move when the data does.
     unused = []
     for f in rows:
-        brokered = [t for t in f["granted_tools"]
-                    if t["invocable"] and t["name"] not in SUBSTRATE_NAMES]
+        brokered = [t for t in f["granted_tools"] if t["invocable"] and t["name"] not in SUBSTRATE_NAMES]
         if brokered and all(t["invocations"] == 0 for t in brokered):
             unused.append(f"{f['target']} {f['arm']}")
-    tail = (" Rungs that invoked none of the brokered tools their own arm provides: "
-            + "; ".join(unused) + ".") if unused else ""
-    _figcaption(fig, "Counts come from matching staged tool filenames in each run's own command "
-                     "text, so they are a LOWER BOUND: a tool imported inside a script the agent "
-                     "wrote never appears on a command line. A zero on a brokered tool still means "
-                     "its shim was not invoked." + tail, y=0.02)
+    tail = (
+        (" Rungs that invoked none of the brokered tools their own arm provides: " + "; ".join(unused) + ".")
+        if unused
+        else ""
+    )
+    _figcaption(
+        fig,
+        "Counts come from matching staged tool filenames in each run's own command "
+        "text, so they are a LOWER BOUND: a tool imported inside a script the agent "
+        "wrote never appears on a command line. A zero on a brokered tool still means "
+        "its shim was not invoked." + tail,
+        y=0.02,
+    )
     suptitle(fig, "Granted is not used", y=1.0)
     fig.subplots_adjust(bottom=0.30, top=0.90, right=0.78)
     _save(fig, out, "fig11_granted_vs_used")
-
 
 
 # --------------------------------------------------------------------------- corpus coverage
@@ -864,11 +1087,13 @@ def corpus_coverage(rows, out):
     rows = [r for r in rows if r.get("roster_size")]
     if not rows:
         return
+
     # Certified first, then the larger corpus: the reader should meet the strongest cell first,
     # and a tie between two zero cells is broken by which corpus is bigger, not alphabetically.
     def certified(r):
         c = r["counts"]
         return c["passed_at_bar"] + c["passed_above_bar"]
+
     rows.sort(key=lambda r: (-certified(r), -r["roster_size"]))
 
     n = len(rows)
@@ -877,24 +1102,38 @@ def corpus_coverage(rows, out):
     # promise is that the eye can carry a row from one to the other. Independent y-limits let the
     # right panel drift by a fraction of a row, which silently re-attributes a reason to a target.
     fig, (ax, why) = plt.subplots(
-        1, 2, figsize=(14.4, height), sharey=True,
-        gridspec_kw={"width_ratios": [3.05, 1.0], "wspace": 0.05})
+        1, 2, figsize=(14.4, height), sharey=True, gridspec_kw={"width_ratios": [3.05, 1.0], "wspace": 0.05}
+    )
     ys = np.arange(n)[::-1]
 
     left = np.zeros(n)
     for band, colour, _ in COVERAGE_BANDS:
         vals = np.array([float(r["counts"].get(band, 0)) for r in rows])
-        ax.barh(ys, vals, left=left, height=0.62, color=colour,
-                edgecolor=PAGE_BG, linewidth=1.1,
-                hatch=(GAP_HATCH if band == "never_graded" else None))
+        ax.barh(
+            ys,
+            vals,
+            left=left,
+            height=0.62,
+            color=colour,
+            edgecolor=PAGE_BG,
+            linewidth=1.1,
+            hatch=(GAP_HATCH if band == "never_graded" else None),
+        )
         left = left + vals
 
     for i, r in enumerate(rows):
         c, total = r["counts"], r["roster_size"]
         cert = c["passed_at_bar"] + c["passed_above_bar"]
-        ax.text(total + total * 0.015, ys[i],
-                f"{cert}/{total} certified  ({100 * cert / total:.0f}%)",
-                va="center", ha="left", fontsize=9.2, color=INK, family=SERIF)
+        ax.text(
+            total + total * 0.015,
+            ys[i],
+            f"{cert}/{total} certified  ({100 * cert / total:.0f}%)",
+            va="center",
+            ha="left",
+            fontsize=9.2,
+            color=INK,
+            family=SERIF,
+        )
 
     labels = []
     for r in rows:
@@ -903,8 +1142,7 @@ def corpus_coverage(rows, out):
         rt = [x for x in r.get("run_targets") or [] if x != r["target"]]
         if rt:
             extra = f"\nrun as {rt[0]}" if len(rt) == 1 else f"\n{len(rt)} run-time names"
-        labels.append(f"{r['target']}\n{runs} run(s){extra}" if runs
-                      else f"{r['target']}\nnever run{extra}")
+        labels.append(f"{r['target']}\n{runs} run(s){extra}" if runs else f"{r['target']}\nnever run{extra}")
     ax.set_yticks(ys)
     ax.set_yticklabels(labels, fontsize=9.4)
     ax.set_xlabel("capsules in the declared corpus")
@@ -921,21 +1159,28 @@ def corpus_coverage(rows, out):
     for i, r in enumerate(rows):
         planes = dict(r.get("uncertified_planes") or {})
         if not planes:
-            why.text(0.5, ys[i], "nothing graded" if not r["n_runs"] else "all certified",
-                     ha="center", va="center", fontsize=8.4, color=INK, alpha=0.55,
-                     family=SERIF, transform=why.get_yaxis_transform())
+            why.text(
+                0.5,
+                ys[i],
+                "nothing graded" if not r["n_runs"] else "all certified",
+                ha="center",
+                va="center",
+                fontsize=8.4,
+                color=INK,
+                alpha=0.55,
+                family=SERIF,
+                transform=why.get_yaxis_transform(),
+            )
             continue
         left = 0.0
         for name in top:
             v = float(planes.pop(name, 0))
             if v:
-                why.barh(ys[i], v, left=left, height=0.62, color=colour_of[name],
-                         edgecolor=PAGE_BG, linewidth=1.1)
+                why.barh(ys[i], v, left=left, height=0.62, color=colour_of[name], edgecolor=PAGE_BG, linewidth=1.1)
                 left += v
         rest = sum(planes.values())
         if rest:
-            why.barh(ys[i], rest, left=left, height=0.62, color=EMPTY_FILL,
-                     edgecolor=PAGE_BG, linewidth=1.1)
+            why.barh(ys[i], rest, left=left, height=0.62, color=EMPTY_FILL, edgecolor=PAGE_BG, linewidth=1.1)
     # NOT set_yticklabels([]) -- with a shared y-axis that empties the LEFT panel's row labels
     # too, and the figure loses the only thing naming its rows.
     why.tick_params(labelleft=False)
@@ -945,34 +1190,43 @@ def corpus_coverage(rows, out):
 
     # A legend entry for a band that is zero everywhere teaches the reader a category the figure
     # does not contain, and makes them hunt for a colour that is not there.
-    drawn = {b for b, _, _ in COVERAGE_BANDS
-             if any(r["counts"].get(b, 0) for r in rows)}
-    handles = [Patch(facecolor=c, label=lab,
-                     hatch=(GAP_HATCH if b == "never_graded" else None),
-                     edgecolor=INK if b == "never_graded" else "none")
-               for b, c, lab in COVERAGE_BANDS if b in drawn]
+    drawn = {b for b, _, _ in COVERAGE_BANDS if any(r["counts"].get(b, 0) for r in rows)}
+    handles = [
+        Patch(
+            facecolor=c,
+            label=lab,
+            hatch=(GAP_HATCH if b == "never_graded" else None),
+            edgecolor=INK if b == "never_graded" else "none",
+        )
+        for b, c, lab in COVERAGE_BANDS
+        if b in drawn
+    ]
     handles += [Patch(facecolor=colour_of[k], label=f"stops at {k}") for k in top]
     if tally and len(tally) > len(top):
         handles.append(Patch(facecolor=EMPTY_FILL, label="other planes"))
-    fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.85 / height),
-               ncol=5, frameon=True, fontsize=8.8)
+    fig.legend(
+        handles=handles, loc="lower center", bbox_to_anchor=(0.5, 0.85 / height), ncol=5, frameon=True, fontsize=8.8
+    )
 
     # The caption carries every denominator the bars cannot: off-roster grades (which are NOT
     # coverage of this corpus) and the hidden lane (which this source cannot see at all).
     notes = []
     owned = {r["target"]: r["off_roster"]["owned"] for r in rows if r["off_roster"]["owned"]}
-    unowned = {r["target"]: r["off_roster"]["unowned"] for r in rows
-               if r["off_roster"]["unowned"]}
+    unowned = {r["target"]: r["off_roster"]["unowned"] for r in rows if r["off_roster"]["unowned"]}
     for target, names in owned.items():
         row = next(r for r in rows if r["target"] == target)
         owners = Counter(row["off_roster"]["owners"].get(nm, "?") for nm in names)
         who = ", ".join(f"{n} declared by `{o}`" for o, n in owners.most_common())
-        notes.append(f"{target} also graded {len(names)} capsule(s) its own corpus does not "
-                     f"declare ({who}) — excluded from the bar, because grading another "
-                     f"corpus is not coverage of this one")
+        notes.append(
+            f"{target} also graded {len(names)} capsule(s) its own corpus does not "
+            f"declare ({who}) — excluded from the bar, because grading another "
+            f"corpus is not coverage of this one"
+        )
     for target, names in unowned.items():
-        notes.append(f"{target} graded {len(names)} capsule(s) that no current corpus declares "
-                     f"(retired since) — real evidence, but about a corpus that has changed")
+        notes.append(
+            f"{target} graded {len(names)} capsule(s) that no current corpus declares "
+            f"(retired since) — real evidence, but about a corpus that has changed"
+        )
     for r in rows:
         st = (r.get("availability") or {}).get("hidden_lane") or {}
         if st.get("kind") == "unavailable":
@@ -980,23 +1234,27 @@ def corpus_coverage(rows, out):
             break
     pw = [r for r in rows if r.get("passed_without_overall")]
     if pw:
-        notes.append(f"{sum(len(r['passed_without_overall']) for r in pw)} capsule(s) passed a "
-                     f"tier without ever passing overall — counted by the tier they reached, "
-                     f"which is evidence, not a verdict")
-    _figcaption(fig, "Certified means the capsule passed the tier IT declares, not one bar for "
-                     "the corpus. " + " · ".join(notes) + ".")
+        notes.append(
+            f"{sum(len(r['passed_without_overall']) for r in pw)} capsule(s) passed a "
+            f"tier without ever passing overall — counted by the tier they reached, "
+            f"which is evidence, not a verdict"
+        )
+    _figcaption(
+        fig,
+        "Certified means the capsule passed the tier IT declares, not one bar for "
+        "the corpus. " + " · ".join(notes) + ".",
+    )
     suptitle(fig, "What the benchmark has actually exercised", y=1.0)
     fig.subplots_adjust(left=0.135, right=0.985, top=0.91, bottom=2.35 / height)
     _save(fig, out, "fig13_corpus_coverage")
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     from merlin.common.paths import artifacts_dir
+
     ap.add_argument("--facts", type=Path, default=artifacts_dir() / "agentic-report" / "run_facts.json")
-    ap.add_argument("--coverage", type=Path,
-                    default=artifacts_dir() / "agentic-report" / "coverage_facts.json")
+    ap.add_argument("--coverage", type=Path, default=artifacts_dir() / "agentic-report" / "coverage_facts.json")
     ap.add_argument("--out", type=Path, default=artifacts_dir() / "agentic-report" / "figures")
     ap.add_argument("--only", action="append", default=[])
     a = ap.parse_args(argv)
@@ -1006,8 +1264,7 @@ def main(argv=None) -> int:
         inputs["coverage"] = json.loads(a.coverage.read_text())
     use_merlin_style()
     # The house style paints a cream canvas repo-wide. Repaint to white for this kit only.
-    plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG,
-                         "savefig.facecolor": PAGE_BG})
+    plt.rcParams.update({"axes.facecolor": PAGE_BG, "figure.facecolor": PAGE_BG, "savefig.facecolor": PAGE_BG})
     names = a.only or list(_REGISTRY)
     for name in names:
         entry = _REGISTRY.get(name)
@@ -1019,8 +1276,10 @@ def main(argv=None) -> int:
         if data is None:
             # A figure whose input was never built is REFUSED with the command that builds it --
             # not drawn empty, which would read as "the archive has nothing to show".
-            print(f"  [skip] {name}: needs {needs}, which is absent. Build it with "
-                  f"`build_report.py {needs}`.", file=sys.stderr)
+            print(
+                f"  [skip] {name}: needs {needs}, which is absent. Build it with `build_report.py {needs}`.",
+                file=sys.stderr,
+            )
             continue
         fn(data, a.out)
     return 0

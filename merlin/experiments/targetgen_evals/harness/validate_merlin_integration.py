@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 _MERLIN_CORE_PATHS = [
     "merlin/compiler",
     "merlin/python/merlin",
@@ -29,10 +28,7 @@ def run(run_dir: Path, manifest: dict) -> dict:
     }
 
     if not generated_dir.exists():
-        metrics["errors"].append(
-            f"generated/{target}-mlir/ does not exist; "
-            "skipping Merlin integration check"
-        )
+        metrics["errors"].append(f"generated/{target}-mlir/ does not exist; skipping Merlin integration check")
         return metrics
 
     # Look for any file that references merlin core paths (would indicate cross-contamination)

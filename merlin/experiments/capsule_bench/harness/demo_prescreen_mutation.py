@@ -18,6 +18,7 @@ Both the ELF (for verilator) and the decoded trace (for the pre-screen) derive f
 Usage: demo_prescreen_mutation.py --one-time-verilator-qualification
        [--pkg <dir with command_buffer.json+lowered.llvm.mlir>] [--timeout 400]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -29,20 +30,23 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+
 REPO = C.REPO
 
 import yaml  # noqa: E402
-from merlin.targetgen.rocc import decode as RD           # noqa: E402 (was targetgen.rocc_decode)
-from merlin.targetgen import rtl_check_compiler as CC     # noqa: E402
-from merlin.targetgen import rtl_check_runner as RUN      # noqa: E402
-from merlin.targetgen import rtl_checks as RC             # noqa: E402
-from merlin.targetgen import capsule_golden as CG         # noqa: E402
+
+from merlin.targetgen import capsule_golden as CG  # noqa: E402
+from merlin.targetgen import rtl_check_compiler as CC  # noqa: E402
+from merlin.targetgen import rtl_check_runner as RUN  # noqa: E402
+from merlin.targetgen import rtl_checks as RC  # noqa: E402
 from merlin.targetgen.contract import compile as COMPILE  # noqa: E402
+from merlin.targetgen.rocc import decode as RD  # noqa: E402 (was targetgen.rocc_decode)
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 _TE = load_target_experiment(C.EXP / "target_experiment.yaml")
-DEFAULT_PKG = (REPO / "out/runs/grade_subset_check/runs" / f"{C.TARGET}-capsule-bench"
-               / "A2_single_tile_matmul" / "generated")
+DEFAULT_PKG = (
+    REPO / "out/runs/grade_subset_check/runs" / f"{C.TARGET}-capsule-bench" / "A2_single_tile_matmul" / "generated"
+)
 CAPSULE = REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul/capsule.yaml"
 # rtl_facts_pin = merlin/targets/<target>/contracts/rtl_facts/ (derived from the descriptor's target).
 FACTS = json.loads((REPO / _TE.rtl_facts_pin / "facts.json").read_text())
@@ -66,7 +70,7 @@ def _insn_prefix(mlir: str) -> str:
         i = ln.find(_INSN)
         if i < 0:
             continue
-        fields = [f.strip() for f in ln[i + len(_INSN):].split(",")]
+        fields = [f.strip() for f in ln[i + len(_INSN) :].split(",")]
         if len(fields) >= 3:
             return f"{_INSN}{fields[0]}, {fields[1]}, "
     return ""
@@ -100,11 +104,11 @@ def _drop_insn(mlir: str, funct: int) -> str:
 
 
 def m_drop_compute(mlir: str) -> str:
-    return _drop_insn(mlir, 4)   # remove the matrix COMPUTE
+    return _drop_insn(mlir, 4)  # remove the matrix COMPUTE
 
 
 def m_drop_mvout(mlir: str) -> str:
-    return _drop_insn(mlir, 3)   # remove the result store (MVOUT)
+    return _drop_insn(mlir, 3)  # remove the result store (MVOUT)
 
 
 def m_swap_compute_operands(mlir: str) -> str:
@@ -171,8 +175,7 @@ def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
     if fc and cc["trace"]:
         tr_ok, _ = RUN.run_filecheck(fc, cc["trace"], RUN.render_trace(trace, FACTS), "TRACE")
     rep = RC.screen(trace, capsule, CC._facts_to_rc(FACTS), target=C.TARGET)
-    verdict = "reject" if (tr_ok is False or rep.verdict == "reject") else (
-        "warn" if rep.verdict == "warn" else "ok")
+    verdict = "reject" if (tr_ok is False or rep.verdict == "reject") else ("warn" if rep.verdict == "warn" else "ok")
     ms = (time.perf_counter() - t0) * 1e3
     fails = [c.id for c in rep.checks if c.status == "fail"]
     if tr_ok is False:
@@ -183,8 +186,7 @@ def prescreen_verdict(mlir: str, capsule: dict, fc: str | None):
 def verilator_verdict(cb: dict, mlir: str, gold_flat, timeout: int):
     t0 = time.perf_counter()
     try:
-        r = COMPILE.run_on_oracle(cb, mlir, simulator="verilator", target=C.TARGET,
-                                  timeout=timeout)
+        r = COMPILE.run_on_oracle(cb, mlir, simulator="verilator", target=C.TARGET, timeout=timeout)
     except Exception as e:
         return "fail", round(time.perf_counter() - t0, 1), f"sim error: {type(e).__name__}: {str(e)[:80]}"
     sim_s = (r.get("timing") or {}).get("sim_active_s", round(time.perf_counter() - t0, 1))
@@ -192,18 +194,22 @@ def verilator_verdict(cb: dict, mlir: str, gold_flat, timeout: int):
     if got is None:
         return "fail", sim_s, "no Y0 output committed"
     import numpy as np
+
     got_flat = np.asarray(got).flatten().astype(int).tolist()
     if got_flat == gold_flat:
         return "pass", sim_s, f"Y0==golden (cycles={r.get('cycles')})"
-    return "fail", sim_s, f"Y0 != golden ({sum(1 for a,b in zip(got_flat,gold_flat) if a!=b)} mismatches)"
+    return "fail", sim_s, f"Y0 != golden ({sum(1 for a, b in zip(got_flat, gold_flat) if a != b)} mismatches)"
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--pkg", default=str(DEFAULT_PKG))
     ap.add_argument("--timeout", type=int, default=400)
-    ap.add_argument("--one-time-verilator-qualification", action="store_true",
-                    help="explicitly authorize this qualification-only Verilator mutation probe")
+    ap.add_argument(
+        "--one-time-verilator-qualification",
+        action="store_true",
+        help="explicitly authorize this qualification-only Verilator mutation probe",
+    )
     a = ap.parse_args(argv)
     try:
         qualification = _authorize_verilator_qualification(a.one_time_verilator_qualification)
@@ -214,6 +220,7 @@ def main(argv=None):
     base_mlir = (pkg / "lowered.llvm.mlir").read_text()
     capsule = yaml.safe_load(CAPSULE.read_text())
     import numpy as np
+
     gold_flat = np.asarray(CG.golden(capsule)["Y0"]).flatten().astype(int).tolist()
     fc = RUN.find_filecheck()
 
@@ -223,23 +230,41 @@ def main(argv=None):
         mlir = fn(base_mlir)
         ck_v, ck_ms, ck_fails = prescreen_verdict(mlir, capsule, fc)
         v_v, v_s, v_note = verilator_verdict(cb, mlir, gold_flat, a.timeout)
-        caught_first = (v_v == "fail" and ck_v != "ok")
-        rows.append({"mutant": name, "verilator": v_v, "verilator_s": v_s, "verilator_note": v_note,
-                     "prescreen": ck_v, "prescreen_ms": round(ck_ms, 1), "prescreen_fails": ck_fails,
-                     "caught_before_rtl": caught_first})
-        print(f"{name:34s} {v_v:>10s} {v_s:>7} {ck_v:>12s} {ck_ms:6.1f}  "
-              f"{'YES' if caught_first else ('n/a(pass)' if v_v=='pass' else 'MISS(numeric)')}")
+        caught_first = v_v == "fail" and ck_v != "ok"
+        rows.append(
+            {
+                "mutant": name,
+                "verilator": v_v,
+                "verilator_s": v_s,
+                "verilator_note": v_note,
+                "prescreen": ck_v,
+                "prescreen_ms": round(ck_ms, 1),
+                "prescreen_fails": ck_fails,
+                "caught_before_rtl": caught_first,
+            }
+        )
+        print(
+            f"{name:34s} {v_v:>10s} {v_s:>7} {ck_v:>12s} {ck_ms:6.1f}  "
+            f"{'YES' if caught_first else ('n/a(pass)' if v_v == 'pass' else 'MISS(numeric)')}"
+        )
 
     # headline
     structural = [r for r in rows if r["mutant"] not in ("original",) and r["caught_before_rtl"]]
     saved = sum(float(r["verilator_s"]) for r in structural)
     fp = [r for r in rows if r["mutant"] == "original" and r["prescreen"] != "ok"]
-    out = {"package": str(pkg), "qualification": qualification, "rows": rows,
-           "summary": {"structural_failures_caught_pre_RTL": len(structural),
-                       "verilator_seconds_saved_est": round(saved, 1),
-                       "false_positive_on_original": len(fp),
-                       "numerical_miss_by_design": [r["mutant"] for r in rows
-                                                    if r["verilator"] == "fail" and r["prescreen"] == "ok"]}}
+    out = {
+        "package": str(pkg),
+        "qualification": qualification,
+        "rows": rows,
+        "summary": {
+            "structural_failures_caught_pre_RTL": len(structural),
+            "verilator_seconds_saved_est": round(saved, 1),
+            "false_positive_on_original": len(fp),
+            "numerical_miss_by_design": [
+                r["mutant"] for r in rows if r["verilator"] == "fail" and r["prescreen"] == "ok"
+            ],
+        },
+    }
     rep = C.REPORTS / "prescreen_mutation_demo.json"
     rep.parent.mkdir(parents=True, exist_ok=True)
     rep.write_text(json.dumps(out, indent=2))

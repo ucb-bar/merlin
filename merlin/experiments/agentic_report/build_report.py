@@ -12,6 +12,7 @@ never be typed into a caption and drift from the run that produced it.
 The library does the reading; this script owns the things the library may not know -- where the runs
 are, what the arms are called, and which targets this particular report is about.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,22 +26,21 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.agentreport.anatomy import build_anatomy                          # noqa: E402
-from merlin.agentreport.availability import Availability                      # noqa: E402
-from merlin.agentreport.corpus_coverage import (build as build_coverage,      # noqa: E402
-                                                owner_map, read_required_tiers,
-                                                read_roster)
-from merlin.agentreport.cost_curve import build_cost_curve                    # noqa: E402
-from merlin.agentreport.capsule_time import read_capsule_timings, summarize   # noqa: E402
-from merlin.agentreport.index import ArmSpec, RunRef, build_index             # noqa: E402
-from merlin.agentreport.passes import read_passes                             # noqa: E402
-from merlin.agentreport.phase1_tools import read_phase1_tools                 # noqa: E402
-from merlin.agentreport.phase2 import read_phase2                             # noqa: E402
-from merlin.agentreport.series import rate_curve, read_token_series           # noqa: E402
-from merlin.agentreport.spans import concurrency, occupancy_bins, read_spans   # noqa: E402
-from merlin.agentreport.tokens import METERED, NOTIONAL, read_tokens          # noqa: E402
-from merlin.common.artifacts import new_product                               # noqa: E402
-from merlin.common.paths import artifacts_dir, repo_root                      # noqa: E402
+from merlin.agentreport.anatomy import build_anatomy  # noqa: E402
+from merlin.agentreport.availability import Availability  # noqa: E402
+from merlin.agentreport.capsule_time import read_capsule_timings, summarize  # noqa: E402
+from merlin.agentreport.corpus_coverage import build as build_coverage  # noqa: E402
+from merlin.agentreport.corpus_coverage import owner_map, read_required_tiers, read_roster
+from merlin.agentreport.cost_curve import build_cost_curve  # noqa: E402
+from merlin.agentreport.index import ArmSpec, RunRef, build_index  # noqa: E402
+from merlin.agentreport.passes import read_passes  # noqa: E402
+from merlin.agentreport.phase1_tools import read_phase1_tools  # noqa: E402
+from merlin.agentreport.phase2 import read_phase2  # noqa: E402
+from merlin.agentreport.series import rate_curve, read_token_series  # noqa: E402
+from merlin.agentreport.spans import concurrency, occupancy_bins, read_spans  # noqa: E402
+from merlin.agentreport.tokens import METERED, NOTIONAL, read_tokens  # noqa: E402
+from merlin.common.artifacts import new_product  # noqa: E402
+from merlin.common.paths import artifacts_dir, repo_root  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 CONCERN = "agentic-report"
@@ -64,7 +64,9 @@ def _price_table():
         return _PRICE_TABLE[0]
     try:
         from aet.trajectory.pricing import PriceTable
+
         from merlin.common.paths import env as _env
+
         _PRICE_TABLE.append(PriceTable.load(_env("AET_PRICE_TABLE"), merge_defaults=True))
     except Exception:  # noqa: BLE001 - an absent table means unpriced, not a crash
         _PRICE_TABLE.append(None)
@@ -72,6 +74,7 @@ def _price_table():
 
 
 # --------------------------------------------------------------------------- config
+
 
 @dataclass
 class Config:
@@ -86,16 +89,27 @@ class Config:
         doc = yaml.safe_load(path.read_text()) or {}
         arms, meta = [], {}
         for entry in doc.get("arms") or []:
-            arms.append(ArmSpec(arm_id=str(entry["id"]), name=str(entry["name"]),
-                                prefix=str(entry["prefix"]),
-                                bundle_ids=tuple(entry.get("bundles") or ())))
-            meta[str(entry["id"])] = {"label": entry.get("label") or entry["id"],
-                                      "adds": list(entry.get("adds") or []),
-                                      "name": entry["name"]}
+            arms.append(
+                ArmSpec(
+                    arm_id=str(entry["id"]),
+                    name=str(entry["name"]),
+                    prefix=str(entry["prefix"]),
+                    bundle_ids=tuple(entry.get("bundles") or ()),
+                )
+            )
+            meta[str(entry["id"])] = {
+                "label": entry.get("label") or entry["id"],
+                "adds": list(entry.get("adds") or []),
+                "name": entry["name"],
+            }
             ARM_NAME[str(entry["id"])] = str(entry["name"])
-        return cls(roots=list(doc.get("roots") or []), arms=tuple(arms), arm_meta=meta,
-                   phases=dict(doc.get("phases") or {}),
-                   rescue_globs=list(doc.get("rescue_globs") or []))
+        return cls(
+            roots=list(doc.get("roots") or []),
+            arms=tuple(arms),
+            arm_meta=meta,
+            phases=dict(doc.get("phases") or {}),
+            rescue_globs=list(doc.get("rescue_globs") or []),
+        )
 
     def resolved_roots(self) -> list[tuple[Path, dict]]:
         out = []
@@ -109,48 +123,78 @@ class Config:
 
 # --------------------------------------------------------------------------- facts
 
+
 def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
     """Every number one run contributes, each beside how it was obtained."""
     avail = Availability(dict(ref.availability.fields))
-    out: dict = {"key": ref.key, "run_id": ref.run_id, "target": ref.target, "arm": ref.arm,
-                 "phase": ref.phase, "bench": ref.bench, "root": str(ref.root),
-                 "path": str(ref.path), "arm_conflict": ref.arm_conflict,
-                 "bundle_id": ref.bundle_id, "driver": ref.driver,
-                 "model_declared": ref.model, "started_at": ref.started_at,
-                 "repo_sha": ref.repo_sha, "n_rounds": ref.n_rounds}
+    out: dict = {
+        "key": ref.key,
+        "run_id": ref.run_id,
+        "target": ref.target,
+        "arm": ref.arm,
+        "phase": ref.phase,
+        "bench": ref.bench,
+        "root": str(ref.root),
+        "path": str(ref.path),
+        "arm_conflict": ref.arm_conflict,
+        "bundle_id": ref.bundle_id,
+        "driver": ref.driver,
+        "model_declared": ref.model,
+        "started_at": ref.started_at,
+        "repo_sha": ref.repo_sha,
+        "n_rounds": ref.n_rounds,
+    }
 
     tok = read_tokens(ref.path)
     avail.fields.update(tok.availability.fields)
-    out.update({
-        "model": tok.model or ref.model, "model_is_family_only": tok.model_is_family_only,
-        "input_tokens": tok.input_tokens, "output_tokens": tok.output_tokens,
-        "cache_read_tokens": tok.cache_read_tokens,
-        "cache_creation_tokens": tok.cache_creation_tokens,
-        "reasoning_tokens": tok.reasoning_tokens, "total_tokens": tok.total_tokens,
-        "cached_share": tok.cached_share, "tool_calls": tok.tool_calls,
-        "wall_s": tok.wall_s, "active_wall_s": tok.active_wall_s,
-        "rate_limit_wait_s": tok.rate_limit_wait_s,
-        "cost_kind": tok.cost_kind, "cost_usd": tok.cost_usd,
-        "notional_usd": tok.notional_usd, "cost_reason": tok.cost_reason})
+    out.update(
+        {
+            "model": tok.model or ref.model,
+            "model_is_family_only": tok.model_is_family_only,
+            "input_tokens": tok.input_tokens,
+            "output_tokens": tok.output_tokens,
+            "cache_read_tokens": tok.cache_read_tokens,
+            "cache_creation_tokens": tok.cache_creation_tokens,
+            "reasoning_tokens": tok.reasoning_tokens,
+            "total_tokens": tok.total_tokens,
+            "cached_share": tok.cached_share,
+            "tool_calls": tok.tool_calls,
+            "wall_s": tok.wall_s,
+            "active_wall_s": tok.active_wall_s,
+            "rate_limit_wait_s": tok.rate_limit_wait_s,
+            "cost_kind": tok.cost_kind,
+            "cost_usd": tok.cost_usd,
+            "notional_usd": tok.notional_usd,
+            "cost_reason": tok.cost_reason,
+        }
+    )
 
     series = read_passes(ref.path)
     avail.fields.update(series.availability.fields)
     best = series.best
-    out.update({
-        "passed": best[0] if best else None, "capsules": best[1] if best else None,
-        "n_selfcheck_rows": series.n_rows, "n_no_denominator": series.n_no_denominator,
-        "n_regressions": series.n_regressions,
-        "pass_milestones": [{"t_s": round(p.t_s, 1), "n_passed": p.n_passed,
-                             "n_capsules": p.n_capsules} for p in series.milestones()],
-        "pass_wall_s": series.wall_s})
+    out.update(
+        {
+            "passed": best[0] if best else None,
+            "capsules": best[1] if best else None,
+            "n_selfcheck_rows": series.n_rows,
+            "n_no_denominator": series.n_no_denominator,
+            "n_regressions": series.n_regressions,
+            "pass_milestones": [
+                {"t_s": round(p.t_s, 1), "n_passed": p.n_passed, "n_capsules": p.n_capsules}
+                for p in series.milestones()
+            ],
+            "pass_wall_s": series.wall_s,
+        }
+    )
 
     if ref.phase == "phase2":
         p2 = read_phase2(ref.path)
         avail.fields.update(p2.availability.fields)
         spanset = p2.spanset
         out["broker_actions"] = p2.broker_actions
-        out["broker_totals"] = {a: {"calls": n, "seconds": round(s, 2)}
-                                for a, (n, s) in sorted(p2.action_totals().items())}
+        out["broker_totals"] = {
+            a: {"calls": n, "seconds": round(s, 2)} for a, (n, s) in sorted(p2.action_totals().items())
+        }
         out["n_point_events"] = p2.n_point_events
     else:
         spanset = read_spans(ref.path)
@@ -158,31 +202,38 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
 
     if ref.phase != "phase2":
         from merlin.targetgen import tool_registry as TR
+
         arm_name = ARM_NAME.get(ref.arm, "")
         p1 = read_phase1_tools(spanset, arm_name, TR.TOOLS, TR.ARM_TOOLS)
         avail.fields.update(p1.availability.fields)
         out["granted_tools"] = [
-            {"name": u.name, "invocations": u.invocations, "invocable": u.invocable,
-             "blurb": u.blurb[:200]} for u in p1.tools]
+            {"name": u.name, "invocations": u.invocations, "invocable": u.invocable, "blurb": u.blurb[:200]}
+            for u in p1.tools
+        ]
 
     centres, shares = occupancy_bins(spanset)
-    out["activity_bins"] = [{"t_s": round(c, 1), "occupied": round(v, 3)}
-                            for c, v in zip(centres, shares)]
+    out["activity_bins"] = [{"t_s": round(c, 1), "occupied": round(v, 3)} for c, v in zip(centres, shares)]
 
     conc = concurrency(spanset)
     avail.fields.update(conc.availability.fields)
-    out.update({
-        "span_source": spanset.source, "n_spans": len(spanset.spans),
-        "span_wall_s": spanset.wall_s,
-        "flush_collapsed_fraction": round(spanset.flush_collapsed_fraction, 3),
-        "tool_seconds": round(sum(s.duration_s for s in spanset.spans), 1),
-        "overlap_s": round(conc.overlap_s, 1), "overlap_share": round(conc.overlap_share, 4),
-        "max_concurrent": conc.max_concurrent})
+    out.update(
+        {
+            "span_source": spanset.source,
+            "n_spans": len(spanset.spans),
+            "span_wall_s": spanset.wall_s,
+            "flush_collapsed_fraction": round(spanset.flush_collapsed_fraction, 3),
+            "tool_seconds": round(sum(s.duration_s for s in spanset.spans), 1),
+            "overlap_s": round(conc.overlap_s, 1),
+            "overlap_share": round(conc.overlap_share, 4),
+            "max_concurrent": conc.max_concurrent,
+        }
+    )
 
     # The token curve is cross-checked against the total the harness recorded independently, so a
     # reconstruction that quietly undercounts cannot reach a figure.
-    tseries = read_token_series(ref.path, recorded_totals={
-        "output": tok.output_tokens or None, "cache_read": tok.cache_read_tokens or None})
+    tseries = read_token_series(
+        ref.path, recorded_totals={"output": tok.output_tokens or None, "cache_read": tok.cache_read_tokens or None}
+    )
     avail.fields.update(tseries.availability.fields)
     out["n_usage_reports"] = tseries.n_reports
     out["n_usage_duplicates"] = tseries.n_duplicates
@@ -191,10 +242,20 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
     # several, or it is an average drawn as a trend. Gating the curve on the rate's bar emptied the
     # cost panel for every run whose driver reports usage once per turn.
     curve_ok = len(tseries.samples) >= 2 and avail.get("token_series_crosscheck").ok
-    out["token_curve"] = ([
-        {"t_s": round(s.t_s, 1), "input": s.input_tokens, "output": s.output_tokens,
-         "cache_read": s.cache_read_tokens, "cache_creation": s.cache_creation_tokens}
-        for s in tseries.samples] if curve_ok else [])
+    out["token_curve"] = (
+        [
+            {
+                "t_s": round(s.t_s, 1),
+                "input": s.input_tokens,
+                "output": s.output_tokens,
+                "cache_read": s.cache_read_tokens,
+                "cache_creation": s.cache_creation_tokens,
+            }
+            for s in tseries.samples
+        ]
+        if curve_ok
+        else []
+    )
     out["token_curve_can_rate"] = bool(tseries.can_rate and curve_ok)
 
     # Spend over time, priced per bucket. A blended rate would draw a straight line, which is
@@ -202,8 +263,11 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
     recorded = tok.cost_usd if tok.cost_usd is not None else tok.notional_usd
     curve = build_cost_curve(out["token_curve"], out["model"], _rate_for, recorded)
     avail.fields.update(curve.availability.fields)
-    out["cost_curve"] = ([{"t_s": p.t_s, "usd": round(p.usd, 4)} for p in curve.points]
-                         if curve.availability.get("cost_curve").ok else [])
+    out["cost_curve"] = (
+        [{"t_s": p.t_s, "usd": round(p.usd, 4)} for p in curve.points]
+        if curve.availability.get("cost_curve").ok
+        else []
+    )
     out["cost_curve_final_usd"] = curve.final_usd
 
     if want_capsule_time:
@@ -215,12 +279,17 @@ def run_facts(ref: RunRef, *, want_capsule_time: bool) -> dict:
                 if s.n == 0:
                     continue
                 tiers[f"{tier}/{status}"] = {
-                    "n": s.n, "n_carried": s.n_carried, "n_no_timing": s.n_no_timing,
-                    "median_active_s": s.median_active_s, "p90_active_s": s.p90_active_s,
-                    "max_active_s": s.max_active_s, "total_active_s": round(s.total_active_s, 1),
+                    "n": s.n,
+                    "n_carried": s.n_carried,
+                    "n_no_timing": s.n_no_timing,
+                    "median_active_s": s.median_active_s,
+                    "p90_active_s": s.p90_active_s,
+                    "max_active_s": s.max_active_s,
+                    "total_active_s": round(s.total_active_s, 1),
                     "wall_inconsistent": s.wall_inconsistent,
                     "status": s.availability.get("tier_cost").kind,
-                    "note": s.availability.get("tier_cost").reason}
+                    "note": s.availability.get("tier_cost").reason,
+                }
         out["tier_cost"] = tiers
         out["capsule_workers"] = sorted({r.workers for r in rows if r.workers}) or None
 
@@ -255,8 +324,10 @@ def classify_provenance(f: dict) -> tuple[str, str]:
     if markers:
         return "seeded", f"carries {', '.join(markers)}, so it started from an existing submission"
     if not (f.get("tool_calls") or 0) and (f.get("passed") or 0) > 0:
-        return "unknown", ("no tool-call count was recorded, so whether this run built its result "
-                           "cannot be told from what it left behind")
+        return "unknown", (
+            "no tool-call count was recorded, so whether this run built its result "
+            "cannot be told from what it left behind"
+        )
     return "earned", ""
 
 
@@ -278,17 +349,22 @@ def _label_ladders(ladders: dict) -> None:
 
     for key, members in ladders.items():
         target, phase, corpus, model, total = work[key]
-        peers = [t for k, (tg, ph, cp, md, t) in work.items()
-                 if k != key and (tg, ph, cp, md) == (target, phase, corpus, model) and t > 0]
+        peers = [
+            t
+            for k, (tg, ph, cp, md, t) in work.items()
+            if k != key and (tg, ph, cp, md) == (target, phase, corpus, model) and t > 0
+        ]
         if max((f.get("passed") or 0) for f in members) == 0:
             quality, note = "null", "every rung scored zero — a real result, but not a contrast"
         elif any(f.get("provenance") == "seeded" for f in members):
             quality, note = "patch", "at least one rung carries a seed marker"
         elif peers and total > 0 and total < _PATCH_WORK_RATIO * max(peers):
             quality = "patch"
-            note = (f"used {total / 1e6:.1f} M tokens against {max(peers) / 1e6:.0f} M for a "
-                    f"comparable ladder on the same target, corpus and model — these rungs adjusted "
-                    f"an existing compiler rather than building one")
+            note = (
+                f"used {total / 1e6:.1f} M tokens against {max(peers) / 1e6:.0f} M for a "
+                f"comparable ladder on the same target, corpus and model — these rungs adjusted "
+                f"an existing compiler rather than building one"
+            )
         else:
             quality, note = "full", ""
         for f in members:
@@ -313,8 +389,7 @@ def select(facts: list[dict], *, per_cell: int = 1) -> list[dict]:
         cells.setdefault((f["target"], f["arm"], f["phase"]), []).append(f)
 
     for key, group in cells.items():
-        group.sort(key=lambda f: (score(f), f.get("availability_score", 0.0),
-                                  f.get("started_at") or ""), reverse=True)
+        group.sort(key=lambda f: (score(f), f.get("availability_score", 0.0), f.get("started_at") or ""), reverse=True)
         for rank, f in enumerate(group):
             if score(f) < 0:
                 f["selected"] = False
@@ -322,13 +397,13 @@ def select(facts: list[dict], *, per_cell: int = 1) -> list[dict]:
             elif rank < per_cell:
                 f["selected"] = True
                 f["selection_reason"] = (
-                    f"best of {len(group)} in {key[0]}/{key[1]}/{key[2]} by score "
-                    f"{f['passed']}/{f['capsules']}")
+                    f"best of {len(group)} in {key[0]}/{key[1]}/{key[2]} by score {f['passed']}/{f['capsules']}"
+                )
             else:
                 f["selected"] = False
                 f["selection_reason"] = (
-                    f"rank {rank + 1} of {len(group)} in {key[0]}/{key[1]}/{key[2]} "
-                    f"({f['passed']}/{f['capsules']})")
+                    f"rank {rank + 1} of {len(group)} in {key[0]}/{key[1]}/{key[2]} ({f['passed']}/{f['capsules']})"
+                )
 
     # A complete ladder is worth more than four unrelated bests: it is the only like-for-like
     # comparison the study supports, so every member is kept even when it is not its cell's best.
@@ -347,13 +422,14 @@ def select(facts: list[dict], *, per_cell: int = 1) -> list[dict]:
             f["ladder"] = f"{target}/{phase}/{tag}"
             f["selection_reason"] = (
                 f"member of the {len(members)}-arm ladder {tag!r} on {target} "
-                f"({sorted(members)}), which is a like-for-like comparison")
-    _label_ladders({f"{t}/{ph}/{tag}": list(m.values())
-                    for (t, ph, tag), m in by_tag.items() if len(m) >= 3})
+                f"({sorted(members)}), which is a like-for-like comparison"
+            )
+    _label_ladders({f"{t}/{ph}/{tag}": list(m.values()) for (t, ph, tag), m in by_tag.items() if len(m) >= 3})
     return facts
 
 
 # --------------------------------------------------------------------------- commands
+
 
 def cmd_index(a) -> int:
     cfg = Config.load(a.config)
@@ -380,14 +456,28 @@ def cmd_index(a) -> int:
 def cmd_facts(a) -> int:
     cfg = Config.load(a.config)
     index_path = a.index or (artifacts_dir() / CONCERN / "index.json")
-    refs = [RunRef(root=Path(d["root"]), path=Path(d["path"]), target=d["target"],
-                   bench=d["bench"], phase=d["phase"], run_id=d["run_id"], arm=d["arm"],
-                   arm_source=d["arm_source"], arm_conflict=d["arm_conflict"],
-                   bundle_id=d["bundle_id"], driver=d["driver"], model=d["model"],
-                   provider=d["provider"], started_at=d["started_at"], repo_sha=d["repo_sha"],
-                   n_rounds=d["n_rounds"],
-                   availability=Availability.from_dict(d.get("availability") or {}))
-            for d in json.loads(index_path.read_text())]
+    refs = [
+        RunRef(
+            root=Path(d["root"]),
+            path=Path(d["path"]),
+            target=d["target"],
+            bench=d["bench"],
+            phase=d["phase"],
+            run_id=d["run_id"],
+            arm=d["arm"],
+            arm_source=d["arm_source"],
+            arm_conflict=d["arm_conflict"],
+            bundle_id=d["bundle_id"],
+            driver=d["driver"],
+            model=d["model"],
+            provider=d["provider"],
+            started_at=d["started_at"],
+            repo_sha=d["repo_sha"],
+            n_rounds=d["n_rounds"],
+            availability=Availability.from_dict(d.get("availability") or {}),
+        )
+        for d in json.loads(index_path.read_text())
+    ]
     if a.target:
         refs = [r for r in refs if r.target in set(a.target)]
     facts = []
@@ -416,11 +506,17 @@ def cmd_anatomy(a) -> int:
         return 2
     f = max(match, key=lambda x: x.get("passed") or 0)
     spanset = read_spans(Path(f["path"]))
-    anatomy = build_anatomy(Path(f["path"]), spanset, run_id=f["run_id"], target=f["target"],
-                            arm=f["arm"], model=f.get("model") or "",
-                            token_curve=f.get("token_curve"), cost_curve=f.get("cost_curve"),
-                            cost={k: f.get(k) for k in
-                                  ("cost_kind", "cost_usd", "notional_usd", "cost_reason")})
+    anatomy = build_anatomy(
+        Path(f["path"]),
+        spanset,
+        run_id=f["run_id"],
+        target=f["target"],
+        arm=f["arm"],
+        model=f.get("model") or "",
+        token_curve=f.get("token_curve"),
+        cost_curve=f.get("cost_curve"),
+        cost={k: f.get(k) for k in ("cost_kind", "cost_usd", "notional_usd", "cost_reason")},
+    )
     out = a.out or (artifacts_dir() / CONCERN / f"anatomy_{f['run_id']}.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(anatomy.to_dict(), indent=2) + "\n")
@@ -478,9 +574,10 @@ def cmd_coverage(a) -> int:
     # Report one row per PROFILE -- the corpus belongs to the profile, and two run-time target
     # names can share one. A profile with a roster and no runs is a real answer (zero) and must
     # not be dropped: it is corpus we built and never graded.
-    all_profiles = sorted({p.name.split(".")[0] for p in profiles.glob("*.yaml")
-                           if not p.name.startswith("_")}
-                          | {profile_of.get(r["target"], r["target"]) for r in refs})
+    all_profiles = sorted(
+        {p.name.split(".")[0] for p in profiles.glob("*.yaml") if not p.name.startswith("_")}
+        | {profile_of.get(r["target"], r["target"]) for r in refs}
+    )
 
     rosters, reasons = {}, {}
     for name in all_profiles:
@@ -500,8 +597,7 @@ def cmd_coverage(a) -> int:
             doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except (OSError, ValueError):
             continue
-        defaults[name] = _deepest_declared_tier(
-            (doc.get("datapath") or {}).get("required_oracle_tiers"))
+        defaults[name] = _deepest_declared_tier((doc.get("datapath") or {}).get("required_oracle_tiers"))
 
     out_rows = []
     for name in all_profiles:
@@ -513,18 +609,25 @@ def cmd_coverage(a) -> int:
                 continue
             runs.append((r["run_id"], r["arm"], Path(r["path"])))
             run_targets.add(r["target"])
-        cov = build_coverage(name, roster=rosters[name], runs=runs,
-                             required_tiers=required, default_bar=defaults.get(name, ""),
-                             owners=owner_map(rosters, exclude=name),
-                             roster_reason=reasons[name])
+        cov = build_coverage(
+            name,
+            roster=rosters[name],
+            runs=runs,
+            required_tiers=required,
+            default_bar=defaults.get(name, ""),
+            owners=owner_map(rosters, exclude=name),
+            roster_reason=reasons[name],
+        )
         row = cov.to_dict()
         row["run_targets"] = sorted(run_targets)
         out_rows.append(row)
         c = cov.counts()
         certified = c["passed_at_bar"] + c["passed_above_bar"]
-        print(f"  {name:<18} roster {cov.roster_size:>4}  runs {cov.n_runs:>4}  "
-              f"certified {certified:>4}  never graded {c['never_graded']:>4}  "
-              f"never passed {c['graded_never_passed']:>4}  off-roster {len(cov.off_roster):>3}")
+        print(
+            f"  {name:<18} roster {cov.roster_size:>4}  runs {cov.n_runs:>4}  "
+            f"certified {certified:>4}  never graded {c['never_graded']:>4}  "
+            f"never passed {c['graded_never_passed']:>4}  off-roster {len(cov.off_roster):>3}"
+        )
 
     out = a.out or (artifacts_dir() / CONCERN / "coverage_facts.json")
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -566,8 +669,7 @@ def cmd_rescue(a) -> int:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", type=Path, default=HERE / "roots.yaml")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -579,8 +681,11 @@ def main(argv=None) -> int:
     p.add_argument("--index", type=Path)
     p.add_argument("--target", action="append", default=[])
     p.add_argument("--per-cell", type=int, default=1)
-    p.add_argument("--no-capsule-time", action="store_true",
-                   help="skip the per-capsule tier scan (much faster; drops the cost figures)")
+    p.add_argument(
+        "--no-capsule-time",
+        action="store_true",
+        help="skip the per-capsule tier scan (much faster; drops the cost figures)",
+    )
     p.add_argument("--out", type=Path)
     p.set_defaults(fn=cmd_facts)
 

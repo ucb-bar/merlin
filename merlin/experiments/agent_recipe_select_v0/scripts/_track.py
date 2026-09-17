@@ -25,6 +25,7 @@ WHAT THIS TRACK OWNS:
   * ``out/artifacts/recipe-select/<target>/`` products, ``out/artifacts/cache/recipe_select_*``
     caches, and ``out/build/recipe_select_*`` scratch.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -45,8 +46,8 @@ REPO = repo()
 if str(REPO / "merlin" / "python") not in sys.path:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.benchharness import runs_root as _runs_root      # noqa: E402
-from merlin.common.paths import artifacts_dir                # noqa: E402
+from merlin.benchharness import runs_root as _runs_root  # noqa: E402
+from merlin.common.paths import artifacts_dir  # noqa: E402
 
 TARGET = "gemmini"
 SUITE = "recipe-select"
@@ -66,6 +67,8 @@ RUNS = _runs_root(TARGET, SUITE)
 #: (it is the same variable these scripts export to the runner).
 _GSIM_BUILD = "gsim_cert_serialclk_v1"
 _GSIM_EMU_NAME = "emu_gemmini_gsim_serialclk_v1_filtered_final"
+
+
 def _gsim_emu() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
     if env:
@@ -105,8 +108,12 @@ def assert_frozen_intact() -> None:
         digest, _, rel = line.partition("  ")
         recorded[rel.strip().lstrip("./")] = digest.strip()
     drift = []
-    for rel in ("mlir_oot/lowering/isa.py", "mlir_oot/ir_ingest.py",
-                "mlir_oot/gemmini_opt.py", "mlir_oot/transforms.py"):
+    for rel in (
+        "mlir_oot/lowering/isa.py",
+        "mlir_oot/ir_ingest.py",
+        "mlir_oot/gemmini_opt.py",
+        "mlir_oot/transforms.py",
+    ):
         want = recorded.get(rel)
         p = FROZEN / rel
         if want is None or not p.exists():
@@ -116,8 +123,7 @@ def assert_frozen_intact() -> None:
         if got != want:
             drift.append(f"{rel}: {got[:12]} != pinned {want[:12]}")
     if drift:
-        raise SystemExit("the FROZEN package is not its pinned bytes; refusing to run:\n  "
-                         + "\n  ".join(drift))
+        raise SystemExit("the FROZEN package is not its pinned bytes; refusing to run:\n  " + "\n  ".join(drift))
 
 
 def gsim_env() -> dict[str, str]:
@@ -127,8 +133,7 @@ def gsim_env() -> dict[str, str]:
     got = hashlib.sha256(GSIM_EMU.read_bytes()).hexdigest()
     if got != GSIM_SHA:
         raise SystemExit(f"gsim emu digest {got} != certified {GSIM_SHA}; refusing to cite it")
-    return {"MERLIN_GEMMINI_GSIM_EMU": str(GSIM_EMU),
-            "MERLIN_GEMMINI_GSIM_MAXCYCLES": GSIM_MAXCYCLES}
+    return {"MERLIN_GEMMINI_GSIM_EMU": str(GSIM_EMU), "MERLIN_GEMMINI_GSIM_MAXCYCLES": GSIM_MAXCYCLES}
 
 
 # ---------------------------------------------------------------------------------------------
@@ -239,8 +244,7 @@ def mint_fork(work: Path | None = None, *, label: str = "recipe") -> Path:
     if staging.exists():
         _thaw(staging)
         shutil.rmtree(staging)
-    shutil.copytree(work, staging,
-                    ignore=shutil.ignore_patterns(*_SKIP_DIRS, "SHA256SUMS"))
+    shutil.copytree(work, staging, ignore=shutil.ignore_patterns(*_SKIP_DIRS, "SHA256SUMS"))
 
     # The manifest must describe THIS package, not the parent it was copied from. The working fork
     # still carries the champion's `package_id` and its `publication:` block; leaving those in place
@@ -250,7 +254,7 @@ def mint_fork(work: Path | None = None, *, label: str = "recipe") -> Path:
     man_path = staging / "manifest.yaml"
     man = yaml.safe_load(man_path.read_text(encoding="utf-8"))
     parent_fp = (man.get("publication") or {}).get("fingerprint") or man.get("fingerprint")
-    man.pop("publication", None)          # not a champion; it is an experiment fork
+    man.pop("publication", None)  # not a champion; it is an experiment fork
     man["package_id"] = pkg_id
     man["lineage"] = {
         "parent_package_id": "gemmini_xdsl_rtl_v0",
@@ -258,8 +262,10 @@ def mint_fork(work: Path | None = None, *, label: str = "recipe") -> Path:
         "minted_by": "merlin/experiments/agent_recipe_select_v0",
         "minted_utc": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
         "source_digest": digest,
-        "note": ("experiment fork of the certified champion; its cycles describe this package "
-                 "only and are not the champion's certified numbers"),
+        "note": (
+            "experiment fork of the certified champion; its cycles describe this package "
+            "only and are not the champion's certified numbers"
+        ),
     }
     man_path.write_text(yaml.safe_dump(man, sort_keys=True), encoding="utf-8")
 
@@ -295,7 +301,8 @@ def assert_package_frozen(pkg: Path) -> str:
         raise SystemExit(
             f"minted package {pkg.name} is not its pinned bytes; refusing to cite it:\n"
             + "".join(f"  changed: {r}\n" for r in drift[:10])
-            + "".join(f"  missing: {r}\n" for r in missing[:10]))
+            + "".join(f"  missing: {r}\n" for r in missing[:10])
+        )
     return source_digest(pkg)
 
 
@@ -335,7 +342,7 @@ MERLIN_PY = REPO / "merlin" / "python"
 
 def assert_right_merlin() -> None:
     """Fail loudly if the imported ``merlin`` is some other checkout's."""
-    import merlin as _m                                                   # noqa: PLC0415
+    import merlin as _m  # noqa: PLC0415
 
     got = Path(_m.__file__).resolve()
     if REPO not in got.parents:
@@ -343,12 +350,13 @@ def assert_right_merlin() -> None:
             f"imported merlin from {got}\n"
             f"  but this experiment lives in {REPO}\n"
             "  -> set PYTHONPATH={MERLIN_PY} (or use _track.py_env()); otherwise out_dir(), "
-            "recaptures_dir() and new_product() all resolve into the other checkout")
+            "recaptures_dir() and new_product() all resolve into the other checkout"
+        )
 
 
 def py_env(extra: "dict[str, str] | None" = None) -> dict:
     """Environment for a subprocess that imports merlin: this checkout's package wins the path."""
-    import os                                                             # noqa: PLC0415
+    import os  # noqa: PLC0415
 
     env = dict(os.environ)
     prior = env.get("PYTHONPATH", "")

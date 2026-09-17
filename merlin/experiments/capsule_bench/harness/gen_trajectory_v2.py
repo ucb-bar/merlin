@@ -14,38 +14,58 @@ Per-event wall stamps don't exist, so within a round the activity sequence is la
 round's measured duration (honest given the data). Authoritative tokens/cost/duration come from each
 round's transcript result event.
 """
+
 from __future__ import annotations
-import json, glob, sys
+
+import glob
+import json
+import sys
 from pathlib import Path
-import numpy as np
+
 import matplotlib
+import numpy as np
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
-from matplotlib.patches import Patch
+import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+
 REPO = C.REPO
-from merlin.plotting.merlin_plotstyle import (use_merlin_style, style_ax, title, suptitle, emph,  # noqa: E402
-                                              BG, INK, GOLD, BLUE, NAVY, SLATE, MAUVE, SAGE)
+from merlin.plotting.merlin_plotstyle import (  # noqa: E402
+    BG,
+    BLUE,
+    GOLD,
+    INK,
+    MAUVE,
+    NAVY,
+    SAGE,
+    SLATE,
+    emph,
+    style_ax,
+    suptitle,
+    title,
+    use_merlin_style,
+)
 
 CB = C.EXP
 OUT = CB / "reports" / "plots"
 ARMS = [
-    ("raw_baseline/rb_abc11",            "raw C++ (from scratch)"),
-    ("cpp_merlininfra/rbinfra_abc11",    "C++ + Merlin scaffold"),
-    ("merlin_assisted/merlin_abc9",      "Merlin — Python tooling"),
+    ("raw_baseline/rb_abc11", "raw C++ (from scratch)"),
+    ("cpp_merlininfra/rbinfra_abc11", "C++ + Merlin scaffold"),
+    ("merlin_assisted/merlin_abc9", "Merlin — Python tooling"),
     ("merlin_assisted/merlincirct_abc9", "Merlin + CIRCT hints"),
 ]
 # activity-phase background palette (pale tints — colour says WHAT, line carries the metric)
 ACT = {
     "think": ("#3b3b5c", "thinking"),
-    "read":  ("#8B93A6", "reading"),
+    "read": ("#8B93A6", "reading"),
     "write": ("#7D886C", "writing code"),
-    "bash":  ("#b8a48f", "bash / shell"),
-    "tool":  ("#815E5E", "tool run (spike·verilator·CIRCT)"),
+    "bash": ("#b8a48f", "bash / shell"),
+    "tool": ("#815E5E", "tool run (spike·verilator·CIRCT)"),
 }
 ACT_ALPHA = 0.30
 # cumulative-token line identity
@@ -56,7 +76,7 @@ def _round_records(run: Path):
     recs = []
     for tp in sorted(glob.glob(str(run / "rounds" / "round_*.transcript.jsonl"))):
         result = None
-        acts = []          # ordered activity categories through the round
+        acts = []  # ordered activity categories through the round
         nver = ncir = 0
         for l in open(tp):
             try:
@@ -67,7 +87,7 @@ def _round_records(run: Path):
             if t == "result":
                 result = e
             elif t == "assistant":
-                for c in (e.get("message", {}).get("content") or []):
+                for c in e.get("message", {}).get("content") or []:
                     if not isinstance(c, dict):
                         continue
                     typ = c.get("type")
@@ -82,12 +102,15 @@ def _round_records(run: Path):
                             acts.append("write")
                         elif nm == "bash":
                             is_ver = ("--sim verilator" in s) or ('"verilator"' in s)
-                            is_cir = ("circt" in run.as_posix() and
-                                      ("rtl_check" in s or "gen_isa" in s or "rtl_facts" in s or "facts.json" in s))
+                            is_cir = "circt" in run.as_posix() and (
+                                "rtl_check" in s or "gen_isa" in s or "rtl_facts" in s or "facts.json" in s
+                            )
                             if is_ver:
-                                acts.append("tool"); nver += 1
+                                acts.append("tool")
+                                nver += 1
                             elif is_cir:
-                                acts.append("tool"); ncir += 1
+                                acts.append("tool")
+                                ncir += 1
                             else:
                                 acts.append("bash")
                         else:
@@ -95,13 +118,19 @@ def _round_records(run: Path):
         if result is None:
             continue
         u = result.get("usage", {}) or {}
-        recs.append(dict(
-            dur=(result.get("duration_ms", 0) or 0) / 1000.0,
-            cost=result.get("total_cost_usd", 0) or 0.0,
-            tin=int(u.get("input_tokens", 0) or 0),
-            tcache=int(u.get("cache_read_input_tokens", 0) or 0) + int(u.get("cache_creation_input_tokens", 0) or 0),
-            tout=int(u.get("output_tokens", 0) or 0),
-            acts=acts or ["bash"], nver=nver, ncir=ncir))
+        recs.append(
+            dict(
+                dur=(result.get("duration_ms", 0) or 0) / 1000.0,
+                cost=result.get("total_cost_usd", 0) or 0.0,
+                tin=int(u.get("input_tokens", 0) or 0),
+                tcache=int(u.get("cache_read_input_tokens", 0) or 0)
+                + int(u.get("cache_creation_input_tokens", 0) or 0),
+                tout=int(u.get("output_tokens", 0) or 0),
+                acts=acts or ["bash"],
+                nver=nver,
+                ncir=ncir,
+            )
+        )
     return recs
 
 
@@ -117,7 +146,7 @@ def _passed_per_round(run: Path, nrounds: int):
     vc = run / "verilator_checkpoints.json"
     if vc.is_file():
         try:
-            atts = (json.loads(vc.read_text()).get("attempts") or [])
+            atts = json.loads(vc.read_text()).get("attempts") or []
             if atts:
                 l3 = max(int(a.get("n_passed") or 0) for a in atts)
         except Exception:
@@ -146,7 +175,8 @@ def main():
         run = CB / "runs" / rel
         recs = _round_records(run)
         if not recs:
-            ax.text(0.5, 0.5, f"{label}: no data", ha="center"); continue
+            ax.text(0.5, 0.5, f"{label}: no data", ha="center")
+            continue
         n = len(recs)
         starts = np.concatenate([[0.0], np.cumsum([r["dur"] for r in recs])])
         total = float(starts[-1])
@@ -174,17 +204,34 @@ def main():
             ax.axvline(starts[k], color=INK, ls=(0, (1, 2)), lw=1.0, alpha=0.25, zorder=2)
 
         # ---- cumulative tokens by type (log y), lines on top ----
-        xs = [0.0]; cca = [0.0]; cin = [0.0]; cou = [0.0]
+        xs = [0.0]
+        cca = [0.0]
+        cin = [0.0]
+        cou = [0.0]
         ac = ai = ao = 0
         for k, r in enumerate(recs):
-            ac += r["tcache"]; ai += r["tin"]; ao += r["tout"]
-            xs.append(starts[k + 1]); cca.append(ac); cin.append(ai); cou.append(ao)
+            ac += r["tcache"]
+            ai += r["tin"]
+            ao += r["tout"]
+            xs.append(starts[k + 1])
+            cca.append(ac)
+            cin.append(ai)
+            cou.append(ao)
         xs = np.array(xs)
-        cca = np.array(cca); cin = np.array(cin); cou = np.array(cou)
+        cca = np.array(cca)
+        cin = np.array(cin)
+        cou = np.array(cou)
         tot = cca + cin + cou
         for arr, col in ((cca, C_CACHE), (cin, C_INPUT), (cou, C_OUTPUT)):
-            ax.step(xs, np.clip(arr, 1, None), where="post", color=col, lw=3.4, zorder=6,
-                    path_effects=[pe.withStroke(linewidth=5.0, foreground=BG)])
+            ax.step(
+                xs,
+                np.clip(arr, 1, None),
+                where="post",
+                color=col,
+                lw=3.4,
+                zorder=6,
+                path_effects=[pe.withStroke(linewidth=5.0, foreground=BG)],
+            )
         ax.set_yscale("log")
         ax.set_ylim(1e3, tot[-1] * 6)
 
@@ -195,11 +242,20 @@ def main():
             if passed[k] > prev:
                 xm = starts[k + 1]
                 ax.axvline(xm, color=GOLD, ls=(0, (4, 3)), lw=2.6, alpha=0.95, zorder=5)
-                txt = f"{passed[k]}/20\n${cum_cost[k]:.0f} · {tot[k+1]/1e6:.0f}M"
-                ax.annotate(txt, (xm, ax.get_ylim()[1]), xytext=(-8, -8),
-                            textcoords="offset points", ha="right", va="top",
-                            fontsize=13, fontweight="bold", color="#7a6a40", zorder=8,
-                            path_effects=HALO)
+                txt = f"{passed[k]}/20\n${cum_cost[k]:.0f} · {tot[k + 1] / 1e6:.0f}M"
+                ax.annotate(
+                    txt,
+                    (xm, ax.get_ylim()[1]),
+                    xytext=(-8, -8),
+                    textcoords="offset points",
+                    ha="right",
+                    va="top",
+                    fontsize=13,
+                    fontweight="bold",
+                    color="#7a6a40",
+                    zorder=8,
+                    path_effects=HALO,
+                )
                 prev = passed[k]
 
         # ---- cosmetics ----
@@ -207,16 +263,25 @@ def main():
         ax.set_ylabel("cum. tokens (log)", fontsize=15)
         ax.tick_params(axis="both", labelsize=13)
         title(ax, label, fs=21, pad=10)
-        ax.text(total * 0.012, tot[-1] * 3.2,
-                f"{total/60:.0f} min active   ·   ${cum_cost[-1]:.0f}   ·   {tot[-1]/1e6:.0f}M tokens   ·   "
-                f"{n} rounds   ·   final {passed[-1]}/20",
-                fontsize=14.5, color=INK, va="top", ha="left", zorder=9,
-                bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="#d9cfc0", lw=1.0))
+        ax.text(
+            total * 0.012,
+            tot[-1] * 3.2,
+            f"{total / 60:.0f} min active   ·   ${cum_cost[-1]:.0f}   ·   {tot[-1] / 1e6:.0f}M tokens   ·   "
+            f"{n} rounds   ·   final {passed[-1]}/20",
+            fontsize=14.5,
+            color=INK,
+            va="top",
+            ha="left",
+            zorder=9,
+            bbox=dict(boxstyle="round,pad=0.4", fc="white", ec="#d9cfc0", lw=1.0),
+        )
         if ax is axes[-1]:
             ax.set_xlabel("active wall-clock time (s)   —   own scale per arm", fontsize=16)
 
     # shared legend: activity bands + token lines + markers
-    handles = [Patch(fc=ACT[k][0], alpha=ACT_ALPHA, label=ACT[k][1]) for k in ("think", "read", "write", "bash", "tool")]
+    handles = [
+        Patch(fc=ACT[k][0], alpha=ACT_ALPHA, label=ACT[k][1]) for k in ("think", "read", "write", "bash", "tool")
+    ]
     handles += [
         Line2D([0], [0], color=C_CACHE, lw=3.4, label="cum. cache-read"),
         Line2D([0], [0], color=C_INPUT, lw=3.4, label="cum. input"),
@@ -224,8 +289,16 @@ def main():
         Line2D([0], [0], color=GOLD, lw=2.6, ls=(0, (4, 3)), label="test-pass milestone"),
         Line2D([0], [0], color=INK, lw=1.0, ls=(0, (1, 2)), label="round boundary"),
     ]
-    fig.legend(handles=handles, loc="upper center", ncol=5, fontsize=13.5,
-               frameon=True, facecolor="white", edgecolor="#d9cfc0", bbox_to_anchor=(0.5, 0.985))
+    fig.legend(
+        handles=handles,
+        loc="upper center",
+        ncol=5,
+        fontsize=13.5,
+        frameon=True,
+        facecolor="white",
+        edgecolor="#d9cfc0",
+        bbox_to_anchor=(0.5, 0.985),
+    )
     suptitle(fig, "Agentic authoring trajectory — activity, tokens & milestones over active time", y=1.0, fs=25)
     fig.tight_layout(rect=(0, 0, 1, 0.93))
     png = OUT / "fig_trajectory_v2.png"

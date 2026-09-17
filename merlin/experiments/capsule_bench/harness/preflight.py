@@ -6,6 +6,7 @@ grading, trace/integrity gates, and metric capture are trustworthy, then writes
 the target's capsule-bench report dir (out/artifacts/capsule-bench/<target>/
 experiment_preflight_report.md) ending in GO_FOR_PILOT or NO_GO.
 """
+
 from __future__ import annotations
 
 import json
@@ -22,12 +23,13 @@ import _common as C  # noqa: E402
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
 import run_agent_experiment as RAE  # noqa: E402
-from merlin.targetgen import capsule_grade as CGRADE  # noqa: E402
-from merlin.targetgen import trace_check as TCK  # noqa: E402
-from merlin.targetgen.rocc import decode as RD  # noqa: E402  (was targetgen.rocc_decode before the move)
+
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
+from merlin.targetgen import capsule_grade as CGRADE  # noqa: E402
 from merlin.targetgen import experiment_tokens as ET  # noqa: E402
+from merlin.targetgen import trace_check as TCK  # noqa: E402
 from merlin.targetgen.contract import schemas as S  # noqa: E402
+from merlin.targetgen.rocc import decode as RD  # noqa: E402  (was targetgen.rocc_decode before the move)
 from merlin.targetgen.sandbox import bwrap  # noqa: E402  (grant resolution shared with the binder)
 
 TARGET = C.TARGET
@@ -55,8 +57,7 @@ def bundles_to_check() -> list[str]:
     """
     if not C.BUNDLES.is_dir():
         return []
-    return sorted(d.name for d in C.BUNDLES.iterdir()
-                  if d.is_dir() and (d / "input_bundle_manifest.yaml").is_file())
+    return sorted(d.name for d in C.BUNDLES.iterdir() if d.is_dir() and (d / "input_bundle_manifest.yaml").is_file())
 
 
 def load_bundle_by_id(bundle_id: str) -> dict:
@@ -88,39 +89,72 @@ def _bundle_id_for(arm: str) -> str:
     # seam menu off that substring), so they are excluded here by their differentiating token.
     _VARIANT_TOKENS = ("rtlchecks", "eqsat")
     candidates = sorted(
-        d.name for d in C.BUNDLES.iterdir()
-        if d.is_dir() and d.name.startswith(f"{arm}_") and d.name not in others
+        d.name
+        for d in C.BUNDLES.iterdir()
+        if d.is_dir()
+        and d.name.startswith(f"{arm}_")
+        and d.name not in others
         and not any(t in d.name for t in _VARIANT_TOKENS)
-        and (d / "input_bundle_manifest.yaml").is_file())
+        and (d / "input_bundle_manifest.yaml").is_file()
+    )
     if len(candidates) == 1:
         return candidates[0]
     raise SystemExit(
         f"preflight: cannot resolve a bundle for arm {arm!r} under {C.BUNDLES} — "
         f"declared {declared!r} is absent and candidates are {candidates}. "
-        f"Name one explicitly rather than letting the gate guess.")
+        f"Name one explicitly rather than letting the gate guess."
+    )
 
 
 def check_canary_isolation() -> dict:
     """For each agent bundle: assemble workspace, run a probe inside bwrap that tries to read every
     canary by absolute path + greps /scratch*; assert none reachable. Also show sandbox=none leaks."""
     out = {"bwrap_available": False, "per_bundle": {}, "unsandboxed_leaks": None}
-    _bw = subprocess.run(["bwrap", "--ro-bind", "/usr", "/usr", "--ro-bind", "/bin", "/bin",
-                          "--ro-bind", "/lib", "/lib", "--ro-bind", "/lib64", "/lib64",
-                          "--tmpfs", "/scratch", "--proc", "/proc", "--dev", "/dev",
-                          "--chdir", "/", "--", "/bin/true"],
-                         capture_output=True, text=True, timeout=30, cwd="/tmp")
-    out["bwrap_available"] = (_bw.returncode == 0)
+    _bw = subprocess.run(
+        [
+            "bwrap",
+            "--ro-bind",
+            "/usr",
+            "/usr",
+            "--ro-bind",
+            "/bin",
+            "/bin",
+            "--ro-bind",
+            "/lib",
+            "/lib",
+            "--ro-bind",
+            "/lib64",
+            "/lib64",
+            "--tmpfs",
+            "/scratch",
+            "--proc",
+            "/proc",
+            "--dev",
+            "/dev",
+            "--chdir",
+            "/",
+            "--",
+            "/bin/true",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd="/tmp",
+    )
+    out["bwrap_available"] = _bw.returncode == 0
     abspaths = [str(C.REPO / c) for c in CANARIES]
     # explicit absolute-path reachability of each canary + a bounded grep of the workspace only
-    probe = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
-             '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done; '
-             'grep -rlI CANARY . 2>/dev/null | head -3')
+    probe = (
+        "for p in " + " ".join(f'"{p}"' for p in abspaths) + '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done; '
+        "grep -rlI CANARY . 2>/dev/null | head -3"
+    )
     from merlin.targetgen.sandbox import bwrap as _BW
     from merlin.targetgen.target_experiment import load_target_experiment
+
     _te = load_target_experiment(C.EXP / "target_experiment.yaml")
     for bundle_id in bundles_to_check():
         bundle = load_bundle_by_id(bundle_id)
-        with tempfile.TemporaryDirectory() as td:        # honours TMPDIR
+        with tempfile.TemporaryDirectory() as td:  # honours TMPDIR
             ws = Path(td) / "workspace"
             # This is a mount-policy canary across every shipped bundle, not a
             # runtime input-freeze test.  Copying each bundle's multi-GiB grants
@@ -133,16 +167,20 @@ def check_canary_isolation() -> dict:
             # alone tested a WEAKER sandbox than the experiment uses (it does not re-mask an answer surface
             # that a broad legit grant re-exposes), and so reported a leak for every surface masking is
             # responsible for hiding.
-            argv = _BW.full_argv(
-                _te, ws, bundle, _policy_test_live_inputs=True) + ["bash", "-c", probe]
+            argv = _BW.full_argv(_te, ws, bundle, _policy_test_live_inputs=True) + ["bash", "-c", probe]
             r = subprocess.run(argv, capture_output=True, text=True, timeout=120)
             reachable = [ln for ln in r.stdout.splitlines() if ln.startswith("REACHABLE")]
             grep_hits = [ln for ln in r.stdout.splitlines() if "CANARY" in ln and not ln.startswith("REACHABLE")]
-            out["per_bundle"][bundle_id] = {"reachable_canaries": reachable, "grep_hits": grep_hits,
-                                      "isolated": not reachable and not grep_hits, "stderr": r.stderr[-200:]}
+            out["per_bundle"][bundle_id] = {
+                "reachable_canaries": reachable,
+                "grep_hits": grep_hits,
+                "isolated": not reachable and not grep_hits,
+                "stderr": r.stderr[-200:],
+            }
     # unsandboxed control: without bwrap the canaries ARE reachable by absolute path
-    ctrl = ("for p in " + " ".join(f'"{p}"' for p in abspaths) +
-            '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done')
+    ctrl = (
+        "for p in " + " ".join(f'"{p}"' for p in abspaths) + '; do if [ -r "$p" ]; then echo "REACHABLE $p"; fi; done'
+    )
     rc = subprocess.run(["bash", "-c", ctrl], capture_output=True, text=True, timeout=60, cwd="/tmp")
     out["unsandboxed_leaks"] = [ln for ln in rc.stdout.splitlines() if ln.startswith("REACHABLE")]
     return out
@@ -162,6 +200,7 @@ def reference_package() -> str | None:
     zero). The honest outcome for such a target is UNVERIFIED, not passed.
     """
     import glob
+
     manifests = sorted(glob.glob(str(C.REPO / _TGT / "*" / "manifest.yaml")))
     exempt, any_pkg = [], []
     for m in manifests:
@@ -182,9 +221,10 @@ def _mk_pkg_with(text_file: dict, base=None) -> Path:
         base = reference_package()
         if base is None:
             raise FileNotFoundError(
-                f"no reference package under {_TGT}; the end-to-end negative fixtures need a valid "
-                f"package to mutate")
+                f"no reference package under {_TGT}; the end-to-end negative fixtures need a valid package to mutate"
+            )
     import shutil
+
     d = Path(tempfile.mkdtemp(prefix="negfix_"))
     shutil.copytree(C.REPO / base, d / "pkg", ignore=shutil.ignore_patterns("build", "__pycache__"))
     for rel, content in text_file.items():
@@ -192,8 +232,8 @@ def _mk_pkg_with(text_file: dict, base=None) -> Path:
         if content is None:
             p.unlink(missing_ok=True)
         else:
-            p.parent.mkdir(parents=True, exist_ok=True)   # layout-agnostic: the injected path's subdir
-            p.write_text(content)                          # (e.g. mlir_oot/) need not pre-exist in the pkg
+            p.parent.mkdir(parents=True, exist_ok=True)  # layout-agnostic: the injected path's subdir
+            p.write_text(content)  # (e.g. mlir_oot/) need not pre-exist in the pkg
     return d / "pkg"
 
 
@@ -205,12 +245,20 @@ def check_negative_fixtures() -> dict:
     # Needs a valid reference package to mutate; when the target ships none this
     # class is recorded UNVERIFIED rather than crashing the gate or reading as a pass.
     if reference_package() is None:
-        res["grader_endtoend"].append({
-            "case": "import_merlin_injected", "unavailable": True,
-            "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)"})
-        res["grader_endtoend"].append({
-            "case": "missing_manifest", "unavailable": True,
-            "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)"})
+        res["grader_endtoend"].append(
+            {
+                "case": "import_merlin_injected",
+                "unavailable": True,
+                "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)",
+            }
+        )
+        res["grader_endtoend"].append(
+            {
+                "case": "missing_manifest",
+                "unavailable": True,
+                "reason": f"target ships no reference package ({_TGT}/agent_spec_v1_mlir_oot)",
+            }
+        )
         return _negatives_without_package(res, contract)
 
     # (1) import-merlin injected -> integrity FORBIDDEN_PATTERN
@@ -224,20 +272,42 @@ def check_negative_fixtures() -> dict:
         _m = yaml.safe_load(_mf.read_text(encoding="utf-8")) or {}
         _m["integrity_exempt"] = False
         _mf.write_text(yaml.safe_dump(_m, sort_keys=False), encoding="utf-8")
-    g = CGRADE.grade(str(pkg), capsules_root=str(C.REPO / "merlin/contract/capsules"),
-                     runs_root=tempfile.mkdtemp(), labels={"public"}, contract=contract,
-                     oracle_adapters={}, target=TARGET)
-    res["grader_endtoend"].append({"case": "import_merlin_injected", "functional_pass": g["functional_pass"],
-                                   "integrity_status": g["integrity_status"],
-                                   "fails_closed": g["functional_pass"] == 0 and "FAIL" in str(g["integrity_status"])})
+    g = CGRADE.grade(
+        str(pkg),
+        capsules_root=str(C.REPO / "merlin/contract/capsules"),
+        runs_root=tempfile.mkdtemp(),
+        labels={"public"},
+        contract=contract,
+        oracle_adapters={},
+        target=TARGET,
+    )
+    res["grader_endtoend"].append(
+        {
+            "case": "import_merlin_injected",
+            "functional_pass": g["functional_pass"],
+            "integrity_status": g["integrity_status"],
+            "fails_closed": g["functional_pass"] == 0 and "FAIL" in str(g["integrity_status"]),
+        }
+    )
     # (2) missing manifest -> contract fail
     pkg2 = _mk_pkg_with({"manifest.yaml": None})
-    g2 = CGRADE.grade(str(pkg2), capsules_root=str(C.REPO / "merlin/contract/capsules"),
-                      runs_root=tempfile.mkdtemp(), labels={"public"}, contract=contract,
-                      oracle_adapters={}, target=TARGET)
-    res["grader_endtoend"].append({"case": "missing_manifest", "functional_pass": g2["functional_pass"],
-                                   "integrity_status": g2["integrity_status"],
-                                   "fails_closed": g2["functional_pass"] == 0})
+    g2 = CGRADE.grade(
+        str(pkg2),
+        capsules_root=str(C.REPO / "merlin/contract/capsules"),
+        runs_root=tempfile.mkdtemp(),
+        labels={"public"},
+        contract=contract,
+        oracle_adapters={},
+        target=TARGET,
+    )
+    res["grader_endtoend"].append(
+        {
+            "case": "missing_manifest",
+            "functional_pass": g2["functional_pass"],
+            "integrity_status": g2["integrity_status"],
+            "fails_closed": g2["functional_pass"] == 0,
+        }
+    )
 
     return _negatives_without_package(res, contract)
 
@@ -257,37 +327,71 @@ def _negatives_without_package(res: dict, contract: str) -> dict:
     # The trace GATE itself is target-agnostic; only these fixtures are RoCC-specific.
     g0_path = C.REPO / G0
     if not g0_path.is_file():
-        res["trace"].append({"case": "n/a_no_command_trace", "status": "n/a", "applicable": False,
-                             "fails_closed": True,
-                             "note": f"target {TARGET!r} has no RoCC command trace (no {G0}); RoCC "
-                                     f"trace-gate negatives do not apply to a SIMT/command-buffer target"})
+        res["trace"].append(
+            {
+                "case": "n/a_no_command_trace",
+                "status": "n/a",
+                "applicable": False,
+                "fails_closed": True,
+                "note": f"target {TARGET!r} has no RoCC command trace (no {G0}); RoCC "
+                f"trace-gate negatives do not apply to a SIMT/command-buffer target",
+            }
+        )
     else:
         try:
             real = RD.decode_file(g0_path, target=TARGET)  # a valid g0 matmul trace
         except Exception as exc:  # noqa: BLE001 - a gate reports, it does not crash
-            res["trace"].append({"case": "trace_negatives", "unavailable": True,
-                                 "reason": f"cannot decode a reference trace for {TARGET}: "
-                                           f"{type(exc).__name__}: {exc}"})
+            res["trace"].append(
+                {
+                    "case": "trace_negatives",
+                    "unavailable": True,
+                    "reason": f"cannot decode a reference trace for {TARGET}: {type(exc).__name__}: {exc}",
+                }
+            )
             return _negatives_numeric_and_schema(res, contract)
         common = ["FLUSH", "CONFIG_EX", "CONFIG_LD", "MVIN", "CONFIG_ST", "PRELOAD", "COMPUTE_PRELOADED", "MVOUT"]
         # The ABI rides along from the DECODED trace, never a literal: this negative asserts that a
         # compute-free trace fails a required-class check, and it must do so for whatever target is
         # selected. A baked custom_opcode/funct3 here would be one target's encoding asserted as every
         # target's (and `unknown_funct` below already shows an empty abi is accepted).
-        empty = {"source": "x", "abi": dict(real.get("abi") or {}),
-                 "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}]}
+        empty = {
+            "source": "x",
+            "abi": dict(real.get("abi") or {}),
+            "instructions": [{"index": 0, "class": "FENCE"}, {"index": 1, "class": "FENCE"}],
+        }
         cases = [
             ("no_insn_C_compute_proxy", empty, {"instruction_classes": common}, "required class missing"),
             ("required_LOOP_CONV_absent", real, {"instruction_classes": ["LOOP_CONV"]}, "LOOP_CONV missing"),
-            ("movement_mode_but_compute_present", real, {"instruction_classes": [], "modes": {"movement": True}}, "compute present"),
+            (
+                "movement_mode_but_compute_present",
+                real,
+                {"instruction_classes": [], "modes": {"movement": True}},
+                "compute present",
+            ),
             ("relu_required_but_absent", real, {"instruction_classes": [], "modes": {"relu": True}}, "no relu"),
-            ("k_accum_required_but_absent", real, {"instruction_classes": [], "modes": {"k_accumulate": True}}, "no accumulate"),
-            ("forbidden_compute_present", real, {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]}, "forbidden present"),
+            (
+                "k_accum_required_but_absent",
+                real,
+                {"instruction_classes": [], "modes": {"k_accumulate": True}},
+                "no accumulate",
+            ),
+            (
+                "forbidden_compute_present",
+                real,
+                {"instruction_classes": [], "forbidden_classes": ["COMPUTE_PRELOADED"]},
+                "forbidden present",
+            ),
         ]
         for name, tr, exp, why in cases:
             r = TCK.check(tr, exp)
-            res["trace"].append({"case": name, "status": r["status"], "fails_closed": r["status"] == "fail",
-                                 "violations": r["violations"][:1]})
+            res["trace"].append(
+                {
+                    "case": name,
+                    "status": r["status"],
+                    "fails_closed": r["status"] == "fail",
+                    "violations": r["violations"][:1],
+                }
+            )
         # wrong funct -> UNKNOWN class -> fail
         bad = {"source": "x", "abi": {}, "instructions": [{"index": 0, "class": "UNKNOWN", "funct": 99}]}
         r = TCK.check(bad, {"instruction_classes": common})
@@ -301,8 +405,14 @@ def _negatives_numeric_and_schema(res: dict, contract: str) -> dict:
     # --- component: numeric mismatch fails even if shapes ok ---
     exp_out = {"Y0": [[1, 2], [3, 4]]}
     nrep = CG.compare(exp_out, {"Y0": [[1, 2], [3, 5]]}, {"compare": "exact_int"})
-    res["numeric"].append({"case": "wrong_output", "status": nrep["status"],
-                           "fails_closed": nrep["status"] == "fail", "mismatch_count": nrep["mismatch_count"]})
+    res["numeric"].append(
+        {
+            "case": "wrong_output",
+            "status": nrep["status"],
+            "fails_closed": nrep["status"] == "fail",
+            "mismatch_count": nrep["mismatch_count"],
+        }
+    )
 
     # --- component: invalid command_buffer fails schema ---
     try:
@@ -316,6 +426,7 @@ def _negatives_numeric_and_schema(res: dict, contract: str) -> dict:
 def check_freeze_enforcement() -> dict:
     """Mutating a frozen submission must change its hash (so the hidden-phase recheck catches it)."""
     import shutil
+
     d = Path(tempfile.mkdtemp(prefix="freeze_"))
     shutil.copytree(C.REPO / "merlin/contract/schemas", d / "sub")
     h1 = C.hash_tree(d / "sub")["sha256"]
@@ -360,8 +471,7 @@ def check_bundle_hash_repro() -> dict:
             return hashes
 
         h1, h2 = _hash(pass1), _hash(pass2)
-        out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1),
-                          "unresolvable": unresolvable}
+        out[bundle_id] = {"reproducible": h1 == h2, "n_paths": len(h1), "unresolvable": unresolvable}
         lock = {"allowed_tree_sha256": h1}
         if unresolvable:
             lock["unresolvable_grants"] = unresolvable
@@ -380,14 +490,14 @@ def _hash_granted_path(path: Path) -> dict:
     if path.is_dir():
         return C.hash_tree(path)
     import hashlib
+
     digest = hashlib.sha256()
     n_bytes = 0
     with path.open("rb") as stream:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
             n_bytes += len(chunk)
-    return {"present": True, "sha256": digest.hexdigest(), "n_files": 1,
-            "n_bytes": n_bytes}
+    return {"present": True, "sha256": digest.hexdigest(), "n_files": 1, "n_bytes": n_bytes}
 
 
 def _codex_token_witness() -> Path | None:
@@ -441,8 +551,13 @@ def _codex_tokens(path: Path) -> dict:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import codex_agent as CA
 
-    totals = {"input_tokens": 0, "output_tokens": 0, "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0, "reasoning_output_tokens": 0}
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_read_input_tokens": 0,
+        "cache_creation_input_tokens": 0,
+        "reasoning_output_tokens": 0,
+    }
     turns = reported = 0
     for line in path.read_text(errors="replace").splitlines():
         line = line.strip()
@@ -451,7 +566,7 @@ def _codex_tokens(path: Path) -> dict:
         try:
             event = json.loads(line)
         except json.JSONDecodeError:
-            continue                                    # a killed writer's partial tail
+            continue  # a killed writer's partial tail
         if not isinstance(event, dict) or event.get("type") != CA.EVENT_TURN_COMPLETED:
             continue
         turns += 1
@@ -461,19 +576,28 @@ def _codex_tokens(path: Path) -> dict:
         reported += 1
         for key in totals:
             totals[key] += int(shaped.get(key) or 0)
-    tokens_total = totals["input_tokens"] + totals["output_tokens"] + \
-        totals["cache_read_input_tokens"] + totals["cache_creation_input_tokens"]
+    tokens_total = (
+        totals["input_tokens"]
+        + totals["output_tokens"]
+        + totals["cache_read_input_tokens"]
+        + totals["cache_creation_input_tokens"]
+    )
     return {
-        "tested": True, "driver": "codex", "witness": str(path),
+        "tested": True,
+        "driver": "codex",
+        "witness": str(path),
         # Available only when the provider actually reported usage for a turn.
         # A stream with turns but no usage is a lower bound, not a capture.
         "available": reported > 0 and tokens_total > 0,
-        "tokens_total": tokens_total, "per_bucket": totals,
-        "turns_seen": turns, "turns_usage_reported": reported,
+        "tokens_total": tokens_total,
+        "per_bucket": totals,
+        "turns_seen": turns,
+        "turns_usage_reported": reported,
         "usage_complete": turns > 0 and reported >= turns,
-        "estimated_cost_usd": None, "billing_mode": "subscription_notional",
+        "estimated_cost_usd": None,
+        "billing_mode": "subscription_notional",
         "cost_note": "ChatGPT-auth Codex consumes a subscription; any USD figure is notional "
-                     "and must never enter a metered budget",
+        "and must never enter a metered budget",
     }
 
 
@@ -489,29 +613,48 @@ def check_real_tokens() -> dict:
     p = Path(os.environ.get("MERLIN_CLAUDE_TOKEN_WITNESS", "/tmp/real_stream.jsonl"))
     if p.is_file():
         s = ET.parse_transcript(p)
-        return {"tested": True, "driver": "claudecode", "witness": str(p),
-                "available": s.get("available"), "usage_source": s.get("usage_source"),
-                "tokens_total": s.get("tokens_total"),
-                "estimated_cost_usd": s.get("estimated_cost_usd"),
-                "unique_messages": s.get("unique_messages"), "billing_mode": s.get("billing_mode")}
+        return {
+            "tested": True,
+            "driver": "claudecode",
+            "witness": str(p),
+            "available": s.get("available"),
+            "usage_source": s.get("usage_source"),
+            "tokens_total": s.get("tokens_total"),
+            "estimated_cost_usd": s.get("estimated_cost_usd"),
+            "unique_messages": s.get("unique_messages"),
+            "billing_mode": s.get("billing_mode"),
+        }
     codex = _codex_token_witness()
     if codex is not None:
         return _codex_tokens(codex)
     from merlin.common.paths import runs_dir
-    cands = sorted((q for q in runs_dir().rglob("*.transcript.jsonl") if q.stat().st_size > 0),
-                   key=lambda q: q.stat().st_mtime, reverse=True)
-    for q in cands[:8]:                       # newest-first; stop at the first with real usage metadata
+
+    cands = sorted(
+        (q for q in runs_dir().rglob("*.transcript.jsonl") if q.stat().st_size > 0),
+        key=lambda q: q.stat().st_mtime,
+        reverse=True,
+    )
+    for q in cands[:8]:  # newest-first; stop at the first with real usage metadata
         s = ET.parse_transcript(q)
         if s.get("available"):
-            return {"tested": True, "driver": "prior_run", "witness": str(q),
-                    "available": True, "usage_source": s.get("usage_source"),
-                    "tokens_total": s.get("tokens_total"),
-                    "estimated_cost_usd": s.get("estimated_cost_usd"),
-                    "unique_messages": s.get("unique_messages"), "billing_mode": s.get("billing_mode")}
-    return {"tested": False, "available": False,
-            "reason": "no real agent stream to check: neither a claude stream-json at "
-                      f"{p}, a codex *.codex_events.raw.jsonl under the runs/cache trees, nor a "
-                      "prior-run transcript carrying usage (set MERLIN_TOKEN_WITNESS to name one)"}
+            return {
+                "tested": True,
+                "driver": "prior_run",
+                "witness": str(q),
+                "available": True,
+                "usage_source": s.get("usage_source"),
+                "tokens_total": s.get("tokens_total"),
+                "estimated_cost_usd": s.get("estimated_cost_usd"),
+                "unique_messages": s.get("unique_messages"),
+                "billing_mode": s.get("billing_mode"),
+            }
+    return {
+        "tested": False,
+        "available": False,
+        "reason": "no real agent stream to check: neither a claude stream-json at "
+        f"{p}, a codex *.codex_events.raw.jsonl under the runs/cache trees, nor a "
+        "prior-run transcript carrying usage (set MERLIN_TOKEN_WITNESS to name one)",
+    }
 
 
 def baremetalc_table() -> list[dict]:
@@ -522,7 +665,9 @@ def baremetalc_table() -> list[dict]:
     another target's anchors as though they were its own.
     """
     import hashlib
+
     from merlin.targetgen import plugins
+
     try:
         BMC = plugins.load_declared(TARGET, "reference_programs")
     except plugins.PluginError as exc:
@@ -531,8 +676,17 @@ def baremetalc_table() -> list[dict]:
     for anc in BMC._anchors():
         gh = hashlib.sha256(json.dumps(anc["golden"]).encode()).hexdigest()[:16]
         verbatim = "verbatim upstream" if anc["name"] == "mvin_mvout" else "canonical library (tiled_matmul_auto)"
-        rows.append({"anchor": anc["name"], "capsule": anc["capsule"], "feature": anc["feature"],
-                     "source": verbatim, "golden_sha256": gh, "spike": "match", "verilator": "match"})
+        rows.append(
+            {
+                "anchor": anc["name"],
+                "capsule": anc["capsule"],
+                "feature": anc["feature"],
+                "source": verbatim,
+                "golden_sha256": gh,
+                "spike": "match",
+                "verilator": "match",
+            }
+        )
     return rows
 
 
@@ -542,10 +696,12 @@ def check_oracle_available() -> dict:
     lesson). Mirror the launcher's oracle preflight (``capsule_runner.oracle_available``, contract-routed,
     no target literal) here so a run that cannot be graded is flagged NO_GO before a pilot is authorized."""
     from merlin.targetgen import capsule_runner as CR
+
     sim_via = ""
     desc = C.EXP / "target_experiment.yaml"
     if desc.is_file():
         from merlin.targetgen.target_experiment import load_target_experiment
+
         sim_via = load_target_experiment(desc).sim_via
     ok, why = CR.oracle_available(TARGET, sim_via)
     # The sim binaries being present is not enough: verify the oracle's COMPILE toolchain actually works
@@ -553,6 +709,7 @@ def check_oracle_available() -> dict:
     # tool-crashes on EVERY capsule after money is spent (the retired-clang lesson). Only gate on it when
     # the sim is otherwise available (a compile check is moot if the sim is absent).
     from merlin.targetgen import runtime_build as RB
+
     csmoke_ok, csmoke_why = RB.compiler_smoke(sim_via) if ok else (True, "n/a (sim unavailable)")
     reason = why if ok else why
     if ok and not csmoke_ok:
@@ -588,11 +745,15 @@ def check_oracle_available() -> dict:
     capability_smokes = _capability_smokes(desc=desc)
     if capability_smokes.get("ok") is False:
         reason = f"grading oracle ready but a declared capability smoke failed: {capability_smokes.get('reason')}"
-    return {"available": (ok and csmoke_ok and cg_ok is not False and prog_smoke["ok"]
-                          and capability_smokes["ok"]), "reason": reason,
-            "sim_via": sim_via, "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
-            "codegen_smoke": {"ok": cg_ok, "reason": cg_why}, "program_smoke": prog_smoke,
-            "capability_smokes": capability_smokes}
+    return {
+        "available": (ok and csmoke_ok and cg_ok is not False and prog_smoke["ok"] and capability_smokes["ok"]),
+        "reason": reason,
+        "sim_via": sim_via,
+        "compiler_smoke": {"ok": csmoke_ok, "reason": csmoke_why},
+        "codegen_smoke": {"ok": cg_ok, "reason": cg_why},
+        "program_smoke": prog_smoke,
+        "capability_smokes": capability_smokes,
+    }
 
 
 def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
@@ -605,6 +766,7 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
     absent) is NO_GO — never a pass. Target-agnostic: the program name + model_ext are read from the
     descriptor/contract, no literal here."""
     from merlin.targetgen import capsule_runner as CR
+
     endpoint_kind, model_ext = CR._endpoint_of(TARGET)
     if endpoint_kind != "external_backend":
         return {"ok": True, "reason": "n/a (not an external_backend program-oracle target)"}
@@ -616,34 +778,55 @@ def _program_oracle_smoke(*, sim_okay: bool, desc: Path) -> dict:
     sim_via = ""
     if desc.is_file():
         from merlin.targetgen.target_experiment import load_target_experiment
+
         sim_via = load_target_experiment(desc).sim_via
     so = CR.sim_oracle_caps(sim_via)
     if so is not None and so.exclusive:
-        return {"ok": True, "reason": (f"n/a (exclusive bespoke sim {sim_via!r} grades on its own kernel ELF; "
-                                       f"end-to-end correctness covered by codegen_smoke)")}
+        return {
+            "ok": True,
+            "reason": (
+                f"n/a (exclusive bespoke sim {sim_via!r} grades on its own kernel ELF; "
+                f"end-to-end correctness covered by codegen_smoke)"
+            ),
+        }
     if not sim_okay:
         return {"ok": True, "reason": "n/a (an earlier oracle/codegen check already blocks — fix that first)"}
     if desc.is_file():
         from merlin.targetgen.target_experiment import load_target_experiment
+
         program = load_target_experiment(desc).preflight_smoke_program
     else:
         program = None
     if not program:
-        return {"ok": False, "reason": (f"external_backend target {TARGET!r} declares no "
-                                        "preflight.smoke_program — cannot run an end-to-end oracle smoke")}
+        return {
+            "ok": False,
+            "reason": (
+                f"external_backend target {TARGET!r} declares no "
+                "preflight.smoke_program — cannot run an end-to-end oracle smoke"
+            ),
+        }
     if not model_ext:
-        return {"ok": False, "reason": (f"external_backend target {TARGET!r} declares no runner.model_ext — "
-                                        "cannot resolve the model venv that lays out operands + the golden")}
+        return {
+            "ok": False,
+            "reason": (
+                f"external_backend target {TARGET!r} declares no runner.model_ext — "
+                "cannot resolve the model venv that lays out operands + the golden"
+            ),
+        }
     from merlin.targetgen import program_oracle as PO
+
     try:
         with tempfile.TemporaryDirectory(prefix="oracle_smoke_") as td:
-            r = PO.run_program_oracle_smoke(TARGET, model_ext=model_ext, program=program,
-                                            workdir=Path(td), timeout=600)
-        return {"ok": bool(r["ok"]), "reason": r["reason"], "program": program,
-                "cycles": r.get("cycles"), "oracle": r.get("oracle")}
+            r = PO.run_program_oracle_smoke(TARGET, model_ext=model_ext, program=program, workdir=Path(td), timeout=600)
+        return {
+            "ok": bool(r["ok"]),
+            "reason": r["reason"],
+            "program": program,
+            "cycles": r.get("cycles"),
+            "oracle": r.get("oracle"),
+        }
     except PO.OracleUnavailable as e:
-        return {"ok": False, "program": program,
-                "reason": f"end-to-end oracle smoke could not run (infra absent): {e}"}
+        return {"ok": False, "program": program, "reason": f"end-to-end oracle smoke could not run (infra absent): {e}"}
 
 
 def _capability_smokes(*, desc: Path) -> dict:
@@ -667,8 +850,7 @@ def main() -> int:
     R["baremetalc"] = baremetalc_table()
 
     # ---- evaluate checklist ----
-    canary_ok = R["canary"]["bwrap_available"] and all(
-        b["isolated"] for b in R["canary"]["per_bundle"].values())
+    canary_ok = R["canary"]["bwrap_available"] and all(b["isolated"] for b in R["canary"]["per_bundle"].values())
     # A case that could not RUN is not a case that passed. Count them separately so
     # a GO can never be read as covering an anti-cheat class that never executed.
     neg_groups = ("grader_endtoend", "trace", "numeric", "cb_schema")
@@ -676,8 +858,7 @@ def main() -> int:
     neg_unavailable = [c for c in neg_cases if c.get("unavailable")]
     neg_ran = [c for c in neg_cases if not c.get("unavailable")]
     neg_ok = bool(neg_ran) and all(c.get("fails_closed") for c in neg_ran)
-    R["negative"]["unavailable_cases"] = [
-        {"case": c.get("case"), "reason": c.get("reason")} for c in neg_unavailable]
+    R["negative"]["unavailable_cases"] = [{"case": c.get("case"), "reason": c.get("reason")} for c in neg_unavailable]
     freeze_ok = R["freeze"]["tamper_detected"]
     bundle_ok = all(b["reproducible"] for b in R["bundle_hash"].values())
     tokens_ok = R["tokens"].get("available") is True
@@ -690,108 +871,176 @@ def main() -> int:
         ("unsandboxed control leaks canaries (proves bwrap is mandatory, now enforced)", unsandboxed_demo),
         ("bwrap mandatory for real runs (launcher refuses --sandbox none without override)", True),
         (f"negative fixtures that RAN all fail closed ({len(neg_ran)} ran)", neg_ok),
-        (f"every negative-fixture class was exercised "
-         f"({len(neg_unavailable)} unverified: {[c['case'] for c in neg_unavailable]})",
-         not neg_unavailable),
+        (
+            f"every negative-fixture class was exercised "
+            f"({len(neg_unavailable)} unverified: {[c['case'] for c in neg_unavailable]})",
+            not neg_unavailable,
+        ),
         ("freeze tamper detected (hash changes → hidden-phase recheck refuses)", freeze_ok),
         ("input-bundle tree hashes reproduce + bundle_lock.yaml written", bundle_ok),
         ("token usage captured on a REAL agent event stream (not synthetic)", tokens_ok),
         (f"numeric oracle runnable for a gradeable run ({R['oracle'].get('reason')})", oracle_ok),
         # `is not False` for the same reason the composition above uses it: None is "did not apply".
-        (f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
-         R["oracle"].get("codegen_smoke", {}).get("ok", True) is not False),
-        (f"known-good program grades bit-exact end-to-end through the oracle "
-         f"({R['oracle'].get('program_smoke', {}).get('reason')})",
-         R["oracle"].get("program_smoke", {}).get("ok", True)),
-        (f"descriptor-declared capability probes are operation-grounded and behaviorally verified "
-         f"({R['oracle'].get('capability_smokes', {}).get('reason')})",
-         R["oracle"].get("capability_smokes", {}).get("ok", True)),
-        ("bareMetalC corroboration table with golden hashes; conv externally-deferred noted"
-         if bmc_na is None else f"reference-program corroboration n/a ({bmc_na})", True),
+        (
+            f"our codegen backend emits a runnable kernel ({R['oracle'].get('codegen_smoke', {}).get('reason')})",
+            R["oracle"].get("codegen_smoke", {}).get("ok", True) is not False,
+        ),
+        (
+            f"known-good program grades bit-exact end-to-end through the oracle "
+            f"({R['oracle'].get('program_smoke', {}).get('reason')})",
+            R["oracle"].get("program_smoke", {}).get("ok", True),
+        ),
+        (
+            f"descriptor-declared capability probes are operation-grounded and behaviorally verified "
+            f"({R['oracle'].get('capability_smokes', {}).get('reason')})",
+            R["oracle"].get("capability_smokes", {}).get("ok", True),
+        ),
+        (
+            "bareMetalC corroboration table with golden hashes; conv externally-deferred noted"
+            if bmc_na is None
+            else f"reference-program corroboration n/a ({bmc_na})",
+            True,
+        ),
         ("VCS/FireSim remain unavailable, never counted as pass", True),
     ]
     blocking = [name for name, ok in checklist if not ok]
     verdict = "GO_FOR_PILOT" if not blocking else "NO_GO: " + "; ".join(blocking)
 
-    L = ["# capsule_bench_v0 — experiment pre-flight report", "",
-         "Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assisted run was "
-         f"launched. Generated by `experiments/capsule_bench/targets/{TARGET}/scripts/preflight.py`.", "",
-         "## Checklist", ""]
+    L = [
+        "# capsule_bench_v0 — experiment pre-flight report",
+        "",
+        "Adversarial validation BEFORE any real agent run. No raw_baseline/merlin_assisted run was "
+        f"launched. Generated by `experiments/capsule_bench/targets/{TARGET}/scripts/preflight.py`.",
+        "",
+        "## Checklist",
+        "",
+    ]
     for name, ok in checklist:
         L.append(f"- [{'x' if ok else ' '}] {name}")
-    L += ["", "## A. Canary isolation (adversarial)", "",
-          f"- bwrap available: **{R['canary']['bwrap_available']}**",
-          f"- WITHOUT sandbox, canaries reachable by absolute path: "
-          f"**{len(R['canary']['unsandboxed_leaks'])}** → this is exactly why bwrap is mandatory and "
-          f"now enforced for real runs.", "",
-          "| bundle | canaries reachable | grep hits | isolated |", "|---|---|---|---|"]
+    L += [
+        "",
+        "## A. Canary isolation (adversarial)",
+        "",
+        f"- bwrap available: **{R['canary']['bwrap_available']}**",
+        f"- WITHOUT sandbox, canaries reachable by absolute path: "
+        f"**{len(R['canary']['unsandboxed_leaks'])}** → this is exactly why bwrap is mandatory and "
+        f"now enforced for real runs.",
+        "",
+        "| bundle | canaries reachable | grep hits | isolated |",
+        "|---|---|---|---|",
+    ]
     for arm, b in R["canary"]["per_bundle"].items():
-        L.append(f"| {arm} | {len(b['reachable_canaries'])} | {len(b['grep_hits'])} | "
-                 f"{'YES' if b['isolated'] else 'NO'} |")
-    L += ["", "## B. Negative fixtures (must fail closed)", "",
-          "### End-to-end through capsule_grade", "", "| case | functional_pass | integrity | fails_closed |",
-          "|---|---|---|---|"]
+        L.append(
+            f"| {arm} | {len(b['reachable_canaries'])} | {len(b['grep_hits'])} | {'YES' if b['isolated'] else 'NO'} |"
+        )
+    L += [
+        "",
+        "## B. Negative fixtures (must fail closed)",
+        "",
+        "### End-to-end through capsule_grade",
+        "",
+        "| case | functional_pass | integrity | fails_closed |",
+        "|---|---|---|---|",
+    ]
     for c in R["negative"]["grader_endtoend"]:
         if c.get("unavailable"):
             L.append(f"| {c['case']} | — | UNVERIFIED | {c.get('reason', '')} |")
         else:
             L.append(f"| {c['case']} | {c['functional_pass']} | {c['integrity_status']} | {c['fails_closed']} |")
-    L += ["", "### trace_check / numeric / cb-schema (the gates the grader composes)", "",
-          "| case | result | fails_closed |", "|---|---|---|"]
+    L += [
+        "",
+        "### trace_check / numeric / cb-schema (the gates the grader composes)",
+        "",
+        "| case | result | fails_closed |",
+        "|---|---|---|",
+    ]
     for c in R["negative"]["trace"] + R["negative"]["numeric"] + R["negative"]["cb_schema"]:
         if c.get("unavailable"):
             L.append(f"| {c['case']} | UNVERIFIED: {c.get('reason', '')} | — |")
             continue
         st = c.get("status") or ("raised" if c.get("fails_closed") else "passed")
         L.append(f"| {c['case']} | {st} | {c['fails_closed']} |")
-    L += ["", "## C. Freeze enforcement", "",
-          f"- tamper detected: **{R['freeze']['tamper_detected']}** "
-          f"({R['freeze']['hash_before']} → {R['freeze']['hash_after']}); the hidden phase re-hashes "
-          f"the submission and refuses to grade if it changed after freeze.", "",
-          "## D. Input-bundle hash reproducibility", ""]
+    L += [
+        "",
+        "## C. Freeze enforcement",
+        "",
+        f"- tamper detected: **{R['freeze']['tamper_detected']}** "
+        f"({R['freeze']['hash_before']} → {R['freeze']['hash_after']}); the hidden phase re-hashes "
+        f"the submission and refuses to grade if it changed after freeze.",
+        "",
+        "## D. Input-bundle hash reproducibility",
+        "",
+    ]
     for arm, b in R["bundle_hash"].items():
-        L.append(f"- {arm}: reproducible={b['reproducible']} ({b['n_paths']} tree paths; "
-                 f"bundle_lock.yaml written)")
-    L += ["", "## E. Real token/cost capture", "",
-          f"- tested on a real `claude --output-format stream-json`: available="
-          f"{R['tokens'].get('available')}, tokens_total={R['tokens'].get('tokens_total')}, "
-          f"cost=${R['tokens'].get('estimated_cost_usd')}, unique_messages="
-          f"{R['tokens'].get('unique_messages')} (dedup verified).", "",
-          "## F. bareMetalC corroboration (exact anchors)", "",
-          "| anchor | capsule | feature | source | golden sha256 | spike | verilator |",
-          "|---|---|---|---|---|---|---|"]
+        L.append(f"- {arm}: reproducible={b['reproducible']} ({b['n_paths']} tree paths; bundle_lock.yaml written)")
+    L += [
+        "",
+        "## E. Real token/cost capture",
+        "",
+        f"- tested on a real `claude --output-format stream-json`: available="
+        f"{R['tokens'].get('available')}, tokens_total={R['tokens'].get('tokens_total')}, "
+        f"cost=${R['tokens'].get('estimated_cost_usd')}, unique_messages="
+        f"{R['tokens'].get('unique_messages')} (dedup verified).",
+        "",
+        "## F. bareMetalC corroboration (exact anchors)",
+        "",
+        "| anchor | capsule | feature | source | golden sha256 | spike | verilator |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for r in R["baremetalc"]:
         if r.get("unavailable"):
             L.append(f"| — | — | — | UNAVAILABLE: {r['reason']} | — | — | — |")
             continue
-        L.append(f"| {r['anchor']} | {r['capsule']} | {r['feature']} | {r['source']} | "
-                 f"{r['golden_sha256']} | {r['spike']} | {r['verilator']} |")
-    L += ["", "## G. Descriptor-declared capability probes", "",
-          "| capability | adapter | fixture | supported operations | reason |",
-          "|---|---|---|---|---|"]
+        L.append(
+            f"| {r['anchor']} | {r['capsule']} | {r['feature']} | {r['source']} | "
+            f"{r['golden_sha256']} | {r['spike']} | {r['verilator']} |"
+        )
+    L += [
+        "",
+        "## G. Descriptor-declared capability probes",
+        "",
+        "| capability | adapter | fixture | supported operations | reason |",
+        "|---|---|---|---|---|",
+    ]
     capability_rows = R["oracle"].get("capability_smokes", {}).get("probes", [])
     if not capability_rows:
         L.append("| — | — | — | — | no capability probes declared |")
     for row in capability_rows:
-        supported = [f"{o.get('dialect')}.{o.get('operation')}"
-                     for o in row.get("observations", []) if o.get("status") == "supported"]
-        L.append(f"| {row.get('capability')} | {row.get('adapter')} | {row.get('fixture')} | "
-                 f"{supported} | {row.get('reason', '')} |")
-    L += ["", "- **conv2d is NOT externally corroborated** against bareMetalC (spike ISS skips conv); "
-          "conv passes our compiler + RTL path only. Kept in a separate category, not claimed as "
-          "bareMetalC-corroborated.",
-          "- **relu anchor caveat:** deterministic inputs are non-negative (0..3), so the matmul is "
-          "≥0 and relu is a numerical no-op here (its golden hash equals the no-relu matmul). The "
-          "relu *activation bit* is covered structurally by `trace_check` (CONFIG_ST), not by this "
-          "numeric anchor — honest, and the same is true of the A5 capsule's data.", "",
-          "## H. Scope reminders (unchanged, honest)", "",
-          "- The backend under test is still **hand-authored** `agent_spec_v1`; **no real agent "
-          "generation** has run. This pre-flight validates the harness, not a generated result.",
-          "- VCS/FireSim remain **unavailable** and are never counted as pass.", "",
-          "## Verdict", "", f"**{verdict}**", ""]
+        supported = [
+            f"{o.get('dialect')}.{o.get('operation')}"
+            for o in row.get("observations", [])
+            if o.get("status") == "supported"
+        ]
+        L.append(
+            f"| {row.get('capability')} | {row.get('adapter')} | {row.get('fixture')} | "
+            f"{supported} | {row.get('reason', '')} |"
+        )
+    L += [
+        "",
+        "- **conv2d is NOT externally corroborated** against bareMetalC (spike ISS skips conv); "
+        "conv passes our compiler + RTL path only. Kept in a separate category, not claimed as "
+        "bareMetalC-corroborated.",
+        "- **relu anchor caveat:** deterministic inputs are non-negative (0..3), so the matmul is "
+        "≥0 and relu is a numerical no-op here (its golden hash equals the no-relu matmul). The "
+        "relu *activation bit* is covered structurally by `trace_check` (CONFIG_ST), not by this "
+        "numeric anchor — honest, and the same is true of the A5 capsule's data.",
+        "",
+        "## H. Scope reminders (unchanged, honest)",
+        "",
+        "- The backend under test is still **hand-authored** `agent_spec_v1`; **no real agent "
+        "generation** has run. This pre-flight validates the harness, not a generated result.",
+        "- VCS/FireSim remain **unavailable** and are never counted as pass.",
+        "",
+        "## Verdict",
+        "",
+        f"**{verdict}**",
+        "",
+    ]
     if not blocking:
-        L += ["Recommended next: a SMALL real pilot (reduced capsule set, real Opus, "
-              "`--sandbox bwrap`, no hidden-repair) on each arm — not the full comparison."]
+        L += [
+            "Recommended next: a SMALL real pilot (reduced capsule set, real Opus, "
+            "`--sandbox bwrap`, no hidden-repair) on each arm — not the full comparison."
+        ]
     out = C.REPORTS / "experiment_preflight_report.md"
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
     print(f"wrote {out}")

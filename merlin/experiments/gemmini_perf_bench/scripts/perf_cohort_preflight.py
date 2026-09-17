@@ -20,6 +20,7 @@ contract names, and an identity the registry cannot resolve is REFUSED and named
 
 Exit 0 = every analyzer cohort in scope preflights READY.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,12 +51,12 @@ def _descriptors(names: list[str], capsule_root: Path) -> list[dict[str, Any]]:
     if missing:
         raise SystemExit(
             f"cohort preflight: {len(missing)} capsule(s) have no descriptor under {capsule_root}: "
-            + " ".join(sorted(missing)))
+            + " ".join(sorted(missing))
+        )
     return loaded
 
 
-def _call_preflight(resolved: Any, descriptors: list[dict[str, Any]],
-                    replicates: list[str]) -> dict[str, Any]:
+def _call_preflight(resolved: Any, descriptors: list[dict[str, Any]], replicates: list[str]) -> dict[str, Any]:
     """Invoke the analyzer's own precondition check.
 
     Analyzers differ in whether their claim is defined over replicates, so the parameter is passed
@@ -64,7 +65,7 @@ def _call_preflight(resolved: Any, descriptors: list[dict[str, Any]],
     """
     try:
         takes_replicates = "replicates" in inspect.signature(resolved.preflight).parameters
-    except (TypeError, ValueError):                       # builtin or unintrospectable callable
+    except (TypeError, ValueError):  # builtin or unintrospectable callable
         takes_replicates = False
     if takes_replicates:
         return resolved.preflight(descriptors, replicates=replicates)
@@ -73,17 +74,23 @@ def _call_preflight(resolved: Any, descriptors: list[dict[str, Any]],
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--members", required=True,
-                        help="file holding the comma-separated capsule names in campaign scope")
-    parser.add_argument("--capsule-root", required=True, type=Path,
-                        help="directory holding <capsule>/capsule.yaml for every member")
-    parser.add_argument("--replicate", action="append", default=None, metavar="ID",
-                        help="replicate id (repeatable); analyzers defined over replicates get these")
+    parser.add_argument(
+        "--members", required=True, help="file holding the comma-separated capsule names in campaign scope"
+    )
+    parser.add_argument(
+        "--capsule-root", required=True, type=Path, help="directory holding <capsule>/capsule.yaml for every member"
+    )
+    parser.add_argument(
+        "--replicate",
+        action="append",
+        default=None,
+        metavar="ID",
+        help="replicate id (repeatable); analyzers defined over replicates get these",
+    )
     args = parser.parse_args(argv)
 
     replicates = args.replicate or ["r000", "r001"]
-    names = [n.strip() for n in Path(args.members).read_text(encoding="utf-8").split(",")
-             if n.strip()]
+    names = [n.strip() for n in Path(args.members).read_text(encoding="utf-8").split(",") if n.strip()]
     if not names:
         print("cohort preflight: the member selection is empty", file=sys.stderr)
         return 2
@@ -106,8 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         name = str(descriptor.get("name") or "<unnamed>")
         performance = descriptor.get("performance")
         try:
-            identity = claim_reach.analyzer_identity(
-                performance if isinstance(performance, dict) else {})
+            identity = claim_reach.analyzer_identity(performance if isinstance(performance, dict) else {})
         except ValueError as exc:
             undeclared.append(f"{name}: unusable analyzer declaration ({exc})")
             continue
@@ -126,9 +132,8 @@ def main(argv: list[str] | None = None) -> int:
         try:
             resolved = DISPATCH.resolve(members)
             outcome = _call_preflight(resolved, members, replicates)
-        except Exception as exc:                          # noqa: BLE001 - report, never skip
-            refusals.append(f"{family} [{declared}] ({len(members)} member(s)): "
-                            f"{type(exc).__name__}: {str(exc)[:200]}")
+        except Exception as exc:  # noqa: BLE001 - report, never skip
+            refusals.append(f"{family} [{declared}] ({len(members)} member(s)): {type(exc).__name__}: {str(exc)[:200]}")
             continue
         status = outcome.get("status")
         print(f"  {family:4s} n={len(members):2d} [{declared:42s}] -> {status}")
@@ -136,8 +141,7 @@ def main(argv: list[str] | None = None) -> int:
             decidable += len(members)
         else:
             reason = (outcome.get("refusal_reasons") or [""])[0]
-            refusals.append(f"{family} [{declared}] ({len(members)} member(s)): "
-                            f"{str(reason)[:200]}")
+            refusals.append(f"{family} [{declared}] ({len(members)} member(s)): {str(reason)[:200]}")
 
     print(f"\nmembers with a decidable claim: {decidable}/{len(descriptors)}")
     if refusals:

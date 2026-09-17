@@ -9,6 +9,7 @@ Repo-root discovery + run/report routing are shared via ``merlin.benchharness``;
 math (align/matmul_macs/utilization_pct) stays here; the array geometry it needs is
 derived from the target's RTL facts, not declared.
 """
+
 from __future__ import annotations
 
 import os
@@ -20,19 +21,20 @@ from pathlib import Path
 _HERE = Path(__file__).resolve()
 _root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
 if not _root:
-    _root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
-                           capture_output=True, text=True).stdout.strip()
+    _root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent), capture_output=True, text=True
+    ).stdout.strip()
 REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.benchharness import runs_root, reports_root  # noqa: E402
-from merlin.perf.workload_gen import tile_geometry  # noqa: E402
+from merlin.benchharness import reports_root, runs_root  # noqa: E402
 from merlin.common.paths import env as _env  # noqa: E402
+from merlin.perf.workload_gen import tile_geometry  # noqa: E402
 
 EXP = REPO / "merlin" / "experiments" / "gemmini_perf_bench"
-KERNELS = EXP / "kernels"                                  # one capsule dir per kernel + corpus.yaml
-RUNS = runs_root("gemmini", "perf-bench")                  # runs/gemmini/perf-bench
-REPORTS = reports_root("plots", "gemmini", "perf-bench")   # artifacts/plots/gemmini/perf-bench
+KERNELS = EXP / "kernels"  # one capsule dir per kernel + corpus.yaml
+RUNS = runs_root("gemmini", "perf-bench")  # runs/gemmini/perf-bench
+REPORTS = reports_root("plots", "gemmini", "perf-bench")  # artifacts/plots/gemmini/perf-bench
 # External model corpus — resolve via .env (MERLIN_M2M_DIR), NOT a "/path/to/..." placeholder.
 MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", str(REPO.parent / "model2MLIR"))) / "workloads"
 
@@ -42,7 +44,7 @@ MODEL2MLIR = Path(_env("MERLIN_M2M_DIR", str(REPO.parent / "model2MLIR"))) / "wo
 # off by the square of the ratio, with nothing in the output saying which array it was about.
 # `tile_geometry` fails closed when RTL discovery reports no array, so an underivable edge is an error
 # here rather than a plausible default that produces a wrong percentage.
-TARGET = "gemmini"                       # this bench is ABOUT one target; the geometry still is not
+TARGET = "gemmini"  # this bench is ABOUT one target; the geometry still is not
 _MESH = tile_geometry(TARGET)
 DIM = _MESH.rows
 PEAK_MACS_PER_CYCLE = _MESH.rows * _MESH.cols

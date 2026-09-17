@@ -18,6 +18,7 @@ Usage (mirror the baseline loop's flags)::
 
     run_rtlchecks_qa_loop.py --run-id rtlchecks_0001 --model claude-opus-4-8 [--max-rounds 6] ...
 """
+
 from __future__ import annotations
 
 import os
@@ -49,15 +50,17 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import qa_check_rtlchecks                       # wraps the real qa_check
-sys.modules["qa_check"] = qa_check_rtlchecks    # the loop's local `import qa_check` resolves to the wrapper
+import qa_check_rtlchecks  # wraps the real qa_check
 
-import run_agent_experiment as RX               # noqa: E402
+sys.modules["qa_check"] = qa_check_rtlchecks  # the loop's local `import qa_check` resolves to the wrapper
+
+import run_agent_experiment as RX  # noqa: E402
+
 # Serve the rtlchecks bundle for the merlin_assisted arm (identical tools + the rtl_checks addendum).
 RX.ARM_BUNDLE["merlin_assisted"] = "merlin_assisted_rtlchecks_public_v0"
 
-import run_baseline_qa_loop as L                # noqa: E402  (imported AFTER the swaps above)
-import _common as C                             # noqa: E402
+import _common as C  # noqa: E402
+import run_baseline_qa_loop as L  # noqa: E402  (imported AFTER the swaps above)
 
 _RTLCHECKS_BUNDLE = "merlin_assisted_rtlchecks_public_v0"
 
@@ -76,13 +79,18 @@ def _option_values(argv: list[str], option: str) -> list[str | None]:
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     requested_bundles = _option_values(argv, "--bundle")
-    if (len(requested_bundles) > 1 or any(value is None for value in requested_bundles)):
-        print(f"REFUSING: Arm-4 requires at most one well-formed --bundle; "
-              f"received {requested_bundles!r}", file=sys.stderr)
+    if len(requested_bundles) > 1 or any(value is None for value in requested_bundles):
+        print(
+            f"REFUSING: Arm-4 requires at most one well-formed --bundle; received {requested_bundles!r}",
+            file=sys.stderr,
+        )
         return 4
     selected_bundle = requested_bundles[0] if requested_bundles else _RTLCHECKS_BUNDLE
-    if (not selected_bundle or Path(selected_bundle).name != selected_bundle
-            or not selected_bundle.startswith("merlin_assisted_rtlchecks_")):
+    if (
+        not selected_bundle
+        or Path(selected_bundle).name != selected_bundle
+        or not selected_bundle.startswith("merlin_assisted_rtlchecks_")
+    ):
         print(f"REFUSING: invalid Arm-4 bundle identity {selected_bundle!r}", file=sys.stderr)
         return 4
     manifest_path = C.BUNDLES / selected_bundle / "input_bundle_manifest.yaml"
@@ -91,15 +99,14 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:  # noqa: BLE001 — an unreadable treatment must fail before authoring
         print(f"REFUSING: cannot read Arm-4 bundle manifest {manifest_path}: {exc}", file=sys.stderr)
         return 4
-    if (manifest.get("bundle_id") != selected_bundle
-            or manifest.get("arm") != "merlin_rtlchecks"):
+    if manifest.get("bundle_id") != selected_bundle or manifest.get("arm") != "merlin_rtlchecks":
         print(f"REFUSING: {selected_bundle!r} is not a generated merlin_rtlchecks bundle", file=sys.stderr)
         return 4
     requested_arms = _option_values(argv, "--arm")
     if any(value != "merlin_assisted" for value in requested_arms):
         print("REFUSING: the Arm-4 RTL-checks wrapper requires --arm merlin_assisted", file=sys.stderr)
         return 4
-    if not requested_arms:                       # this track is always the merlin arm + checks
+    if not requested_arms:  # this track is always the merlin arm + checks
         argv += ["--arm", "merlin_assisted"]
     # Reassert immediately before the baseline parser applies an allowed, identical --bundle.  This
     # makes an earlier in-process mutation fail closed too, while still permitting launchers to pin the

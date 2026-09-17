@@ -4,14 +4,15 @@
 This is a structural compiler stress test, not an accelerator benchmark. Contiguous region sizes
 are chosen by the operator to exercise the emitter; profitability selection belongs to Phase 2.
 """
+
 from __future__ import annotations
 
 import argparse
 import hashlib
 import importlib.metadata
 import json
-from pathlib import Path
 import time
+from pathlib import Path
 
 from merlin.common.paths import artifacts_dir
 from merlin.frontends.linalg_mlir import parse_mlir_text
@@ -37,12 +38,19 @@ def run(inputs: list[Path], destination: Path, region_nodes: int) -> dict:
         source = path.read_bytes()
         module = parse_mlir_text(source.decode())
         outlined, graph = lower_model_to_dispatch_program(module, prune=False)
-        groups = [tuple(range(i, min(i + region_nodes, len(graph.nodes))))
-                  for i in range(0, len(graph.nodes), region_nodes) if len(graph.nodes) - i > 1]
+        groups = [
+            tuple(range(i, min(i + region_nodes, len(graph.nodes))))
+            for i in range(0, len(graph.nodes), region_nodes)
+            if len(graph.nodes) - i > 1
+        ]
         plan = outlined_plan_emission.plan_dispatch_fusion(
-            graph, groups, placement="compiler_function",
+            graph,
+            groups,
+            placement="compiler_function",
             representation=lambda name: global_plan.ValueRepresentation(
-                "tensor_ssa", "logical", graph.buffers[name].dtype))
+                "tensor_ssa", "logical", graph.buffers[name].dtype
+            ),
+        )
         emitter = outlined_plan_emission.OutlinedGlobalPlanEmitter(outlined)
         emission = global_plan_emission.emit_global_plan(graph, plan, emitter)
         output = destination / f"model_{index:03d}"
@@ -50,24 +58,39 @@ def run(inputs: list[Path], destination: Path, region_nodes: int) -> dict:
         (output / "before.mlir").write_text(str(outlined.module))
         (output / "after.mlir").write_text(str(emitter.module))
         documents = {
-            "logical_graph.json": graph.to_dict(), "plan.json": plan.to_dict(),
+            "logical_graph.json": graph.to_dict(),
+            "plan.json": plan.to_dict(),
             "emitted_graph.json": emission.dispatch.to_dict(),
-            "emission_receipt.json": emission.receipt(), "proof.json": emitter.proof,
+            "emission_receipt.json": emission.receipt(),
+            "proof.json": emitter.proof,
         }
         for name, document in documents.items():
             (output / name).write_text(json.dumps(document, sort_keys=True, indent=2) + "\n")
         row = dict(emitter.proof)
-        row.update({"source": str(path.resolve()), "source_sha256": hashlib.sha256(source).hexdigest(),
-                    "artifact_directory": str(output), "compile_and_verify_seconds": time.monotonic() - started})
+        row.update(
+            {
+                "source": str(path.resolve()),
+                "source_sha256": hashlib.sha256(source).hexdigest(),
+                "artifact_directory": str(output),
+                "compile_and_verify_seconds": time.monotonic() - started,
+            }
+        )
         rows.append(row)
     report = {
-        "schema": "full_model_fusion_compilation_proof_v1", "models": rows,
-        "compiler_sources": implementations, "xdsl_version": importlib.metadata.version("xdsl"),
+        "schema": "full_model_fusion_compilation_proof_v1",
+        "models": rows,
+        "compiler_sources": implementations,
+        "xdsl_version": importlib.metadata.version("xdsl"),
         "region_nodes": region_nodes,
         "selection": "contiguous grouping stress test; no profitability claim",
-        "simulator_invocations": 0, "full_model_executions": 0,
-        "remaining": ["candidate target-codegen adoption", "target materialization accounting",
-                      "mechanism-equivalent probe calibration", "global profitability selection"],
+        "simulator_invocations": 0,
+        "full_model_executions": 0,
+        "remaining": [
+            "candidate target-codegen adoption",
+            "target materialization accounting",
+            "mechanism-equivalent probe calibration",
+            "global profitability selection",
+        ],
     }
     (destination / "report.json").write_text(json.dumps(report, sort_keys=True, indent=2) + "\n")
     return report
@@ -80,7 +103,26 @@ if __name__ == "__main__":
     parser.add_argument("--region-nodes", type=int, required=True)
     options = parser.parse_args()
     report = run(options.input_mlir, options.output_dir, options.region_nodes)
-    print(json.dumps({"models": [{key: row[key] for key in (
-        "source", "logical_nodes", "emitted_nodes", "logical_dispatches", "emitted_dispatches",
-        "computation", "compile_and_verify_seconds")} for row in report["models"]],
-        "simulator_invocations": report["simulator_invocations"]}, indent=2))
+    print(
+        json.dumps(
+            {
+                "models": [
+                    {
+                        key: row[key]
+                        for key in (
+                            "source",
+                            "logical_nodes",
+                            "emitted_nodes",
+                            "logical_dispatches",
+                            "emitted_dispatches",
+                            "computation",
+                            "compile_and_verify_seconds",
+                        )
+                    }
+                    for row in report["models"]
+                ],
+                "simulator_invocations": report["simulator_invocations"],
+            },
+            indent=2,
+        )
+    )

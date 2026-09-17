@@ -18,9 +18,21 @@ from pathlib import Path
 from typing import Any
 
 from ir_ingest import InterfaceProgram
-from lowering.isa import (ACC_ACCUMULATE, ACC_BASE, ACC_FULL, DIM, GARBAGE_ADDR, Address,
-                          Instruction, _config_ex, _config_ld, _config_st, _elem_bytes, _row_stride,
-                          _tile_word)
+from lowering.isa import (
+    ACC_ACCUMULATE,
+    ACC_BASE,
+    ACC_FULL,
+    DIM,
+    GARBAGE_ADDR,
+    Address,
+    Instruction,
+    _config_ex,
+    _config_ld,
+    _config_st,
+    _elem_bytes,
+    _row_stride,
+    _tile_word,
+)
 
 _SCHEDULES = json.loads(Path(__file__).with_name("voyager_schedules.json").read_text())
 
@@ -29,8 +41,9 @@ def schedule_key(m: int, k: int, n: int, epilogue: list[str], out_dtype: str) ->
     return f"{m}x{k}x{n}|{'+'.join(epilogue) or 'none'}|{out_dtype}"
 
 
-def _voyager_matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name: str,
-                          out_name: str, attrs: dict[str, Any]) -> list[Instruction]:
+def _voyager_matmul_trace(
+    program: InterfaceProgram, lhs_name: str, weight_name: str, out_name: str, attrs: dict[str, Any]
+) -> list[Instruction]:
     lhs, weight, out = (program.tensors[n] for n in (lhs_name, weight_name, out_name))
     m, k = lhs.shape
     _, n = weight.shape
@@ -53,9 +66,13 @@ def _voyager_matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name:
             # Packed exactly as the reference package packs a load -- a CONFIG_LD before every MVIN --
             # so the arms differ only in the schedule Voyager chose, never in instruction packing.
             trace.append(_config_ld(strides[role], channel=0))
-            trace.append(Instruction("MVIN", Address(names[role], row * strides[role]
-                                                     + col * elem[role]),
-                                     _tile_word(spad_row, cols, rows)))
+            trace.append(
+                Instruction(
+                    "MVIN",
+                    Address(names[role], row * strides[role] + col * elem[role]),
+                    _tile_word(spad_row, cols, rows),
+                )
+            )
         elif kind == "preload":
             _, weight_row, acc_row, accumulate, rows, cols = op
             b = _tile_word(GARBAGE_ADDR if weight_row is None else weight_row, DIM, DIM)
@@ -63,14 +80,22 @@ def _voyager_matmul_trace(program: InterfaceProgram, lhs_name: str, weight_name:
             trace.append(Instruction("PRELOAD", b, _tile_word(c, cols, rows)))
         elif kind == "compute":
             _, input_row, rows, fresh = op
-            trace.append(Instruction("COMPUTE_PRELOADED" if fresh else "COMPUTE_ACCUMULATE",
-                                     _tile_word(input_row, DIM, rows),
-                                     _tile_word(GARBAGE_ADDR, DIM, DIM)))
+            trace.append(
+                Instruction(
+                    "COMPUTE_PRELOADED" if fresh else "COMPUTE_ACCUMULATE",
+                    _tile_word(input_row, DIM, rows),
+                    _tile_word(GARBAGE_ADDR, DIM, DIM),
+                )
+            )
         elif kind == "mvout":
             _, _role, row, col, rows, cols, acc_row = op
-            trace.append(Instruction("MVOUT", Address(names["out"], row * strides["out"]
-                                                      + col * elem["out"]),
-                                     _tile_word(readout | ACC_ACCUMULATE | acc_row, cols, rows)))
+            trace.append(
+                Instruction(
+                    "MVOUT",
+                    Address(names["out"], row * strides["out"] + col * elem["out"]),
+                    _tile_word(readout | ACC_ACCUMULATE | acc_row, cols, rows),
+                )
+            )
         else:
             raise ValueError(f"unknown schedule op {kind!r} in {key}")
     # No trailing FENCE: the reference package's resident-matmul lowering ends without one (the
@@ -93,8 +118,7 @@ def build_trace(program: InterfaceProgram) -> list[Instruction]:
             pending[ops["dst"]] = (ops["lhs"], resident_sources[ops["rhs"]])
         elif opcode == "COMMIT":
             lhs, weight = pending[ops["src"]]
-            trace.extend(_voyager_matmul_trace(program, lhs, weight, ops["dst"],
-                                               command.get("attributes", {})))
+            trace.extend(_voyager_matmul_trace(program, lhs, weight, ops["dst"], command.get("attributes", {})))
         elif opcode == "EVICT":
             continue
         else:

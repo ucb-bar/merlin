@@ -24,7 +24,9 @@ golden is ever involved — asm encodes the syntax YOU chose; disasm/lint inspec
   # (answer key). This runs your INTENDED computation; use disasm/lint for the emitted .insn ENCODING.
   python isa_tools.py debug selfcheck_out/A6_resident_reuse/command_buffer.json --capsule A6_resident_reuse
 """
+
 from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -54,29 +56,44 @@ def _text_of(arg: str) -> str:
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Derived ISA dev tools (assembler/disassembler/linter/debugger).")
     ap.add_argument("cmd", choices=["asm", "disasm", "lint", "debug"])
-    ap.add_argument("file", help="asm: a mnemonic listing; disasm/lint/debug: your kernel.S "
-                                 "(RoCC/command-buffer target: your emitted command_buffer.json)")
+    ap.add_argument(
+        "file",
+        help="asm: a mnemonic listing; disasm/lint/debug: your kernel.S "
+        "(RoCC/command-buffer target: your emitted command_buffer.json)",
+    )
     ap.add_argument("--op", default="matmul", help="lint coverage: the capsule op (default matmul)")
     ap.add_argument("--output-dtype", default=None)
     ap.add_argument("--movement", action="store_true", help="lint coverage: a data-movement capsule")
-    ap.add_argument("--cycle-budget", type=int, default=None,
-                    help="lint: reject when the straight-line instruction+delay lower bound already "
-                         "exceeds this many cycles")
+    ap.add_argument(
+        "--cycle-budget",
+        type=int,
+        default=None,
+        help="lint: reject when the straight-line instruction+delay lower bound already exceeds this many cycles",
+    )
     ap.add_argument("--capsule", default=None, help="debug: which public capsule to run your kernel on")
-    ap.add_argument("--run-to", type=int, default=None,
-                    help="debug: stop after this many instructions (omit = run to halt)")
-    ap.add_argument("--region", action="append", default=None, metavar="BASE:NBYTES",
-                    help="debug: a DRAM window to dump (repeatable); BASE may be hex (0x..) or decimal")
-    ap.add_argument("--state", action="store_true",
-                    help="debug: also report a value-free populated-map of on-chip SRAM/registers/"
-                         "accumulators (which stage's data landed) — no values, just populated/empty")
+    ap.add_argument(
+        "--run-to", type=int, default=None, help="debug: stop after this many instructions (omit = run to halt)"
+    )
+    ap.add_argument(
+        "--region",
+        action="append",
+        default=None,
+        metavar="BASE:NBYTES",
+        help="debug: a DRAM window to dump (repeatable); BASE may be hex (0x..) or decimal",
+    )
+    ap.add_argument(
+        "--state",
+        action="store_true",
+        help="debug: also report a value-free populated-map of on-chip SRAM/registers/"
+        "accumulators (which stage's data landed) — no values, just populated/empty",
+    )
     ap.add_argument("--timeout", type=int, default=300)
     a = ap.parse_args(argv)
 
     text = _text_of(a.file)
     if a.cmd == "debug":
         regions = []
-        for spec in (a.region or []):
+        for spec in a.region or []:
             if ":" not in spec:
                 print(json.dumps({"error": f"bad --region {spec!r}; use BASE:NBYTES (e.g. 0x80001000:256)"}))
                 return 2
@@ -91,14 +108,27 @@ def main(argv=None):
             return 2
         # send BOTH artifact keys; the broker picks by endpoint (external_backend -> kernel_s; RoCC/
         # command-buffer -> command_buffer). The shim imports no merlin, so it cannot know which applies.
-        req = {"cmd": "debug", "capsule": a.capsule, "kernel_s": text, "command_buffer": text,
-               "run_to": a.run_to, "regions": regions, "state_summary": a.state, "timeout": a.timeout}
+        req = {
+            "cmd": "debug",
+            "capsule": a.capsule,
+            "kernel_s": text,
+            "command_buffer": text,
+            "run_to": a.run_to,
+            "regions": regions,
+            "state_summary": a.state,
+            "timeout": a.timeout,
+        }
     else:
-        req = {"cmd": a.cmd, "op": a.op, "output_dtype": a.output_dtype,
-               "movement": a.movement, "cycle_budget": a.cycle_budget}
+        req = {
+            "cmd": a.cmd,
+            "op": a.op,
+            "output_dtype": a.output_dtype,
+            "movement": a.movement,
+            "cycle_budget": a.cycle_budget,
+        }
         req["text" if a.cmd == "asm" else "kernel_s"] = text
 
-    ws = Path(__file__).resolve().parent               # the shim lives at <ws>/isa_tools.py
+    ws = Path(__file__).resolve().parent  # the shim lives at <ws>/isa_tools.py
     ch = ws / ".isa_channel"
     ch.mkdir(parents=True, exist_ok=True)
     rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"

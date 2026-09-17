@@ -33,10 +33,11 @@ CLI
     timing_decomposition.py --run-dir out/runs/<target>/<suite>/<arm>/<run-id> [--write]
     timing_decomposition.py --arms                # legacy cross-arm view (needs the experiment env)
 """
+
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import shutil
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
@@ -55,6 +56,7 @@ OPEN, CLOSE = "open", "close"
 
 
 # --- stamps ---------------------------------------------------------------------------------------
+
 
 def _stamp(value) -> float | None:
     """ISO-8601 -> POSIX seconds, or None. Never raises: an unparseable stamp is a MISSING stamp."""
@@ -76,6 +78,7 @@ def _event_time(evt: dict) -> float | None:
 
 
 # --- structural extraction ------------------------------------------------------------------------
+
 
 def _json_chars(value) -> int:
     """Stable serialized size used only as an index into the authoritative transcript artifact."""
@@ -101,20 +104,32 @@ def _boundaries(evt: dict) -> list[dict]:
                     continue
                 bt = block.get("type")
                 if bt == _BLOCK_TOOL_USE:
-                    out.append({"kind": OPEN, "call_id": str(block.get("id") or ""),
-                                "name": str(block.get("name") or "unknown"),
-                                "input_chars": _json_chars(block.get("input"))})
+                    out.append(
+                        {
+                            "kind": OPEN,
+                            "call_id": str(block.get("id") or ""),
+                            "name": str(block.get("name") or "unknown"),
+                            "input_chars": _json_chars(block.get("input")),
+                        }
+                    )
                 elif bt == _BLOCK_TOOL_RESULT:
-                    out.append({"kind": CLOSE, "call_id": str(block.get("tool_use_id") or ""),
-                                "error": bool(block.get("is_error")),
-                                "output_chars": _json_chars(block.get("content"))})
+                    out.append(
+                        {
+                            "kind": CLOSE,
+                            "call_id": str(block.get("tool_use_id") or ""),
+                            "error": bool(block.get("is_error")),
+                            "output_chars": _json_chars(block.get("content")),
+                        }
+                    )
     inner = evt.get("event") if isinstance(evt.get("event"), dict) else evt
     etype, item = inner.get("type"), inner.get("item")
     if etype in (_RAW_ITEM_STARTED, _RAW_ITEM_COMPLETED) and isinstance(item, dict):
         if item.get("type") in _RAW_TOOL_ITEMS:
-            rec = {"kind": OPEN if etype == _RAW_ITEM_STARTED else CLOSE,
-                   "call_id": str(item.get("id") or ""),
-                   "name": str(item.get("type") or "unknown")}
+            rec = {
+                "kind": OPEN if etype == _RAW_ITEM_STARTED else CLOSE,
+                "call_id": str(item.get("id") or ""),
+                "name": str(item.get("type") or "unknown"),
+            }
             if etype == _RAW_ITEM_STARTED:
                 rec["input_chars"] = _json_chars(item)
             else:
@@ -161,6 +176,7 @@ def read_events(paths) -> list[dict]:
 
 # --- timeline algebra -----------------------------------------------------------------------------
 
+
 def _union_seconds(intervals: list[tuple[float, float]]) -> float:
     """Wall seconds covered by AT LEAST ONE interval. Overlapping tool calls occupy one clock."""
     total = 0.0
@@ -198,8 +214,7 @@ def _token_summary(events: list[dict]) -> dict:
     Message-id deduplication is mandatory because streaming drivers may repeat an assistant envelope.
     """
     seen: set[str] = set()
-    totals = {"fresh_input": 0, "cache_write": 0, "cache_read": 0,
-              "output": 0, "reasoning": 0}
+    totals = {"fresh_input": 0, "cache_write": 0, "cache_read": 0, "output": 0, "reasoning": 0}
     usage_messages = 0
     for i, evt in enumerate(events):
         if evt.get("type") != "assistant":
@@ -232,13 +247,18 @@ def _token_summary(events: list[dict]) -> dict:
         "tokens_reasoning": totals["reasoning"] if usage_messages else None,
         "tokens_input_traffic": input_traffic if usage_messages else None,
         "tokens_total": total if usage_messages else None,
-        "cache_read_share_of_input": (totals["cache_read"] / input_traffic
-                                      if usage_messages and input_traffic else None),
-        "cache_write_share_of_input": (totals["cache_write"] / input_traffic
-                                       if usage_messages and input_traffic else None),
+        "cache_read_share_of_input": (
+            totals["cache_read"] / input_traffic if usage_messages and input_traffic else None
+        ),
+        "cache_write_share_of_input": (
+            totals["cache_write"] / input_traffic if usage_messages and input_traffic else None
+        ),
         "reasoning_is_subset_of_output": True,
-        **({} if usage_messages else {
-            "unavailable_reason": "no provider usage event has arrived; tokens are unknown, not zero"}),
+        **(
+            {}
+            if usage_messages
+            else {"unavailable_reason": "no provider usage event has arrived; tokens are unknown, not zero"}
+        ),
     }
 
 
@@ -272,9 +292,15 @@ def _tool_rollup(calls: list[dict]) -> dict:
             "input_chars": sum(int(r.get("input_chars") or 0) for r in rows),
             "output_chars": sum(int(r.get("output_chars") or 0) for r in rows),
         }
-    return {"used": sorted(grouped), "by_tool": by_tool, "calls": calls,
-            "exact_io_source": ("the raw provider event stream; normalized tool outputs may be clipped "
-                                "for prompt safety, so this report stores sizes and hashes, not a second copy")}
+    return {
+        "used": sorted(grouped),
+        "by_tool": by_tool,
+        "calls": calls,
+        "exact_io_source": (
+            "the raw provider event stream; normalized tool outputs may be clipped "
+            "for prompt safety, so this report stores sizes and hashes, not a second copy"
+        ),
+    }
 
 
 def _token_rates(tokens: dict, think_s: float | None, span_s: float | None) -> dict:
@@ -287,13 +313,14 @@ def _token_rates(tokens: dict, think_s: float | None, span_s: float | None) -> d
     total = tokens.get("tokens_total")
     return {
         "output_tokens_per_think_generate_s": (
-            output / think_s if output is not None and think_s and think_s > 0 else None),
-        "output_tokens_per_agent_span_s": (
-            output / span_s if output is not None and span_s and span_s > 0 else None),
-        "total_tokens_per_agent_span_s": (
-            total / span_s if total is not None and span_s and span_s > 0 else None),
-        "note": ("derived from transcript arrival intervals; activity-normalized throughput, not a "
-                 "provider-side first-token/decode latency measurement"),
+            output / think_s if output is not None and think_s and think_s > 0 else None
+        ),
+        "output_tokens_per_agent_span_s": (output / span_s if output is not None and span_s and span_s > 0 else None),
+        "total_tokens_per_agent_span_s": (total / span_s if total is not None and span_s and span_s > 0 else None),
+        "note": (
+            "derived from transcript arrival intervals; activity-normalized throughput, not a "
+            "provider-side first-token/decode latency measurement"
+        ),
     }
 
 
@@ -316,20 +343,31 @@ def _decompose_segment(events: list[dict]) -> dict | None:
         for boundary in boundaries:
             kind, call_id = boundary["kind"], boundary["call_id"]
             if kind == OPEN:
-                open_at.setdefault(call_id, {"start": t,
-                                             "name": boundary.get("name") or "unknown",
-                                             "input_chars": boundary.get("input_chars", 0)})
+                open_at.setdefault(
+                    call_id,
+                    {
+                        "start": t,
+                        "name": boundary.get("name") or "unknown",
+                        "input_chars": boundary.get("input_chars", 0),
+                    },
+                )
             elif call_id in open_at:
                 opened = open_at.pop(call_id)
                 start = opened["start"]
                 intervals.append((start, t))
-                calls.append({"call_id": call_id, "name": opened["name"],
-                              "started_at": datetime.fromtimestamp(start, timezone.utc).isoformat(),
-                              "ended_at": datetime.fromtimestamp(t, timezone.utc).isoformat(),
-                              "duration_s": round(max(t - start, 0.0), 6),
-                              "completed": True, "error": bool(boundary.get("error")),
-                              "input_chars": opened.get("input_chars", 0),
-                              "output_chars": boundary.get("output_chars", 0)})
+                calls.append(
+                    {
+                        "call_id": call_id,
+                        "name": opened["name"],
+                        "started_at": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+                        "ended_at": datetime.fromtimestamp(t, timezone.utc).isoformat(),
+                        "duration_s": round(max(t - start, 0.0), 6),
+                        "completed": True,
+                        "error": bool(boundary.get("error")),
+                        "input_chars": opened.get("input_chars", 0),
+                        "output_chars": boundary.get("output_chars", 0),
+                    }
+                )
             else:
                 unmatched_close += 1
     # A tool call whose result never arrived (the round was cut off mid-command) OCCUPIED the clock up
@@ -339,11 +377,19 @@ def _decompose_segment(events: list[dict]) -> dict | None:
     for call_id, opened in open_at.items():
         start = opened["start"]
         intervals.append((start, t_end))
-        calls.append({"call_id": call_id, "name": opened["name"],
-                      "started_at": datetime.fromtimestamp(start, timezone.utc).isoformat(),
-                      "ended_at": None, "duration_s": round(max(t_end - start, 0.0), 6),
-                      "completed": False, "error": None,
-                      "input_chars": opened.get("input_chars", 0), "output_chars": None})
+        calls.append(
+            {
+                "call_id": call_id,
+                "name": opened["name"],
+                "started_at": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+                "ended_at": None,
+                "duration_s": round(max(t_end - start, 0.0), 6),
+                "completed": False,
+                "error": None,
+                "input_chars": opened.get("input_chars", 0),
+                "output_chars": None,
+            }
+        )
     busy = _union_seconds(intervals)
     span = t_end - t0
     return {
@@ -384,15 +430,18 @@ def _from_duration_fields(events: list[dict]) -> dict | None:
         total_ms += d
     if not seen or total_ms <= 0:
         return None
-    return {"think_generate_s": api_ms / 1000.0,
-            "tool_and_wait_s": max(0.0, total_ms - api_ms) / 1000.0,
-            "span_s": total_ms / 1000.0}
+    return {
+        "think_generate_s": api_ms / 1000.0,
+        "tool_and_wait_s": max(0.0, total_ms - api_ms) / 1000.0,
+        "span_s": total_ms / 1000.0,
+    }
 
 
 UNAVAILABLE_NOTE = (
     "the transcript carries no per-event arrival stamps and no non-zero duration_api_ms/duration_ms, "
     "so the think-vs-tool split is NOT MEASURED for this run. It is recorded as null, never 0.0: a "
-    "zero here would read as 'the agent spent no time thinking' and would be averaged into a study.")
+    "zero here would read as 'the agent spent no time thinking' and would be averaged into a study."
+)
 
 
 def decompose(events: list[dict]) -> dict:
@@ -415,22 +464,22 @@ def decompose(events: list[dict]) -> dict:
         session_rows = []
         for index, (group, seg) in enumerate(pairs):
             session_tokens = _token_summary(group)
-            session_rows.append({
-                "session": index,
-                "started_at": datetime.fromtimestamp(seg["first_s"], timezone.utc).isoformat(),
-                "ended_at": datetime.fromtimestamp(seg["last_s"], timezone.utc).isoformat(),
-                "wall_s": round(seg["span_s"], 6),
-                "think_generate_s": round(seg["think_generate_s"], 6),
-                "tool_and_wait_s": round(seg["tool_and_wait_s"], 6),
-                "activity_share": {
-                    "think_generate": (seg["think_generate_s"] / seg["span_s"]
-                                       if seg["span_s"] > 0 else None),
-                    "tool_and_wait": (seg["tool_and_wait_s"] / seg["span_s"]
-                                      if seg["span_s"] > 0 else None),
-                },
-                "tokens": session_tokens,
-                "rates": _token_rates(session_tokens, seg["think_generate_s"], seg["span_s"]),
-            })
+            session_rows.append(
+                {
+                    "session": index,
+                    "started_at": datetime.fromtimestamp(seg["first_s"], timezone.utc).isoformat(),
+                    "ended_at": datetime.fromtimestamp(seg["last_s"], timezone.utc).isoformat(),
+                    "wall_s": round(seg["span_s"], 6),
+                    "think_generate_s": round(seg["think_generate_s"], 6),
+                    "tool_and_wait_s": round(seg["tool_and_wait_s"], 6),
+                    "activity_share": {
+                        "think_generate": (seg["think_generate_s"] / seg["span_s"] if seg["span_s"] > 0 else None),
+                        "tool_and_wait": (seg["tool_and_wait_s"] / seg["span_s"] if seg["span_s"] > 0 else None),
+                    },
+                    "tokens": session_tokens,
+                    "rates": _token_rates(session_tokens, seg["think_generate_s"], seg["span_s"]),
+                }
+            )
         rec = {
             "method": "arrival_stamps",
             "think_generate_s": round(think, 1),
@@ -453,11 +502,13 @@ def decompose(events: list[dict]) -> dict:
             "rates": _token_rates(tokens, think, span),
             "tools": _tool_rollup(all_calls),
             "session_details": session_rows,
-            "note": ("derived from per-event arrival stamps: a tool call occupies "
-                     "[tool_use, tool_result]; tool_and_wait_s is the UNION of those intervals (tool "
-                     "calls overlap when the driver backgrounds one), think_generate_s is the wall "
-                     "time with none outstanding. Sessions are split at each system/init event so the "
-                     "operator's between-round grading gap (between_session_s) is not agent time."),
+            "note": (
+                "derived from per-event arrival stamps: a tool call occupies "
+                "[tool_use, tool_result]; tool_and_wait_s is the UNION of those intervals (tool "
+                "calls overlap when the driver backgrounds one), think_generate_s is the wall "
+                "time with none outstanding. Sessions are split at each system/init event so the "
+                "operator's between-round grading gap (between_session_s) is not agent time."
+            ),
         }
         cli = _from_duration_fields(events)
         if cli:
@@ -470,8 +521,10 @@ def decompose(events: list[dict]) -> dict:
                 "api_time_s": round(cli["think_generate_s"], 1),
                 "non_api_time_s": round(cli["tool_and_wait_s"], 1),
                 "total_time_s": round(cli["span_s"], 1),
-                "note": ("the driver CLI's own duration_api_ms / duration_ms. API latency vs "
-                         "everything else -- NOT tools vs thinking. Cross-check only."),
+                "note": (
+                    "the driver CLI's own duration_api_ms / duration_ms. API latency vs "
+                    "everything else -- NOT tools vs thinking. Cross-check only."
+                ),
             }
         return rec
     legacy = _from_duration_fields(events)
@@ -483,8 +536,10 @@ def decompose(events: list[dict]) -> dict:
             "tool_and_wait_s": round(legacy["tool_and_wait_s"], 1),
             "think_pct": round(100.0 * legacy["think_generate_s"] / span, 1) if span > 0 else None,
             "measured_span_s": round(span, 1),
-            "note": ("no arrival stamps in this transcript; fell back to the claude CLI's own "
-                     "result.duration_api_ms vs result.duration_ms (last result event per session)."),
+            "note": (
+                "no arrival stamps in this transcript; fell back to the claude CLI's own "
+                "result.duration_api_ms vs result.duration_ms (last result event per session)."
+            ),
         }
     return {
         "method": "unknown",
@@ -497,6 +552,7 @@ def decompose(events: list[dict]) -> dict:
 
 
 # --- run-directory entry points -------------------------------------------------------------------
+
 
 def transcript_paths(run_dir: Path) -> list[Path]:
     """The transcripts of one run, preferring the per-round files (they cannot interleave rounds).
@@ -551,24 +607,28 @@ def oracle_timing(run_dir: Path) -> dict:
                 continue
             timing = tier_result.get("timing")
             timing = dict(timing) if isinstance(timing, dict) else None
-            rows.append({
-                "source": str(result_path.relative_to(run_dir)),
-                "capsule": capsule,
-                "tier": tier,
-                "status": tier_result.get("status"),
-                "engine": tier_result.get("engine"),
-                "measured_now": tier_result.get("measured_now"),
-                "timing": timing,
-                "timing_complete": bool(timing and all(
-                    isinstance(timing.get(field), (int, float)) for field in _TIMING_FIELDS)),
-            })
+            rows.append(
+                {
+                    "source": str(result_path.relative_to(run_dir)),
+                    "capsule": capsule,
+                    "tier": tier,
+                    "status": tier_result.get("status"),
+                    "engine": tier_result.get("engine"),
+                    "measured_now": tier_result.get("measured_now"),
+                    "timing": timing,
+                    "timing_complete": bool(
+                        timing and all(isinstance(timing.get(field), (int, float)) for field in _TIMING_FIELDS)
+                    ),
+                }
+            )
     by_tier = {}
     for tier in sorted({row["tier"] for row in rows}):
         selected = [row for row in rows if row["tier"] == tier]
         timed = [row for row in selected if row["timing"] is not None]
-        field_values = {field: [float(row["timing"][field]) for row in timed
-                                if isinstance(row["timing"].get(field), (int, float))]
-                        for field in _TIMING_FIELDS}
+        field_values = {
+            field: [float(row["timing"][field]) for row in timed if isinstance(row["timing"].get(field), (int, float))]
+            for field in _TIMING_FIELDS
+        }
         adapter = field_values["adapter_wall_s"]
         by_tier[tier] = {
             "records": len(selected),
@@ -576,13 +636,10 @@ def oracle_timing(run_dir: Path) -> dict:
             "complete_timing_records": sum(row["timing_complete"] for row in selected),
             "missing_timing_records": len(selected) - len(timed),
             "statuses": dict(sorted(Counter(str(row["status"]) for row in selected).items())),
-            "engines": dict(sorted(Counter(str(row["engine"]) for row in selected
-                                               if row["engine"]).items())),
-            "totals_s": {field: (round(sum(values), 6) if values else None)
-                         for field, values in field_values.items()},
+            "engines": dict(sorted(Counter(str(row["engine"]) for row in selected if row["engine"]).items())),
+            "totals_s": {field: (round(sum(values), 6) if values else None) for field, values in field_values.items()},
             "fields_measured": {field: len(values) for field, values in field_values.items()},
-            "totals_are_lower_bounds": any(len(values) < len(selected)
-                                             for values in field_values.values()),
+            "totals_are_lower_bounds": any(len(values) < len(selected) for values in field_values.values()),
             "adapter_wall_distribution_s": {
                 "mean": round(sum(adapter) / len(adapter), 6) if adapter else None,
                 "p50": _percentile(adapter, 0.50),
@@ -590,10 +647,16 @@ def oracle_timing(run_dir: Path) -> dict:
                 "max": max(adapter) if adapter else None,
             },
         }
-    return {"capsule_result_files": len({row["source"] for row in rows}),
-            "tier_records": len(rows), "by_tier": by_tier, "per_invocation": rows,
-            "note": ("one row per capsule_result tier; repeated grading attempts remain separate paid "
-                     "invocations. Null timings are unknown/not-run, never zero.")}
+    return {
+        "capsule_result_files": len({row["source"] for row in rows}),
+        "tier_records": len(rows),
+        "by_tier": by_tier,
+        "per_invocation": rows,
+        "note": (
+            "one row per capsule_result tier; repeated grading attempts remain separate paid "
+            "invocations. Null timings are unknown/not-run, never zero."
+        ),
+    }
 
 
 def _role(path: Path) -> str:
@@ -635,8 +698,13 @@ def artifact_inventory(run_dir: Path) -> dict:
     evidence = run_dir / "agent_evidence_snapshot"
     if evidence.is_dir():
         candidates.extend(path for path in sorted(evidence.rglob("*")) if path.is_file())
-    for name in ("transcript.jsonl", "environment.yaml", "cost_time_toolcalls.yaml",
-                 "qa_loop_state.yaml", "qa_loop_summary.yaml"):
+    for name in (
+        "transcript.jsonl",
+        "environment.yaml",
+        "cost_time_toolcalls.yaml",
+        "qa_loop_state.yaml",
+        "qa_loop_summary.yaml",
+    ):
         path = run_dir / name
         if path.is_file():
             candidates.append(path)
@@ -646,14 +714,25 @@ def artifact_inventory(run_dir: Path) -> dict:
             data = path.read_bytes()
         except OSError:
             continue
-        files.append({"path": str(path.relative_to(run_dir)), "bytes": len(data),
-                      "sha256": hashlib.sha256(data).hexdigest(), "role": _role(path)})
+        files.append(
+            {
+                "path": str(path.relative_to(run_dir)),
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "role": _role(path),
+            }
+        )
     return {
         "files": files,
-        "authoritative_io": [row["path"] for row in files if row["role"].startswith("authoritative")
-                             or row["role"].startswith("exact_agent")],
-        "note": ("raw provider/rollout files are authoritative for full tool I/O; normalized transcripts "
-                 "are an analysis view and may clip large outputs"),
+        "authoritative_io": [
+            row["path"]
+            for row in files
+            if row["role"].startswith("authoritative") or row["role"].startswith("exact_agent")
+        ],
+        "note": (
+            "raw provider/rollout files are authoritative for full tool I/O; normalized transcripts "
+            "are an analysis view and may clip large outputs"
+        ),
     }
 
 
@@ -697,7 +776,8 @@ def snapshot_agent_evidence(run_dir: Path) -> list[Path]:
         return []
     copied = []
     workspaces = (repo / "merlin" / "experiments" / "capsule_bench" / "targets").glob(
-        f"*/_qa_ws/{run_dir.name}/workspace")
+        f"*/_qa_ws/{run_dir.name}/workspace"
+    )
     dest_root = run_dir / "agent_evidence_snapshot"
     for workspace in workspaces:
         for name in (".qa_channel", "selfcheck_out"):
@@ -724,13 +804,15 @@ def rollout_telemetry(run_dir: Path) -> dict:
     """
     paths = sorted((Path(run_dir) / "rounds").glob("round_*.codex_rollout_snapshot/**/*.jsonl"))
     responses = []
-    total = {"input_total": 0, "fresh_input": 0, "cache_read": 0, "cache_write": 0,
-             "output": 0, "reasoning": 0}
+    total = {"input_total": 0, "fresh_input": 0, "cache_read": 0, "cache_write": 0, "output": 0, "reasoning": 0}
     for path in paths:
         pending_start = None
         try:
-            records = [json.loads(line) for line in path.read_text(
-                encoding="utf-8", errors="ignore").splitlines() if line.startswith("{")]
+            records = [
+                json.loads(line)
+                for line in path.read_text(encoding="utf-8", errors="ignore").splitlines()
+                if line.startswith("{")
+            ]
         except (OSError, ValueError):
             continue
         for record in records:
@@ -740,8 +822,11 @@ def rollout_telemetry(run_dir: Path) -> dict:
             payload_type = payload.get("type") if isinstance(payload, dict) else None
             if kind == "event_msg" and payload_type == "task_started" and stamp is not None:
                 pending_start = stamp
-            elif (kind == "response_item" and payload_type in
-                  {"custom_tool_call_output", "function_call_output"} and stamp is not None):
+            elif (
+                kind == "response_item"
+                and payload_type in {"custom_tool_call_output", "function_call_output"}
+                and stamp is not None
+            ):
                 pending_start = stamp
             elif kind == "token_usage_record" and isinstance(payload, dict):
                 usage = payload.get("usage") or {}
@@ -753,25 +838,31 @@ def rollout_telemetry(run_dir: Path) -> dict:
                 output = int(usage.get("output_tokens", 0) or 0)
                 reasoning = int(usage.get("reasoning_output_tokens", 0) or 0)
                 fresh = max(input_total - cache_read - cache_write, 0)
-                elapsed = (max(stamp - pending_start, 0.0)
-                           if stamp is not None and pending_start is not None else None)
+                elapsed = max(stamp - pending_start, 0.0) if stamp is not None and pending_start is not None else None
                 row = {
                     "source": str(path.relative_to(run_dir)),
                     "response_id": payload.get("response_id"),
                     "turn_id": payload.get("turn_id"),
                     "completed_at": record.get("timestamp"),
                     "client_observed_turnaround_s": round(elapsed, 6) if elapsed is not None else None,
-                    "tokens": {"input_total": input_total, "fresh_input": fresh,
-                               "cache_read": cache_read, "cache_write": cache_write,
-                               "output": output, "reasoning": reasoning},
+                    "tokens": {
+                        "input_total": input_total,
+                        "fresh_input": fresh,
+                        "cache_read": cache_read,
+                        "cache_write": cache_write,
+                        "output": output,
+                        "reasoning": reasoning,
+                    },
                     "output_tokens_per_client_observed_turnaround_s": (
-                        output / elapsed if elapsed and elapsed > 0 else None),
+                        output / elapsed if elapsed and elapsed > 0 else None
+                    ),
                 }
                 responses.append(row)
                 for key, value in row["tokens"].items():
                     total[key] += value
-    turnaround = [row["client_observed_turnaround_s"] for row in responses
-                  if row["client_observed_turnaround_s"] is not None]
+    turnaround = [
+        row["client_observed_turnaround_s"] for row in responses if row["client_observed_turnaround_s"] is not None
+    ]
     input_traffic = total["fresh_input"] + total["cache_read"] + total["cache_write"]
     response_wall = sum(turnaround) if turnaround else None
     return {
@@ -786,12 +877,12 @@ def rollout_telemetry(run_dir: Path) -> dict:
             "tokens_output": total["output"],
             "tokens_reasoning": total["reasoning"],
             "tokens_total": total["input_total"] + total["output"],
-            "cache_read_share_of_input": (total["cache_read"] / input_traffic
-                                          if input_traffic else None),
-            "cache_write_share_of_input": (total["cache_write"] / input_traffic
-                                           if input_traffic else None),
+            "cache_read_share_of_input": (total["cache_read"] / input_traffic if input_traffic else None),
+            "cache_write_share_of_input": (total["cache_write"] / input_traffic if input_traffic else None),
             "reasoning_is_subset_of_output": True,
-        } if responses else {},
+        }
+        if responses
+        else {},
         "client_observed_turnaround_s": {
             "sum": round(sum(turnaround), 6) if turnaround else None,
             "mean": round(sum(turnaround) / len(turnaround), 6) if turnaround else None,
@@ -801,16 +892,19 @@ def rollout_telemetry(run_dir: Path) -> dict:
         },
         "token_rates": {
             "output_tokens_per_client_observed_turnaround_s": (
-                total["output"] / response_wall if response_wall else None),
+                total["output"] / response_wall if response_wall else None
+            ),
             "all_provider_tokens_per_client_observed_turnaround_s": (
-                (total["input_total"] + total["output"]) / response_wall
-                if response_wall else None),
+                (total["input_total"] + total["output"]) / response_wall if response_wall else None
+            ),
             "denominator_s": round(response_wall, 6) if response_wall else None,
             "note": "client-observed response turnaround; not server decode throughput",
         },
-        "latency_limit": ("Codex exposes response-completion timestamps but not request-start, TTFT, or "
-                          "token-delta timestamps. Turnaround is client-observed from the prior task/tool "
-                          "input; it is not server latency, TTFT, or true decode tokens/s."),
+        "latency_limit": (
+            "Codex exposes response-completion timestamps but not request-start, TTFT, or "
+            "token-delta timestamps. Turnaround is client-observed from the prior task/tool "
+            "input; it is not server latency, TTFT, or true decode tokens/s."
+        ),
     }
 
 
@@ -829,9 +923,9 @@ def stream_reconciliation(run_dir: Path) -> dict:
             stamped_lines = stamped_bytes.splitlines()
             raw_events = [json.loads(line) for line in raw_lines]
             stamped = [json.loads(line) for line in stamped_lines]
-            events_equal = (len(raw_events) == len(stamped)
-                            and all(row.get("event") == event
-                                    for row, event in zip(stamped, raw_events)))
+            events_equal = len(raw_events) == len(stamped) and all(
+                row.get("event") == event for row, event in zip(stamped, raw_events)
+            )
             seq_contiguous = [row.get("seq") for row in stamped] == list(range(1, len(stamped) + 1))
             newline_terminated = raw_bytes.endswith(b"\n") and stamped_bytes.endswith(b"\n")
             row_failures = []
@@ -841,13 +935,19 @@ def stream_reconciliation(run_dir: Path) -> dict:
                 row_failures.append("stamped_sequence_not_contiguous")
             if not newline_terminated:
                 row_failures.append("stream_not_newline_terminated")
-            rows.append({"round": stem, "raw_events": len(raw_events),
-                         "stamped_events": len(stamped), "events_equal": events_equal,
-                         "seq_contiguous": seq_contiguous,
-                         "newline_terminated": newline_terminated,
-                         "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
-                         "stamped_sha256": hashlib.sha256(stamped_bytes).hexdigest(),
-                         "failures": row_failures})
+            rows.append(
+                {
+                    "round": stem,
+                    "raw_events": len(raw_events),
+                    "stamped_events": len(stamped),
+                    "events_equal": events_equal,
+                    "seq_contiguous": seq_contiguous,
+                    "newline_terminated": newline_terminated,
+                    "raw_sha256": hashlib.sha256(raw_bytes).hexdigest(),
+                    "stamped_sha256": hashlib.sha256(stamped_bytes).hexdigest(),
+                    "failures": row_failures,
+                }
+            )
             failures.extend(f"{stem}:{failure}" for failure in row_failures)
         except Exception as exc:  # noqa: BLE001 — corruption is an integrity result, not a crash
             failure = f"{stem}:reconciliation_failed:{type(exc).__name__}"
@@ -865,40 +965,46 @@ def resource_telemetry(run_dir: Path) -> dict:
     records = []
     for path in paths:
         try:
-            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()
-                    if line.startswith("{")]
+            rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("{")]
         except (OSError, ValueError):
             rows = []
         stamps = [_stamp(row.get("sampled_at")) for row in rows]
         stamps = [stamp for stamp in stamps if stamp is not None]
-        records.append({
-            "source": str(path.relative_to(run_dir)), "samples": len(rows),
-            "observed_span_s": (round(max(stamps) - min(stamps), 6) if len(stamps) >= 2 else 0.0),
-            "rss_bytes_peak": max((int(row.get("rss_bytes", 0)) for row in rows), default=None),
-            "rss_bytes_mean": (round(sum(int(row.get("rss_bytes", 0)) for row in rows) / len(rows), 3)
-                               if rows else None),
-            "virtual_bytes_peak": max((int(row.get("virtual_bytes", 0)) for row in rows), default=None),
-            "processes_peak": max((int(row.get("processes", 0)) for row in rows), default=None),
-            "threads_peak": max((int(row.get("threads", 0)) for row in rows), default=None),
-            "observed_cpu_seconds_peak": max((float(row.get("user_cpu_s", 0))
-                                               + float(row.get("system_cpu_s", 0)) for row in rows),
-                                              default=None),
-            "observed_read_bytes_peak": max((int(row.get("read_bytes", 0)) for row in rows), default=None),
-            "observed_write_bytes_peak": max((int(row.get("write_bytes", 0)) for row in rows), default=None),
-        })
-    return {"available": any(row["samples"] for row in records), "streams": records,
-            "sampling_note": ("5 s procfs snapshots of the live descendant tree. Peak cumulative CPU/I/O "
-                              "is a lower bound because a short-lived child may exit between samples; raw "
-                              "samples are retained for alternate analyses.")}
+        records.append(
+            {
+                "source": str(path.relative_to(run_dir)),
+                "samples": len(rows),
+                "observed_span_s": (round(max(stamps) - min(stamps), 6) if len(stamps) >= 2 else 0.0),
+                "rss_bytes_peak": max((int(row.get("rss_bytes", 0)) for row in rows), default=None),
+                "rss_bytes_mean": (
+                    round(sum(int(row.get("rss_bytes", 0)) for row in rows) / len(rows), 3) if rows else None
+                ),
+                "virtual_bytes_peak": max((int(row.get("virtual_bytes", 0)) for row in rows), default=None),
+                "processes_peak": max((int(row.get("processes", 0)) for row in rows), default=None),
+                "threads_peak": max((int(row.get("threads", 0)) for row in rows), default=None),
+                "observed_cpu_seconds_peak": max(
+                    (float(row.get("user_cpu_s", 0)) + float(row.get("system_cpu_s", 0)) for row in rows), default=None
+                ),
+                "observed_read_bytes_peak": max((int(row.get("read_bytes", 0)) for row in rows), default=None),
+                "observed_write_bytes_peak": max((int(row.get("write_bytes", 0)) for row in rows), default=None),
+            }
+        )
+    return {
+        "available": any(row["samples"] for row in records),
+        "streams": records,
+        "sampling_note": (
+            "5 s procfs snapshots of the live descendant tree. Peak cumulative CPU/I/O "
+            "is a lower bound because a short-lived child may exit between samples; raw "
+            "samples are retained for alternate analyses."
+        ),
+    }
 
 
-def _codex_round_integrity(run_dir: Path, timing: dict, tokens: dict,
-                           reconciliation: dict, resources: dict) -> dict:
+def _codex_round_integrity(run_dir: Path, timing: dict, tokens: dict, reconciliation: dict, resources: dict) -> dict:
     """Completeness gate for finished Codex rounds; an active turn is explicitly incomplete."""
     failures = []
     rounds = Path(run_dir) / "rounds"
-    stems = sorted({p.name.split(".transcript.jsonl")[0]
-                    for p in rounds.glob("round_[0-9][0-9].transcript.jsonl")})
+    stems = sorted({p.name.split(".transcript.jsonl")[0] for p in rounds.glob("round_[0-9][0-9].transcript.jsonl")})
     details = []
     for stem in stems:
         required = {
@@ -925,11 +1031,16 @@ def _codex_round_integrity(run_dir: Path, timing: dict, tokens: dict,
         if not rollout:
             round_failures.append(f"{stem}:rollout_snapshot_missing")
         failures.extend(round_failures)
-        details.append({"round": stem, "complete": not round_failures,
-                        "failures": round_failures,
-                        "turns_started": summary.get("turns_started"),
-                        "turns_usage_reported": summary.get("turns_usage_reported"),
-                        "driver_wall_s": summary.get("wall_s")})
+        details.append(
+            {
+                "round": stem,
+                "complete": not round_failures,
+                "failures": round_failures,
+                "turns_started": summary.get("turns_started"),
+                "turns_usage_reported": summary.get("turns_usage_reported"),
+                "driver_wall_s": summary.get("wall_s"),
+            }
+        )
     if not stems:
         failures.append("no_completed_round_transcript")
     if timing.get("method") == "unknown":
@@ -946,9 +1057,15 @@ def _codex_round_integrity(run_dir: Path, timing: dict, tokens: dict,
         failures.append("agent_visible_evidence_snapshot_missing")
     if resources.get("available") is not True:
         failures.append("resource_samples_missing")
-    return {"complete": not failures, "failures": failures, "rounds": details,
-            "policy": ("formal completion requires exact prompt/final, raw+stamped+normalized streams, "
-                       "sealed rollout, complete usage, known timing, and paired tools")}
+    return {
+        "complete": not failures,
+        "failures": failures,
+        "rounds": details,
+        "policy": (
+            "formal completion requires exact prompt/final, raw+stamped+normalized streams, "
+            "sealed rollout, complete usage, known timing, and paired tools"
+        ),
+    }
 
 
 def decompose_run(run_dir: Path) -> dict:
@@ -956,9 +1073,14 @@ def decompose_run(run_dir: Path) -> dict:
     run_dir = Path(run_dir)
     paths = transcript_paths(run_dir)
     if not paths:
-        rec = {"method": "unknown", "think_generate_s": None, "tool_and_wait_s": None,
-               "think_pct": None, "measured_span_s": None,
-               "unavailable_reason": f"no transcript found under {run_dir}"}
+        rec = {
+            "method": "unknown",
+            "think_generate_s": None,
+            "tool_and_wait_s": None,
+            "think_pct": None,
+            "measured_span_s": None,
+            "unavailable_reason": f"no transcript found under {run_dir}",
+        }
     else:
         rec = decompose(read_events(paths))
     rec["transcripts"] = [p.name for p in paths]
@@ -973,14 +1095,17 @@ def decompose_run(run_dir: Path) -> dict:
     if not integrity_tokens.get("available") and rec["llm"].get("available"):
         integrity_tokens = {"available": True, **rec["llm"]["tokens"]}
     rec["telemetry_integrity"] = _codex_round_integrity(
-        run_dir, rec, integrity_tokens, rec["stream_reconciliation"], rec["resources"])
+        run_dir, rec, integrity_tokens, rec["stream_reconciliation"], rec["resources"]
+    )
     rec["generated_at"] = datetime.now(timezone.utc).isoformat()
     rec["measurement_limits"] = {
         "provider_server_latency": "unavailable: provider request-start/TTFT is not emitted",
         "true_decode_token_rate": "unavailable: no per-token timestamp stream",
         "historical_cpu_rss_io": "unavailable unless sampled during the run; cannot be backfilled",
-        "available_substitute": ("arrival-stamped agent/tool wall, client-observed response turnaround, "
-                                 "provider token buckets, and exact L-tier phase timings"),
+        "available_substitute": (
+            "arrival-stamped agent/tool wall, client-observed response turnaround, "
+            "provider token buckets, and exact L-tier phase timings"
+        ),
     }
     return rec
 
@@ -1008,14 +1133,20 @@ def report_run(run_dir: Path, *, write: bool = False) -> dict:
     print(f"  think+generate    : {_fmt(rec['think_generate_s'])}")
     print(f"  tool and wait     : {_fmt(rec['tool_and_wait_s'])}")
     print(f"  think share       : {_fmt(rec['think_pct'], '%')}")
-    print(f"  measured span     : {_fmt(rec.get('measured_span_s'))}"
-          f"  (sessions={rec.get('sessions')}, between={_fmt(rec.get('between_session_s'))})")
+    print(
+        f"  measured span     : {_fmt(rec.get('measured_span_s'))}"
+        f"  (sessions={rec.get('sessions')}, between={_fmt(rec.get('between_session_s'))})"
+    )
     if rec["method"] == "arrival_stamps":
-        print(f"  tool calls        : {rec['tool_calls_matched']} matched, "
-              f"{rec['tool_calls_unterminated']} unterminated, "
-              f"{rec['tool_results_unpaired']} unpaired results")
-        print(f"  sum of call durs  : {_fmt(rec['tool_call_seconds_sum'])} "
-              f"(overlap {_fmt(rec['tool_concurrency_overlap_s'])} — concurrent tool calls)")
+        print(
+            f"  tool calls        : {rec['tool_calls_matched']} matched, "
+            f"{rec['tool_calls_unterminated']} unterminated, "
+            f"{rec['tool_results_unpaired']} unpaired results"
+        )
+        print(
+            f"  sum of call durs  : {_fmt(rec['tool_call_seconds_sum'])} "
+            f"(overlap {_fmt(rec['tool_concurrency_overlap_s'])} — concurrent tool calls)"
+        )
     if write:
         print(f"  wrote {write_run_timing(run_dir)}")
     return rec
@@ -1036,8 +1167,10 @@ def harvest_arm(run_dir: Path, target: str) -> dict:
     state = run_dir / "qa_loop_state.yaml"
     st = yaml.safe_load(state.read_text()) if state.is_file() else {}
     active = ((st or {}).get("cumulative") or {}).get("active_wall_s", 0.0)
-    sims = {"spike": {"runs": 0, "build_s": 0.0, "sim_s": 0.0},
-            "verilator/VCS": {"runs": 0, "build_s": 0.0, "sim_s": 0.0}}
+    sims = {
+        "spike": {"runs": 0, "build_s": 0.0, "sim_s": 0.0},
+        "verilator/VCS": {"runs": 0, "build_s": 0.0, "sim_s": 0.0},
+    }
     for cr in (run_dir / "_qa_work").glob(f"runs_*/runs/{target}-capsule-bench/*/capsule_result.json"):
         try:
             r = json.loads(cr.read_text())
@@ -1050,25 +1183,34 @@ def harvest_arm(run_dir: Path, target: str) -> dict:
                 sims[tool]["runs"] += 1
                 sims[tool]["build_s"] += tm.get("build_s") or 0.0
                 sims[tool]["sim_s"] += tm.get("sim_active_s") or 0.0
-    return {"active_wall_min": round(active / 60, 1),
-            "agent_session": decompose_run(run_dir),
-            "tool_wall_exact": {
-                tool: {"runs": v["runs"], "total_s": round(v["sim_s"] + v["build_s"], 2),
-                       "per_run_s": round((v["sim_s"] + v["build_s"]) / max(v["runs"], 1), 3)}
-                for tool, v in sims.items()}}
+    return {
+        "active_wall_min": round(active / 60, 1),
+        "agent_session": decompose_run(run_dir),
+        "tool_wall_exact": {
+            tool: {
+                "runs": v["runs"],
+                "total_s": round(v["sim_s"] + v["build_s"], 2),
+                "per_run_s": round((v["sim_s"] + v["build_s"]) / max(v["runs"], 1), 3),
+            }
+            for tool, v in sims.items()
+        },
+    }
 
 
 def _legacy_arms(arm_runs: dict[str, tuple[str, str]]) -> int:
     import _common as C  # noqa: PLC0415 — bootstraps sys.path; kept out of import time so this
-                         # module stays unit-testable without the experiment env.
+
+    # module stays unit-testable without the experiment env.
     out_dir = C.REPORTS / "timing"
     out_dir.mkdir(parents=True, exist_ok=True)
     res = {label: harvest_arm(C.RUNS / sub / rid, C.TARGET) for rid, (sub, label) in arm_runs.items()}
     (out_dir / "timing_detailed.json").write_text(json.dumps(res, indent=2))
     for label, t in res.items():
         a = t["agent_session"]
-        print(f"  {label:14s} active={t['active_wall_min']:>7} min  think={_fmt(a['think_generate_s'])} "
-              f"tool={_fmt(a['tool_and_wait_s'])} ({a['method']})")
+        print(
+            f"  {label:14s} active={t['active_wall_min']:>7} min  think={_fmt(a['think_generate_s'])} "
+            f"tool={_fmt(a['tool_and_wait_s'])} ({a['method']})"
+        )
     print(f"wrote {out_dir}/timing_detailed.json")
     return 0
 
@@ -1077,12 +1219,14 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--run-dir", action="append", default=[],
-                    help="a run directory (repeatable); prints its think/tool split")
+    ap.add_argument(
+        "--run-dir", action="append", default=[], help="a run directory (repeatable); prints its think/tool split"
+    )
     ap.add_argument("--write", action="store_true", help="also write <run-dir>/timing_detailed.json")
     ap.add_argument("--arms", action="store_true", help="legacy cross-arm view (needs the experiment env)")
-    ap.add_argument("--arm", action="append", default=[], metavar="RUN_ID=SUBDIR:LABEL",
-                    help="arm to include in --arms")
+    ap.add_argument(
+        "--arm", action="append", default=[], metavar="RUN_ID=SUBDIR:LABEL", help="arm to include in --arms"
+    )
     args = ap.parse_args(argv)
     if args.run_dir:
         for d in args.run_dir:

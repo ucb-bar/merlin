@@ -19,6 +19,7 @@ same "at least two points per fitted parameter" rule `merlin/python/merlin/perf/
 
 Nothing here is a verdict on the recipe surface; it measures the instrument.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,10 +42,11 @@ REPO = _repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from merlin.targetgen import oot_runner as OOT          # noqa: E402
-from merlin.common.artifacts import new_product          # noqa: E402
-import _track as T                                       # noqa: E402
-from merlin.common import provenance as PROV             # noqa: E402
+import _track as T  # noqa: E402
+
+from merlin.common import provenance as PROV  # noqa: E402
+from merlin.common.artifacts import new_product  # noqa: E402
+from merlin.targetgen import oot_runner as OOT  # noqa: E402
 
 FROZEN = REPO / "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0"
 
@@ -53,14 +55,16 @@ FROZEN = REPO / "out/artifacts/targets/gemmini/gemmini_xdsl_rtl_v0"
 #: exactly where `activation_residency` is a no-op -- that is the certificate's limitation, recorded.
 CASES = [
     ("A2_single_tile_matmul", REPO / "merlin/contract/capsules/isa/A2_single_tile_matmul", 302),
-    ("PK03_k128",             REPO / "merlin/contract/capsules/_perf/PK03_k128",           None),
+    ("PK03_k128", REPO / "merlin/contract/capsules/_perf/PK03_k128", None),
 ]
 
 #: Located by $TMPDIR (or $MERLIN_GEMMINI_GSIM_EMU's parent), never by one
 #: developer's absolute path; the binaries below are identified by digest.
-_GSIM_DIR = (Path(os.environ["MERLIN_GEMMINI_GSIM_EMU"]).parent
-             if os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
-             else Path(os.environ.get("TMPDIR", "/tmp")) / "gsim_cert_serialclk_v1")
+_GSIM_DIR = (
+    Path(os.environ["MERLIN_GEMMINI_GSIM_EMU"]).parent
+    if os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
+    else Path(os.environ.get("TMPDIR", "/tmp")) / "gsim_cert_serialclk_v1"
+)
 
 #: TWO gsim binaries. The OPERATIVE 4-member certificate
 #: (``out/artifacts/perf-bench/gemmini/tuning_certificate_v1/gsim_equivalence_certificate.json``)
@@ -71,12 +75,18 @@ _GSIM_DIR = (Path(os.environ["MERLIN_GEMMINI_GSIM_EMU"]).parent
 #: inverts the attribution. ``_final`` is byte-identical to the unsuffixed build. The uncertified
 #: ``_final`` is kept here as a third arm purely to see whether "filtered" moved the cycle count.
 GSIM_BINARIES = [
-    ("gsim_certified", _GSIM_DIR / "emu_gemmini_gsim_serialclk_v1_filtered_final",
-     "fb356ede610fb5f5ecbe2edb61dfd9a5a196293408a5ea02f34f919b5e39916b",
-     "certified by the operative 4-member certificate, and the binary in production"),
-    ("gsim_unfiltered", _GSIM_DIR / "emu_gemmini_gsim_serialclk_v1_final",
-     "ae599b04dc3ea548d5a7653fb7b3b7eeb48de6fc31e0a747095a85f752c03197",
-     "the pre-filter build; UNCERTIFIED, measured only as a control on what filtering changed"),
+    (
+        "gsim_certified",
+        _GSIM_DIR / "emu_gemmini_gsim_serialclk_v1_filtered_final",
+        "fb356ede610fb5f5ecbe2edb61dfd9a5a196293408a5ea02f34f919b5e39916b",
+        "certified by the operative 4-member certificate, and the binary in production",
+    ),
+    (
+        "gsim_unfiltered",
+        _GSIM_DIR / "emu_gemmini_gsim_serialclk_v1_final",
+        "ae599b04dc3ea548d5a7653fb7b3b7eeb48de6fc31e0a747095a85f752c03197",
+        "the pre-filter build; UNCERTIFIED, measured only as a control on what filtering changed",
+    ),
 ]
 GSIM_MAXCYCLES = "100000000"
 
@@ -94,15 +104,24 @@ def run_cell(engine: str, name: str, capsule_dir: Path, runs_root: Path, timeout
     run_id = f"pin_{engine}_{name}"
     t0 = time.time()
     try:
-        res = OOT.certify(FROZEN, _iface(capsule_dir), runs_root=runs_root, run_id=run_id,
-                          simulator=engine, target="gemmini", timeout=timeout)
+        res = OOT.certify(
+            FROZEN,
+            _iface(capsule_dir),
+            runs_root=runs_root,
+            run_id=run_id,
+            simulator=engine,
+            target="gemmini",
+            timeout=timeout,
+        )
         err = None
-    except Exception as exc:                       # only an internal harness bug reaches here
+    except Exception as exc:  # only an internal harness bug reaches here
         res, err = {}, f"{type(exc).__name__}: {exc}"
     wall = time.time() - t0
     oracle = (res or {}).get("oracle") or {}
     return {
-        "engine": engine, "capsule": name, "wall_s": round(wall, 2),
+        "engine": engine,
+        "capsule": name,
+        "wall_s": round(wall, 2),
         "status": (res or {}).get("status"),
         "cycles": oracle.get("cycles"),
         "oracle_kind": oracle.get("kind"),
@@ -121,26 +140,30 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--version", type=int, default=1)
     ap.add_argument("--no-product", action="store_true")
     args = ap.parse_args(argv)
-    T.assert_frozen_intact()   # this track never edits the champion; prove it
+    T.assert_frozen_intact()  # this track never edits the champion; prove it
 
     gsim_state = []
     for label, path, sha, why in GSIM_BINARIES:
         if not path.exists():
-            gsim_state.append((label, path, False, f"absent at {path}", why)); continue
+            gsim_state.append((label, path, False, f"absent at {path}", why))
+            continue
         got = PROV.file_digest(path)
         ok = got == sha
         gsim_state.append((label, path, ok, f"digest {got}" + ("" if ok else f" != declared {sha}"), why))
     for label, _p, ok, note, why in gsim_state:
         print(f"{label:<16} {'OK     ' if ok else 'PROBLEM'} {note}  ({why})")
-    print("certified binary == binary in production (per the operative 4-member certificate); "
-          "the unfiltered build is a control arm, not a candidate")
+    print(
+        "certified binary == binary in production (per the operative 4-member certificate); "
+        "the unfiltered build is a control arm, not a candidate"
+    )
 
     runs_root = T.RUNS
     rows = []
     wanted = [e.strip() for e in args.engines.split(",") if e.strip()]
     for engine in wanted:
-        variants = ([(engine, None, True, "", "")] if engine != "gsim"
-                    else [(l, p, o, n, w) for l, p, o, n, w in gsim_state])
+        variants = (
+            [(engine, None, True, "", "")] if engine != "gsim" else [(l, p, o, n, w) for l, p, o, n, w in gsim_state]
+        )
         for label, emu_path, ok, note, _why in variants:
             if emu_path is not None:
                 if not ok:
@@ -150,16 +173,20 @@ def main(argv: list[str] | None = None) -> int:
                 os.environ["MERLIN_GEMMINI_GSIM_EMU"] = str(emu_path)
                 os.environ["MERLIN_GEMMINI_GSIM_MAXCYCLES"] = GSIM_MAXCYCLES
             for name, cdir, expect in CASES:
-                print(f"\n--- {label} x {name}"
-                      + (f" (frozen manifest records ~{expect} cyc)" if expect else ""), flush=True)
-                row = run_cell("gsim" if emu_path is not None else engine, name, cdir,
-                               runs_root, args.timeout)
+                print(
+                    f"\n--- {label} x {name}" + (f" (frozen manifest records ~{expect} cyc)" if expect else ""),
+                    flush=True,
+                )
+                row = run_cell("gsim" if emu_path is not None else engine, name, cdir, runs_root, args.timeout)
                 row["engine"] = label
                 row["emu"] = str(emu_path) if emu_path else None
                 row["expected_cycles_from_manifest"] = expect
                 rows.append(row)
-                print(f"    status={row['status']} cycles={row['cycles']} wall={row['wall_s']}s"
-                      f" kind={row['oracle_kind']} err={row['error']}", flush=True)
+                print(
+                    f"    status={row['status']} cycles={row['cycles']} wall={row['wall_s']}s"
+                    f" kind={row['oracle_kind']} err={row['error']}",
+                    flush=True,
+                )
 
     # ---- the two questions
     print("\n================ CYCLES AGREEMENT ================")
@@ -172,54 +199,72 @@ def main(argv: list[str] | None = None) -> int:
     for cap, per in byc.items():
         v, g = per.get("verilator"), per.get("gsim_certified")
         if isinstance(v, int) and isinstance(g, int):
-            agree[cap] = (v == g)
+            agree[cap] = v == g
             rel = 100.0 * abs(g - v) / v if v else float("inf")
-            print(f"  {cap:<24} verilator={v:<8} gsim={g:<8} "
-                  f"{'AGREE' if v == g else f'DISAGREE by {rel:.1f}%'}")
+            print(f"  {cap:<24} verilator={v:<8} gsim={g:<8} {'AGREE' if v == g else f'DISAGREE by {rel:.1f}%'}")
         else:
-            print(f"  {cap:<24} verilator={v} gsim={g} -> UNDETERMINABLE (a missing cycle count is "
-                  f"not an agreement)")
+            print(f"  {cap:<24} verilator={v} gsim={g} -> UNDETERMINABLE (a missing cycle count is not an agreement)")
     if agree and all(agree.values()):
         print("  => GSIM cycles are usable as the experiment's metric on these shapes.")
     elif agree:
-        print("  => GSIM cycles DIVERGE from Verilator. The two engines are different elaborations; "
-              "pick ONE engine for every cited number and never mix them in one comparison.")
+        print(
+            "  => GSIM cycles DIVERGE from Verilator. The two engines are different elaborations; "
+            "pick ONE engine for every cited number and never mix them in one comparison."
+        )
 
     print("\n================ WALL COST (rate + fixed term) ================")
     for engine in sorted({r["engine"] for r in rows if not r.get("skipped")}):
-        pts = [(r["cycles"], r["wall_s"]) for r in rows
-               if r["engine"] == engine and isinstance(r.get("cycles"), int)]
+        pts = [(r["cycles"], r["wall_s"]) for r in rows if r["engine"] == engine and isinstance(r.get("cycles"), int)]
         print(f"  {engine}: " + ", ".join(f"{c} cyc -> {w}s" for c, w in pts))
         if len(pts) >= 2:
             (c0, w0), (c1, w1) = sorted(pts)
             if c1 != c0:
                 rate = (w1 - w0) / (c1 - c0)
                 fixed = w0 - rate * c0
-                print(f"    fitted: {rate*1000:.4f} ms/cycle marginal, {fixed:.1f}s fixed term "
-                      f"(2 points, so exactly determined -- not a validated law)")
+                print(
+                    f"    fitted: {rate * 1000:.4f} ms/cycle marginal, {fixed:.1f}s fixed term "
+                    f"(2 points, so exactly determined -- not a validated law)"
+                )
                 for cyc, label in ((7322, "w2_medium"), (68917, "w3_n_heavy"), (238035, "w4_over_cap")):
-                    print(f"      projected {label:<12} ({cyc:>6} cyc): {(fixed + rate*cyc)/60:.1f} min/candidate")
+                    print(f"      projected {label:<12} ({cyc:>6} cyc): {(fixed + rate * cyc) / 60:.1f} min/candidate")
         else:
             print("    only one usable point: a rate and a fixed term cannot both be fitted from it")
 
     if args.no_product:
         return 0
-    prod = new_product("recipe-select", version=args.version, target="gemmini",
-                       notes="oracle pinning: cycles agreement verilator-vs-gsim + measured wall cost")
+    prod = new_product(
+        "recipe-select",
+        version=args.version,
+        target="gemmini",
+        notes="oracle pinning: cycles agreement verilator-vs-gsim + measured wall cost",
+    )
     out = prod.add_artifact("oracle_cost.json")
-    out.write_text(json.dumps({
-        "rows": rows, "cycles_agreement": agree,
-        "gsim": {"binaries": [{"label": l, "path": str(p), "digest_ok": o, "note": n, "why": w}
-                              for l, p, o, n, w in gsim_state],
-                 "maxcycles": GSIM_MAXCYCLES,
-                 "config": "chipyard.harness.TestHarness.GemminiGsimSerialClkConfig"},
-        "verilator": {"config": "GemminiRocketConfig"},
-        "frozen_package": str(FROZEN),
-        "caveat": ("the GSIM equivalence certificate covers output BYTES on 4 single-output-tile "
-                   "shapes (m=n=16), not cycles, and m=n=16 is exactly where activation_residency "
-                   "is a no-op; every experiment workload is outside that certified set"),
-        "provenance": PROV.record(pins={}, sources=[FROZEN / "mlir_oot/lowering/isa.py", Path(__file__)]),
-    }, indent=1), encoding="utf-8")
+    out.write_text(
+        json.dumps(
+            {
+                "rows": rows,
+                "cycles_agreement": agree,
+                "gsim": {
+                    "binaries": [
+                        {"label": l, "path": str(p), "digest_ok": o, "note": n, "why": w}
+                        for l, p, o, n, w in gsim_state
+                    ],
+                    "maxcycles": GSIM_MAXCYCLES,
+                    "config": "chipyard.harness.TestHarness.GemminiGsimSerialClkConfig",
+                },
+                "verilator": {"config": "GemminiRocketConfig"},
+                "frozen_package": str(FROZEN),
+                "caveat": (
+                    "the GSIM equivalence certificate covers output BYTES on 4 single-output-tile "
+                    "shapes (m=n=16), not cycles, and m=n=16 is exactly where activation_residency "
+                    "is a no-op; every experiment workload is outside that certified set"
+                ),
+                "provenance": PROV.record(pins={}, sources=[FROZEN / "mlir_oot/lowering/isa.py", Path(__file__)]),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     prod.write_manifest()
     print(f"\nproduct: {prod.path}")
     return 0

@@ -22,6 +22,7 @@ shipped ``isa_tools.py disasm``/``lint`` decode against and what merlin's FORK-F
 note in ``isa_definition.py`` and the worked ``example_kernel/gemm_tile.S`` — a real, assembled,
 disassembly-clean compute kernel. Compute here is DERIVABLE, not a fork-only capability.
 """
+
 from __future__ import annotations
 
 
@@ -29,6 +30,7 @@ from __future__ import annotations
 class ScalarReg:
     """A general-purpose (x) register operand. ``reg_name`` carries the concept word isa_introspect maps to
     a semantic role (here: the SIMT warp-control ops are scalar-register-driven → the 'scalar' role)."""
+
     reg_name = "scalar register"
 
 
@@ -65,33 +67,39 @@ class RType:
 #     role is 'scalar' (control), and merlin's matmul/memory role checks correctly do not require them. -----
 class WarpMaskControl:
     """A warp/thread-mask control op reading one scalar register (tmc / join)."""
+
     rs1: ScalarReg
 
 
 class WarpSpawn:
     """Warp spawn: count + entry, two scalar registers (wspawn)."""
+
     rs1: ScalarReg
     rs2: ScalarReg
 
 
 class WarpSplit:
     """Predicated split: dest mask + predicate register (split)."""
+
     rd: ScalarReg
     rs1: ScalarReg
 
 
 class WarpPredicate:
     """Predicate update: condition + mask, two scalar registers (pred)."""
+
     rs1: ScalarReg
     rs2: ScalarReg
 
 
 class WarpBarrier:
     """Barrier: barrier id + participant count, two scalar registers (barrier/bar)."""
+
     rs1: ScalarReg
     rs2: ScalarReg
 
 
 class WarpRaster:
     """Raster fetch: writes one scalar register (rast)."""
+
     rd: ScalarReg

@@ -30,6 +30,7 @@ and classify the outcome:
 
 A non-empty ``unactionable`` bucket is the finding; the exit status reflects it so this can gate a run.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,7 +52,7 @@ def _unsubstituted(tok: str) -> str | None:
     if lo == -1:
         return None
     hi = tok.find(_CLOSE, lo)
-    return tok[lo:hi + 1] if hi != -1 else None
+    return tok[lo : hi + 1] if hi != -1 else None
 
 
 def _looks_like_a_path(tok: str) -> bool:
@@ -77,8 +78,7 @@ def replay(pkg_dir: Path, *, input_mlir: Path) -> list[dict]:
     except CertFailure as e:
         return [{"command": "<load>", "verdict": "actionable", "note": str(e)[:200]}]
     except Exception as e:  # noqa: BLE001 -- an unreadable package is a finding, not a crash
-        return [{"command": "<load>", "verdict": "unactionable",
-                 "note": f"{type(e).__name__}: {str(e)[:180]}"}]
+        return [{"command": "<load>", "verdict": "unactionable", "note": f"{type(e).__name__}: {str(e)[:180]}"}]
 
     for name in sorted((pkg.manifest.get("commands") or {})):
         row: dict = {"command": name}
@@ -99,12 +99,13 @@ def replay(pkg_dir: Path, *, input_mlir: Path) -> list[dict]:
             rows.append(row)
             continue
 
-        missing = [t for t in argv[1:]
-                   if _looks_like_a_path(t) and not Path(t).is_absolute()
-                   and not (pkg.directory / t).exists()]
+        missing = [
+            t
+            for t in argv[1:]
+            if _looks_like_a_path(t) and not Path(t).is_absolute() and not (pkg.directory / t).exists()
+        ]
         if missing:
-            row.update(verdict="unactionable",
-                       note=f"argv names {missing[0]!r}, absent from the package root")
+            row.update(verdict="unactionable", note=f"argv names {missing[0]!r}, absent from the package root")
         else:
             row.update(verdict="ok", note="")
         rows.append(row)
@@ -122,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     src = Path(a.input).resolve() if a.input else None
     if src is None:
         from merlin.common.paths import repo_root
+
         src = repo_root() / "merlin/contract/examples/g0_matmul.interface.mlir"
 
     pkgs = discover(root)

@@ -40,6 +40,7 @@ Usage::
 
     counter_occupancy.py --target T [--shape 16x16x16] [--shape 32x32x32] [--simulator verilator]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                                          # noqa: E402
-from merlin.common import provenance as P                                         # noqa: E402
-from merlin.perf import hw_counters as HC                                         # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.common import provenance as P  # noqa: E402
+from merlin.perf import hw_counters as HC  # noqa: E402
 
 #: The environment switch the target harnesses read to place the counter bracket. OPT-IN by design:
 #: the graded harness must stay byte-identical unless a caller asks for the instrumentation, so this
@@ -82,12 +83,17 @@ def matmul_cb(target: str, m: int, k: int, n: int) -> dict:
             f"y_{tag}": {"shape": [m, n], "dtype": "i32", "role": "output"},
         },
         "commands": [
-            {"opcode": "RES_PACK", "operands": {"src": f"w_{tag}", "dst": f"w_{tag}_res"},
-             "attributes": {"layout": "packed_rhs"}},
-            {"opcode": "MATMUL_RESIDENT",
-             "operands": {"lhs": f"a_{tag}", "rhs": f"w_{tag}_res", "dst": f"acc_{tag}"}},
-            {"opcode": "COMMIT", "operands": {"src": f"acc_{tag}", "dst": f"y_{tag}"},
-             "attributes": {"epilogue": [], "output_dtype": "i32"}},
+            {
+                "opcode": "RES_PACK",
+                "operands": {"src": f"w_{tag}", "dst": f"w_{tag}_res"},
+                "attributes": {"layout": "packed_rhs"},
+            },
+            {"opcode": "MATMUL_RESIDENT", "operands": {"lhs": f"a_{tag}", "rhs": f"w_{tag}_res", "dst": f"acc_{tag}"}},
+            {
+                "opcode": "COMMIT",
+                "operands": {"src": f"acc_{tag}", "dst": f"y_{tag}"},
+                "attributes": {"epilogue": [], "output_dtype": "i32"},
+            },
             {"opcode": "EVICT", "operands": {"handle": f"w_{tag}_res"}},
         ],
     }
@@ -102,13 +108,11 @@ def counter_block(target: str) -> dict:
     """
     got = HC.counters_for_target(target)
     if got.get("status") != "derived":
-        raise SystemExit(
-            f"{target}: no combination-counter block ({got.get('status')}): {got.get('why')}")
+        raise SystemExit(f"{target}: no combination-counter block ({got.get('status')}): {got.get('why')}")
     return got
 
 
-def measure(target: str, cb: dict, *, workload: str, simulator: str, workdir: Path,
-            timeout: int) -> dict:
+def measure(target: str, cb: dict, *, workload: str, simulator: str, workdir: Path, timeout: int) -> dict:
     """Compile + run ONE workload with the counter bracket in place; return the reading or the refusal.
 
     The bracket is placed by the target's own harness emitter under :data:`COUNTER_OPT_IN`; this driver
@@ -128,8 +132,7 @@ def measure(target: str, cb: dict, *, workload: str, simulator: str, workdir: Pa
     os.environ[COUNTER_OPT_IN] = "1"
     started = time.time()
     try:
-        res = backend.run_command_buffer(cb, workdir=str(workdir), simulator=simulator,
-                                         timeout=timeout)
+        res = backend.run_command_buffer(cb, workdir=str(workdir), simulator=simulator, timeout=timeout)
     finally:
         if prev is None:
             os.environ.pop(COUNTER_OPT_IN, None)
@@ -158,19 +161,23 @@ def measure(target: str, cb: dict, *, workload: str, simulator: str, workdir: Pa
         # refuses without it, and a default True is how an unmeasured trait becomes a satisfied gate.
         "completion_observable": False,
         "values": {k: int(v) for k, v in sorted(values.items())},
-        "provenance": (f"{simulator} elaborated-RTL run of {workload} with the counter bracket "
-                       f"emitted from this target's own shipped counter header"),
+        "provenance": (
+            f"{simulator} elaborated-RTL run of {workload} with the counter bracket "
+            f"emitted from this target's own shipped counter header"
+        ),
     }
     if correct is not True:
         out["values"] = {}
         out["dropped"] = (
             "the run was not bit-exact against the backend's reference, so its counters describe a "
             "kernel that computed the wrong thing rather than this machine's behaviour on this "
-            "workload. The values are DROPPED, not averaged in")
+            "workload. The values are DROPPED, not averaged in"
+        )
     elif not values:
         out["dropped"] = (
             "the run was bit-exact but its console carried no counter line, so the bracket did not "
-            "fire. That is an instrument that did not read, not a machine with no overlap")
+            "fire. That is an instrument that did not read, not a machine with no overlap"
+        )
     return out
 
 
@@ -193,43 +200,63 @@ def provenance(target: str, pins: list[str], header: str) -> dict:
     for name in pins:
         try:
             verified[name] = P.verify(name)
-        except Exception as exc:                    # noqa: BLE001 -- an unknown pin is not a clean run
+        except Exception as exc:  # noqa: BLE001 -- an unknown pin is not a clean run
             return {"unavailable": f"pin {name!r}: {type(exc).__name__}: {exc}"}
-    return P.record(pins=verified, sources=[header],
-                    extra={"counter_header": header,
-                           "pins_declared": sorted(pins),
-                           "pins_note": ("no pin was declared, so which hardware revision these "
-                                         "counters came from is UNRECORDED -- pass --pin"
-                                         if not pins else "")})
+    return P.record(
+        pins=verified,
+        sources=[header],
+        extra={
+            "counter_header": header,
+            "pins_declared": sorted(pins),
+            "pins_note": (
+                "no pin was declared, so which hardware revision these counters came from is UNRECORDED -- pass --pin"
+                if not pins
+                else ""
+            ),
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description="Read a target's own combination performance counters "
-                                             "around a workload running on its elaborated RTL.")
+    ap = argparse.ArgumentParser(
+        description="Read a target's own combination performance counters "
+        "around a workload running on its elaborated RTL."
+    )
     ap.add_argument("--target", required=True)
-    ap.add_argument("--shape", action="append", default=None,
-                    help="MxKxN; repeatable (default: two sizes, since one point cannot separate a "
-                         "rate from a fixed intercept)")
-    ap.add_argument("--simulator", default="verilator",
-                    help="the elaborated-RTL engine to run on (the counters are RTL state; a "
-                         "functional model does not have them)")
+    ap.add_argument(
+        "--shape",
+        action="append",
+        default=None,
+        help="MxKxN; repeatable (default: two sizes, since one point cannot separate a rate from a fixed intercept)",
+    )
+    ap.add_argument(
+        "--simulator",
+        default="verilator",
+        help="the elaborated-RTL engine to run on (the counters are RTL state; a functional model does not have them)",
+    )
     ap.add_argument("--timeout", type=int, default=5400)
-    ap.add_argument("--workdir", type=Path, default=None,
-                    help="where to build the ELFs (default: a temporary directory)")
-    ap.add_argument("--pin", action="append", default=None, metavar="NAME",
-                    help="a hardware pin from merlin/contract/hardware_pins.yaml that this reading is "
-                         "ABOUT; repeatable. Verified by content and recorded. Without one the record "
-                         "says the revision is UNRECORDED rather than implying it was checked")
+    ap.add_argument(
+        "--workdir", type=Path, default=None, help="where to build the ELFs (default: a temporary directory)"
+    )
+    ap.add_argument(
+        "--pin",
+        action="append",
+        default=None,
+        metavar="NAME",
+        help="a hardware pin from merlin/contract/hardware_pins.yaml that this reading is "
+        "ABOUT; repeatable. Verified by content and recorded. Without one the record "
+        "says the revision is UNRECORDED rather than implying it was checked",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print, write nothing")
     args = ap.parse_args(argv)
 
     shapes = args.shape or ["16x16x16", "32x32x32"]
     block = counter_block(args.target)
     print(f"counters derived from {block['header']}")
-    print(f"  engines={block['counters']['engines']} "
-          f"complete={block['counters']['complete']}")
+    print(f"  engines={block['counters']['engines']} complete={block['counters']['complete']}")
 
     import tempfile
+
     holder = None
     if args.workdir is None:
         holder = tempfile.TemporaryDirectory(prefix="merlin_counter_occupancy_")
@@ -244,28 +271,45 @@ def main(argv: list[str] | None = None) -> int:
             m, k, n = (int(v) for v in sh.split("x"))
             work = root / sh
             work.mkdir(parents=True, exist_ok=True)
-            got = measure(args.target, matmul_cb(args.target, m, k, n), workload=f"matmul_{sh}",
-                          simulator=args.simulator, workdir=work, timeout=args.timeout)
+            got = measure(
+                args.target,
+                matmul_cb(args.target, m, k, n),
+                workload=f"matmul_{sh}",
+                simulator=args.simulator,
+                workdir=work,
+                timeout=args.timeout,
+            )
             readings.append(got)
-            print(f"{sh:14s} bit_exact={got['bit_exact']} cycles={got['total_cycles']} "
-                  f"elapsed={got['elapsed_s']}s counters={len(got['values'])}")
+            print(
+                f"{sh:14s} bit_exact={got['bit_exact']} cycles={got['total_cycles']} "
+                f"elapsed={got['elapsed_s']}s counters={len(got['values'])}"
+            )
             if got.get("dropped"):
                 print(f"               DROPPED: {got['dropped'][:160]}")
     finally:
         if holder is not None:
             holder.cleanup()
 
-    record = {"schema_version": 1, "kind": "counter_occupancy", "target": args.target,
-              "provenance": provenance(args.target, list(args.pin or ()), block["header"]),
-              "counter_block": block, "readings": readings,
-              "n_usable": sum(1 for r in readings if r["values"])}
+    record = {
+        "schema_version": 1,
+        "kind": "counter_occupancy",
+        "target": args.target,
+        "provenance": provenance(args.target, list(args.pin or ()), block["header"]),
+        "counter_block": block,
+        "readings": readings,
+        "n_usable": sum(1 for r in readings if r["values"]),
+    }
     if args.dry_run:
         print(json.dumps(record, indent=1))
         print("\n--dry-run: nothing written")
         return 0
 
-    pd = A.new_product(TOPIC, version=PRODUCT_VERSION, target=args.target,
-                       notes="joint occupancy from the target's own combination counters")
+    pd = A.new_product(
+        TOPIC,
+        version=PRODUCT_VERSION,
+        target=args.target,
+        notes="joint occupancy from the target's own combination counters",
+    )
     out = pd.add_artifact(RECORD_NAME)
     out.write_text(json.dumps(record, indent=1) + "\n", encoding="utf-8")
     pd.write_manifest()

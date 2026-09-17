@@ -28,8 +28,9 @@ import subprocess
 import sys
 import threading
 import time
-from merlin.common.paths import runs_dir
 from pathlib import Path
+
+from merlin.common.paths import runs_dir
 
 HERE = Path(__file__).resolve().parent
 EXP = HERE.parent
@@ -54,6 +55,7 @@ def _repo_root() -> Path:
 
 def _load(method: str) -> dict:
     import yaml
+
     return yaml.safe_load((EXP / "methods" / method / "method.yaml").read_text()) or {}
 
 
@@ -68,16 +70,33 @@ class Slots:
         return self._sem.get(provider, self._default)
 
 
-def _run_one(job: dict, *, repo: Path, runs_root: Path, slots: Slots, results: list,
-             lock: threading.Lock, dry: bool) -> None:
+def _run_one(
+    job: dict, *, repo: Path, runs_root: Path, slots: Slots, results: list, lock: threading.Lock, dry: bool
+) -> None:
     sem = slots.get(job["provider"])
     with sem:
-        cmd = [sys.executable, str(HERE / "run_kernel_agent.py"),
-               "--method", job["method"], "--capsule", job["capsule"],
-               "--run-id", job["run_id"], "--seed", str(job["seed"]),
-               "--rounds", str(job["rounds"]), "--opt-rounds", str(job["opt_rounds"]),
-               "--round-timeout", str(job["round_timeout"]),
-               "--runs-root", str(runs_root), "--sandbox", job["sandbox"]]
+        cmd = [
+            sys.executable,
+            str(HERE / "run_kernel_agent.py"),
+            "--method",
+            job["method"],
+            "--capsule",
+            job["capsule"],
+            "--run-id",
+            job["run_id"],
+            "--seed",
+            str(job["seed"]),
+            "--rounds",
+            str(job["rounds"]),
+            "--opt-rounds",
+            str(job["opt_rounds"]),
+            "--round-timeout",
+            str(job["round_timeout"]),
+            "--runs-root",
+            str(runs_root),
+            "--sandbox",
+            job["sandbox"],
+        ]
         if dry:
             with lock:
                 print("  DRY " + " ".join(cmd))
@@ -88,37 +107,37 @@ def _run_one(job: dict, *, repo: Path, runs_root: Path, slots: Slots, results: l
         env = dict(os.environ)
         env["PYTHONPATH"] = str(repo / "merlin" / "python")
         with open(log, "w") as fh:
-            rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT,
-                                cwd=str(repo), env=env).returncode
+            rc = subprocess.run(cmd, stdout=fh, stderr=subprocess.STDOUT, cwd=str(repo), env=env).returncode
         wall = round(time.time() - t0, 1)
 
         rec = {**job, "rc": rc, "wall_seconds": wall, "log": str(log)}
         sp = runs_root / "agents" / job["run_id"] / "summary.json"
         if sp.is_file():
             s = json.loads(sp.read_text())
-            rec.update({k: s.get(k) for k in ("solved", "solved_at_round", "best_cycles",
-                                              "rounds_run", "cost", "sandbox")})
+            rec.update(
+                {k: s.get(k) for k in ("solved", "solved_at_round", "best_cycles", "rounds_run", "cost", "sandbox")}
+            )
         with lock:
             results.append(rec)
             done = len(results)
-            print(f"  [{done}] {job['run_id']}: solved={rec.get('solved')} "
-                  f"best={rec.get('best_cycles')} wall={wall}s", flush=True)
+            print(
+                f"  [{done}] {job['run_id']}: solved={rec.get('solved')} best={rec.get('best_cycles')} wall={wall}s",
+                flush=True,
+            )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--methods", default="codex_kernel,bedrock_kernel,gemini_kernel")
     ap.add_argument("--tasks", default=",".join(DEFAULT_TASKS))
-    ap.add_argument("--seeds", default="1",
-                    help="comma-separated; the plan wants >=3 for the bootstrap CIs")
+    ap.add_argument("--seeds", default="1", help="comma-separated; the plan wants >=3 for the bootstrap CIs")
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--opt-rounds", type=int, default=3)
     ap.add_argument("--round-timeout", type=int, default=900)
     ap.add_argument("--sandbox", default="bwrap")
     ap.add_argument("--tag", default="mx")
     ap.add_argument("--runs-root", type=Path, default=runs_dir() / "kvc")
-    ap.add_argument("--caps", default="",
-                    help="override provider caps, e.g. 'bedrock=2,google=6'")
+    ap.add_argument("--caps", default="", help="override provider caps, e.g. 'bedrock=2,google=6'")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
 
@@ -134,19 +153,26 @@ def main(argv: list[str] | None = None) -> int:
         for capsule in [t for t in a.tasks.split(",") if t]:
             for seed in [int(s) for s in a.seeds.split(",") if s]:
                 name = Path(capsule).name
-                jobs.append({
-                    "method": method, "provider": cfg.get("provider", "?"),
-                    "model": cfg.get("model", "?"), "capsule": capsule, "task": name,
-                    "seed": seed, "rounds": a.rounds, "opt_rounds": a.opt_rounds,
-                    "round_timeout": a.round_timeout, "sandbox": a.sandbox,
-                    "run_id": f"{a.tag}_{method}_{name}_s{seed}",
-                })
+                jobs.append(
+                    {
+                        "method": method,
+                        "provider": cfg.get("provider", "?"),
+                        "model": cfg.get("model", "?"),
+                        "capsule": capsule,
+                        "task": name,
+                        "seed": seed,
+                        "rounds": a.rounds,
+                        "opt_rounds": a.opt_rounds,
+                        "round_timeout": a.round_timeout,
+                        "sandbox": a.sandbox,
+                        "run_id": f"{a.tag}_{method}_{name}_s{seed}",
+                    }
+                )
 
     by_provider: dict[str, int] = {}
     for j in jobs:
         by_provider[j["provider"]] = by_provider.get(j["provider"], 0) + 1
-    print(f"{len(jobs)} jobs: " + ", ".join(f"{k}={v} (cap {caps.get(k, 2)})"
-                                            for k, v in sorted(by_provider.items())))
+    print(f"{len(jobs)} jobs: " + ", ".join(f"{k}={v} (cap {caps.get(k, 2)})" for k, v in sorted(by_provider.items())))
     # Serial wall time is the sum; concurrent is bounded by the busiest provider's queue depth.
     depth = max((n / max(caps.get(p, 2), 1)) for p, n in by_provider.items()) if jobs else 0
     print(f"serial would be {len(jobs)} sequential runs; concurrent bounds it at ~{depth:.0f} deep\n")
@@ -154,10 +180,14 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict] = []
     lock = threading.Lock()
     slots = Slots(caps)
-    threads = [threading.Thread(target=_run_one, args=(j,),
-                                kwargs=dict(repo=repo, runs_root=a.runs_root, slots=slots,
-                                            results=results, lock=lock, dry=a.dry_run))
-               for j in jobs]
+    threads = [
+        threading.Thread(
+            target=_run_one,
+            args=(j,),
+            kwargs=dict(repo=repo, runs_root=a.runs_root, slots=slots, results=results, lock=lock, dry=a.dry_run),
+        )
+        for j in jobs
+    ]
     t0 = time.time()
     for t in threads:
         t.start()
@@ -167,9 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.dry_run:
         return 0
     out = a.runs_root / f"matrix_{a.tag}.json"
-    out.write_text(json.dumps({"jobs": len(jobs), "caps": caps,
-                               "wall_seconds": round(time.time() - t0, 1),
-                               "results": results}, indent=2))
+    out.write_text(
+        json.dumps(
+            {"jobs": len(jobs), "caps": caps, "wall_seconds": round(time.time() - t0, 1), "results": results}, indent=2
+        )
+    )
     solved = sum(1 for r in results if r.get("solved"))
     print(f"\n{solved}/{len(results)} solved in {round(time.time() - t0, 1)}s -> {out}")
     return 0

@@ -15,7 +15,9 @@ Channel (under ``<ws>/.isa_channel/``):
   done_<id>       broker -> agent : completion marker
   STOP            driver -> broker: sentinel to exit
 """
+
 from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -28,10 +30,10 @@ from typing import Any, Callable
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[3]
-sys.path.insert(0, str(_HERE))                                   # _common (target descriptor)
-sys.path.insert(0, str(_REPO / "merlin" / "python"))            # merlin (out-of-box, oracle-free use)
+sys.path.insert(0, str(_HERE))  # _common (target descriptor)
+sys.path.insert(0, str(_REPO / "merlin" / "python"))  # merlin (out-of-box, oracle-free use)
 
-_MODEL = None                                                    # derived once, cached in-process
+_MODEL = None  # derived once, cached in-process
 
 
 def _model():
@@ -40,8 +42,10 @@ def _model():
     global _MODEL
     if _MODEL is None:
         import _common as _C
-        from merlin.targetgen.target_experiment import load_target_experiment
+
         from merlin.targetgen.isa_model import isa_model_for, isa_model_for_target
+        from merlin.targetgen.target_experiment import load_target_experiment
+
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         # prefer the mlc-derived fixed-format encoding fact (a wide-word SIMT core's whole ISA, from its RTL
         # decoder) so those tools work too; fall back to the shipped-ISA-definition probe for a
@@ -62,6 +66,7 @@ def _read_schedule_contract(path: Path | None) -> dict:
     if path is None or not path.is_file():
         return {}
     import yaml
+
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return doc if isinstance(doc, dict) else {}
 
@@ -73,8 +78,10 @@ def _schedule_contract() -> dict:
     RTL/ISA/examples. Missing data means "no scheduling check", never guessed latency.
     """
     import _common as _C
-    from merlin.targetgen.target_experiment import load_target_experiment
+
     from merlin.targetgen.sandbox.bwrap import resolve_grant
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     te = load_target_experiment(_C.EXP / "target_experiment.yaml")
     root = resolve_grant(str(te.hwbringup_set), _C.REPO) if te.hwbringup_set else None
     return _read_schedule_contract(root / "schedule_contract.yaml" if root else None)
@@ -84,6 +91,7 @@ def _assemble(kernel_s_text: str) -> list[int]:
     """Assemble the agent's kernel.S to IMEM words with the SAME stock llvm-mc the oracle uses — so the
     disassembler/linter inspect exactly what will run."""
     from merlin.targetgen.program_oracle import _assemble_kernel_words
+
     with tempfile.TemporaryDirectory() as td:
         ks = Path(td) / "kernel.S"
         ks.write_text(kernel_s_text or "")
@@ -99,8 +107,10 @@ def _endpoint_and_target() -> tuple[str | None, str | None]:
     global _ENDPOINT
     if _ENDPOINT is None:
         import _common as _C
-        from merlin.targetgen.target_experiment import load_target_experiment
+
         from merlin.targetgen import capsule_runner as CR
+        from merlin.targetgen.target_experiment import load_target_experiment
+
         te = load_target_experiment(_C.EXP / "target_experiment.yaml")
         _ENDPOINT = (CR._endpoint_of(te.target)[0], te.target)
     return _ENDPOINT
@@ -125,6 +135,7 @@ class BrokerCtx:
     to arrange the ambient environment to say it instead. ``model``/``assemble`` stay CALLABLES so
     that deriving the model (which needs the target model venv) is still deferred until a request
     actually reaches the IsaModel arm; a RoCC target never pays for it."""
+
     endpoint: str | None
     target: str | None
     model: "Callable[[], Any]" = _model
@@ -153,6 +164,7 @@ def _rocc_handle(req: dict, target: str) -> dict:
     # continued to pass because they never exercised this endpoint.
     from merlin.targetgen.rocc import asm as rocc_asm
     from merlin.targetgen.rocc import decode as rocc_decode
+
     cmd = req.get("cmd")
     if cmd == "asm":
         try:
@@ -169,14 +181,22 @@ def _rocc_handle(req: dict, target: str) -> dict:
         n_unknown = classes.count("UNKNOWN")
         findings = []
         if n_unknown:
-            findings.append(f"{n_unknown} instruction(s) decode to UNKNOWN — most likely inline-literal "
-                            f"operands or a non-canonical .insn form. Emit each instruction via `asm` so "
-                            f"operands are SSA values (llvm.mlir.constant), which assemble AND decode.")
+            findings.append(
+                f"{n_unknown} instruction(s) decode to UNKNOWN — most likely inline-literal "
+                f"operands or a non-canonical .insn form. Emit each instruction via `asm` so "
+                f"operands are SSA values (llvm.mlir.constant), which assemble AND decode."
+            )
         if not classes:
-            findings.append("no instructions decoded — the artifact has no llvm.inline_asm `.insn` ops "
-                            "(did you emit textual LLVM-IR or high-level ops instead of MLIR inline_asm?).")
-        return {"findings": findings, "class_histogram": trace["summary"]["class_histogram"],
-                "n_unknown": n_unknown, "n": len(classes)}
+            findings.append(
+                "no instructions decoded — the artifact has no llvm.inline_asm `.insn` ops "
+                "(did you emit textual LLVM-IR or high-level ops instead of MLIR inline_asm?)."
+            )
+        return {
+            "findings": findings,
+            "class_histogram": trace["summary"]["class_histogram"],
+            "n_unknown": n_unknown,
+            "n": len(classes),
+        }
     if cmd == "debug":
         return _rocc_debug(req, target)
     return {"error": f"unknown cmd {cmd!r} (use asm|disasm|lint|debug)"}
@@ -188,10 +208,12 @@ def _rocc_debug(req: dict, target: str) -> dict:
     scratchpad/accumulator/DRAM-refill counts per command + the RTL fingerprint). The counterpart of the
     external_backend kernel.S debugger. Golden-free: it runs the agent's cb over the capsule's CANONICAL
     inputs; the OUTPUT values and the pass/fail verdict are withheld by ``program_oracle`` (answer key)."""
+    import _common as _C
+
+    from merlin.targetgen import program_oracle as PO
     from merlin.targetgen.contract.materialize import public_capsules_for
     from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin.targetgen import program_oracle as PO
-    import _common as _C
+
     cname = (req.get("capsule") or "").strip()
     caps_root = public_capsules_for(load_target_experiment(_C.EXP / "target_experiment.yaml"))
     cap_dir = caps_root / cname
@@ -205,8 +227,10 @@ def _rocc_debug(req: dict, target: str) -> dict:
         except Exception as e:  # noqa: BLE001
             return {"error": f"debug: command_buffer is not valid JSON: {str(e)[-200:]}"}
     if not isinstance(raw, dict) or not raw.get("commands"):
-        return {"error": "debug: pass your emitted command_buffer.json (it must contain 'commands'); "
-                         "for a RoCC target the debugger runs your COMMAND BUFFER on the arc model"}
+        return {
+            "error": "debug: pass your emitted command_buffer.json (it must contain 'commands'); "
+            "for a RoCC target the debugger runs your COMMAND BUFFER on the arc model"
+        }
     try:
         out = PO.run_command_buffer_debug(target, cb=raw, capsule_dir=cap_dir)
     except PO.OracleUnavailable as e:
@@ -222,6 +246,7 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
     if is_rocc_endpoint(ctx.endpoint):
         return _rocc_handle(req, ctx.target)
     from merlin.targetgen import isa_asm, isa_disasm, isa_lint
+
     model = ctx.model()
     # A fixed-format model (a wide-word SIMT core's whole ISA, from its RTL decoder) carries its ops in
     # ``field_layout``/``opcode_table`` and leaves ``by_mnemonic`` empty, so ``is_empty()`` is True even
@@ -233,46 +258,63 @@ def _handle(req: dict, ctx: BrokerCtx | None = None) -> dict:
 
     if cmd == "asm":
         try:
-            words = isa_asm.assemble_text(model, req.get("text", ""),
-                                          schedule_contract=ctx.schedule_contract())
+            words = isa_asm.assemble_text(model, req.get("text", ""), schedule_contract=ctx.schedule_contract())
         except isa_asm.AssembleError as e:
             return {"error": str(e)}
         # Rendered at the target's OWN instruction width. A 64-bit wide-word core assembled through a
         # 32-bit `.word` would hand the agent a TRUNCATED instruction that still looks like a result;
         # `to_data_lines` emits `.quad` above 32 bits and is byte-identical at 32.
         nibbles = max(8, (int(getattr(model, "inst_width", 32)) + 3) // 4)
-        return {"words": [f"0x{w:0{nibbles}x}" for w in words],
-                "word_lines": isa_asm.to_data_lines(words, getattr(model, "inst_width", 32)),
-                "n": len(words)}
+        return {
+            "words": [f"0x{w:0{nibbles}x}" for w in words],
+            "word_lines": isa_asm.to_data_lines(words, getattr(model, "inst_width", 32)),
+            "n": len(words),
+        }
 
     if cmd in ("disasm", "lint"):
         try:
             words = ctx.assemble(req.get("kernel_s", ""))
         except Exception as e:  # noqa: BLE001 — assembly failure is the agent's kernel error, reported as-is
-            return {"error": f"kernel.S did not assemble: {str(e)[-300:]}",
-                    "hint": "stock llvm-mc assembles ONLY raw `.word`/`.insn` directives — it cannot "
-                            "assemble this target's custom mnemonics (VMATMUL-style). Emit each instruction "
-                            "as a `.word 0x..`; use `asm` (a `CLASS field=value` listing) to get the exact "
-                            "words from the target's own encoder."}
+            return {
+                "error": f"kernel.S did not assemble: {str(e)[-300:]}",
+                "hint": "stock llvm-mc assembles ONLY raw `.word`/`.insn` directives — it cannot "
+                "assemble this target's custom mnemonics (VMATMUL-style). Emit each instruction "
+                "as a `.word 0x..`; use `asm` (a `CLASS field=value` listing) to get the exact "
+                "words from the target's own encoder.",
+            }
         recs = isa_disasm.disassemble(model, words)
         if cmd == "disasm":
             return {"records": recs, "n": len(recs)}
         schedule_contract = ctx.schedule_contract()
         cycle_budget = req.get("cycle_budget")
         cycle_budget = cycle_budget if isinstance(cycle_budget, int) else None
-        findings = isa_lint.lint(model, words, op=req.get("op", "matmul"),
-                                 output_dtype=req.get("output_dtype"),
-                                 epilogue=tuple(req.get("epilogue") or ()),
-                                 movement=bool(req.get("movement", False)),
-                                 schedule_contract=schedule_contract, cycle_budget=cycle_budget)
+        findings = isa_lint.lint(
+            model,
+            words,
+            op=req.get("op", "matmul"),
+            output_dtype=req.get("output_dtype"),
+            epilogue=tuple(req.get("epilogue") or ()),
+            movement=bool(req.get("movement", False)),
+            schedule_contract=schedule_contract,
+            cycle_budget=cycle_budget,
+        )
         schedule = isa_lint.analyze_schedule(
-            model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget)
-        cov = isa_disasm.coverage(model, recs, op=req.get("op", "matmul"),
-                                  output_dtype=req.get("output_dtype"),
-                                  epilogue=tuple(req.get("epilogue") or ()),
-                                  movement=bool(req.get("movement", False)))
-        return {"findings": findings, "formatted": isa_lint.format_findings(findings),
-                "coverage": cov, "schedule": {k: v for k, v in schedule.items() if k != "findings"}}
+            model, words, schedule_contract=schedule_contract, cycle_budget=cycle_budget
+        )
+        cov = isa_disasm.coverage(
+            model,
+            recs,
+            op=req.get("op", "matmul"),
+            output_dtype=req.get("output_dtype"),
+            epilogue=tuple(req.get("epilogue") or ()),
+            movement=bool(req.get("movement", False)),
+        )
+        return {
+            "findings": findings,
+            "formatted": isa_lint.format_findings(findings),
+            "coverage": cov,
+            "schedule": {k: v for k, v in schedule.items() if k != "findings"},
+        }
 
     if cmd == "debug":
         return _handle_debug(req)
@@ -284,14 +326,18 @@ def _debug_ctx():
     """(target, model_ext, public-capsule dir) for the debugger, from the run's descriptor. Cached-free
     (called rarely); raises with an actionable message if the target is not a self-hosted-ISA backend."""
     import _common as _C
-    from merlin.targetgen.target_experiment import load_target_experiment
-    from merlin.targetgen.contract.materialize import public_capsules_for
+
     from merlin.targetgen import capsule_runner as CR
+    from merlin.targetgen.contract.materialize import public_capsules_for
+    from merlin.targetgen.target_experiment import load_target_experiment
+
     te = load_target_experiment(_C.EXP / "target_experiment.yaml")
     endpoint_kind, model_ext = CR._endpoint_of(te.target)
     if endpoint_kind != "external_backend":
-        raise ValueError("debug is only for a self-hosted-ISA (external_backend) target — this target "
-                         "runs a command-buffer/host-stream backend, so use disasm/lint + self_check")
+        raise ValueError(
+            "debug is only for a self-hosted-ISA (external_backend) target — this target "
+            "runs a command-buffer/host-stream backend, so use disasm/lint + self_check"
+        )
     return te.target, model_ext, public_capsules_for(te)
 
 
@@ -301,7 +347,9 @@ def _handle_debug(req: dict) -> dict:
     but golden-free: the model runs the AGENT'S kernel, so DRAM holds only the given inputs + what the
     kernel itself wrote."""
     import tempfile
+
     from merlin.targetgen import program_oracle as PO
+
     try:
         target, model_ext, caps_root = _debug_ctx()
     except Exception as e:  # noqa: BLE001 — configuration/eligibility error, reported to the agent as-is
@@ -319,11 +367,17 @@ def _handle_debug(req: dict) -> dict:
         ks = Path(td) / "kernel.S"
         ks.write_text(req.get("kernel_s", "") or "")
         try:
-            out = PO.run_program_debug(target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                                       dump_regions=req.get("regions") or [],
-                                       run_to=req.get("run_to"),
-                                       state_summary=bool(req.get("state_summary", False)),
-                                       workdir=Path(td), timeout=int(req.get("timeout", 300)))
+            out = PO.run_program_debug(
+                target,
+                model_ext=model_ext,
+                cb=cb,
+                kernel_s=ks,
+                dump_regions=req.get("regions") or [],
+                run_to=req.get("run_to"),
+                state_summary=bool(req.get("state_summary", False)),
+                workdir=Path(td),
+                timeout=int(req.get("timeout", 300)),
+            )
         except PO.OracleUnavailable as e:
             return {"error": f"debug oracle unavailable (model venv / functional runner absent): {e}"}
         except Exception as e:  # noqa: BLE001 — a run fault is the agent's kernel error, reported as-is
@@ -342,7 +396,7 @@ def _completed_request_names(ch: Path) -> set[str]:
     """
     completed: set[str] = set()
     for done in ch.glob("done_*"):
-        rid = done.name[len("done_"):]
+        rid = done.name[len("done_") :]
         req = ch / f"req_{rid}.json"
         resp = ch / f"resp_{rid}.json"
         if req.is_file() and resp.is_file():
@@ -370,7 +424,7 @@ def main(argv=None):
             if req_f.name in seen:
                 continue
             seen.add(req_f.name)
-            rid = req_f.stem[len("req_"):]
+            rid = req_f.stem[len("req_") :]
             resp = ch / f"resp_{rid}.json"
             try:
                 out = _handle(json.loads(req_f.read_text()))

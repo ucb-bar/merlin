@@ -4,6 +4,7 @@ This module launches nothing and searches for nothing.  It consumes one predecla
 the rows claimed for that matrix.  The declaration remains the denominator: missing, duplicate, or
 inadmissible cells refuse the claim instead of disappearing from the statistic.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,7 +13,6 @@ import math
 import statistics
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
-
 
 SCHEMA = "merlin.phase-p-performance-statistics.v4"
 FAILURE_POLICY = "refuse_claim_on_any_missing_duplicate_or_failed_declared_cell"
@@ -53,8 +53,11 @@ class MatrixIdentity:
 
     def to_dict(self) -> dict[str, str]:
         return {
-            "trial": self.trial, "subject": self.subject, "family": self.family,
-            "capsule": self.capsule, "simulator": self.simulator,
+            "trial": self.trial,
+            "subject": self.subject,
+            "family": self.family,
+            "capsule": self.capsule,
+            "simulator": self.simulator,
             "replicate": self.replicate,
         }
 
@@ -69,14 +72,16 @@ def _sha256(value: Any) -> str:
 
 
 def _is_digest(value: Any) -> bool:
-    return (isinstance(value, str) and len(value) == 64
-            and all(char in "0123456789abcdef" for char in value))
+    return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
 
 
 def predeclare(
-        *, trials: Sequence[Mapping[str, Any]], capsules: Sequence[Mapping[str, str]],
-        replicates: Sequence[str],
-        primary_simulator: str = DEFAULT_PERFORMANCE_SIMULATOR) -> dict[str, Any]:
+    *,
+    trials: Sequence[Mapping[str, Any]],
+    capsules: Sequence[Mapping[str, str]],
+    replicates: Sequence[str],
+    primary_simulator: str = DEFAULT_PERFORMANCE_SIMULATOR,
+) -> dict[str, Any]:
     """Build the exact deterministic elaborated-RTL matrix before measurements exist.
 
     GSIM is the sole primary timing authority.  A separate equivalence gate owns the predeclared
@@ -109,8 +114,9 @@ def predeclare(
         raise EvidenceError(f"at least {MIN_PAIRED_REPLICATES} unique paired replicate ids are required")
     if any(not isinstance(row, Mapping) for row in capsules):
         raise EvidenceError("capsule declarations must be mappings")
-    capsule_rows = sorted((dict(row) for row in capsules),
-                          key=lambda row: (str(row.get("family", "")), str(row.get("capsule", ""))))
+    capsule_rows = sorted(
+        (dict(row) for row in capsules), key=lambda row: (str(row.get("family", "")), str(row.get("capsule", "")))
+    )
     capsule_keys = []
     for row in capsule_rows:
         if set(row) != {"family", "capsule"}:
@@ -172,9 +178,9 @@ def _declaration(declaration: Any) -> tuple[list[MatrixIdentity], list[dict[str,
         issues.append("performance matrix may contain only its predeclared primary simulator")
     trial_shapes: dict[str, set[tuple[str, str, str, str, str]]] = {}
     for identity in identities:
-        trial_shapes.setdefault(identity.trial, set()).add((
-            identity.subject, identity.family, identity.capsule,
-            identity.simulator, identity.replicate))
+        trial_shapes.setdefault(identity.trial, set()).add(
+            (identity.subject, identity.family, identity.capsule, identity.simulator, identity.replicate)
+        )
     shapes = list(trial_shapes.values())
     if shapes and any(shape != shapes[0] for shape in shapes[1:]):
         issues.append("every independent agent trial must declare the identical performance matrix")
@@ -190,8 +196,7 @@ def _declaration(declaration: Any) -> tuple[list[MatrixIdentity], list[dict[str,
     agent_runs = [row.get("agent_run_id") for row in trials]
     if any(set(row) != {"trial", "agent_run_id"} for row in trials):
         issues.append("trial evidence has fields outside the predeclared identity schema")
-    if (any(not isinstance(value, str) or not value for value in agent_runs)
-            or len(set(agent_runs)) != len(agent_runs)):
+    if any(not isinstance(value, str) or not value for value in agent_runs) or len(set(agent_runs)) != len(agent_runs):
         issues.append("agent trials are not independently identified")
     groups: dict[tuple[str, str, str], dict[str, set[str]]] = {}
     for identity in identities:
@@ -205,8 +210,9 @@ def _declaration(declaration: Any) -> tuple[list[MatrixIdentity], list[dict[str,
             issues.append(f"L3 cell {key} baseline/candidate replicate sets differ")
         if len(subjects["baseline"]) < MIN_PAIRED_REPLICATES:
             issues.append(f"L3 cell {key} has fewer than {MIN_PAIRED_REPLICATES} paired replicates")
-    if declaration.get("declaration_sha256") != _sha256({
-            key: value for key, value in declaration.items() if key != "declaration_sha256"}):
+    if declaration.get("declaration_sha256") != _sha256(
+        {key: value for key, value in declaration.items() if key != "declaration_sha256"}
+    ):
         issues.append("declaration digest does not match its content")
     return sorted(identities), trials, issues
 
@@ -230,10 +236,12 @@ def _row_problem(row: Mapping[str, Any], identity: MatrixIdentity) -> str | None
         return "row lacks explicit cycle-accurate standing"
     oracle = row.get("oracle")
     expected_oracle = PERFORMANCE_ORACLES.get(identity.simulator)
-    if (not isinstance(oracle, Mapping) or oracle.get("derived_from_rtl") is not True
-            or oracle.get("kind") != expected_oracle):
-        return ("row is not from the predeclared RTL-derived cycle-accurate "
-                f"{identity.simulator} oracle")
+    if (
+        not isinstance(oracle, Mapping)
+        or oracle.get("derived_from_rtl") is not True
+        or oracle.get("kind") != expected_oracle
+    ):
+        return f"row is not from the predeclared RTL-derived cycle-accurate {identity.simulator} oracle"
     cycles = row.get("cycles")
     if isinstance(cycles, bool) or not isinstance(cycles, int) or cycles <= 0:
         return "cycles is not a positive integer"
@@ -246,8 +254,9 @@ def _geometric_mean(values: Sequence[float]) -> float:
     return math.exp(math.fsum(math.log(value) for value in values) / len(values))
 
 
-def evaluate(declaration: Any, rows: Sequence[Any], *,
-             trial_evidence: Sequence[Mapping[str, Any]] | None = None) -> dict[str, Any]:
+def evaluate(
+    declaration: Any, rows: Sequence[Any], *, trial_evidence: Sequence[Mapping[str, Any]] | None = None
+) -> dict[str, Any]:
     """Admit the exact matrix and calculate paired all-trial statistics, or refuse."""
     identities, trials, issues = _declaration(declaration)
     attached = list(trial_evidence or ())
@@ -256,14 +265,12 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
     else:
         expected_trials = {(row.get("trial"), row.get("agent_run_id")) for row in trials}
         observed_trials = {(row.get("trial"), row.get("agent_run_id")) for row in attached}
-        if any(set(row) != {"trial", "agent_run_id", "agent_evidence_sha256"}
-               for row in attached):
+        if any(set(row) != {"trial", "agent_run_id", "agent_evidence_sha256"} for row in attached):
             issues.append("post-run trial evidence has fields outside its exact schema")
         if observed_trials != expected_trials:
             issues.append("post-run evidence does not exactly cover the predeclared agent trials")
         evidence_hashes = [row.get("agent_evidence_sha256") for row in attached]
-        if (any(not _is_digest(value) for value in evidence_hashes)
-                or len(set(evidence_hashes)) != len(evidence_hashes)):
+        if any(not _is_digest(value) for value in evidence_hashes) or len(set(evidence_hashes)) != len(evidence_hashes):
             issues.append("agent trials lack distinct content-addressed post-run evidence")
     expected = set(identities)
     observed: dict[MatrixIdentity, list[Mapping[str, Any]]] = {}
@@ -317,16 +324,18 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
     if failed:
         issues.append(f"{failed} declared matrix cell(s) failed admission")
 
-    incomplete_trials = sorted({
-        entry["identity"]["trial"] for entry in ledger if entry["status"] != "admitted"})
+    incomplete_trials = sorted({entry["identity"]["trial"] for entry in ledger if entry["status"] != "admitted"})
     declared_trial_ids = {row.get("trial") for row in trials}
-    incomplete_declared_trials = sorted(
-        trial for trial in incomplete_trials if trial in declared_trial_ids)
+    incomplete_declared_trials = sorted(trial for trial in incomplete_trials if trial in declared_trial_ids)
 
     accounting = {
-        "declared_cells": len(identities), "admitted_cells": len(admitted),
-        "missing_cells": missing, "duplicate_cells": duplicate, "failed_cells": failed,
-        "undeclared_non_spike_rows": undeclared, "malformed_rows": malformed,
+        "declared_cells": len(identities),
+        "admitted_cells": len(admitted),
+        "missing_cells": missing,
+        "duplicate_cells": duplicate,
+        "failed_cells": failed,
+        "undeclared_non_spike_rows": undeclared,
+        "malformed_rows": malformed,
         "excluded_spike_rows": excluded_spike,
         "declared_agent_trials": len(trials),
         "attached_agent_evidence": len(attached),
@@ -336,30 +345,42 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
     }
     if issues:
         result = {
-            "schema": SCHEMA, "status": "refused", "failure_policy": FAILURE_POLICY,
+            "schema": SCHEMA,
+            "status": "refused",
+            "failure_policy": FAILURE_POLICY,
             "matrix_sha256": declaration.get("matrix_sha256") if isinstance(declaration, Mapping) else None,
-            "accounting": accounting, "issues": sorted(set(issues)), "cell_ledger": ledger,
-            "per_trial": [], "aggregate": None,
+            "accounting": accounting,
+            "issues": sorted(set(issues)),
+            "cell_ledger": ledger,
+            "per_trial": [],
+            "aggregate": None,
         }
         result["result_sha256"] = _sha256(result)
         return result
 
     paired: dict[str, list[dict[str, Any]]] = {str(row["trial"]): [] for row in trials}
-    pair_keys = sorted({
-        (identity.trial, identity.family, identity.capsule, identity.simulator, identity.replicate)
-        for identity in identities
-    })
+    pair_keys = sorted(
+        {
+            (identity.trial, identity.family, identity.capsule, identity.simulator, identity.replicate)
+            for identity in identities
+        }
+    )
     for trial, family, capsule, simulator, replicate in pair_keys:
-        common = {"trial": trial, "family": family, "capsule": capsule,
-                  "simulator": simulator, "replicate": replicate}
+        common = {"trial": trial, "family": family, "capsule": capsule, "simulator": simulator, "replicate": replicate}
         baseline = admitted[MatrixIdentity(subject="baseline", **common)]
         candidate = admitted[MatrixIdentity(subject="candidate", **common)]
         speedup = baseline["cycles"] / candidate["cycles"]
-        paired[trial].append({
-            "family": family, "capsule": capsule, "simulator": simulator,
-            "replicate": replicate, "baseline_cycles": baseline["cycles"],
-            "candidate_cycles": candidate["cycles"], "speedup": speedup,
-        })
+        paired[trial].append(
+            {
+                "family": family,
+                "capsule": capsule,
+                "simulator": simulator,
+                "replicate": replicate,
+                "baseline_cycles": baseline["cycles"],
+                "candidate_cycles": candidate["cycles"],
+                "speedup": speedup,
+            }
+        )
 
     per_trial = []
     for trial in sorted(paired):
@@ -369,12 +390,15 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
             family: _geometric_mean([pair["speedup"] for pair in pairs if pair["family"] == family])
             for family in family_names
         }
-        per_trial.append({
-            "trial": trial, "paired_cells": len(pairs),
-            "geometric_mean_speedup": _geometric_mean([pair["speedup"] for pair in pairs]),
-            "family_geometric_mean_speedup": family_gm,
-            "pairs": pairs,
-        })
+        per_trial.append(
+            {
+                "trial": trial,
+                "paired_cells": len(pairs),
+                "geometric_mean_speedup": _geometric_mean([pair["speedup"] for pair in pairs]),
+                "family_geometric_mean_speedup": family_gm,
+                "pairs": pairs,
+            }
+        )
     trial_values = [row["geometric_mean_speedup"] for row in per_trial]
     median = statistics.median(trial_values)
     mad = statistics.median(abs(value - median) for value in trial_values)
@@ -391,9 +415,9 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
             "median_speedup": family_median,
             "all_trial_speedups": values,
             "uncertainty": {
-                "minimum": min(values), "maximum": max(values),
-                "median_absolute_deviation": statistics.median(
-                    abs(value - family_median) for value in values),
+                "minimum": min(values),
+                "maximum": max(values),
+                "median_absolute_deviation": statistics.median(abs(value - family_median) for value in values),
                 "n_independent_trials": len(values),
             },
         }
@@ -403,19 +427,28 @@ def evaluate(declaration: Any, rows: Sequence[Any], *,
         "all_trial_speedups": trial_values,
         "uncertainty": {
             "method": "across_trial_min_max_and_median_absolute_deviation",
-            "minimum": min(trial_values), "maximum": max(trial_values),
-            "median_absolute_deviation": mad, "n_independent_trials": len(trial_values),
+            "minimum": min(trial_values),
+            "maximum": max(trial_values),
+            "median_absolute_deviation": mad,
+            "n_independent_trials": len(trial_values),
         },
         "selection": "all_predeclared_trials_no_best_of_selection",
         "family_aggregate": family_aggregate,
         "generalization_policy": (
             "every predeclared family is reported separately; aggregate gains do not suppress "
-            "a family-specific regression"),
+            "a family-specific regression"
+        ),
     }
     result = {
-        "schema": SCHEMA, "status": "admitted", "failure_policy": FAILURE_POLICY,
-        "matrix_sha256": declaration["matrix_sha256"], "accounting": accounting,
-        "issues": [], "cell_ledger": ledger, "per_trial": per_trial, "aggregate": aggregate,
+        "schema": SCHEMA,
+        "status": "admitted",
+        "failure_policy": FAILURE_POLICY,
+        "matrix_sha256": declaration["matrix_sha256"],
+        "accounting": accounting,
+        "issues": [],
+        "cell_ledger": ledger,
+        "per_trial": per_trial,
+        "aggregate": aggregate,
     }
     result["result_sha256"] = _sha256(result)
     return result

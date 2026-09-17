@@ -39,9 +39,7 @@ from pathlib import Path
 # Suffixes that carry authored intent -- a human or an agent WROTE these.
 SOURCE_SUFFIXES = frozenset({".c", ".cpp", ".cc", ".S", ".s", ".h", ".hpp", ".mlir"})
 # Suffixes a build or a simulator PRODUCES. Never evidence of authorship.
-ARTIFACT_SUFFIXES = frozenset(
-    {".elf", ".o", ".a", ".bin", ".log", ".runlog", ".sqlite", ".trace", ".dump", ".bak"}
-)
+ARTIFACT_SUFFIXES = frozenset({".elf", ".o", ".a", ".bin", ".log", ".runlog", ".sqlite", ".trace", ".dump", ".bak"})
 # Scripts that drive a kernel but are not the kernel. Present in both hand and
 # generated trees, so they decide nothing on their own.
 HARNESS_SUFFIXES = frozenset({".py", ".sh", ".mk", ".md", ".jsonl", ".yaml", ".json"})
@@ -173,15 +171,20 @@ def _agent_problem_names(autocomp_root: Path | None) -> frozenset[str]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--repo", action="append", required=True, type=Path,
-                    help="kernel repo checkout to audit (repeatable)")
+    ap.add_argument(
+        "--repo", action="append", required=True, type=Path, help="kernel repo checkout to audit (repeatable)"
+    )
     ap.add_argument("--kernels-subdir", default="kernels")
-    ap.add_argument("--agent-tree", type=Path, default=None,
-                    help="the agent framework checkout, for solution-name cross-reference")
-    ap.add_argument("--generated-prefix", action="append", default=None,
-                    metavar="TOKEN=VERDICT",
-                    help="leading name token marking machine-generated output, e.g. "
-                         "autocomp=agent_generated (repeatable)")
+    ap.add_argument(
+        "--agent-tree", type=Path, default=None, help="the agent framework checkout, for solution-name cross-reference"
+    )
+    ap.add_argument(
+        "--generated-prefix",
+        action="append",
+        default=None,
+        metavar="TOKEN=VERDICT",
+        help="leading name token marking machine-generated output, e.g. autocomp=agent_generated (repeatable)",
+    )
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--json", action="store_true", help="also print the summary as JSON")
     a = ap.parse_args(argv)
@@ -224,7 +227,10 @@ def main(argv: list[str] | None = None) -> int:
         "policy": {
             "bundle_admits": ["hand"],
             "bundle_excludes": [
-                "agent_generated", "compiler_generated", "artifact_only", "unknown",
+                "agent_generated",
+                "compiler_generated",
+                "artifact_only",
+                "unknown",
             ],
             "note": (
                 "unknown is excluded exactly like agent_generated: an unclassified "
@@ -256,8 +262,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"wrote {a.out}")
     for repo, info in per_repo.items():
-        print(f"  {repo} @ {info['head'][:7]} ({info['branch']}): "
-              f"{info['n_kernels']} kernels {info['verdicts']}")
+        print(f"  {repo} @ {info['head'][:7]} ({info['branch']}): {info['n_kernels']} kernels {info['verdicts']}")
     print(f"  bundle-safe (hand): {len(safe)}")
     if a.json:
         print(json.dumps({k: v for k, v in doc.items() if k != "kernels"}, indent=2))

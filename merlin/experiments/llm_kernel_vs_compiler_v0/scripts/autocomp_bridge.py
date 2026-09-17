@@ -40,9 +40,17 @@ class KvcMuonEvalBackend:
     testing without AutoComp installed.
     """
 
-    def __init__(self, capsule_dir: Path, *, shim_pkg: Path, runs_root: Path,
-                 target: str = "radiance", fidelity: str = "fast", hw_config=None,
-                 method: str = "autocomp") -> None:
+    def __init__(
+        self,
+        capsule_dir: Path,
+        *,
+        shim_pkg: Path,
+        runs_root: Path,
+        target: str = "radiance",
+        fidelity: str = "fast",
+        hw_config=None,
+        method: str = "autocomp",
+    ) -> None:
         self.capsule_dir = Path(capsule_dir)
         self.shim_pkg = Path(shim_pkg)
         self.runs_root = Path(runs_root)
@@ -55,8 +63,9 @@ class KvcMuonEvalBackend:
         self.trajectory: list[dict] = []
 
     def __repr__(self) -> str:
-        return (f"KvcMuonEvalBackend(target={self.target!r}, fidelity={self.fidelity!r}, "
-                f"capsule={self.capsule_dir.name!r})")
+        return (
+            f"KvcMuonEvalBackend(target={self.target!r}, fidelity={self.fidelity!r}, capsule={self.capsule_dir.name!r})"
+        )
 
     def harness_overhead(self, prob) -> int:
         """Cycles to subtract as harness cost.
@@ -91,8 +100,12 @@ class KvcMuonEvalBackend:
         if not (code or "").strip():
             # An empty candidate is a generation failure, not a wrong answer. Saying so lets the
             # search retry with context instead of scoring it as an incorrect kernel.
-            rec = {"correct": False, "compiled": False, "test_results": {0: False},
-                   "stderr": "candidate was empty: no kernel text was produced"}
+            rec = {
+                "correct": False,
+                "compiled": False,
+                "test_results": {0: False},
+                "stderr": "candidate was empty: no kernel text was produced",
+            }
             self.trajectory.append({"index": index, **rec})
             return rec
 
@@ -101,9 +114,13 @@ class KvcMuonEvalBackend:
         kernel.write_text(code)
 
         res = kvc_eval.evaluate(
-            self.capsule_dir, kernel,
-            shim_pkg=self.shim_pkg, runs_root=self.runs_root,
-            target=self.target, fidelity=self.fidelity, method=self.method,
+            self.capsule_dir,
+            kernel,
+            shim_pkg=self.shim_pkg,
+            runs_root=self.runs_root,
+            target=self.target,
+            fidelity=self.fidelity,
+            method=self.method,
         )
         red, full = res["redacted"], res["full"]
         correct = bool(red.get("correct"))
@@ -119,9 +136,15 @@ class KvcMuonEvalBackend:
         if correct and red.get("cycles") is not None:
             stat["latency"] = max(int(red["cycles"]), 1)
 
-        self.trajectory.append({
-            "index": index, "correct": correct, "fidelity": res["fidelity"],
-            "cycles": red.get("cycles"), "utilization": red.get("utilization"),
-            "source_chars": len(code), "verdict": full.get("verdict"),
-        })
+        self.trajectory.append(
+            {
+                "index": index,
+                "correct": correct,
+                "fidelity": res["fidelity"],
+                "cycles": red.get("cycles"),
+                "utilization": red.get("utilization"),
+                "source_chars": len(code),
+                "verdict": full.get("verdict"),
+            }
+        )
         return stat

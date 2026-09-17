@@ -60,8 +60,9 @@ EXP = HERE.parent
 sys.path.insert(0, str(HERE))
 
 import kvc_eval  # noqa: E402
-from merlin.common.paths import runs_dir
 from autocomp_bridge import KvcMuonEvalBackend  # noqa: E402
+
+from merlin.common.paths import runs_dir
 
 #: AutoComp addresses a model as "<provider>::<id>". Mapping the study's provider names onto that
 #: keeps ONE source of truth for which model an arm runs -- the method config -- rather than a second
@@ -112,9 +113,9 @@ per-unit busy fractions, so aim at the unit that is idle rather than guessing.
 """
 
 
-
-def _bootstrap_kernel(capsule_dir: Path, *, method: str, run_dir: Path, runs_root: Path,
-                      target: str, rounds: int, round_timeout: int) -> tuple[str | None, dict]:
+def _bootstrap_kernel(
+    capsule_dir: Path, *, method: str, run_dir: Path, runs_root: Path, target: str, rounds: int, round_timeout: int
+) -> tuple[str | None, dict]:
     """Have the ARM'S OWN MODEL write the first correct kernel, from the specification.
 
     This is what lets the arm start from nothing. It runs the direct-agent generation loop -- same task
@@ -129,15 +130,37 @@ def _bootstrap_kernel(capsule_dir: Path, *, method: str, run_dir: Path, runs_roo
     process lives in a venv that has neither xdsl nor merlin.
     """
     boot_id = f"{run_dir.name}__bootstrap"
-    cmd = [kvc_eval._evaluator_python(), str(HERE / "run_kernel_agent.py"),
-           "--method", method, "--capsule", str(capsule_dir), "--run-id", boot_id,
-           "--target", target, "--rounds", str(rounds), "--opt-rounds", "0",
-           "--round-timeout", str(round_timeout), "--runs-root", str(runs_root)]
+    cmd = [
+        kvc_eval._evaluator_python(),
+        str(HERE / "run_kernel_agent.py"),
+        "--method",
+        method,
+        "--capsule",
+        str(capsule_dir),
+        "--run-id",
+        boot_id,
+        "--target",
+        target,
+        "--rounds",
+        str(rounds),
+        "--opt-rounds",
+        "0",
+        "--round-timeout",
+        str(round_timeout),
+        "--runs-root",
+        str(runs_root),
+    ]
     env = dict(os.environ)
     env["PYTHONPATH"] = str(kvc_eval.repo_root() / "merlin" / "python")
     t0 = time.time()
-    proc = subprocess.run(cmd, env=env, cwd=str(kvc_eval.repo_root()),
-                          capture_output=True, text=True, timeout=rounds * (round_timeout + 900) + 600)
+    proc = subprocess.run(
+        cmd,
+        env=env,
+        cwd=str(kvc_eval.repo_root()),
+        capture_output=True,
+        text=True,
+        timeout=rounds * (round_timeout + 900) + 600,
+    )
     boot_dir = runs_root / "agents" / boot_id
     (run_dir / "bootstrap.stdout.txt").write_text(proc.stdout + ("\n" + proc.stderr if proc.stderr else ""))
 
@@ -180,6 +203,7 @@ def _reference_kernel(capsule_dir: Path) -> str:
     """
     from merlin.runtime.backends.base import get_backend
     from merlin.targetgen.contract.interface_emit import parse_interface_mlir
+
     cb = parse_interface_mlir((capsule_dir / "capsule.interface.mlir").read_text())
     return get_backend("muon").muon_codegen_mlir.emit_kernel_mlir(cb)
 
@@ -195,22 +219,32 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--plans", type=int, default=2)
     ap.add_argument("--codes", type=int, default=2)
     ap.add_argument("--fidelity", default="fast", choices=sorted(kvc_eval.FIDELITY_ENV))
-    ap.add_argument("--start", choices=("scratch", "reference", "file"), default="scratch",
-                    help="scratch (default): the arm's own model writes the first correct kernel and "
-                         "pays for it. reference: lift in the repository's kernel, measuring "
-                         "optimization alone. file: use --seed-kernel.")
-    ap.add_argument("--bootstrap-rounds", type=int, default=3,
-                    help="generation rounds allowed to reach a correct kernel under --start scratch")
+    ap.add_argument(
+        "--start",
+        choices=("scratch", "reference", "file"),
+        default="scratch",
+        help="scratch (default): the arm's own model writes the first correct kernel and "
+        "pays for it. reference: lift in the repository's kernel, measuring "
+        "optimization alone. file: use --seed-kernel.",
+    )
+    ap.add_argument(
+        "--bootstrap-rounds",
+        type=int,
+        default=3,
+        help="generation rounds allowed to reach a correct kernel under --start scratch",
+    )
     ap.add_argument("--bootstrap-round-timeout", type=int, default=900)
     ap.add_argument("--seed-kernel", type=Path, default=None, help="starting kernel for --start file")
     ap.add_argument("--runs-root", type=Path, default=runs_dir() / "kvc")
     a = ap.parse_args(argv)
 
     import yaml
+
     cfg = yaml.safe_load((EXP / "methods" / a.method / "method.yaml").read_text())
 
     # The routing policy is a launch gate, not advice.
     import check_method_models as policy
+
     bad = policy.violations(cfg, where=a.method)
     if bad:
         for b in bad:
@@ -234,12 +268,14 @@ def main(argv: list[str] | None = None) -> int:
 
     missing = kvc_eval.missing_requirements(a.fidelity)
     if missing:
-        raise SystemExit(f"fidelity {a.fidelity!r} is missing {missing} -- refusing to run rather "
-                         f"than silently produce a lower-fidelity number")
+        raise SystemExit(
+            f"fidelity {a.fidelity!r} is missing {missing} -- refusing to run rather "
+            f"than silently produce a lower-fidelity number"
+        )
 
+    from autocomp.hw_config.muon_config import MuonHardwareConfig
     from autocomp.search.prob import Prob
     from autocomp.search.search import BeamSearchStrategy, create_backend_and_agents
-    from autocomp.hw_config.muon_config import MuonHardwareConfig
 
     hw = MuonHardwareConfig()
     prob = Prob("muon", 0, context=_task_context(capsule_dir))
@@ -250,98 +286,155 @@ def main(argv: list[str] | None = None) -> int:
         if not a.seed_kernel:
             raise SystemExit("--start file needs --seed-kernel")
         initial_code = a.seed_kernel.read_text()
-        bootstrap = {"mode": "supplied_file", "path": str(a.seed_kernel),
-                     "cost_belongs_to_this_arm": False}
+        bootstrap = {"mode": "supplied_file", "path": str(a.seed_kernel), "cost_belongs_to_this_arm": False}
     elif a.start == "reference":
         initial_code = _reference_kernel(capsule_dir)
         bootstrap = {"mode": "repository_reference_kernel", "cost_belongs_to_this_arm": False}
     else:
-        print(f"  bootstrap: {cfg['model']} writing the first correct kernel from the spec "
-              f"({a.bootstrap_rounds} rounds allowed)...", flush=True)
+        print(
+            f"  bootstrap: {cfg['model']} writing the first correct kernel from the spec "
+            f"({a.bootstrap_rounds} rounds allowed)...",
+            flush=True,
+        )
         initial_code, bootstrap = _bootstrap_kernel(
-            capsule_dir, method=a.method, run_dir=run_dir, runs_root=a.runs_root,
-            target=a.target, rounds=a.bootstrap_rounds,
-            round_timeout=a.bootstrap_round_timeout)
+            capsule_dir,
+            method=a.method,
+            run_dir=run_dir,
+            runs_root=a.runs_root,
+            target=a.target,
+            rounds=a.bootstrap_rounds,
+            round_timeout=a.bootstrap_round_timeout,
+        )
         if initial_code is None:
             # The search cannot start, and that IS the measurement. Recorded as a full run with its
             # real cost rather than dropped, so the arm's failure to reach a correct kernel shows up
             # in the study instead of vanishing from it.
             summary = {
-                "run_id": a.run_id, "method": a.method, "driver": "autocomp",
-                "provider": cfg.get("provider"), "model": cfg["model"],
-                "billing_mode": cfg.get("billing_mode"), "task_id": capsule_dir.name,
-                "target": a.target, "fidelity": a.fidelity,
+                "run_id": a.run_id,
+                "method": a.method,
+                "driver": "autocomp",
+                "provider": cfg.get("provider"),
+                "model": cfg["model"],
+                "billing_mode": cfg.get("billing_mode"),
+                "task_id": capsule_dir.name,
+                "target": a.target,
+                "fidelity": a.fidelity,
                 "started_from": "nothing (the arm's own model, from the specification)",
                 "bootstrap": bootstrap,
                 "status": "no_seed_reached",
-                "status_detail": (f"{cfg['model']} did not produce a correct kernel in "
-                                  f"{a.bootstrap_rounds} rounds, so AutoComp's search never ran "
-                                  f"(it refuses an incorrect starting kernel)."),
-                "candidates_evaluated": 0, "candidates_correct": 0, "best_cycles": None,
-                "wall_seconds": bootstrap.get("wall_seconds"), "trajectory": [],
+                "status_detail": (
+                    f"{cfg['model']} did not produce a correct kernel in "
+                    f"{a.bootstrap_rounds} rounds, so AutoComp's search never ran "
+                    f"(it refuses an incorrect starting kernel)."
+                ),
+                "candidates_evaluated": 0,
+                "candidates_correct": 0,
+                "best_cycles": None,
+                "wall_seconds": bootstrap.get("wall_seconds"),
+                "trajectory": [],
             }
             (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
             print(f"\n  {a.method}/{capsule_dir.name}: NO SEED REACHED -- search did not run")
             print(f"  -> {run_dir}")
             return 0
-        print(f"  bootstrap: correct at round {bootstrap.get('solved_at_round')}, "
-              f"{bootstrap.get('seed_cycles')} cycles", flush=True)
+        print(
+            f"  bootstrap: correct at round {bootstrap.get('solved_at_round')}, {bootstrap.get('seed_cycles')} cycles",
+            flush=True,
+        )
     (run_dir / "seed_kernel.llvm.mlir").write_text(initial_code)
 
     # Build AutoComp's own agents, then DISCARD its eval backend for ours. The search, the prompts and
     # the model tiering stay exactly as the framework ships them.
     _their_backend, agent, code_agent = create_backend_and_agents(
-        "muon", "built:radiance", hw, prob, [model], [model],
+        "muon",
+        "built:radiance",
+        hw,
+        prob,
+        [model],
+        [model],
         # AutoComp's own settings for this target, copied from its run_search_muon so the search
         # behaves the way the framework ships it. A custom configuration here would make the baseline
         # something I tuned rather than something AutoComp does.
-        menu_strategy="one-shot", fine_grained_isa=True, example_rate=0.25,
+        menu_strategy="one-shot",
+        fine_grained_isa=True,
+        example_rate=0.25,
         cache_dir=str(run_dir),
     )
     eval_backend = KvcMuonEvalBackend(
-        capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
-        target=a.target, fidelity=a.fidelity, hw_config=hw, method=a.method,
+        capsule_dir,
+        shim_pkg=shim_pkg,
+        runs_root=a.runs_root,
+        target=a.target,
+        fidelity=a.fidelity,
+        hw_config=hw,
+        method=a.method,
     )
 
     t0 = time.time()
     optimizer = BeamSearchStrategy(
-        output_dir=run_dir, eval_backend=eval_backend, agent=agent, code_agent=code_agent,
-        orig_code=initial_code, prob=prob, metric="latency", simulator="cyclotron",
-        num_plan_candidates=a.plans, num_code_candidates=a.codes, beam_size=a.beam,
+        output_dir=run_dir,
+        eval_backend=eval_backend,
+        agent=agent,
+        code_agent=code_agent,
+        orig_code=initial_code,
+        prob=prob,
+        metric="latency",
+        simulator="cyclotron",
+        num_plan_candidates=a.plans,
+        num_code_candidates=a.codes,
+        beam_size=a.beam,
         # AutoComp's native muon settings, so the search is the framework's and not mine.
-        give_score_feedback=1, give_hw_feedback=0,
+        give_score_feedback=1,
+        give_hw_feedback=0,
         # ...with ONE deliberate change: AutoComp ships this OFF for muon because its own backend
         # reported no utilization. Ours does, and an optimizer told a kernel is slow without being
         # told which unit is idle can only guess. Recorded as a deviation rather than passed off as
         # the default.
         give_util_feedback=1,
-        include_ancestors=False, plan_icl_examples=False, code_icl_examples=False,
-        num_analyses=0, num_pairs_to_combine=0, num_gen_per_combine=0,
+        include_ancestors=False,
+        plan_icl_examples=False,
+        code_icl_examples=False,
+        num_analyses=0,
+        num_pairs_to_combine=0,
+        num_gen_per_combine=0,
         dropout_menu_options=0.25,
-        trigger_exhaustive_threshold=1, trigger_exhaustive_iters=20, start_exhaustive_iters=0,
-        prevent_duplicate_level=0, reimplement_failed=True,
-        translate_iters=0, translate_perf_threshold=15,
-        translate_drop_original=True, translate_score=True,
+        trigger_exhaustive_threshold=1,
+        trigger_exhaustive_iters=20,
+        start_exhaustive_iters=0,
+        prevent_duplicate_level=0,
+        reimplement_failed=True,
+        translate_iters=0,
+        translate_perf_threshold=15,
+        translate_drop_original=True,
+        translate_score=True,
     )
     status = "ok"
     try:
         optimizer.optimize(a.iterations)
-    except Exception as e:                       # a search crash must still leave its trajectory
+    except Exception as e:  # a search crash must still leave its trajectory
         status = f"{type(e).__name__}: {e}"
         print(f"  !! search stopped: {status}")
 
     correct = [t for t in eval_backend.trajectory if t.get("correct")]
     best = min((t["cycles"] for t in correct if t.get("cycles")), default=None)
     summary = {
-        "run_id": a.run_id, "method": a.method, "driver": "autocomp",
-        "provider": cfg.get("provider"), "model": cfg["model"],
-        "autocomp_model": model, "billing_mode": cfg.get("billing_mode"),
-        "task_id": capsule_dir.name, "target": a.target, "fidelity": a.fidelity,
+        "run_id": a.run_id,
+        "method": a.method,
+        "driver": "autocomp",
+        "provider": cfg.get("provider"),
+        "model": cfg["model"],
+        "autocomp_model": model,
+        "billing_mode": cfg.get("billing_mode"),
+        "task_id": capsule_dir.name,
+        "target": a.target,
+        "fidelity": a.fidelity,
         # Stated in the record, because it changes what the number means: a lifted-in seed measures
         # optimization alone, while a self-bootstrapped one measures the whole job.
-        "started_from": {"scratch": "nothing (the arm's own model, from the specification)",
-                         "reference": "repository reference kernel (unoptimized, lifted in)",
-                         "file": "supplied seed kernel (lifted in)"}[a.start],
+        "started_from": {
+            "scratch": "nothing (the arm's own model, from the specification)",
+            "reference": "repository reference kernel (unoptimized, lifted in)",
+            "file": "supplied seed kernel (lifted in)",
+        }[a.start],
         "bootstrap": bootstrap,
         "status": status,
         "candidates_evaluated": len(eval_backend.trajectory),
@@ -351,8 +444,10 @@ def main(argv: list[str] | None = None) -> int:
         "trajectory": eval_backend.trajectory,
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-    print(f"\n  {a.method}/{capsule_dir.name}: {len(correct)}/{len(eval_backend.trajectory)} correct, "
-          f"best={best} cycles, wall={summary['wall_seconds']}s")
+    print(
+        f"\n  {a.method}/{capsule_dir.name}: {len(correct)}/{len(eval_backend.trajectory)} correct, "
+        f"best={best} cycles, wall={summary['wall_seconds']}s"
+    )
     print(f"  -> {run_dir}")
     return 0
 

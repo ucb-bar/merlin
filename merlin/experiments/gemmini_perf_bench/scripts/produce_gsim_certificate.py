@@ -6,6 +6,7 @@ builds one ELF and passes that same path to both registered backend engines.  Ce
 then a pure validation/assembly step over those v1 captures and an independently sealed model-build
 receipt.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,6 +27,7 @@ try:
     import perf_gsim_gate as GATE
 except ModuleNotFoundError:  # imported by a location-based unit test
     import importlib.util
+
     _gate_path = Path(__file__).with_name("perf_gsim_gate.py")
     _gate_spec = importlib.util.spec_from_file_location("perf_gsim_gate", _gate_path)
     if _gate_spec is None or _gate_spec.loader is None:  # pragma: no cover - import machinery failure
@@ -72,8 +74,7 @@ def _artifact_pin(path: str | Path) -> dict[str, Any]:
     resolved = Path(path).resolve(strict=True)
     if resolved.is_symlink() or not resolved.is_file():
         raise ProducerError(f"build input is not a regular non-symlink file: {resolved}")
-    return {"path": str(resolved), "sha256": _sha_file(resolved),
-            "n_bytes": resolved.stat().st_size}
+    return {"path": str(resolved), "sha256": _sha_file(resolved), "n_bytes": resolved.stat().st_size}
 
 
 def _load_mapping(path: Path, *, yaml_input: bool = False) -> Mapping[str, Any]:
@@ -112,15 +113,15 @@ def derive_workload(capsule_manifest: str | Path) -> dict[str, Any]:
         if not isinstance(item, Mapping):
             raise ProducerError(f"{path}: input {index} is malformed")
         name, shape, dtype = item.get("name"), item.get("shape"), item.get("dtype")
-        if not isinstance(name, str) or not isinstance(shape, list) or not shape \
-                or not isinstance(dtype, str):
+        if not isinstance(name, str) or not isinstance(shape, list) or not shape or not isinstance(dtype, str):
             raise ProducerError(f"{path}: input {index} lacks name/shape/dtype")
         if any(isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0 for dim in shape):
             raise ProducerError(f"{path}: input {name} has a non-positive/non-integer shape")
         tensors[name] = item
 
-    semantic_attrs = {str(key): value for key, value in attrs.items()
-                      if key not in ("lhs", "weight", "src", "out", "semantic")}
+    semantic_attrs = {
+        str(key): value for key, value in attrs.items() if key not in ("lhs", "weight", "src", "out", "semantic")
+    }
     if op == "matmul":
         lhs = tensors.get(str(attrs.get("lhs") or ""))
         weight = tensors.get(str(attrs.get("weight") or ""))
@@ -140,8 +141,7 @@ def derive_workload(capsule_manifest: str | Path) -> dict[str, Any]:
     else:
         # No guessed shape algebra for an unknown operation.  Exact named input roles/shapes are still a
         # valid envelope and are derived directly from the descriptor.
-        shape = {"inputs": [{"role": item.get("role"), "shape": item["shape"]}
-                            for item in inputs]}
+        shape = {"inputs": [{"role": item.get("role"), "shape": item["shape"]} for item in inputs]}
         operand_dtypes = {str(item.get("role") or item["name"]): item["dtype"] for item in inputs}
     semantics = {
         "operand_dtypes": operand_dtypes,
@@ -151,14 +151,15 @@ def derive_workload(capsule_manifest: str | Path) -> dict[str, Any]:
     return GATE.canonical_workload({"operation": op, "shape": shape, "semantics": semantics})
 
 
-def derive_frozen_corpus_workloads(root: str | Path, *, manifest_sha256: str,
-                                   capsules_sha256: str,
-                                   expected_target: str) -> dict[str, dict[str, Any]]:
+def derive_frozen_corpus_workloads(
+    root: str | Path, *, manifest_sha256: str, capsules_sha256: str, expected_target: str
+) -> dict[str, dict[str, Any]]:
     """Derive every workload after the existing frozen-corpus verifier re-hashes its bytes."""
     try:
         import perf_agent_stage as stage
     except ModuleNotFoundError:
         import importlib.util
+
         stage_path = Path(__file__).with_name("perf_agent_stage.py")
         spec = importlib.util.spec_from_file_location("perf_agent_stage", stage_path)
         if spec is None or spec.loader is None:  # pragma: no cover - import machinery failure
@@ -167,8 +168,8 @@ def derive_frozen_corpus_workloads(root: str | Path, *, manifest_sha256: str,
         sys.modules[spec.name] = stage
         spec.loader.exec_module(stage)
     corpus = stage.load_frozen_performance_corpus(
-        Path(root), manifest_sha256=manifest_sha256, capsules_sha256=capsules_sha256,
-        expected_target=expected_target)
+        Path(root), manifest_sha256=manifest_sha256, capsules_sha256=capsules_sha256, expected_target=expected_target
+    )
     workloads = {}
     for member in corpus.capsules:
         if member.capsule in workloads:
@@ -200,12 +201,12 @@ def build_model_manifest(model_root: str | Path, relative_files: Sequence[str]) 
     return {**body, "files_sha256": _document_sha(rows)}
 
 
-def write_model_manifest(model_root: str | Path, relative_files: Sequence[str],
-                         output: str | Path) -> Path:
+def write_model_manifest(model_root: str | Path, relative_files: Sequence[str], output: str | Path) -> Path:
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(GATE.canonical_json(build_model_manifest(model_root, relative_files)) + "\n",
-                           encoding="utf-8")
+    output_path.write_text(
+        GATE.canonical_json(build_model_manifest(model_root, relative_files)) + "\n", encoding="utf-8"
+    )
     return output_path
 
 
@@ -222,11 +223,15 @@ def validate_model_manifest(path: str | Path) -> dict[str, Any]:
             raise ProducerError(f"GSIM generated-model manifest row {index} is malformed")
         name, digest, n_bytes = row.get("path"), row.get("sha256"), row.get("n_bytes")
         relative = Path(str(name or ""))
-        if not isinstance(name, str) or not name or relative.is_absolute() or ".." in relative.parts \
-                or relative.as_posix() != name:
+        if (
+            not isinstance(name, str)
+            or not name
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or relative.as_posix() != name
+        ):
             raise ProducerError(f"GSIM generated-model manifest row {index} has an unsafe path")
-        if not GATE._is_sha256(digest) or isinstance(n_bytes, bool) or not isinstance(n_bytes, int) \
-                or n_bytes < 0:
+        if not GATE._is_sha256(digest) or isinstance(n_bytes, bool) or not isinstance(n_bytes, int) or n_bytes < 0:
             raise ProducerError(f"GSIM generated-model manifest row {index} lacks its byte identity")
         names.append(name)
     if names != sorted(set(names)) or doc.get("files_sha256") != _document_sha(rows):
@@ -253,12 +258,18 @@ def model_top(path: str | Path) -> str | None:
     return headers[0] if len(headers) == 1 else None
 
 
-def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
-                           binary: str | Path, emitter: str | Path,
-                           cxx_wrapper: str | Path, cxx_compiler: str | Path,
-                           inputs: Sequence[tuple[str, str | Path]],
-                           commands: Sequence[Mapping[str, Any]],
-                           firrtl_boundary: str = FIRRTL_BOUNDARY_ELABORATED) -> dict[str, Any]:
+def build_receipt_document(
+    *,
+    firrtl: str | Path,
+    model_manifest: str | Path,
+    binary: str | Path,
+    emitter: str | Path,
+    cxx_wrapper: str | Path,
+    cxx_compiler: str | Path,
+    inputs: Sequence[tuple[str, str | Path]],
+    commands: Sequence[Mapping[str, Any]],
+    firrtl_boundary: str = FIRRTL_BOUNDARY_ELABORATED,
+) -> dict[str, Any]:
     """Seal the complete, ordered native-model build lineage.
 
     ``inputs`` includes every source repair, harness/support source, static library, and upstream
@@ -304,8 +315,11 @@ def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
     elif firrtl_boundary == FIRRTL_BOUNDARY_ADOPTED:
         if "elaborate" in stages:
             raise ProducerError("an adopted-preexisting receipt must not claim an elaborate command")
-        provenance = {"firrtl_boundary": firrtl_boundary, "elaboration_performed": False,
-                      "warning": ADOPTED_FIRRTL_WARNING}
+        provenance = {
+            "firrtl_boundary": firrtl_boundary,
+            "elaboration_performed": False,
+            "warning": ADOPTED_FIRRTL_WARNING,
+        }
     else:
         raise ProducerError(f"unknown FIRRTL provenance boundary {firrtl_boundary!r}")
     emit_argv0 = {row["argv"][0] for row in command_rows if row["stage"] == "emit"}
@@ -323,8 +337,7 @@ def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
         "firrtl_sha256": firrtl_pin["sha256"],
         "model_manifest_sha256": manifest_pin["sha256"],
         "binary_sha256": binary_pin["sha256"],
-        "artifacts": {"firrtl": firrtl_pin, "model_manifest": manifest_pin,
-                      "binary": binary_pin},
+        "artifacts": {"firrtl": firrtl_pin, "model_manifest": manifest_pin, "binary": binary_pin},
         "tools": tool_pins,
         "inputs": input_rows,
         "inputs_sha256": _document_sha(input_rows),
@@ -336,8 +349,7 @@ def build_receipt_document(*, firrtl: str | Path, model_manifest: str | Path,
 def write_build_receipt(*, output: str | Path, **kwargs: Any) -> Path:
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(GATE.canonical_json(build_receipt_document(**kwargs)) + "\n",
-                           encoding="utf-8")
+    output_path.write_text(GATE.canonical_json(build_receipt_document(**kwargs)) + "\n", encoding="utf-8")
     return output_path
 
 
@@ -346,8 +358,7 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
     receipt_path = Path(path)
     doc = _load_mapping(receipt_path)
     schema = doc.get("schema_version")
-    if schema not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA} \
-            or doc.get("status") != "complete":
+    if schema not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA} or doc.get("status") != "complete":
         raise ProducerError("GSIM build receipt is absent, incomplete, or has the wrong schema")
     expected = {
         "firrtl_sha256": pins["gsim_firrtl"]["sha256"],
@@ -367,14 +378,12 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
         raise ProducerError("GSIM build receipt has no sealed harness/support/library inputs")
     if doc.get("inputs_sha256") != _document_sha(inputs):
         raise ProducerError("GSIM build receipt input digest is invalid")
-    for where, rows in (("artifact", artifacts.values()), ("tool", tools.values()),
-                        ("input", inputs)):
+    for where, rows in (("artifact", artifacts.values()), ("tool", tools.values()), ("input", inputs)):
         for row in rows:
             if not isinstance(row, Mapping) or not GATE._is_sha256(row.get("sha256")):
                 raise ProducerError(f"GSIM build receipt has a malformed {where} pin")
             pinned_path = Path(str(row.get("path") or ""))
-            if pinned_path.is_symlink() or not pinned_path.is_file() \
-                    or _sha_file(pinned_path) != row["sha256"]:
+            if pinned_path.is_symlink() or not pinned_path.is_file() or _sha_file(pinned_path) != row["sha256"]:
                 raise ProducerError(f"GSIM build receipt {where} pin is absent or changed: {pinned_path}")
     if not isinstance(commands, list) or not commands:
         raise ProducerError("GSIM build receipt has no ordered command transcript")
@@ -383,9 +392,14 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
         if not isinstance(row, Mapping):
             raise ProducerError(f"GSIM build receipt command {index} is malformed")
         stage, cwd, argv = row.get("stage"), row.get("cwd"), row.get("argv")
-        if not isinstance(stage, str) or not isinstance(cwd, str) or not Path(cwd).is_absolute() \
-                or not isinstance(argv, list) or not argv \
-                or not all(isinstance(arg, str) for arg in argv):
+        if (
+            not isinstance(stage, str)
+            or not isinstance(cwd, str)
+            or not Path(cwd).is_absolute()
+            or not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(arg, str) for arg in argv)
+        ):
             raise ProducerError(f"GSIM build receipt command {index} lacks stage/cwd/exact argv")
         stages.append(stage)
     if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
@@ -402,9 +416,11 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
             if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
                 raise ProducerError("GSIM elaborated-in-build receipt contradicts its command transcript")
         elif boundary == FIRRTL_BOUNDARY_ADOPTED:
-            if provenance.get("elaboration_performed") is not False \
-                    or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
-                    or "elaborate" in stages:
+            if (
+                provenance.get("elaboration_performed") is not False
+                or provenance.get("warning") != ADOPTED_FIRRTL_WARNING
+                or "elaborate" in stages
+            ):
                 raise ProducerError("GSIM adopted-preexisting receipt contradicts its provenance boundary")
         else:
             raise ProducerError("GSIM v3 build receipt has an unknown FIRRTL provenance boundary")
@@ -418,8 +434,11 @@ def validate_build_receipt(path: str | Path, *, pins: Mapping[str, Mapping[str, 
             raise ProducerError("GSIM v3 receipt does not invoke its pinned C++ toolchain")
     if doc.get("commands_sha256") != _document_sha(commands):
         raise ProducerError("GSIM build receipt command transcript digest is invalid")
-    return {"path": str(receipt_path.resolve()), "sha256": _sha_file(receipt_path),
-            "commands_sha256": doc["commands_sha256"]}
+    return {
+        "path": str(receipt_path.resolve()),
+        "sha256": _sha_file(receipt_path),
+        "commands_sha256": doc["commands_sha256"],
+    }
 
 
 @dataclass(frozen=True)
@@ -482,8 +501,7 @@ def _encode_scalar(value: Any, dtype: str) -> bytes:
     raise ProducerError(f"output dtype {dtype!r} has no declared byte encoding")
 
 
-def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) \
-        -> tuple[str, list[dict[str, Any]]]:
+def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) -> tuple[str, list[dict[str, Any]]]:
     """Encode parsed tensor values as the command buffer's exact logical little-endian bytes.
 
     This deliberately does not hash JSON text.  Shape and dtype come from the frozen command buffer,
@@ -504,8 +522,9 @@ def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) \
     rows, aggregate = [], hashlib.sha256()
     for name, spec in sorted(declarations):
         shape, dtype = spec.get("shape"), spec.get("dtype")
-        if not isinstance(shape, list) or any(isinstance(dim, bool) or not isinstance(dim, int)
-                                              or dim <= 0 for dim in shape):
+        if not isinstance(shape, list) or any(
+            isinstance(dim, bool) or not isinstance(dim, int) or dim <= 0 for dim in shape
+        ):
             raise ProducerError(f"output tensor {name!r} has an invalid shape")
         if not isinstance(dtype, str) or not dtype:
             raise ProducerError(f"output tensor {name!r} has no dtype")
@@ -514,22 +533,22 @@ def encode_declared_outputs(outputs: Any, command_buffer: Mapping[str, Any]) \
         flat = _flat_values(outputs[name])
         count = math.prod(shape)
         if len(flat) != count:
-            raise ProducerError(
-                f"output tensor {name!r} has {len(flat)} values; declaration requires {count}")
+            raise ProducerError(f"output tensor {name!r} has {len(flat)} values; declaration requires {count}")
         raw = b"".join(_encode_scalar(value, dtype) for value in flat)
         identity = GATE.canonical_json({"name": name, "shape": shape, "dtype": dtype}).encode("utf-8")
         aggregate.update(len(identity).to_bytes(8, "little"))
         aggregate.update(identity)
         aggregate.update(len(raw).to_bytes(8, "little"))
         aggregate.update(raw)
-        rows.append({"name": name, "shape": list(shape), "dtype": dtype,
-                     "n_bytes": len(raw), "sha256": _sha_bytes(raw)})
+        rows.append(
+            {"name": name, "shape": list(shape), "dtype": dtype, "n_bytes": len(raw), "sha256": _sha_bytes(raw)}
+        )
     return aggregate.hexdigest(), rows
 
 
-def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) \
-        -> tuple[dict[str, Any], Mapping[str, Any], Callable[[Mapping[str, Any]], bool],
-                 dict[str, Any]]:
+def _semantic_oracle(
+    capsule_manifest: Path, command_buffer: Mapping[str, Any]
+) -> tuple[dict[str, Any], Mapping[str, Any], Callable[[Mapping[str, Any]], bool], dict[str, Any]]:
     """Bind an ELF build and its correctness check to the grader's own numeric authority.
 
     Most Gemmini capsules are integer command-buffer programs, for which
@@ -549,22 +568,27 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
     This boundary is deliberately target-, operation-, and capsule-neutral.  It is selected only by
     semantic evidence already present in the capsule/command-buffer contracts.
     """
-    from merlin.runtime.reference import outputs_match, reference_outputs
     from merlin.runtime.commandbuffer import whole_program_entry_bindings
+    from merlin.runtime.reference import outputs_match, reference_outputs
     from merlin.targetgen import capsule_golden as golden
 
     capsule = dict(_load_mapping(capsule_manifest, yaml_input=True))
     capsule["__dir__"] = str(capsule_manifest.parent)
     cb = copy.deepcopy(dict(command_buffer))
     independent_float = golden.is_independent_float_golden(capsule, capsule_manifest.parent)
-    whole_program = ((cb.get("kernel_abi") or {}).get("kind") == "whole_program")
+    whole_program = (cb.get("kernel_abi") or {}).get("kind") == "whole_program"
     if not (independent_float or whole_program):
         expected = reference_outputs(cb)
-        return (cb, expected, lambda observed: outputs_match(dict(observed), dict(expected)), {
-            "kind": "command_buffer_reference",
-            "golden_source": "merlin.runtime.reference",
-            "numeric_policy": {"compare": "exact"},
-        })
+        return (
+            cb,
+            expected,
+            lambda observed: outputs_match(dict(observed), dict(expected)),
+            {
+                "kind": "command_buffer_reference",
+                "golden_source": "merlin.runtime.reference",
+                "numeric_policy": {"compare": "exact"},
+            },
+        )
 
     canonical = golden.canonical_input_values(capsule, capsule_manifest.parent)
     operand_source = "recorded_capsule_golden"
@@ -599,7 +623,8 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
         if len(leaf_args) != len(arrays):
             raise ProducerError(
                 "complete-model exported argument count does not match its kernel ABI leaves: "
-                f"bundle={len(arrays)} abi={len(leaf_args)}")
+                f"bundle={len(arrays)} abi={len(leaf_args)}"
+            )
         canonical = {
             name: {"shape": list(array.shape), "values": array.reshape(-1).tolist()}
             for name, array in zip(leaf_args, arrays)
@@ -623,8 +648,11 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
         raise ProducerError("complete-kernel command buffer has no tensor declarations")
     leaves = whole_program_entry_bindings(cb)
     if leaves is None:
-        leaves = [str(name) for name, spec in tensors.items()
-                  if isinstance(spec, Mapping) and spec.get("role") in ("input", "weight", "bias")]
+        leaves = [
+            str(name)
+            for name, spec in tensors.items()
+            if isinstance(spec, Mapping) and spec.get("role") in ("input", "weight", "bias")
+        ]
     overlap = set(canonical) & set(tensors)
     if set(leaves) <= set(canonical):
         bound = {name: canonical[name] for name in leaves}
@@ -635,8 +663,7 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
         bound = dict(zip(leaves, canonical.values()))
         binding = "linalg_positional_declaration_order"
     else:
-        raise ProducerError(
-            "complete-kernel golden operands cannot be bound unambiguously to the command buffer")
+        raise ProducerError("complete-kernel golden operands cannot be bound unambiguously to the command buffer")
     if not bound or set(bound) != set(leaves):
         raise ProducerError("complete-kernel golden does not cover every command-buffer leaf")
     for name, value in bound.items():
@@ -651,26 +678,36 @@ def _semantic_oracle(capsule_manifest: Path, command_buffer: Mapping[str, Any]) 
     source = golden.golden_source(capsule, capsule_manifest.parent)
 
     def matches(observed: Mapping[str, Any]) -> bool:
-        return golden.compare(dict(expected), dict(observed), policy,
-                              golden_source=source).get("status") == "pass"
+        return golden.compare(dict(expected), dict(observed), policy, golden_source=source).get("status") == "pass"
 
-    return cb, expected, matches, {
-        "kind": ("whole_program_capsule_golden" if whole_program
-                 else "independent_capsule_golden"),
-        "golden_source": source,
-        "numeric_policy": policy,
-        "operand_binding": binding,
-        "operand_source": operand_source,
-        "canonical_inputs_sha256": _document_sha(bound),
-        **model_binding,
-    }
+    return (
+        cb,
+        expected,
+        matches,
+        {
+            "kind": ("whole_program_capsule_golden" if whole_program else "independent_capsule_golden"),
+            "golden_source": source,
+            "numeric_policy": policy,
+            "operand_binding": binding,
+            "operand_source": operand_source,
+            "canonical_inputs_sha256": _document_sha(bound),
+            **model_binding,
+        },
+    )
 
 
-def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str | Path,
-                 workdir: str | Path, artifacts: ArtifactPaths, timeout: int = 3600,
-                 reference_timeout: int | None = None,
-                 backend: Any = None,
-                 build_elf: Callable[[Mapping[str, Any], str, Path], Path] | None = None) -> dict[str, Any]:
+def capture_case(
+    *,
+    target: str,
+    capsule_manifest: str | Path,
+    artifact_dir: str | Path,
+    workdir: str | Path,
+    artifacts: ArtifactPaths,
+    timeout: int = 3600,
+    reference_timeout: int | None = None,
+    backend: Any = None,
+    build_elf: Callable[[Mapping[str, Any], str, Path], Path] | None = None,
+) -> dict[str, Any]:
     """Build one ELF and run that exact file on Verilator and GSIM through the backend seam.
 
     THE TWO ENGINES NEED DIFFERENT DEADLINES, and giving them one is how a capture dies on a member
@@ -691,8 +728,7 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     cb_path, llvm_path = artifact_path / "command_buffer.json", artifact_path / "lowered.llvm.mlir"
     if not cb_path.is_file() or not llvm_path.is_file():
         raise ProducerError(f"{artifact_path}: command_buffer.json/lowered.llvm.mlir are required")
-    cb, expected, matches_expected, semantic_reference = _semantic_oracle(
-        manifest_path, _load_mapping(cb_path))
+    cb, expected, matches_expected, semantic_reference = _semantic_oracle(manifest_path, _load_mapping(cb_path))
     llvm_text = llvm_path.read_text(encoding="utf-8")
     case_work = Path(workdir)
     case_work.mkdir(parents=True, exist_ok=True)
@@ -701,14 +737,17 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
 
         def build_elf(buffer: Mapping[str, Any], llvm: str, destination: Path) -> Path:
             return Path(compile_lowered_to_elf(buffer, llvm, destination, target=target))
+
     elf = Path(build_elf(cb, llvm_text, case_work)).resolve(strict=True)
     elf_digest = _sha_file(elf)
     if backend is None:
         from merlin.runtime.backends import base as backends
+
         backend = backends.get_backend(target)
+    from merlin.perf import capture_store as STORE
     from merlin.runtime.backends import base as backends
     from merlin.runtime.commandbuffer import declared_output_dtypes
-    from merlin.perf import capture_store as STORE
+
     pins = artifacts.pinned()
     # A CAPTURE IS A PURE FUNCTION OF THE ELF AND THE ENGINES, so one already taken for these exact
     # bytes and pins answers this call. The reference leg is the expensive half by more than an order
@@ -722,24 +761,30 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     _workload = derive_workload(manifest_path)
     _identity = GATE.workload_sha256(_workload)
     _hit = STORE.lookup(
-        target, elf_sha256=elf_digest, pins=pins, workload_sha256=_identity,
-        semantic_reference=semantic_reference)
+        target, elf_sha256=elf_digest, pins=pins, workload_sha256=_identity, semantic_reference=semantic_reference
+    )
     if _hit is not None:
-        return {**_hit, "target": target,
-                "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
-                "capsule_manifest_path": str(manifest_path),
-                "capsule_manifest_sha256": _sha_file(manifest_path),
-                "workload": _workload, "workload_sha256": _identity}
+        return {
+            **_hit,
+            "target": target,
+            "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
+            "capsule_manifest_path": str(manifest_path),
+            "capsule_manifest_sha256": _sha_file(manifest_path),
+            "workload": _workload,
+            "workload_sha256": _identity,
+        }
     runs = {}
     for side, engine, binary_pin, firrtl_pin in (
-            ("reference", GATE.REFERENCE_ENGINE, "verilator_binary", "verilator_firrtl"),
-            ("candidate", GATE.GSIM_ENGINE, "gsim_binary", "gsim_firrtl")):
+        ("reference", GATE.REFERENCE_ENGINE, "verilator_binary", "verilator_firrtl"),
+        ("candidate", GATE.GSIM_ENGINE, "gsim_binary", "gsim_firrtl"),
+    ):
         if not backend.available(engine):
             raise ProducerError(f"{engine} is unavailable; absent execution is not agreement")
         if _sha_file(elf) != elf_digest:
             raise ProducerError("shared ELF changed before the second engine ran")
-        deadline = timeout if side != "reference" else (
-            timeout if reference_timeout is None else int(reference_timeout))
+        deadline = (
+            timeout if side != "reference" else (timeout if reference_timeout is None else int(reference_timeout))
+        )
         console = backend.run_elf(elf, simulator=engine, timeout=deadline)
         if _sha_file(elf) != elf_digest:
             raise ProducerError(f"shared ELF changed while {engine} ran")
@@ -755,10 +800,14 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
             raise ProducerError(f"{engine} did not produce the reference output")
         output_digest, output_rows = encode_declared_outputs(outputs, cb)
         runs[side] = {
-            "engine": engine, "ran": True, "verdict": "pass", "elf_sha256": elf_digest,
+            "engine": engine,
+            "ran": True,
+            "verdict": "pass",
+            "elf_sha256": elf_digest,
             "binary_sha256": pins[binary_pin]["sha256"],
             "firrtl_sha256": pins[firrtl_pin]["sha256"],
-            "derived_from_rtl": True, "cycle_accurate": True,
+            "derived_from_rtl": True,
+            "cycle_accurate": True,
             "output_sha256": output_digest,
             "output_encoding": OUTPUT_ENCODING,
             "output_tensors": output_rows,
@@ -770,14 +819,19 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
         raise ProducerError("GSIM and Verilator output bytes differ")
     workload = derive_workload(manifest_path)
     document = {
-        "schema_version": CAPTURE_SCHEMA, "target": target,
+        "schema_version": CAPTURE_SCHEMA,
+        "target": target,
         "capsule": str(_load_mapping(manifest_path, yaml_input=True).get("name") or ""),
         "capsule_manifest_path": str(manifest_path),
         "capsule_manifest_sha256": _sha_file(manifest_path),
-        "workload": workload, "workload_sha256": GATE.workload_sha256(workload),
+        "workload": workload,
+        "workload_sha256": GATE.workload_sha256(workload),
         "semantic_reference": semantic_reference,
-        "elf_sha256": elf_digest, "agreement": "AGREE", "evidence": GATE.STRONG_EVIDENCE,
-        "bytes_match": True, **runs,
+        "elf_sha256": elf_digest,
+        "agreement": "AGREE",
+        "evidence": GATE.STRONG_EVIDENCE,
+        "bytes_match": True,
+        **runs,
     }
     # File it so the next run that presents these bytes and these engines does not pay again. The
     # store REFUSES a document that does not answer for the key it is filed under, so a failure here
@@ -786,8 +840,7 @@ def capture_case(*, target: str, capsule_manifest: str | Path, artifact_dir: str
     return document
 
 
-def validate_capture(path: str | Path, *, target: str,
-                     pins: Mapping[str, Mapping[str, str]]) -> dict[str, Any]:
+def validate_capture(path: str | Path, *, target: str, pins: Mapping[str, Mapping[str, str]]) -> dict[str, Any]:
     doc = dict(_load_mapping(Path(path)))
     if doc.get("schema_version") != CAPTURE_SCHEMA or doc.get("target") != target:
         raise ProducerError(f"{path}: not a v1 capture for target {target!r}")
@@ -810,15 +863,19 @@ def validate_capture(path: str | Path, *, target: str,
         raise ProducerError(f"{path}: engines lack identical output-byte digests")
     reference_rows = (doc.get("reference") or {}).get("output_tensors")
     candidate_rows = (doc.get("candidate") or {}).get("output_tensors")
-    if (doc.get("reference") or {}).get("output_encoding") != OUTPUT_ENCODING \
-            or (doc.get("candidate") or {}).get("output_encoding") != OUTPUT_ENCODING \
-            or not isinstance(reference_rows, list) or reference_rows != candidate_rows:
+    if (
+        (doc.get("reference") or {}).get("output_encoding") != OUTPUT_ENCODING
+        or (doc.get("candidate") or {}).get("output_encoding") != OUTPUT_ENCODING
+        or not isinstance(reference_rows, list)
+        or reference_rows != candidate_rows
+    ):
         raise ProducerError(f"{path}: engines lack matching declared-tensor byte encodings")
     return member
 
 
-def produce_certificate(*, target: str, captures: Sequence[str | Path], artifacts: ArtifactPaths,
-                        build_receipt: str | Path) -> dict[str, Any]:
+def produce_certificate(
+    *, target: str, captures: Sequence[str | Path], artifacts: ArtifactPaths, build_receipt: str | Path
+) -> dict[str, Any]:
     """Assemble a certificate only from new v1 captures and a complete build-lineage receipt."""
     if not captures:
         raise ProducerError("no v1 cross-validation captures were supplied")
@@ -842,19 +899,21 @@ def produce_certificate(*, target: str, captures: Sequence[str | Path], artifact
     }
 
 
-def smoke_legacy_evidence(*, target: str, legacy_root: str | Path,
-                          v1_capture_root: str | Path | None,
-                          artifacts: ArtifactPaths,
-                          build_receipt: str | Path | None) -> dict[str, Any]:
+def smoke_legacy_evidence(
+    *,
+    target: str,
+    legacy_root: str | Path,
+    v1_capture_root: str | Path | None,
+    artifacts: ArtifactPaths,
+    build_receipt: str | Path | None,
+) -> dict[str, Any]:
     """Offline readiness report.  It never promotes legacy rows into v1 captures."""
     issues = []
-    legacy = [row.to_dict() for row in GATE.discover_cross_validation_reports(
-        [legacy_root], target=target)]
+    legacy = [row.to_dict() for row in GATE.discover_cross_validation_reports([legacy_root], target=target)]
     capture_paths = []
     if v1_capture_root is not None and Path(v1_capture_root).is_dir():
         capture_paths = sorted(Path(v1_capture_root).rglob("*.json"), key=str)
-        capture_paths = [path for path in capture_paths
-                         if _load_mapping(path).get("schema_version") == CAPTURE_SCHEMA]
+        capture_paths = [path for path in capture_paths if _load_mapping(path).get("schema_version") == CAPTURE_SCHEMA]
     if not capture_paths:
         issues.append("no v1 same-ELF capture records; legacy xval JSON cannot supply missing fields")
     try:
@@ -868,7 +927,8 @@ def smoke_legacy_evidence(*, target: str, legacy_root: str | Path,
         if firrtl_top is not None and generated_top is not None and firrtl_top != generated_top:
             issues.append(
                 f"GSIM FIRRTL top {firrtl_top!r} does not match sealed generated-model top "
-                f"{generated_top!r}; no build receipt may bind this pair")
+                f"{generated_top!r}; no build receipt may bind this pair"
+            )
     if build_receipt is None or not Path(build_receipt).is_file():
         issues.append("no sealed GSIM build receipt binding FIRRTL + model manifest + binary")
     elif pins:
@@ -912,12 +972,13 @@ def _parser() -> argparse.ArgumentParser:
     receipt.add_argument("--cxx-wrapper", required=True)
     receipt.add_argument("--cxx-compiler", required=True)
     receipt.add_argument("--input", action="append", required=True, metavar="ROLE=PATH")
-    receipt.add_argument("--commands", required=True,
-                         help="JSON list of ordered {stage,cwd,argv} records")
-    receipt.add_argument("--firrtl-boundary", choices=(FIRRTL_BOUNDARY_ELABORATED,
-                                                        FIRRTL_BOUNDARY_ADOPTED),
-                         default=FIRRTL_BOUNDARY_ELABORATED,
-                         help="whether this transcript elaborated FIRRTL or adopted pinned existing bytes")
+    receipt.add_argument("--commands", required=True, help="JSON list of ordered {stage,cwd,argv} records")
+    receipt.add_argument(
+        "--firrtl-boundary",
+        choices=(FIRRTL_BOUNDARY_ELABORATED, FIRRTL_BOUNDARY_ADOPTED),
+        default=FIRRTL_BOUNDARY_ELABORATED,
+        help="whether this transcript elaborated FIRRTL or adopted pinned existing bytes",
+    )
     receipt.add_argument("--output", required=True)
 
     capture = commands.add_parser("capture", help="run one same-ELF GSIM/Verilator capture")
@@ -925,11 +986,13 @@ def _parser() -> argparse.ArgumentParser:
     capture.add_argument("--capsule-manifest", required=True)
     capture.add_argument("--artifact-dir", required=True)
     capture.add_argument("--workdir", required=True)
-    capture.add_argument("--timeout", type=int, default=3600,
-                         help="deadline for the candidate (fast) engine")
-    capture.add_argument("--reference-timeout", type=int, default=None,
-                         help="deadline for the reference (cycle-accurate, much slower) engine; "
-                              "defaults to --timeout")
+    capture.add_argument("--timeout", type=int, default=3600, help="deadline for the candidate (fast) engine")
+    capture.add_argument(
+        "--reference-timeout",
+        type=int,
+        default=None,
+        help="deadline for the reference (cycle-accurate, much slower) engine; defaults to --timeout",
+    )
     _add_artifact_args(capture)
     capture.add_argument("--output", required=True)
 
@@ -951,9 +1014,18 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def _artifact_paths(args: argparse.Namespace) -> ArtifactPaths:
-    return ArtifactPaths(*(Path(value) for value in (
-        args.gsim_firrtl, args.verilator_firrtl, args.gsim_model_manifest,
-        args.gsim_binary, args.verilator_binary)))
+    return ArtifactPaths(
+        *(
+            Path(value)
+            for value in (
+                args.gsim_firrtl,
+                args.verilator_firrtl,
+                args.gsim_model_manifest,
+                args.gsim_binary,
+                args.verilator_binary,
+            )
+        )
+    )
 
 
 def _role_path(value: str) -> tuple[str, Path]:
@@ -966,8 +1038,15 @@ def _role_path(value: str) -> tuple[str, Path]:
 def main(argv: list[str] | None = None) -> int:
     values = list(sys.argv[1:] if argv is None else argv)
     # Preserve the original smoke-only CLI while exposing explicit operational subcommands.
-    if values and values[0] not in {"model-manifest", "build-receipt", "capture",
-                                    "certificate", "smoke", "-h", "--help"}:
+    if values and values[0] not in {
+        "model-manifest",
+        "build-receipt",
+        "capture",
+        "certificate",
+        "smoke",
+        "-h",
+        "--help",
+    }:
         values.insert(0, "smoke")
     args = _parser().parse_args(values)
     if args.action == "model-manifest":
@@ -979,26 +1058,41 @@ def main(argv: list[str] | None = None) -> int:
         if not isinstance(command_rows, list):
             raise ProducerError("command transcript JSON must contain a commands list")
         write_build_receipt(
-            output=args.output, firrtl=args.firrtl, model_manifest=args.model_manifest,
-            binary=args.binary, emitter=args.emitter, cxx_wrapper=args.cxx_wrapper,
-            cxx_compiler=args.cxx_compiler, inputs=[_role_path(value) for value in args.input],
-            commands=command_rows, firrtl_boundary=args.firrtl_boundary)
+            output=args.output,
+            firrtl=args.firrtl,
+            model_manifest=args.model_manifest,
+            binary=args.binary,
+            emitter=args.emitter,
+            cxx_wrapper=args.cxx_wrapper,
+            cxx_compiler=args.cxx_compiler,
+            inputs=[_role_path(value) for value in args.input],
+            commands=command_rows,
+            firrtl_boundary=args.firrtl_boundary,
+        )
         return 0
     artifacts = _artifact_paths(args)
     if args.action == "capture":
         report = capture_case(
-            target=args.target, capsule_manifest=args.capsule_manifest,
-            artifact_dir=args.artifact_dir, workdir=args.workdir, artifacts=artifacts,
-            timeout=args.timeout, reference_timeout=args.reference_timeout)
+            target=args.target,
+            capsule_manifest=args.capsule_manifest,
+            artifact_dir=args.artifact_dir,
+            workdir=args.workdir,
+            artifacts=artifacts,
+            timeout=args.timeout,
+            reference_timeout=args.reference_timeout,
+        )
     elif args.action == "certificate":
         report = produce_certificate(
-            target=args.target, captures=args.capture, artifacts=artifacts,
-            build_receipt=args.build_receipt)
+            target=args.target, captures=args.capture, artifacts=artifacts, build_receipt=args.build_receipt
+        )
     else:
         report = smoke_legacy_evidence(
-            target=args.target, legacy_root=args.legacy_root,
-            v1_capture_root=args.v1_capture_root, artifacts=artifacts,
-            build_receipt=args.build_receipt)
+            target=args.target,
+            legacy_root=args.legacy_root,
+            v1_capture_root=args.v1_capture_root,
+            artifacts=artifacts,
+            build_receipt=args.build_receipt,
+        )
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(GATE.canonical_json(report) + "\n", encoding="utf-8")

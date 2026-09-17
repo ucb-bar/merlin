@@ -38,6 +38,7 @@ Usage (merlin venv):
     python merlin/experiments/voyager_h2h/scripts/emit_gemmini_c.py --model-dir <voyager export dir> \
         [--model-dir ...] --simulators spike verilator
 """
+
 from __future__ import annotations
 
 import argparse
@@ -66,8 +67,9 @@ from merlin.common.paths import env as dotenv
 TARGET = "gemmini"
 DEFAULT_PACKAGE = artifacts_dir() / "targets" / TARGET / "gemmini_xdsl_rtl_v0"
 #: The phase-2 bundle whose runtime (headers, crt.S) and build recipe every ELF here reuses.
-DEFAULT_PHASE2 = artifacts_dir() / "perf-bench" / TARGET / \
-    "resnet50_merlin_phase2_bf62_w8a8_warm_measured_firesim_ready_20260907"
+DEFAULT_PHASE2 = (
+    artifacts_dir() / "perf-bench" / TARGET / "resnet50_merlin_phase2_bf62_w8a8_warm_measured_firesim_ready_20260907"
+)
 _FNV_OFFSET, _FNV_PRIME = 0xCBF29CE484222325, 0x100000001B3
 #: Schedule dtype names -> the package's tensor dtype names.
 _DTYPES = {"int32": "i32", "i32": "i32", "int8": "i8", "i8": "i8"}
@@ -95,8 +97,9 @@ def acc_mvin_scales(params_h: Path) -> bool:
     return False
 
 
-def schedule_instructions(schedule: vs.Schedule, isa, *, names: dict, strides: dict, elems: dict,
-                          out_dtype: str, acc_scale_ok: bool) -> list:
+def schedule_instructions(
+    schedule: vs.Schedule, isa, *, names: dict, strides: dict, elems: dict, out_dtype: str, acc_scale_ok: bool
+) -> list:
     """Pack ``schedule`` with the package encoders (the replay template's packing, extended to conv)."""
     I, A, word = isa.Instruction, isa.Address, isa._tile_word
     readout = isa.ACC_BASE | (isa.ACC_FULL if out_dtype == "i32" else 0)
@@ -111,8 +114,7 @@ def schedule_instructions(schedule: vs.Schedule, isa, *, names: dict, strides: d
 
     def config_st(key: tuple):
         scale, relu = key
-        return isa._config_st(strides["out"], {"epilogue": ["relu"] if relu else [],
-                                               "acc_scale": scale}, out_dtype)
+        return isa._config_st(strides["out"], {"epilogue": ["relu"] if relu else [], "acc_scale": scale}, out_dtype)
 
     stores = [op for op in schedule.ops if isinstance(op, vs.Mvout)]
     current = store_config(stores[0]) if stores else (1.0, False)
@@ -122,43 +124,57 @@ def schedule_instructions(schedule: vs.Schedule, isa, *, names: dict, strides: d
         if kind == "Mvin":
             if op.role == "zero":
                 # DRAM address 0 is the RTL's zero-writer path; the stride is unused there.
-                trace += [isa._config_ld(0, channel=0),
-                          I("MVIN", 0, word(op.spad_row, op.cols, op.rows))]
+                trace += [isa._config_ld(0, channel=0), I("MVIN", 0, word(op.spad_row, op.cols, op.rows))]
                 continue
-            trace += [isa._config_ld(strides[op.role] * op.row_step, channel=0),
-                      I("MVIN", A(names[op.role], op.dram_row * strides[op.role]
-                                  + op.dram_col * elems[op.role]),
-                        word(op.spad_row, op.cols, op.rows))]
+            trace += [
+                isa._config_ld(strides[op.role] * op.row_step, channel=0),
+                I(
+                    "MVIN",
+                    A(names[op.role], op.dram_row * strides[op.role] + op.dram_col * elems[op.role]),
+                    word(op.spad_row, op.cols, op.rows),
+                ),
+            ]
         elif kind == "AccMvin":
             scale = getattr(op, "scale", None)
             if scale not in (None, 1, 1.0) and not acc_scale_ok:
-                raise UnsupportedConstruct(f"a {op.role} accumulator load scaled by {scale}: this "
-                                           "target's MVIN_SCALE_ACC is the identity")
+                raise UnsupportedConstruct(
+                    f"a {op.role} accumulator load scaled by {scale}: this target's MVIN_SCALE_ACC is the identity"
+                )
             if scale not in (None, 1, 1.0):
                 raise UnsupportedConstruct("scaled accumulator loads are not packed yet")
-            addr = isa.ACC_BASE | op.acc_row | (isa.ACC_ACCUMULATE if getattr(op, "accumulate", False)
-                                                else 0)
-            trace += [isa._config_ld(strides[op.role] * op.row_step, shrunk=elems[op.role] == 1,
-                                     channel=0),
-                      I("MVIN", A(names[op.role], op.dram_row * strides[op.role]
-                                  + op.dram_col * elems[op.role]),
-                        word(addr, op.cols, op.rows))]
+            addr = isa.ACC_BASE | op.acc_row | (isa.ACC_ACCUMULATE if getattr(op, "accumulate", False) else 0)
+            trace += [
+                isa._config_ld(strides[op.role] * op.row_step, shrunk=elems[op.role] == 1, channel=0),
+                I(
+                    "MVIN",
+                    A(names[op.role], op.dram_row * strides[op.role] + op.dram_col * elems[op.role]),
+                    word(addr, op.cols, op.rows),
+                ),
+            ]
         elif kind == "Preload":
             b = word(isa.GARBAGE_ADDR if op.weight_row is None else op.weight_row, isa.DIM, isa.DIM)
             c = readout | op.acc_row | (isa.ACC_ACCUMULATE if op.accumulate else 0)
             trace.append(I("PRELOAD", b, word(c, op.cols, op.rows)))
         elif kind == "Compute":
-            trace.append(I("COMPUTE_PRELOADED" if op.fresh_weights else "COMPUTE_ACCUMULATE",
-                           word(op.input_row, isa.DIM, op.rows),
-                           word(isa.GARBAGE_ADDR, isa.DIM, isa.DIM)))
+            trace.append(
+                I(
+                    "COMPUTE_PRELOADED" if op.fresh_weights else "COMPUTE_ACCUMULATE",
+                    word(op.input_row, isa.DIM, op.rows),
+                    word(isa.GARBAGE_ADDR, isa.DIM, isa.DIM),
+                )
+            )
         elif kind == "Mvout":
             key = store_config(op)
             if key != current:
                 trace.append(config_st(key))
                 current = key
-            trace.append(I("MVOUT", A(names["out"], op.dram_row * strides["out"]
-                                      + op.dram_col * elems["out"]),
-                           word(readout | isa.ACC_ACCUMULATE | op.acc_row, op.cols, op.rows)))
+            trace.append(
+                I(
+                    "MVOUT",
+                    A(names["out"], op.dram_row * strides["out"] + op.dram_col * elems["out"]),
+                    word(readout | isa.ACC_ACCUMULATE | op.acc_row, op.cols, op.rows),
+                )
+            )
         else:
             raise UnsupportedConstruct(f"{kind} has no device packing (a host op needs a host lane)")
     return trace
@@ -171,7 +187,7 @@ def emit_llvm(tensor_order: list[str], trace: list, isa) -> str:
     bases: dict[str, str] = {}
     counter = [0]
 
-    def new(prefix: str = "c") -> str:        # the package's numbering, so the texts match
+    def new(prefix: str = "c") -> str:  # the package's numbering, so the texts match
         name = f"%{prefix}{counter[0]}"
         counter[0] += 1
         return name
@@ -198,10 +214,11 @@ def emit_llvm(tensor_order: list[str], trace: list, isa) -> str:
             lines.append('    llvm.inline_asm has_side_effects "fence", "" : () -> ()')
             continue
         rs1, rs2 = operand(ins.rs1), operand(ins.rs2)
-        lines.append(f'    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 0x{ins.funct:x}, x0, '
-                     f'$0, $1", "r,r" {rs1}, {rs2} : (i64, i64) -> ()')
-    lines += ['    llvm.inline_asm has_side_effects "fence", "" : () -> ()', "    llvm.return", "  }",
-              "}"]
+        lines.append(
+            f'    llvm.inline_asm has_side_effects ".insn r 0x7b, 0x3, 0x{ins.funct:x}, x0, '
+            f'$0, $1", "r,r" {rs1}, {rs2} : (i64, i64) -> ()'
+        )
+    lines += ['    llvm.inline_asm has_side_effects "fence", "" : () -> ()', "    llvm.return", "  }", "}"]
     return "\n".join(lines) + "\n"
 
 
@@ -219,8 +236,9 @@ def _align(n: int, a: int = 64) -> int:
     return -(-n // a) * a
 
 
-def render_bundle_payload(tensors: list, expected: np.ndarray, *, out_dtype: str, model: str,
-                          compiler: str, golden_max_bytes: int) -> dict:
+def render_bundle_payload(
+    tensors: list, expected: np.ndarray, *, out_dtype: str, model: str, compiler: str, golden_max_bytes: int
+) -> dict:
     """The harness text, const-blob assembly and blobs for one program, in phase-2 form.
 
     ``tensors``: (name, dtype, values or None for the output, shape), in kernel-argument order.
@@ -238,9 +256,11 @@ def render_bundle_payload(tensors: list, expected: np.ndarray, *, out_dtype: str
     input_sha = hashlib.sha256(bytes(blob)).hexdigest()[:16]
     elements = int(expected.size)
     args = ",\n".join(
-        "      (void *)merlin_output" if values is None
+        "      (void *)merlin_output"
+        if values is None
         else f"      (void *)(merlin_const_blob_start + {offsets[name]})"
-        for name, _, values, _ in tensors)
+        for name, _, values, _ in tensors
+    )
     params = ", ".join(f"void *p{i}" for i in range(len(tensors)))
     ctype = _C_ELEM[out_dtype]
     check = ["  int bad = 0;"]
@@ -251,83 +271,146 @@ def render_bundle_payload(tensors: list, expected: np.ndarray, *, out_dtype: str
             f"  for (int i = 0; i < {elements}; ++i) {{",
             "    if (got[i] != expected[i]) {",
             "      if (bad < 8)",
-            '        printf("MERLIN_MISMATCH index=%d got=%d expected=%d\\n", i, (int)got[i], '
-            "(int)expected[i]);",
-            "      ++bad;", "    }", "  }"]
+            '        printf("MERLIN_MISMATCH index=%d got=%d expected=%d\\n", i, (int)got[i], (int)expected[i]);',
+            "      ++bad;",
+            "    }",
+            "  }",
+        ]
     else:
         check += [f"  if (checksum != {digest}ULL) bad = 1;"]
-    harness = "\n".join([
-        "#include <stdint.h>", "#include <stdio.h>", "#include <stdlib.h>", "",
-        '#include "include/gemmini_testutils.h"', "",
-        "extern const unsigned char merlin_const_blob_start[];",
-        *(["extern const unsigned char merlin_golden_start[];"] if golden else []),
-        f"extern void gemmini_kernel({params});", "",
-        f"#define MERLIN_OUTPUT_BYTES ((size_t){len(out_bytes)})",
-        "static unsigned char merlin_output[MERLIN_OUTPUT_BYTES] __attribute__((aligned(64)));", "",
-        "static uint64_t read_instret_local(void) {", "  uint64_t value;",
-        '  __asm__ volatile("rdinstret %0" : "=r"(value));', "  return value;", "}", "",
-        "static uint64_t fnv1a64(const unsigned char *p, size_t n) {",
-        f"  uint64_t h = {_FNV_OFFSET}ULL;",
-        f"  for (size_t i = 0; i < n; ++i) {{ h ^= p[i]; h *= {_FNV_PRIME}ULL; }}",
-        "  return h;", "}", "",
-        "/* The output is invocation-local: zero it after the untimed warm-up, outside the counters,",
-        "   so the measured invocation must write every element again. */",
-        "static void restore_invocation_state_outside_timed_region(void) {",
-        "  for (size_t i = 0; i < MERLIN_OUTPUT_BYTES; ++i)", "    merlin_output[i] = 0;", "}", "",
-        "static void run_model(void) {", "  gemmini_kernel(", args + ");", "}", "",
-        "int main(void) {",
-        f'  printf("MERLIN_MODEL {model}\\n");',
-        f'  printf("MERLIN_COMPILER {compiler}\\n");',
-        f'  printf("MERLIN_INPUT seed0_int8_sha256_{input_sha}\\n");',
-        '  printf("MERLIN_INVOCATIONS warmup=1 measured=1 batch=1\\n");',
-        '  printf("MERLIN_INPUT_PROLOGUE timed=0 owner=harness kind=preloaded_int8\\n");', "",
-        '  printf("MERLIN_PROFILE warmup begin\\n");', "  run_model();", "  gemmini_fence();",
-        '  printf("MERLIN_PROFILE warmup end rc=0\\n");', "",
-        "  restore_invocation_state_outside_timed_region();",
-        '  printf("MERLIN_WARM_RESET timed=0 kind=zero_output bytes=%llu\\n",',
-        "         (unsigned long long)MERLIN_OUTPUT_BYTES);", "",
-        "  counter_configure(0, MAIN_LD_CYCLES);", "  counter_configure(1, MAIN_ST_CYCLES);",
-        "  counter_configure(2, MAIN_EX_CYCLES);", "  counter_configure(3, EXE_ACTIVE_CYCLE);",
-        "  counter_configure(4, LOOP_MATMUL_ACTIVE_CYCLES);", "  counter_configure(5, RDMA_BYTES_REC);",
-        "  counter_configure(6, WDMA_BYTES_SENT);",
-        "  counter_configure(7, RESERVATION_STATION_ACTIVE_CYCLES);", "  counter_reset();",
-        "  gemmini_fence();", "",
-        '  printf("MERLIN_PROFILE measured begin\\n");',
-        "  const uint64_t instret_start = read_instret_local();",
-        "  const uint64_t cycle_start = read_cycles();", "  run_model();", "  gemmini_fence();",
-        "  const uint64_t cycle_end = read_cycles();",
-        "  const uint64_t instret_end = read_instret_local();", "  uint32_t counters[8];",
-        "  for (int i = 0; i < 8; ++i)", "    counters[i] = counter_read(i);", "",
-        "  const uint64_t checksum = fnv1a64(merlin_output, MERLIN_OUTPUT_BYTES);", *check, "",
-        '  printf("MERLIN_METRIC cycles=%llu\\n", (unsigned long long)(cycle_end - cycle_start));',
-        '  printf("MERLIN_METRIC instret=%llu\\n", (unsigned long long)(instret_end - instret_start));',
-        '  printf("MERLIN_METRIC main_ld_cycles=%u\\n", counters[0]);',
-        '  printf("MERLIN_METRIC main_st_cycles=%u\\n", counters[1]);',
-        '  printf("MERLIN_METRIC main_ex_cycles=%u\\n", counters[2]);',
-        '  printf("MERLIN_METRIC exe_active_cycle=%u\\n", counters[3]);',
-        '  printf("MERLIN_METRIC loop_matmul_active_cycles=%u\\n", counters[4]);',
-        '  printf("MERLIN_METRIC rdma_bytes_rec=%u\\n", counters[5]);',
-        '  printf("MERLIN_METRIC wdma_bytes_sent=%u\\n", counters[6]);',
-        '  printf("MERLIN_METRIC reservation_station_active_cycles=%u\\n", counters[7]);',
-        f'  printf("MERLIN_RESULT checksum_fnv1a64=%016llx expected_fnv1a64={digest:016x}\\n",',
-        "         (unsigned long long)checksum);",
-        f'  printf("MERLIN_RESULT logits_checked={elements} bad=%d check='
-        f'{"elementwise_" + out_dtype if golden else "fnv1a64"}\\n", bad);',
-        "  if (bad != 0) {", '    printf("MERLIN_PROFILE measured end rc=1\\n");',
-        '    printf("FAIL: output differs from the golden\\n");', "    exit(1);", "  }",
-        '  printf("MERLIN_PROFILE measured end rc=0\\n");',
-        f'  printf("PASS: warm-then-measured {model} and all-output check\\n");', "  exit(0);", "}",
-        ""])
-    blob_s = ["    .section .rodata", "    .balign 64", "    .global merlin_const_blob_start",
-              "merlin_const_blob_start:", '    .incbin "payload/const_blob.bin"',
-              "    .global merlin_const_blob_end", "merlin_const_blob_end:"]
+    harness = "\n".join(
+        [
+            "#include <stdint.h>",
+            "#include <stdio.h>",
+            "#include <stdlib.h>",
+            "",
+            '#include "include/gemmini_testutils.h"',
+            "",
+            "extern const unsigned char merlin_const_blob_start[];",
+            *(["extern const unsigned char merlin_golden_start[];"] if golden else []),
+            f"extern void gemmini_kernel({params});",
+            "",
+            f"#define MERLIN_OUTPUT_BYTES ((size_t){len(out_bytes)})",
+            "static unsigned char merlin_output[MERLIN_OUTPUT_BYTES] __attribute__((aligned(64)));",
+            "",
+            "static uint64_t read_instret_local(void) {",
+            "  uint64_t value;",
+            '  __asm__ volatile("rdinstret %0" : "=r"(value));',
+            "  return value;",
+            "}",
+            "",
+            "static uint64_t fnv1a64(const unsigned char *p, size_t n) {",
+            f"  uint64_t h = {_FNV_OFFSET}ULL;",
+            f"  for (size_t i = 0; i < n; ++i) {{ h ^= p[i]; h *= {_FNV_PRIME}ULL; }}",
+            "  return h;",
+            "}",
+            "",
+            "/* The output is invocation-local: zero it after the untimed warm-up, outside the counters,",
+            "   so the measured invocation must write every element again. */",
+            "static void restore_invocation_state_outside_timed_region(void) {",
+            "  for (size_t i = 0; i < MERLIN_OUTPUT_BYTES; ++i)",
+            "    merlin_output[i] = 0;",
+            "}",
+            "",
+            "static void run_model(void) {",
+            "  gemmini_kernel(",
+            args + ");",
+            "}",
+            "",
+            "int main(void) {",
+            f'  printf("MERLIN_MODEL {model}\\n");',
+            f'  printf("MERLIN_COMPILER {compiler}\\n");',
+            f'  printf("MERLIN_INPUT seed0_int8_sha256_{input_sha}\\n");',
+            '  printf("MERLIN_INVOCATIONS warmup=1 measured=1 batch=1\\n");',
+            '  printf("MERLIN_INPUT_PROLOGUE timed=0 owner=harness kind=preloaded_int8\\n");',
+            "",
+            '  printf("MERLIN_PROFILE warmup begin\\n");',
+            "  run_model();",
+            "  gemmini_fence();",
+            '  printf("MERLIN_PROFILE warmup end rc=0\\n");',
+            "",
+            "  restore_invocation_state_outside_timed_region();",
+            '  printf("MERLIN_WARM_RESET timed=0 kind=zero_output bytes=%llu\\n",',
+            "         (unsigned long long)MERLIN_OUTPUT_BYTES);",
+            "",
+            "  counter_configure(0, MAIN_LD_CYCLES);",
+            "  counter_configure(1, MAIN_ST_CYCLES);",
+            "  counter_configure(2, MAIN_EX_CYCLES);",
+            "  counter_configure(3, EXE_ACTIVE_CYCLE);",
+            "  counter_configure(4, LOOP_MATMUL_ACTIVE_CYCLES);",
+            "  counter_configure(5, RDMA_BYTES_REC);",
+            "  counter_configure(6, WDMA_BYTES_SENT);",
+            "  counter_configure(7, RESERVATION_STATION_ACTIVE_CYCLES);",
+            "  counter_reset();",
+            "  gemmini_fence();",
+            "",
+            '  printf("MERLIN_PROFILE measured begin\\n");',
+            "  const uint64_t instret_start = read_instret_local();",
+            "  const uint64_t cycle_start = read_cycles();",
+            "  run_model();",
+            "  gemmini_fence();",
+            "  const uint64_t cycle_end = read_cycles();",
+            "  const uint64_t instret_end = read_instret_local();",
+            "  uint32_t counters[8];",
+            "  for (int i = 0; i < 8; ++i)",
+            "    counters[i] = counter_read(i);",
+            "",
+            "  const uint64_t checksum = fnv1a64(merlin_output, MERLIN_OUTPUT_BYTES);",
+            *check,
+            "",
+            '  printf("MERLIN_METRIC cycles=%llu\\n", (unsigned long long)(cycle_end - cycle_start));',
+            '  printf("MERLIN_METRIC instret=%llu\\n", (unsigned long long)(instret_end - instret_start));',
+            '  printf("MERLIN_METRIC main_ld_cycles=%u\\n", counters[0]);',
+            '  printf("MERLIN_METRIC main_st_cycles=%u\\n", counters[1]);',
+            '  printf("MERLIN_METRIC main_ex_cycles=%u\\n", counters[2]);',
+            '  printf("MERLIN_METRIC exe_active_cycle=%u\\n", counters[3]);',
+            '  printf("MERLIN_METRIC loop_matmul_active_cycles=%u\\n", counters[4]);',
+            '  printf("MERLIN_METRIC rdma_bytes_rec=%u\\n", counters[5]);',
+            '  printf("MERLIN_METRIC wdma_bytes_sent=%u\\n", counters[6]);',
+            '  printf("MERLIN_METRIC reservation_station_active_cycles=%u\\n", counters[7]);',
+            f'  printf("MERLIN_RESULT checksum_fnv1a64=%016llx expected_fnv1a64={digest:016x}\\n",',
+            "         (unsigned long long)checksum);",
+            f'  printf("MERLIN_RESULT logits_checked={elements} bad=%d check='
+            f'{"elementwise_" + out_dtype if golden else "fnv1a64"}\\n", bad);',
+            "  if (bad != 0) {",
+            '    printf("MERLIN_PROFILE measured end rc=1\\n");',
+            '    printf("FAIL: output differs from the golden\\n");',
+            "    exit(1);",
+            "  }",
+            '  printf("MERLIN_PROFILE measured end rc=0\\n");',
+            f'  printf("PASS: warm-then-measured {model} and all-output check\\n");',
+            "  exit(0);",
+            "}",
+            "",
+        ]
+    )
+    blob_s = [
+        "    .section .rodata",
+        "    .balign 64",
+        "    .global merlin_const_blob_start",
+        "merlin_const_blob_start:",
+        '    .incbin "payload/const_blob.bin"',
+        "    .global merlin_const_blob_end",
+        "merlin_const_blob_end:",
+    ]
     if golden:
-        blob_s += ["    .balign 64", "    .global merlin_golden_start", "merlin_golden_start:",
-                   '    .incbin "payload/golden.bin"', "    .global merlin_golden_end",
-                   "merlin_golden_end:"]
-    return {"harness": harness, "const_blob_s": "\n".join(blob_s) + "\n", "blob": bytes(blob),
-            "golden": out_bytes if golden else None, "digest": digest, "elements": elements,
-            "check": "elementwise" if golden else "fnv1a64"}
+        blob_s += [
+            "    .balign 64",
+            "    .global merlin_golden_start",
+            "merlin_golden_start:",
+            '    .incbin "payload/golden.bin"',
+            "    .global merlin_golden_end",
+            "merlin_golden_end:",
+        ]
+    return {
+        "harness": harness,
+        "const_blob_s": "\n".join(blob_s) + "\n",
+        "blob": bytes(blob),
+        "golden": out_bytes if golden else None,
+        "digest": digest,
+        "elements": elements,
+        "check": "elementwise" if golden else "fnv1a64",
+    }
 
 
 _BUILD_ELF = """#!/bin/bash
@@ -388,12 +471,14 @@ def chipyard_root() -> Path:
     if configured:
         return Path(configured)
     from merlin.runtime.backends import base as backends
+
     return Path(backends.harness_build_recipe(TARGET).compiler).parents[3]
 
 
 def build_bundle(bundle: Path, mlir_text: str, payload: dict, *, phase2: Path, elf_name: str) -> Path:
     """Lay out a phase-2-format bundle in ``bundle`` and build its ELF with the bundle's own script."""
     from merlin.targetgen.contract.compile import llvm_mlir_to_object
+
     for sub in ("payload", "compiler", "runtime/include"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     (bundle / "compiler" / "kernel.llvm.mlir").write_text(mlir_text)
@@ -409,9 +494,11 @@ def build_bundle(bundle: Path, mlir_text: str, payload: dict, *, phase2: Path, e
     if payload["golden"] is not None:
         (bundle / "payload" / "golden.bin").write_bytes(payload["golden"])
     script = bundle / "build_elf.sh"
-    script.write_text(_BUILD_ELF.format(
-        elf=elf_name, golden_req=' \\\n  "$bundle_dir/payload/golden.bin"' if payload["golden"]
-        is not None else ""))
+    script.write_text(
+        _BUILD_ELF.format(
+            elf=elf_name, golden_req=' \\\n  "$bundle_dir/payload/golden.bin"' if payload["golden"] is not None else ""
+        )
+    )
     script.chmod(0o755)
     step = subprocess.run([str(script), str(chipyard_root())], capture_output=True, text=True)
     if step.returncode:
@@ -423,6 +510,7 @@ def run_elf(elf: Path, simulator: str, timeout: int) -> tuple[str, float, int]:
     """(console, wall seconds, exit status). A harness that fails its check exits non-zero; its
     console still carries the markers, so it is kept rather than discarded."""
     from merlin.runtime.backends import base as backends
+
     backend = backends.get_backend(TARGET)
     t0 = time.monotonic()
     try:
@@ -452,8 +540,9 @@ def parse_console(console: str) -> dict:
         elif parts[:3] == ["MERLIN_PROFILE", "measured", "end"] and len(parts) == 4:
             got["rc"] = int(parts[3].partition("=")[2])
     got["cycles"] = got["metrics"].get("cycles")
-    got["console_bytes"] = sum(len(line) + 1 for line in console.splitlines()
-                               if line.startswith(("MERLIN_", "PASS", "FAIL")))
+    got["console_bytes"] = sum(
+        len(line) + 1 for line in console.splitlines() if line.startswith(("MERLIN_", "PASS", "FAIL"))
+    )
     return got
 
 
@@ -467,15 +556,14 @@ def conv_case(workload: dict, seed: int = 0):
     rng = np.random.default_rng(seed)
     x = rng.integers(-128, 128, size=(1, workload["H"], workload["W"], cin), dtype=np.int64)
     w = rng.integers(-128, 128, size=(k, k, cin, cout), dtype=np.int64)
-    bias = (rng.integers(-2**20, 2**20, size=cout, dtype=np.int64)
-            if workload.get("bias", True) else None)
+    bias = rng.integers(-(2**20), 2**20, size=cout, dtype=np.int64) if workload.get("bias", True) else None
     padded = np.pad(x, ((0, 0), (pad, pad), (pad, pad), (0, 0)))
     oh = (padded.shape[1] - k) // stride + 1
     ow = (padded.shape[2] - k) // stride + 1
     out = np.zeros((1, oh, ow, cout), dtype=np.int64)
     for fy in range(k):
         for fx in range(k):
-            window = padded[:, fy:fy + stride * oh:stride, fx:fx + stride * ow:stride]
+            window = padded[:, fy : fy + stride * oh : stride, fx : fx + stride * ow : stride]
             out += np.einsum("nhwc,co->nhwo", window, w[fy, fx])
     if bias is not None:
         out = out + bias
@@ -494,33 +582,37 @@ def voyager_arm(model_dir: Path, workload: dict, isa, acc_scale_ok: bool):
     names = {"lhs": "lhs", "weight": "weight", "bias": "bias", "out": "out"}
     strides = {"lhs": cin, "weight": cout, "bias": cout * 4, "out": cout * 4}
     elems = {"lhs": 1, "weight": 1, "bias": 4, "out": 4}
-    trace = schedule_instructions(schedule, isa, names=names, strides=strides, elems=elems,
-                                  out_dtype="i32", acc_scale_ok=acc_scale_ok)
+    trace = schedule_instructions(
+        schedule, isa, names=names, strides=strides, elems=elems, out_dtype="i32", acc_scale_ok=acc_scale_ok
+    )
     tensors = [("lhs", "i8", lhs, lhs.shape), ("weight", "i8", weight, weight.shape)]
     if bias is not None:
         tensors.append(("bias", "i32", bias, bias.shape))
     tensors.append(("out", "i32", None, expected.shape))
-    counts = {k.__name__: schedule.count(k) for k in (vs.Mvin, vs.AccMvin, vs.Preload, vs.Compute,
-                                                      vs.Mvout)}
+    counts = {k.__name__: schedule.count(k) for k in (vs.Mvin, vs.AccMvin, vs.Preload, vs.Compute, vs.Mvout)}
     return trace, tensors, expected, counts
 
 
 def merlin_iface(workload: dict, oh: int, ow: int, stride: int, pad: int) -> str:
     h, w, k, cin, cout = workload["H"], workload["W"], workload["k"], workload["Cin"], workload["Cout"]
-    ifm, wt, out = f"tensor<1x{h}x{w}x{cin}xi8>", f"tensor<{k * k * cin}x{cout}xi8>", \
-        f"tensor<{oh * ow}x{cout}xi32>"
-    return "\n".join([
-        'module attributes {merlin_iface.version = "0.1", merlin_iface.target = "gemmini", '
-        'merlin_iface.abi_version = "0.1"} {',
-        f'  %IFM = merlin_iface.tensor {{name = "IFM", role = "input"}} : {ifm}',
-        f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : {wt}',
-        f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_conv_rhs"}} : ({wt}) -> '
-        "!merlin_iface.resident",
-        f'  %Y0 = merlin_iface.conv2d %IFM, %W_res {{kernel = [{k}, {k}, {cin}, {cout}], stride = '
-        f'[{stride}, {stride}], padding = [{pad}, {pad}, {pad}, {pad}], dilation = [1, 1], name = '
-        f'"Y0", epilogue = [], output_dtype = "i32", layout = "nhwc"}} : ({ifm}, '
-        f"!merlin_iface.resident) -> {out}",
-        "  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()", "}", ""])
+    ifm, wt, out = f"tensor<1x{h}x{w}x{cin}xi8>", f"tensor<{k * k * cin}x{cout}xi8>", f"tensor<{oh * ow}x{cout}xi32>"
+    return "\n".join(
+        [
+            'module attributes {merlin_iface.version = "0.1", merlin_iface.target = "gemmini", '
+            'merlin_iface.abi_version = "0.1"} {',
+            f'  %IFM = merlin_iface.tensor {{name = "IFM", role = "input"}} : {ifm}',
+            f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : {wt}',
+            f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_conv_rhs"}} : ({wt}) -> '
+            "!merlin_iface.resident",
+            f"  %Y0 = merlin_iface.conv2d %IFM, %W_res {{kernel = [{k}, {k}, {cin}, {cout}], stride = "
+            f"[{stride}, {stride}], padding = [{pad}, {pad}, {pad}, {pad}], dilation = [1, 1], name = "
+            f'"Y0", epilogue = [], output_dtype = "i32", layout = "nhwc"}} : ({ifm}, '
+            f"!merlin_iface.resident) -> {out}",
+            "  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()",
+            "}",
+            "",
+        ]
+    )
 
 
 def merlin_arm(workload: dict, isa, ingest, workdir: Path):
@@ -532,31 +624,52 @@ def merlin_arm(workload: dict, isa, ingest, workdir: Path):
     iface.write_text(merlin_iface(workload, oh, ow, stride, pad))
     _, module = ingest.parse_verified(iface)
     program = ingest.extract_program(module)
-    trace = isa.build_trace(program)          # raises the package's own refusal on capacity
-    order = [n for n, spec in program.tensors.items() if spec.role in ("input", "weight", "bias",
-                                                                          "output")]
+    trace = isa.build_trace(program)  # raises the package's own refusal on capacity
+    order = [n for n, spec in program.tensors.items() if spec.role in ("input", "weight", "bias", "output")]
     values = {"IFM": x.reshape(1, -1), "W": w.reshape(-1, workload["Cout"])}
-    tensors = [(n, "i32" if n == "Y0" else "i8", None if n == "Y0" else values[n],
-                reference.shape if n == "Y0" else values[n].shape) for n in order]
-    counts = {name: sum(1 for i in trace if i.name == name)
-              for name in ("MVIN", "PRELOAD", "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "MVOUT")}
+    tensors = [
+        (
+            n,
+            "i32" if n == "Y0" else "i8",
+            None if n == "Y0" else values[n],
+            reference.shape if n == "Y0" else values[n].shape,
+        )
+        for n in order
+    ]
+    counts = {
+        name: sum(1 for i in trace if i.name == name)
+        for name in ("MVIN", "PRELOAD", "COMPUTE_PRELOADED", "COMPUTE_ACCUMULATE", "MVOUT")
+    }
     return trace, tensors, reference, counts
 
 
 # ---------------------------------------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--model-dir", action="append", required=True, type=Path,
-                        help="a voyager_export.py output dir (model.json + manifest.json)")
-    parser.add_argument("--package", type=Path, default=DEFAULT_PACKAGE,
-                        help="the reference package whose encoders pack both arms")
-    parser.add_argument("--phase2-bundle", type=Path, default=DEFAULT_PHASE2,
-                        help="the phase-2 bundle whose runtime and build recipe the ELFs reuse")
+    parser.add_argument(
+        "--model-dir",
+        action="append",
+        required=True,
+        type=Path,
+        help="a voyager_export.py output dir (model.json + manifest.json)",
+    )
+    parser.add_argument(
+        "--package", type=Path, default=DEFAULT_PACKAGE, help="the reference package whose encoders pack both arms"
+    )
+    parser.add_argument(
+        "--phase2-bundle",
+        type=Path,
+        default=DEFAULT_PHASE2,
+        help="the phase-2 bundle whose runtime and build recipe the ELFs reuse",
+    )
     parser.add_argument("--arms", nargs="+", default=["voyager", "merlin"])
     parser.add_argument("--simulators", nargs="+", default=["spike", "verilator"])
-    parser.add_argument("--golden-max-bytes", type=int, default=65536,
-                        help="embed the golden output (element-wise check) up to this size; "
-                             "check a larger output by its digest")
+    parser.add_argument(
+        "--golden-max-bytes",
+        type=int,
+        default=65536,
+        help="embed the golden output (element-wise check) up to this size; check a larger output by its digest",
+    )
     parser.add_argument("--timeout", type=int, default=7200)
     parser.add_argument("--workers", type=int, default=3)
     parser.add_argument("--tag", default="")
@@ -565,8 +678,7 @@ def main(argv: list[str] | None = None) -> int:
     isa, ingest = load_package(args.package)
     acc_scale_ok = acc_mvin_scales(args.phase2_bundle / "runtime" / "include" / "gemmini_params.h")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    root = runs_dir() / TARGET / "voyager-h2h" / "emit_c" / (stamp + (f"_{args.tag}" if args.tag
-                                                                     else ""))
+    root = runs_dir() / TARGET / "voyager-h2h" / "emit_c" / (stamp + (f"_{args.tag}" if args.tag else ""))
     package_sha = hashlib.sha256((args.package / "manifest.yaml").read_bytes()).hexdigest()[:8]
     builds = []
     for model_dir in args.model_dir:
@@ -575,34 +687,64 @@ def main(argv: list[str] | None = None) -> int:
         probe = model_dir.name
         for arm in args.arms:
             work = root / probe / arm
-            record = {"probe": probe, "arm": arm, "workload": workload,
-                      "voyager_commit": manifest.get("voyager_commit"), "bundle": str(work)}
+            record = {
+                "probe": probe,
+                "arm": arm,
+                "workload": workload,
+                "voyager_commit": manifest.get("voyager_commit"),
+                "bundle": str(work),
+            }
             try:
                 if arm == "voyager":
-                    trace, tensors, expected, counts = voyager_arm(model_dir, workload, isa,
-                                                                   acc_scale_ok)
+                    trace, tensors, expected, counts = voyager_arm(model_dir, workload, isa, acc_scale_ok)
                     compiler = f"voyager_{str(manifest.get('voyager_commit'))[:8]}_bridge_emit_c"
                 else:
                     trace, tensors, expected, counts = merlin_arm(workload, isa, ingest, work)
                     compiler = f"merlin_{args.package.name}_{package_sha}"
                 record["op_counts"] = counts
                 record["rocc_commands"] = sum(1 for i in trace if i.name != "FENCE")
-                payload = render_bundle_payload(tensors, expected, out_dtype="i32",
-                                                model=f"voyager_conv_probe_{probe}",
-                                                compiler=compiler,
-                                                golden_max_bytes=args.golden_max_bytes)
+                payload = render_bundle_payload(
+                    tensors,
+                    expected,
+                    out_dtype="i32",
+                    model=f"voyager_conv_probe_{probe}",
+                    compiler=compiler,
+                    golden_max_bytes=args.golden_max_bytes,
+                )
                 elf_name = f"{probe}_{arm}_warm_measured.elf"
-                elf = build_bundle(work, emit_llvm([t[0] for t in tensors], trace, isa), payload,
-                                   phase2=args.phase2_bundle, elf_name=elf_name)
-                record.update(elf=str(elf), elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
-                              elf_bytes=elf.stat().st_size, expected_fnv1a64=f"{payload['digest']:016x}",
-                              outputs=payload["elements"], check=payload["check"])
-                (work / "firesim_ready.json").write_text(json.dumps({
-                    "elf": elf_name, "elf_sha256": record["elf_sha256"],
-                    "build": "./build_elf.sh <chipyard>", "harness": "phase-2 single-run",
-                    "expect": {"MERLIN_RESULT": f"logits_checked={payload['elements']} bad=0",
-                               "expected_fnv1a64": record["expected_fnv1a64"]},
-                    "probe": probe, "arm": arm, "compiler": compiler}, indent=1))
+                elf = build_bundle(
+                    work,
+                    emit_llvm([t[0] for t in tensors], trace, isa),
+                    payload,
+                    phase2=args.phase2_bundle,
+                    elf_name=elf_name,
+                )
+                record.update(
+                    elf=str(elf),
+                    elf_sha256=hashlib.sha256(elf.read_bytes()).hexdigest(),
+                    elf_bytes=elf.stat().st_size,
+                    expected_fnv1a64=f"{payload['digest']:016x}",
+                    outputs=payload["elements"],
+                    check=payload["check"],
+                )
+                (work / "firesim_ready.json").write_text(
+                    json.dumps(
+                        {
+                            "elf": elf_name,
+                            "elf_sha256": record["elf_sha256"],
+                            "build": "./build_elf.sh <chipyard>",
+                            "harness": "phase-2 single-run",
+                            "expect": {
+                                "MERLIN_RESULT": f"logits_checked={payload['elements']} bad=0",
+                                "expected_fnv1a64": record["expected_fnv1a64"],
+                            },
+                            "probe": probe,
+                            "arm": arm,
+                            "compiler": compiler,
+                        },
+                        indent=1,
+                    )
+                )
             except (UnsupportedConstruct, ValueError) as exc:
                 record["status"] = "refused"
                 record["reason"] = f"{type(exc).__name__}: {exc}"
@@ -611,8 +753,12 @@ def main(argv: list[str] | None = None) -> int:
                 record["status"] = "inexact_lowering"
                 record["reason"] = str(exc)
             builds.append(record)
-            print(json.dumps({k: record.get(k) for k in ("probe", "arm", "status", "reason",
-                                                          "rocc_commands", "elf_bytes")}), flush=True)
+            print(
+                json.dumps(
+                    {k: record.get(k) for k in ("probe", "arm", "status", "reason", "rocc_commands", "elf_bytes")}
+                ),
+                flush=True,
+            )
 
     jobs = [(b, sim) for b in builds if "elf" in b for sim in args.simulators]
 
@@ -621,13 +767,27 @@ def main(argv: list[str] | None = None) -> int:
         console, wall, status = run_elf(Path(build["elf"]), sim, args.timeout)
         (Path(build["bundle"]) / f"console.{sim}.log").write_text(console)
         got = parse_console(console)
-        exact = (status == 0 and got.get("bad") == 0 and got.get("rc") == 0
-                 and got.get("checksum") == int(build["expected_fnv1a64"], 16))
-        return {"probe": build["probe"], "arm": build["arm"], "simulator": sim,
-                "status": "pass" if exact else "fail", "exact": exact, "cycles": got.get("cycles"),
-                "metrics": got["metrics"], "bad": got.get("bad"), "check": got.get("check"),
-                "console_bytes": got["console_bytes"], "exit_status": status,
-                "wall_s": round(wall, 1), "cycle_accurate": sim != "spike"}
+        exact = (
+            status == 0
+            and got.get("bad") == 0
+            and got.get("rc") == 0
+            and got.get("checksum") == int(build["expected_fnv1a64"], 16)
+        )
+        return {
+            "probe": build["probe"],
+            "arm": build["arm"],
+            "simulator": sim,
+            "status": "pass" if exact else "fail",
+            "exact": exact,
+            "cycles": got.get("cycles"),
+            "metrics": got["metrics"],
+            "bad": got.get("bad"),
+            "check": got.get("check"),
+            "console_bytes": got["console_bytes"],
+            "exit_status": status,
+            "wall_s": round(wall, 1),
+            "cycle_accurate": sim != "spike",
+        }
 
     with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
         runs = []
@@ -635,8 +795,9 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({k: v for k, v in result.items() if k != "metrics"}), flush=True)
             runs.append(result)
 
-    os.environ.setdefault("MERLIN_EXT_VOYAGER_COMPILER",
-                          str(merlin_dir().parent / "out" / "build" / "external" / "voyager-compiler"))
+    os.environ.setdefault(
+        "MERLIN_EXT_VOYAGER_COMPILER", str(merlin_dir().parent / "out" / "build" / "external" / "voyager-compiler")
+    )
     pins = {}
     for name in ("gemmini_rtl", "voyager_compiler"):
         try:
@@ -644,32 +805,46 @@ def main(argv: list[str] | None = None) -> int:
         except Exception as exc:  # noqa: BLE001 -- drift is recorded, not fatal
             print(f"pin {name}: {exc}")
     from merlin.runtime.backends import base as _b
+
     backend = _b.get_backend(TARGET)
     sims = {}
     for sim in args.simulators:
         locate = getattr(backend, f"{sim}_path", None)
         if callable(locate):
             sims[sim] = Path(locate())
-    product = new_product("compare", version=1, target=TARGET,
-                          notes="voyager_h2h conv probes as phase-2-format Gemmini programs"
-                                + (f" [{args.tag}]" if args.tag else ""))
-    doc = {"target": TARGET, "package": str(args.package), "phase2_bundle": str(args.phase2_bundle),
-           "acc_mvin_scale_supported": acc_scale_ok, "builds": builds, "runs": runs,
-           "provenance": provenance.record(pins=pins, artifacts=sims)}
+    product = new_product(
+        "compare",
+        version=1,
+        target=TARGET,
+        notes="voyager_h2h conv probes as phase-2-format Gemmini programs" + (f" [{args.tag}]" if args.tag else ""),
+    )
+    doc = {
+        "target": TARGET,
+        "package": str(args.package),
+        "phase2_bundle": str(args.phase2_bundle),
+        "acc_mvin_scale_supported": acc_scale_ok,
+        "builds": builds,
+        "runs": runs,
+        "provenance": provenance.record(pins=pins, artifacts=sims),
+    }
     (product.path / "results.json").write_text(json.dumps(doc, indent=1, default=str))
-    lines = ["# Conv probes as phase-2-format Gemmini programs", "",
-             "| probe | arm | simulator | status | cycles | check | RoCC commands | ELF bytes |",
-             "|---|---|---|---|---|---|---|---|"]
+    lines = [
+        "# Conv probes as phase-2-format Gemmini programs",
+        "",
+        "| probe | arm | simulator | status | cycles | check | RoCC commands | ELF bytes |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
     info = {(b["probe"], b["arm"]): b for b in builds}
     for r in runs:
         b = info[(r["probe"], r["arm"])]
-        lines.append(f"| {r['probe']} | {r['arm']} | {r['simulator']} | {r['status']} | "
-                     f"{r.get('cycles')} | {r.get('check')} bad={r.get('bad')} | "
-                     f"{b.get('rocc_commands')} | {b.get('elf_bytes')} |")
+        lines.append(
+            f"| {r['probe']} | {r['arm']} | {r['simulator']} | {r['status']} | "
+            f"{r.get('cycles')} | {r.get('check')} bad={r.get('bad')} | "
+            f"{b.get('rocc_commands')} | {b.get('elf_bytes')} |"
+        )
     for b in builds:
         if b.get("status"):
-            lines.append(f"| {b['probe']} | {b['arm']} | - | {b['status']} | - | - | - | "
-                         f"{b['reason']} |")
+            lines.append(f"| {b['probe']} | {b['arm']} | - | {b['status']} | - | - | - | {b['reason']} |")
     (product.path / "table.md").write_text("\n".join(lines) + "\n")
     print(json.dumps({"product": str(product.path)}))
     return 0 if all(r["status"] == "pass" for r in runs) else 1

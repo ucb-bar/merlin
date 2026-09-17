@@ -19,6 +19,7 @@ Usage::
     dependence.py direction --target T [--jobs 6] [--force]
     dependence.py analyse   --target T [--shape 32x32x32] [--tier vsim]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,14 +31,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                      # noqa: E402
-from merlin.common import provenance as PV                    # noqa: E402
-from merlin.perf import depgraph as DG                        # noqa: E402
-from merlin.perf import workload_gen as WG                    # noqa: E402
-from merlin.targetgen import isa_direction as ID              # noqa: E402
-from merlin.targetgen import program_oracle as PO             # noqa: E402
+import layer_workload as LW  # noqa: E402
 
-import layer_workload as LW                                   # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.common import provenance as PV  # noqa: E402
+from merlin.perf import depgraph as DG  # noqa: E402
+from merlin.perf import workload_gen as WG  # noqa: E402
+from merlin.targetgen import isa_direction as ID  # noqa: E402
+from merlin.targetgen import program_oracle as PO  # noqa: E402
 
 # Which instructions the direction probe uses to establish known state, and under how many initial
 # states. The seeders put NON-ZERO content into each observable state file before the instruction under
@@ -50,20 +51,34 @@ import layer_workload as LW                                   # noqa: E402
 PROBE_SELECTIONS = {
     "atlas": {
         "accumulator_empty": dict(
-            scalar_imm="ADDI", scalar_upper="LUI", stall="DELAY", halt="EBREAK",
-            seed_slot_field="vd", attribution_value=2,
-            seeders=(("VLI_ALL", {"vd": 1, "imm": 0x3F80}),
-                     ("VLI_ALL", {"vd": 2, "imm": 0x4040}),
-                     ("VMATPUSH_WEIGHT_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}),
-                     ("VSTORE", {"vd": 1, "rs1": 0, "imm": 0}))),
+            scalar_imm="ADDI",
+            scalar_upper="LUI",
+            stall="DELAY",
+            halt="EBREAK",
+            seed_slot_field="vd",
+            attribution_value=2,
+            seeders=(
+                ("VLI_ALL", {"vd": 1, "imm": 0x3F80}),
+                ("VLI_ALL", {"vd": 2, "imm": 0x4040}),
+                ("VMATPUSH_WEIGHT_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}),
+                ("VSTORE", {"vd": 1, "rs1": 0, "imm": 0}),
+            ),
+        ),
         "accumulator_seeded": dict(
-            scalar_imm="ADDI", scalar_upper="LUI", stall="DELAY", halt="EBREAK",
-            seed_slot_field="vd", attribution_value=2,
-            seeders=(("VLI_ALL", {"vd": 1, "imm": 0x3F80}),
-                     ("VLI_ALL", {"vd": 2, "imm": 0x4040}),
-                     ("VMATPUSH_WEIGHT_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}),
-                     ("VSTORE", {"vd": 1, "rs1": 0, "imm": 0}),
-                     ("VMATMUL_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}))),
+            scalar_imm="ADDI",
+            scalar_upper="LUI",
+            stall="DELAY",
+            halt="EBREAK",
+            seed_slot_field="vd",
+            attribution_value=2,
+            seeders=(
+                ("VLI_ALL", {"vd": 1, "imm": 0x3F80}),
+                ("VLI_ALL", {"vd": 2, "imm": 0x4040}),
+                ("VMATPUSH_WEIGHT_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}),
+                ("VSTORE", {"vd": 1, "rs1": 0, "imm": 0}),
+                ("VMATMUL_MXU0", {"vd": 0, "vs1": 1, "vs2": 0}),
+            ),
+        ),
     },
 }
 
@@ -74,7 +89,8 @@ def probe_ops(target: str, settle: int) -> dict[str, ID.ProbeOps]:
         raise SystemExit(
             f"no direction-probe selection for target {target!r}; add one to PROBE_SELECTIONS "
             f"(it needs an immediate load, an upper immediate, a stall, a terminator, and seeders "
-            f"that make each observable state file non-empty)")
+            f"that make each observable state file non-empty)"
+        )
     return {name: ID.ProbeOps(settle=int(settle), **spec) for name, spec in sel.items()}
 
 
@@ -88,7 +104,8 @@ def settle_for(target: str, tier: str) -> tuple[int, str]:
         raise SystemExit(
             f"no machine contract cached for {target!r} on tier {tier!r} ({p}); run "
             f"`layer_workload.py probe --target {target} --tier {tier}` first -- the probe needs the "
-            f"MEASURED settle, and picking one is the failure this whole layer exists to prevent")
+            f"MEASURED settle, and picking one is the failure this whole layer exists to prevent"
+        )
     blob = json.loads(p.read_text())
     s = blob["settle"]
     return int(max(s["tensor"], s["mxu"], s["vpu"])), str(s.get("provenance") or "")
@@ -97,8 +114,7 @@ def settle_for(target: str, tier: str) -> tuple[int, str]:
 def probe_budget(preambles: dict) -> int:
     """A cycle budget sized to the probe programs themselves: every settle the preamble emits, the two
     after the instruction under test, and room for the instructions in between."""
-    return int(max((len(o.seeders) + 2) * int(o.settle) + 8 * int(o.scalar_seeds) + 256
-                   for o in preambles.values()))
+    return int(max((len(o.seeders) + 2) * int(o.settle) + 8 * int(o.scalar_seeds) + 256 for o in preambles.values()))
 
 
 def direction_path(target: str, tier: str) -> Path:
@@ -114,15 +130,13 @@ def direction_path(target: str, tier: str) -> Path:
     clears the whole file) was cited as an RTL fact. A name that cannot be misread is the cheap half of
     the fix; deriving against an RTL engine is the other half and is not what this function does.
     """
-    return (A.cache_dir(f"perf_depgraph/{target}")
-            / f"operand_direction_functional__settle-{tier}.json")
+    return A.cache_dir(f"perf_depgraph/{target}") / f"operand_direction_functional__settle-{tier}.json"
 
 
 # ---------------------------------------------------------------------------------------------------
 # 3.1 -- derive operand direction on the device
 # ---------------------------------------------------------------------------------------------------
-def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6,
-                     force: bool = False) -> ID.DirectionModel:
+def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6, force: bool = False) -> ID.DirectionModel:
     path = direction_path(target, tier)
     if path.is_file() and not force:
         return ID.DirectionModel.from_json(json.loads(path.read_text()))
@@ -140,8 +154,16 @@ def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6,
     settle, settle_prov = settle_for(target, tier)
     preambles = probe_ops(target, settle)
     model_ext = LW.model_ext_for(target)
-    cb = {"tensors": {"probe": {"role": "output", "shape": [1, facts.tile.cols],
-                                "dtype": facts.accum_dtype, "base": facts.dram_base + 0x40}}}
+    cb = {
+        "tensors": {
+            "probe": {
+                "role": "output",
+                "shape": [1, facts.tile.cols],
+                "dtype": facts.accum_dtype,
+                "base": facts.dram_base + 0x40,
+            }
+        }
+    }
     counter = {"n": 0}
     # A probe program is a preamble, one instruction under test, and a couple of settles -- a few
     # thousand cycles at most. The budget is sized to that rather than left at a generic ceiling,
@@ -157,14 +179,22 @@ def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6,
         ks = wd / "kernel.S"
         ks.write_text(kernel_s)
         try:
-            return PO.run_program_debug(target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                                        dump_regions=[], state_summary=True, max_cycles=budget,
-                                        workdir=wd, timeout=600)
+            return PO.run_program_debug(
+                target,
+                model_ext=model_ext,
+                cb=cb,
+                kernel_s=ks,
+                dump_regions=[],
+                state_summary=True,
+                max_cycles=budget,
+                workdir=wd,
+                timeout=600,
+            )
         except PO.ProgramDidNotHalt:
             return {"halted": False, "halt_reason": "did not halt"}
 
     names = sorted(facts.isa.by_mnemonic)
-    shards = [s for s in (names[i::max(1, jobs)] for i in range(max(1, jobs))) if s]
+    shards = [s for s in (names[i :: max(1, jobs)] for i in range(max(1, jobs))) if s]
     t0 = time.time()
     model: ID.DirectionModel | None = None
     for preamble_name, ops in preambles.items():
@@ -172,15 +202,15 @@ def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6,
         refused: dict[str, str] = {}
         provenance = ""
         with _cf.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-            futures = [pool.submit(ID.derive_directions, facts.isa, ops, run_probe, mnemonics=s)
-                       for s in shards]
+            futures = [pool.submit(ID.derive_directions, facts.isa, ops, run_probe, mnemonics=s) for s in shards]
             for fut in futures:
                 part = fut.result()
                 merged.update(part.by_mnemonic)
                 refused.update(part.refused)
                 provenance = part.provenance
-        part_model = ID.DirectionModel(target=target, by_mnemonic=merged, refused=refused,
-                                       provenance=f"[{preamble_name}] {provenance}")
+        part_model = ID.DirectionModel(
+            target=target, by_mnemonic=merged, refused=refused, provenance=f"[{preamble_name}] {provenance}"
+        )
         # Each preamble's OWN result is kept beside the merged one. The merge rule is a judgement --
         # which evidence outranks which -- and keeping the parts means revisiting that judgement costs
         # a re-merge rather than another few thousand probe programs on the device.
@@ -190,9 +220,14 @@ def derive_direction(target: str, tier: str, workdir: Path, *, jobs: int = 6,
         model = part_model if model is None else model.merge(part_model)
     assert model is not None
     model = ID.DirectionModel(
-        target=target, by_mnemonic=model.by_mnemonic, refused=model.refused,
-        provenance=(f"{model.provenance}; tier={tier}, settle={settle} ({settle_prov}); "
-                    f"{counter['n']} probe programs in {time.time() - t0:.0f}s"))
+        target=target,
+        by_mnemonic=model.by_mnemonic,
+        refused=model.refused,
+        provenance=(
+            f"{model.provenance}; tier={tier}, settle={settle} ({settle_prov}); "
+            f"{counter['n']} probe programs in {time.time() - t0:.0f}s"
+        ),
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(model.to_json(), indent=1))
     return model
@@ -216,8 +251,16 @@ def issue_model(target: str, tier: str, workdir: Path) -> DG.IssueModel:
     settle, _ = settle_for(target, tier)
     probe = probe_ops(target, settle)["accumulator_empty"]
     runner = LW.make_runner(target, tier, workdir)
-    cb = {"tensors": {"probe": {"role": "output", "shape": [1, facts.tile.cols],
-                                "dtype": facts.accum_dtype, "base": facts.dram_base + 0x40}}}
+    cb = {
+        "tensors": {
+            "probe": {
+                "role": "output",
+                "shape": [1, facts.tile.cols],
+                "dtype": facts.accum_dtype,
+                "base": facts.dram_base + 0x40,
+            }
+        }
+    }
 
     # The tail after the stall is REQUIRED, not padding: a stall in the terminator's shadow was
     # measured to cost one cycle whatever its immediate, so a probe without a tail measures every
@@ -259,11 +302,13 @@ def _regions_with_trips(program: DG.Program, plan) -> tuple[DG.Region, ...]:
     mt, kt, nt = plan.tiles
     # Loops as the generator nests them, innermost first, each with the number of times its body runs.
     declared = [(kt - 1) if kt > 1 else None, nt if nt > 1 else None, mt if mt > 1 else None]
-    loops = sorted(((int(i.branch_target), i.index) for i in program.instructions
-                    if i.branches_backward), key=lambda pair: -pair[0])
+    loops = sorted(
+        ((int(i.branch_target), i.index) for i in program.instructions if i.branches_backward),
+        key=lambda pair: -pair[0],
+    )
     counts = [c for c in declared if c is not None]
     if len(counts) != len(loops):
-        return program.regions          # the structure does not match the plan; claim nothing
+        return program.regions  # the structure does not match the plan; claim nothing
     spans = [(start, branch, count) for (start, branch), count in zip(loops, counts)]
     out = []
     for region in program.regions:
@@ -275,24 +320,37 @@ def _regions_with_trips(program: DG.Program, plan) -> tuple[DG.Region, ...]:
     return tuple(out)
 
 
-def analyse(target: str, tier: str, shape: tuple[int, int, int], workdir: Path,
-            *, jobs: int = 6, measured_cycles: float | None = None) -> dict:
+def analyse(
+    target: str,
+    tier: str,
+    shape: tuple[int, int, int],
+    workdir: Path,
+    *,
+    jobs: int = 6,
+    measured_cycles: float | None = None,
+) -> dict:
     facts = LW.facts_for(target)
     ops = LW.kernel_ops(target)
     directions = derive_direction(target, tier, workdir, jobs=jobs)
     issue = issue_model(target, tier, workdir)
     contract = json.loads(LW.contract_path(target, tier).read_text())
-    cf = WG.ControlFlow(int(contract["control_flow"]["branch_imm_scale"]),
-                        int(contract["control_flow"]["delay_slots"]),
-                        str(contract["control_flow"]["provenance"]))
+    cf = WG.ControlFlow(
+        int(contract["control_flow"]["branch_imm_scale"]),
+        int(contract["control_flow"]["delay_slots"]),
+        str(contract["control_flow"]["provenance"]),
+    )
     settle = WG.Settle(**{k: v for k, v in contract["settle"].items()})
     m, k, n = shape
     plan = WG.plan_matmul(facts, ops, m=m, k=k, n=n, control_flow=cf, settle=settle)
 
     program = DG.program_from_plan(plan, directions)
-    program = DG.Program(instructions=program.instructions, effects=program.effects,
-                         regions=_regions_with_trips(program, plan), roles=program.roles,
-                         capacities=program.capacities)
+    program = DG.Program(
+        instructions=program.instructions,
+        effects=program.effects,
+        regions=_regions_with_trips(program, plan),
+        roles=program.roles,
+        capacities=program.capacities,
+    )
     # The one register-file capacity this target publishes: a tensor register is the compute array's
     # own byte geometry, and the file's slot count is what the ISA's own destination field can name.
     vd_bits = len(facts.isa.fields_of(ops.tile_load).get("vd") or ())
@@ -300,9 +358,15 @@ def analyse(target: str, tier: str, shape: tuple[int, int, int], workdir: Path,
     for p_ in DG.pressure(DG.liveness(program.instructions, program.effects)[0]):
         if p_.file.startswith("mrf") and vd_bits:
             capacities[p_.file] = 1 << vd_bits
-    report = DG.analyse_program(program, directions, issue=issue, stall_mnemonic=ops.stall,
-                                hoist_role=facts.isa.by_mnemonic.get(ops.dma_load, {}).get("role"),
-                                capacities=capacities, measured_cycles=measured_cycles)
+    report = DG.analyse_program(
+        program,
+        directions,
+        issue=issue,
+        stall_mnemonic=ops.stall,
+        hoist_role=facts.isa.by_mnemonic.get(ops.dma_load, {}).get("role"),
+        capacities=capacities,
+        measured_cycles=measured_cycles,
+    )
     report["target"] = target
     report["tier"] = tier
     report["shape"] = {"m": m, "k": k, "n": n}
@@ -318,15 +382,13 @@ def analyse(target: str, tier: str, shape: tuple[int, int, int], workdir: Path,
         try:
             pins[name] = PV.verify(name)
         except Exception as exc:  # noqa: BLE001
-            report.setdefault("provenance_warnings", []).append(
-                f"{name}: {type(exc).__name__}: {exc}")
+            report.setdefault("provenance_warnings", []).append(f"{name}: {type(exc).__name__}: {exc}")
     report["provenance"] = PV.record(pins=pins)
     return report
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("direction", "analyse"):
         s = sub.add_parser(name)
@@ -338,10 +400,10 @@ def main(argv: list[str] | None = None) -> int:
             s.add_argument("--force", action="store_true")
         else:
             s.add_argument("--shape", default="32x32x32")
-            s.add_argument("--measured", default=None,
-                           help="a measured cycle count for this shape, to check the bound against")
-            s.add_argument("--product", action="store_true",
-                           help="write the report as a versioned artifact product")
+            s.add_argument(
+                "--measured", default=None, help="a measured cycle count for this shape, to check the bound against"
+            )
+            s.add_argument("--product", action="store_true", help="write the report as a versioned artifact product")
     args = ap.parse_args(argv)
 
     wd = Path(args.workdir) if args.workdir else A.cache_dir(f"perf_depgraph/{args.target}/work")
@@ -360,8 +422,14 @@ def main(argv: list[str] | None = None) -> int:
     shape = tuple(int(v) for v in str(args.shape).lower().split("x"))
     if len(shape) != 3:
         raise SystemExit("--shape must be MxKxN")
-    report = analyse(args.target, args.tier, shape, wd, jobs=args.jobs,
-                     measured_cycles=(float(args.measured) if args.measured else None))
+    report = analyse(
+        args.target,
+        args.tier,
+        shape,
+        wd,
+        jobs=args.jobs,
+        measured_cycles=(float(args.measured) if args.measured else None),
+    )
     print(json.dumps(report, indent=1, default=str))
     if args.product:
         out = A.new_product("dependence", target=args.target, version=0)

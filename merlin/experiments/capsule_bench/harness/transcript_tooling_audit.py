@@ -19,8 +19,12 @@ answer-leak patterns (spike/circt/golden.yaml/merlin.runtime import) remain rege
 Reads only the raw round transcripts already on disk. -> per-run dict (printed + optional JSON).
 Usage: transcript_tooling_audit.py <run_dir> [<run_dir> ...]
 """
+
 from __future__ import annotations
-import json, re, sys
+
+import json
+import re
+import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -30,17 +34,21 @@ import _common as C  # noqa: E402 — active target (descriptor-driven), bootstr
 TARGET = C.TARGET
 try:
     from merlin.targetgen.target_experiment import load_target_experiment
+
     _TE = load_target_experiment(C.EXP / "target_experiment.yaml")
 except Exception:  # noqa: BLE001 — the audit stays usable without a resolvable descriptor
     _TE = None
 
 # prior backends the agent must not copy (denied answer surfaces) — from the descriptor.
-_PRIOR_BACKENDS = tuple(_TE.prior_backends) if (_TE and _TE.prior_backends) else (
-    "agent_spec_v0_mlir_oot", "agent_spec_v1_mlir_oot", "hand_smoke_oot", "merlin_native_v0")
+_PRIOR_BACKENDS = (
+    tuple(_TE.prior_backends)
+    if (_TE and _TE.prior_backends)
+    else ("agent_spec_v0_mlir_oot", "agent_spec_v1_mlir_oot", "hand_smoke_oot", "merlin_native_v0")
+)
 # the answer-surface package dirs those backends live under. The bare targets/<t>/ fragment is a
 # SUBSTRING probe (it matches both the canonical out/artifacts/targets/<t>/ and the retired top-level
 # layout, plus the pre-consolidation generated_targets/<t>/) — a transcript match token, not a write path.
-_ANSWER_SURFACE_DIRS = (f"artifacts/targets/{TARGET}/", f"generated_targets/{TARGET}/")   # cf. out/artifacts/targets/
+_ANSWER_SURFACE_DIRS = (f"artifacts/targets/{TARGET}/", f"generated_targets/{TARGET}/")  # cf. out/artifacts/targets/
 # target-neutral run-artifact tokens that signal copying a prior submission.
 _RUN_ARTIFACT_TOKENS = ("agent_bench", "/preflight/", "baseline_ws", "rb_pilot", "_qa_work", "qa_history")
 # the in-repo target tree: contracts/rtl_facts/ under it is GRANTED; any other lowering/backend/codegen
@@ -55,7 +63,7 @@ def _derive_suite_dir() -> str | None:
     """The example-kernel suite dir name (chipyard ``<target>-rocc-tests``), read structurally from the
     descriptor's ISA-header path. None for a target with no C kernel suite (arc/cyclotron) — then the
     kernel-suite cheat simply does not apply."""
-    for h in (_TE.isa_headers if _TE else ()):
+    for h in _TE.isa_headers if _TE else ():
         for part in Path(h).parts:
             if part.endswith("-rocc-tests"):
                 return part
@@ -75,27 +83,39 @@ BUCKETS = [
     # broker requests of the atlas run of 2026-09-04 as direct oracle invocations, under a heading that
     # says it "must be empty". An alarm that fires on the approved path is worse than no alarm: it is
     # read once, dismissed, and then dismissed again on the run where it means something.
-    ("selfcheck",    re.compile(r"\b(agent_selfcheck\.py|simjob\.py)\b")),
-    ("oracle",       re.compile(r"\b(spike|verilator|verilator_|vcs|simv|\./simulator)\b")),
-    ("circt",        re.compile(r"\b(circt|firtool|arcilator|circt-opt)\b")),
-    ("merlin_tools", re.compile(r"(targetgen/(synthesize|generate)|xdsl_dialects|interface_emit|merlin\.targetgen|synthesize\.py|generate\b)")),
-    ("build",        re.compile(r"\b(clang|clang\+\+|llvm-|mlir-opt|mlir-translate|tblgen|cmake|ninja|make|gcc|g\+\+|ld\b)")),
-    ("test",         re.compile(r"\b(pytest|python3?\s+-m|python3?\s+\S+\.py|\./\S+\.(sh|py)|run_capsule|capsule_runner)\b")),
-    ("fileops",      re.compile(r"^\s*(cd|ls|cat|find|grep|rg|head|tail|sed|awk|echo|mkdir|cp|mv|rm|chmod|diff|wc|tree|pwd|for\b|while\b)")),
+    ("selfcheck", re.compile(r"\b(agent_selfcheck\.py|simjob\.py)\b")),
+    ("oracle", re.compile(r"\b(spike|verilator|verilator_|vcs|simv|\./simulator)\b")),
+    ("circt", re.compile(r"\b(circt|firtool|arcilator|circt-opt)\b")),
+    (
+        "merlin_tools",
+        re.compile(
+            r"(targetgen/(synthesize|generate)|xdsl_dialects|interface_emit|merlin\.targetgen|synthesize\.py|generate\b)"
+        ),
+    ),
+    ("build", re.compile(r"\b(clang|clang\+\+|llvm-|mlir-opt|mlir-translate|tblgen|cmake|ninja|make|gcc|g\+\+|ld\b)")),
+    ("test", re.compile(r"\b(pytest|python3?\s+-m|python3?\s+\S+\.py|\./\S+\.(sh|py)|run_capsule|capsule_runner)\b")),
+    (
+        "fileops",
+        re.compile(
+            r"^\s*(cd|ls|cat|find|grep|rg|head|tail|sed|awk|echo|mkdir|cp|mv|rm|chmod|diff|wc|tree|pwd|for\b|while\b)"
+        ),
+    ),
 ]
 # GENERIC out-of-bundle contaminant reads (absolute paths the agent should NOT consult) — target-neutral,
 # so kept as regex. System paths (/usr,/lib,/bin,/etc,/tmp,/proc) and the in-repo .venv are legitimate.
 GENERIC_CONTAMINANTS = {
-    "experimenter_memory":  re.compile(r"/home/\w+/\.claude/projects/[^ \"']*memory"),
-    "claude_internals":     re.compile(r"/home/\w+/\.claude(?!/projects/[^ \"']*memory)/[^ \"']*"),
+    "experimenter_memory": re.compile(r"/home/\w+/\.claude/projects/[^ \"']*memory"),
+    "claude_internals": re.compile(r"/home/\w+/\.claude(?!/projects/[^ \"']*memory)/[^ \"']*"),
     # any OTHER sanitized project path (anything that is not this repo)
     "other_project_scratch": re.compile(r"/path/to/(?!merlin\b)[^ \"']+"),
 }
 # GENERIC hard cheats (target-neutral) — kept as regex. oracle USE = an actual import/exec, not a doc
 # mention; golden_read = a read verb over a golden file.
 GENERIC_CHEATS = {
-    "golden_read":   re.compile(r"(cat|head|less|read|open)\b[^\n\"']*golden\.yaml"),
-    "oracle_import": re.compile(r"(from\s+merlin\.runtime\s+import\s+\w|import\s+merlin\.runtime\.(reference|simulator)\b)"),
+    "golden_read": re.compile(r"(cat|head|less|read|open)\b[^\n\"']*golden\.yaml"),
+    "oracle_import": re.compile(
+        r"(from\s+merlin\.runtime\s+import\s+\w|import\s+merlin\.runtime\.(reference|simulator)\b)"
+    ),
 }
 # structured (non-regex) TARGET-SPECIFIC cheat/contaminant keys — populated from the derived fragments.
 STRUCTURED_CONTAM = ("scratch2_refcode",)
@@ -139,16 +159,18 @@ def _tokens(strings) -> set[str]:
 
 
 def _is_prior_backend_copy(t: str) -> bool:
-    return (any(d in t for d in _ANSWER_SURFACE_DIRS)
-            or any(b in t for b in _PRIOR_BACKENDS)
-            or ("runs/" in t and "submission" in t)   # a copied submission, e.g. out/runs/<id>/submission
-            or any(tok in t for tok in _RUN_ARTIFACT_TOKENS))
+    return (
+        any(d in t for d in _ANSWER_SURFACE_DIRS)
+        or any(b in t for b in _PRIOR_BACKENDS)
+        or ("runs/" in t and "submission" in t)  # a copied submission, e.g. out/runs/<id>/submission
+        or any(tok in t for tok in _RUN_ARTIFACT_TOKENS)
+    )
 
 
 def _is_answer_kernel(t: str) -> bool:
     if not _SUITE_DIR or f"{_SUITE_DIR}/" not in t or not t.endswith(".c"):
         return False
-    if "include/" in t or "rocc-software/" in t:      # toolchain headers are legitimately #included
+    if "include/" in t or "rocc-software/" in t:  # toolchain headers are legitimately #included
         return False
     return t.rsplit("/", 1)[-1] not in _GRANTED_KERNELS
 
@@ -158,17 +180,16 @@ def _is_foreign_impl(t: str) -> bool:
     if "/scratch2/" in t and "/merlin/" in t and TARGET in t and t.endswith(_SRC_EXT):
         return True
     # (b) an in-repo target-tree lowering/backend/codegen file (NOT the granted rtl_facts/)
-    return (_TARGET_TREE in t and _RTL_FACTS_OK not in t
-            and any(m in t for m in _FOREIGN_IMPL_MARKERS))
+    return _TARGET_TREE in t and _RTL_FACTS_OK not in t and any(m in t for m in _FOREIGN_IMPL_MARKERS)
 
 
 def _is_scratch2_refcode(t: str) -> bool:
     """A read on another volume EXCEPT the granted per-target chipyard sim location + clang toolchain."""
     if "/scratch2/" not in t:
         return False
-    if f"chipyard/generators/{TARGET}" in t:          # the granted sim RTL the bundle symlinks into
+    if f"chipyard/generators/{TARGET}" in t:  # the granted sim RTL the bundle symlinks into
         return False
-    if "/install/bin" in t or "/install/lib/clang" in t:   # the granted clang-23 toolchain
+    if "/install/bin" in t or "/install/lib/clang" in t:  # the granted clang-23 toolchain
         return False
     return True
 
@@ -201,7 +222,8 @@ def audit_run(run_dir: Path) -> dict:
                 if name == "Bash":
                     n_bash += 1
                     cmd = inp.get("command", "")
-                    bk = _bucket(cmd); bash_buckets[bk] = bash_buckets.get(bk, 0) + 1
+                    bk = _bucket(cmd)
+                    bash_buckets[bk] = bash_buckets.get(bk, 0) + 1
                 elif name == "Read":
                     n_read += 1
                 elif name in ("Edit", "Write", "MultiEdit"):
@@ -231,17 +253,24 @@ def audit_run(run_dir: Path) -> dict:
     cheats = {k: sorted(set(v)) for k, v in cheats.items() if v}
     warns = {k: len(v) for k, v in warns.items() if v}
     clean = not contam
-    return {"run_id": run_dir.name, "tools": tools,
-            "counts": {"bash": n_bash, "read": n_read, "write": n_write},
-            "bash_buckets": bash_buckets,
-            "out_of_bundle_reads": contam, "isolation_clean": clean,
-            "cheat_hits": cheats, "disqualified": bool(cheats), "warnings": warns}
+    return {
+        "run_id": run_dir.name,
+        "tools": tools,
+        "counts": {"bash": n_bash, "read": n_read, "write": n_write},
+        "bash_buckets": bash_buckets,
+        "out_of_bundle_reads": contam,
+        "isolation_clean": clean,
+        "cheat_hits": cheats,
+        "disqualified": bool(cheats),
+        "warnings": warns,
+    }
 
 
 def main(argv=None):
     args = argv or sys.argv[1:]
     if not args:
-        print(__doc__); return 2
+        print(__doc__)
+        return 2
     for a in args:
         r = audit_run(Path(a))
         print(f"\n== {r['run_id']} ==")

@@ -4,6 +4,7 @@
 The configured checkout is used only as a git object database. Files are exported from the declared
 commit, so a dirty checkout or a moving branch cannot change an experiment bundle.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,7 +20,6 @@ from pathlib import Path, PurePosixPath
 
 import yaml
 
-
 HERE = Path(__file__).resolve()
 TARGET_DIR = HERE.parent.parent
 REPO = TARGET_DIR.parents[4]
@@ -28,8 +28,11 @@ SELECTION = TARGET_DIR / "contracts" / "kernel_library_pr1_v1.yaml"
 
 def _git(repo: Path, *args: str, stdout=None) -> subprocess.CompletedProcess:
     return subprocess.run(
-        ["git", "-C", str(repo), *args], check=True, stdout=stdout,
-        stderr=subprocess.PIPE, text=stdout is None,
+        ["git", "-C", str(repo), *args],
+        check=True,
+        stdout=stdout,
+        stderr=subprocess.PIPE,
+        text=stdout is None,
     )
 
 
@@ -66,7 +69,9 @@ def materialize(checkout: Path, output: Path) -> dict:
     _git(checkout, "cat-file", "-e", f"{commit}^{{commit}}")
     archive = subprocess.run(
         ["git", "-C", str(checkout), "archive", "--format=tar", commit, "--", *paths],
-        check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
     ).stdout
 
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -88,8 +93,7 @@ def materialize(checkout: Path, output: Path) -> dict:
             "qualified_families": len(selection.get("qualified_families", ())),
             "experimental_families": len(selection.get("experimental_families", ())),
         }
-        (stage / "manifest.yaml").write_text(
-            yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
+        (stage / "manifest.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
         (stage / "README.md").write_text(
             "# Radiance PR#1 kernel-library treatment\n\n"
             f"Exact export of `{commit}`. Qualified and experimental families are separated in "
@@ -103,8 +107,7 @@ def materialize(checkout: Path, output: Path) -> dict:
             old = yaml.safe_load(old_manifest.read_text()) if old_manifest.is_file() else {}
             if old == manifest:
                 return manifest
-            raise FileExistsError(
-                f"{output} exists with different content; refuse to overwrite a pinned artifact")
+            raise FileExistsError(f"{output} exists with different content; refuse to overwrite a pinned artifact")
         os.replace(stage, output)
     return manifest
 
@@ -112,8 +115,10 @@ def materialize(checkout: Path, output: Path) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--checkout", default=os.environ.get("MERLIN_RADIANCE_KERNELS", ""),
-        help="radiance-kernels checkout used as a git object database")
+        "--checkout",
+        default=os.environ.get("MERLIN_RADIANCE_KERNELS", ""),
+        help="radiance-kernels checkout used as a git object database",
+    )
     parser.add_argument("--output", default=str(REPO / "out/artifacts/targets/radiance/kernel_library_pr1_v1"))
     args = parser.parse_args(argv)
     if not args.checkout:

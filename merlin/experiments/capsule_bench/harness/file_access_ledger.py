@@ -18,7 +18,9 @@ strace/auditd/LD_PRELOAD, which this harness does not run. For answer-surface le
 
 -> run_dir/file_access_ledger.{json,md}.  Usage: file_access_ledger.py <run_dir> [<run_dir> ...]
 """
+
 from __future__ import annotations
+
 import json
 import re
 import sys
@@ -58,7 +60,7 @@ def _scope_of(path: str, allowed: list[str], ws_names: list[str]) -> str:
     if any(a and a.rstrip("/") in p for a in allowed):
         return "in_scope"
     if "/" not in path and "." in path:
-        return "rel_local"   # bare filename, almost always workspace-local
+        return "rel_local"  # bare filename, almost always workspace-local
     return "repo_other"
 
 
@@ -107,32 +109,56 @@ def ledger(run_dir: Path) -> dict:
         for b in (o.get("message", {}) or {}).get("content", []) or []:
             if not (isinstance(b, dict) and b.get("type") == "tool_use"):
                 continue
-            name = b.get("name"); inp = b.get("input", {}) or {}; tid = b.get("id", "")
+            name = b.get("name")
+            inp = b.get("input", {}) or {}
+            tid = b.get("id", "")
             res = results.get(tid, {})
             if name == "Read":
                 p = inp.get("file_path", "")
-                events.append({"round": rnd, "op": "read", "path": p, "scope": _scope_of(p, allowed, ws_names),
-                               "result_bytes": res.get("bytes")})
+                events.append(
+                    {
+                        "round": rnd,
+                        "op": "read",
+                        "path": p,
+                        "scope": _scope_of(p, allowed, ws_names),
+                        "result_bytes": res.get("bytes"),
+                    }
+                )
             elif name in ("Write", "Edit", "MultiEdit"):
                 p = inp.get("file_path", "")
-                events.append({"round": rnd, "op": name.lower(), "path": p,
-                               "scope": _scope_of(p, allowed, ws_names),
-                               "wrote_bytes": len(inp.get("content", "") or inp.get("new_string", "") or "")})
+                events.append(
+                    {
+                        "round": rnd,
+                        "op": name.lower(),
+                        "path": p,
+                        "scope": _scope_of(p, allowed, ws_names),
+                        "wrote_bytes": len(inp.get("content", "") or inp.get("new_string", "") or ""),
+                    }
+                )
             elif name == "Bash":
                 cmd = inp.get("command", "")
                 toks = [t for t in PATH_RX.findall(cmd) if ("/" in t and (t.startswith("/") or "." in t))]
                 refs = []
-                for t in dict.fromkeys(toks):           # dedup, keep order
+                for t in dict.fromkeys(toks):  # dedup, keep order
                     sc = _scope_of(t, allowed, ws_names)
                     if sc not in ("rel_local",):
                         refs.append({"path": t, "scope": sc})
-                events.append({"round": rnd, "op": "exec", "cmd": cmd[:240],
-                               "refs": refs, "stdout_bytes": res.get("bytes")})
+                events.append(
+                    {"round": rnd, "op": "exec", "cmd": cmd[:240], "refs": refs, "stdout_bytes": res.get("bytes")}
+                )
+
     # rollups
     def _paths(op):
         return sorted({e["path"] for e in events if e.get("op") == op and e.get("path")})
-    oob = [e for e in events if (e.get("scope", "").startswith(("CHEAT", "OOB"))
-                                 or any(r["scope"].startswith(("CHEAT", "OOB")) for r in e.get("refs", [])))]
+
+    oob = [
+        e
+        for e in events
+        if (
+            e.get("scope", "").startswith(("CHEAT", "OOB"))
+            or any(r["scope"].startswith(("CHEAT", "OOB")) for r in e.get("refs", []))
+        )
+    ]
     return {
         "run_id": run_dir.name,
         "n_events": len(events),
@@ -145,18 +171,23 @@ def ledger(run_dir: Path) -> dict:
 
 
 def _write_md(run_dir: Path, L: dict):
-    out = [f"# File-access ledger — {L['run_id']}", "",
-           f"- events: {L['n_events']}  ·  files read: {len(L['files_read'])}  ·  files written: "
-           f"{len(L['files_written'])}  ·  bash: {L['n_bash']}  ·  **out-of-scope events: "
-           f"{len(L['out_of_scope_events'])}**",
-           "- NOTE: tool-level capture; paths opened *inside* subprocesses are not individually listed "
-           "(see script header).", ""]
+    out = [
+        f"# File-access ledger — {L['run_id']}",
+        "",
+        f"- events: {L['n_events']}  ·  files read: {len(L['files_read'])}  ·  files written: "
+        f"{len(L['files_written'])}  ·  bash: {L['n_bash']}  ·  **out-of-scope events: "
+        f"{len(L['out_of_scope_events'])}**",
+        "- NOTE: tool-level capture; paths opened *inside* subprocesses are not individually listed "
+        "(see script header).",
+        "",
+    ]
     if L["out_of_scope_events"]:
         out += ["## ⚠ Out-of-scope accesses (review)", ""]
         for e in L["out_of_scope_events"][:50]:
             if e["op"] == "exec":
-                bad = ", ".join(f"{r['path']} [{r['scope']}]" for r in e["refs"]
-                                if r["scope"].startswith(("CHEAT", "OOB")))
+                bad = ", ".join(
+                    f"{r['path']} [{r['scope']}]" for r in e["refs"] if r["scope"].startswith(("CHEAT", "OOB"))
+                )
                 out.append(f"- `{e['round']}` exec: `{e['cmd'][:80]}` → {bad}")
             else:
                 out.append(f"- `{e['round']}` {e['op']}: `{e['path']}` [{e['scope']}]")
@@ -169,19 +200,22 @@ def _write_md(run_dir: Path, L: dict):
 def main(argv=None):
     args = argv or sys.argv[1:]
     if not args:
-        print(__doc__); return 2
+        print(__doc__)
+        return 2
     for a in args:
         rd = Path(a)
         L = ledger(rd)
         (rd / "file_access_ledger.json").write_text(json.dumps(L, indent=2))
         _write_md(rd, L)
         print(f"\n== {L['run_id']} ==")
-        print(f"  events={L['n_events']}  read={len(L['files_read'])}  written={len(L['files_written'])}"
-              f"  bash={L['n_bash']}  out-of-scope={len(L['out_of_scope_events'])}")
+        print(
+            f"  events={L['n_events']}  read={len(L['files_read'])}  written={len(L['files_written'])}"
+            f"  bash={L['n_bash']}  out-of-scope={len(L['out_of_scope_events'])}"
+        )
         for e in L["out_of_scope_events"][:10]:
             tag = e.get("cmd", e.get("path", ""))
             print(f"    ⚠ {e['round']} {e['op']}: {str(tag)[:80]}")
-        print(f"  -> {rd/'file_access_ledger.json'} (+ .md)")
+        print(f"  -> {rd / 'file_access_ledger.json'} (+ .md)")
     return 0
 
 

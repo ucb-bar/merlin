@@ -30,6 +30,7 @@ VERDICT SHAPE. The rule PASSES only if, on every held-out shape, it is no worse 
 policy. "Ties on the zero-saving shapes and wins elsewhere" is the expected pass; a single held-out
 loss falsifies it and the default must not change.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,10 +54,11 @@ REPO = _repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from merlin.targetgen import oot_runner as OOT      # noqa: E402
-from merlin.common.artifacts import new_product     # noqa: E402
-import _track as T                                  # noqa: E402
-from merlin.common import provenance as PROV        # noqa: E402
+import _track as T  # noqa: E402
+
+from merlin.common import provenance as PROV  # noqa: E402
+from merlin.common.artifacts import new_product  # noqa: E402
+from merlin.targetgen import oot_runner as OOT  # noqa: E402
 
 FORK = REPO / "out/artifacts/targets/gemmini/gemmini_xdsl_recipe_v0"
 #: The emulator is identified by GSIM_SHA below, not by where it sits: the path used to be
@@ -65,6 +67,8 @@ FORK = REPO / "out/artifacts/targets/gemmini/gemmini_xdsl_recipe_v0"
 #: (it is the same variable these scripts export to the runner).
 _GSIM_BUILD = "gsim_cert_serialclk_v1"
 _GSIM_EMU_NAME = "emu_gemmini_gsim_serialclk_v1_filtered_final"
+
+
 def _gsim_emu() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
     if env:
@@ -81,16 +85,35 @@ FITTING = {(32, 32, 32), (64, 64, 64), (16, 512, 256)}
 
 #: HELD OUT. Never measured before this script runs. Each names what it is designed to break.
 HELDOUT = [
-    ("h1_no_n_sweep",       16,  16, 128, "Nt=1: the saving is identically zero, so `panel` must not "
-                                          "be preferred and must not lose"),
-    ("h2_tall_m_no_sweep", 128,  16, 128, "Nt=1 again but Mt=8: probes whether the zero-saving case "
-                                          "depends on M"),
-    ("h3_odd_tiles",        48,  96,  48, "Mt=3, Nt=6, Kt=3: non-power-of-two tiles, so the rule "
-                                          "cannot be reading a divisibility property"),
-    ("h4_wide_n",           16, 256, 128, "Mt=1, Nt=16, Kt=8: the regime the fitting set says should "
-                                          "win big, at a shape it never saw"),
-    ("h5_past_capacity",    32, 512, 512, "the operand grids do not fit: `panel` is inexpressible and "
-                                          "the rule must fall back rather than emit it"),
+    (
+        "h1_no_n_sweep",
+        16,
+        16,
+        128,
+        "Nt=1: the saving is identically zero, so `panel` must not be preferred and must not lose",
+    ),
+    ("h2_tall_m_no_sweep", 128, 16, 128, "Nt=1 again but Mt=8: probes whether the zero-saving case depends on M"),
+    (
+        "h3_odd_tiles",
+        48,
+        96,
+        48,
+        "Mt=3, Nt=6, Kt=3: non-power-of-two tiles, so the rule cannot be reading a divisibility property",
+    ),
+    (
+        "h4_wide_n",
+        16,
+        256,
+        128,
+        "Mt=1, Nt=16, Kt=8: the regime the fitting set says should win big, at a shape it never saw",
+    ),
+    (
+        "h5_past_capacity",
+        32,
+        512,
+        512,
+        "the operand grids do not fit: `panel` is inexpressible and the rule must fall back rather than emit it",
+    ),
 ]
 
 IFACE = """module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "gemmini", \
@@ -110,7 +133,8 @@ merlin_iface.abi_version = "0.1"}} {{
 
 def _recipe_mod():
     sys.path.insert(0, str(FORK / "mlir_oot" / "lowering"))
-    import recipe                                                    # noqa: PLC0415
+    import recipe  # noqa: PLC0415
+
     return recipe
 
 
@@ -132,13 +156,13 @@ def rule(m: int, n: int, k: int, *, dim: int, spad_rows: int, acc_rows: int) -> 
     R = _recipe_mod()
     chosen = R.resolve_auto(m, n, k, dim=dim, spad_rows=spad_rows)
     mt, nt, kt = -(-m // dim), -(-n // dim), -(-k // dim)
-    f = R.fit(R.Recipe(activation_residency=chosen), m=m, n=n, k=k, dim=dim,
-              spad_rows=spad_rows, acc_rows=acc_rows)
+    f = R.fit(R.Recipe(activation_residency=chosen), m=m, n=n, k=k, dim=dim, spad_rows=spad_rows, acc_rows=acc_rows)
     if not f.ok:
         return chosen, f"the shape is inexpressible on this surface: {f.reason.split(':')[0]}"
     if nt == 1:
-        return chosen, ("Nt=1, so the saving Mt*Kt*(Nt-1) is exactly zero -- the rule must TIE here, "
-                        "and a loss would falsify it")
+        return chosen, (
+            "Nt=1, so the saving Mt*Kt*(Nt-1) is exactly zero -- the rule must TIE here, and a loss would falsify it"
+        )
     return chosen, f"saves Mt*Kt*(Nt-1) = {mt * kt * (nt - 1)} activation transfers"
 
 
@@ -150,8 +174,9 @@ def evaluate(mlir: Path, recipe: dict | None, run_id: str, engine: str, timeout:
         os.environ["MERLIN_CODEGEN_RECIPE"] = json.dumps(recipe)
     t0 = time.time()
     try:
-        res = OOT.certify(FORK, mlir, runs_root=T.RUNS, run_id=run_id,
-                          simulator=engine, target="gemmini", timeout=timeout)
+        res = OOT.certify(
+            FORK, mlir, runs_root=T.RUNS, run_id=run_id, simulator=engine, target="gemmini", timeout=timeout
+        )
         err = None
     except Exception as exc:
         res, err = {}, f"{type(exc).__name__}: {exc}"
@@ -161,19 +186,25 @@ def evaluate(mlir: Path, recipe: dict | None, run_id: str, engine: str, timeout:
     else:
         os.environ["MERLIN_CODEGEN_RECIPE"] = prev
     o = (res or {}).get("oracle") or {}
-    return {"cycles": o.get("cycles"), "correct": (res or {}).get("status") == "pass",
-            "status": (res or {}).get("status"), "wall_s": round(wall, 2), "error": err}
+    return {
+        "cycles": o.get("cycles"),
+        "correct": (res or {}).get("status") == "pass",
+        "status": (res or {}).get("status"),
+        "wall_s": round(wall, 2),
+        "error": err,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--engine", default="gsim")
     ap.add_argument("--timeout", type=int, default=3600)
-    ap.add_argument("--concurrency", type=int, default=1,
-                    help="how many sims were running alongside; recorded, never assumed")
+    ap.add_argument(
+        "--concurrency", type=int, default=1, help="how many sims were running alongside; recorded, never assumed"
+    )
     ap.add_argument("--version", type=int, default=1)
     args = ap.parse_args(argv)
-    T.assert_frozen_intact()   # this track never edits the champion; prove it
+    T.assert_frozen_intact()  # this track never edits the champion; prove it
 
     if args.engine == "gsim":
         got = PROV.file_digest(Path(GSIM_EMU))
@@ -186,11 +217,14 @@ def main(argv: list[str] | None = None) -> int:
     heldout_shapes = {(m, n, k) for _hid, m, n, k, _why in HELDOUT}
     overlap = FITTING & heldout_shapes
     if overlap:
-        raise SystemExit(f"held-out set overlaps the fitting set at {sorted(overlap)}: a rule cannot "
-                         f"be tested on shapes it was fitted on")
+        raise SystemExit(
+            f"held-out set overlaps the fitting set at {sorted(overlap)}: a rule cannot "
+            f"be tested on shapes it was fitted on"
+        )
 
     from merlin.perf.workload_gen import tile_geometry
     from merlin.targetgen.rtl import facts as rtl_facts
+
     geom = tile_geometry("gemmini")
     body = rtl_facts.load_facts("gemmini")
     mems = (body.get("facts") or body).get("memories") or []
@@ -207,32 +241,40 @@ def main(argv: list[str] | None = None) -> int:
         mlir.write_text(IFACE.format(M=M, N=N, K=K), encoding="utf-8")
         chosen, reason = rule(M, N, K, dim=geom.rows, spad_rows=spad, acc_rows=acc)
         mt, nt, kt = -(-M // geom.rows), -(-N // geom.rows), -(-K // geom.rows)
-        row = {"heldout": hid, "M": M, "N": N, "K": K, "Mt": mt, "Nt": nt, "Kt": kt,
-               "probes": why, "rule_choice": chosen, "rule_reason": reason,
-               "engine": args.engine, "concurrency": args.concurrency, "arms": {}}
+        row = {
+            "heldout": hid,
+            "M": M,
+            "N": N,
+            "K": K,
+            "Mt": mt,
+            "Nt": nt,
+            "Kt": kt,
+            "probes": why,
+            "rule_choice": chosen,
+            "rule_reason": reason,
+            "engine": args.engine,
+            "concurrency": args.concurrency,
+            "arms": {},
+        }
         R = _recipe_mod()
         for arm in ("per_tile", "panel"):
-            f = R.fit(R.Recipe(activation_residency=arm), m=M, n=N, k=K, dim=geom.rows,
-                      spad_rows=spad, acc_rows=acc)
+            f = R.fit(R.Recipe(activation_residency=arm), m=M, n=N, k=K, dim=geom.rows, spad_rows=spad, acc_rows=acc)
             if not f.ok:
                 row["arms"][arm] = {"legal": False, "reason": f.reason, "cycles": None}
                 print(f"{hid:<20} {arm:<9} ILLEGAL: {f.reason[:70]}", flush=True)
                 continue
-            rec = None if arm == "per_tile" else {"activation_residency": "panel",
-                                                  "drain": "inline"}
+            rec = None if arm == "per_tile" else {"activation_residency": "panel", "drain": "inline"}
             r = evaluate(mlir, rec, f"ho_{hid}_{arm}", args.engine, args.timeout)
             r["legal"] = True
             row["arms"][arm] = r
-            print(f"{hid:<20} {arm:<9} cycles={r['cycles']} correct={r['correct']} "
-                  f"wall={r['wall_s']}s", flush=True)
+            print(f"{hid:<20} {arm:<9} cycles={r['cycles']} correct={r['correct']} wall={r['wall_s']}s", flush=True)
         rows.append(row)
 
     print("\n================ HELD-OUT VERDICT ================")
     losses, ties, wins, undet, inexpressible = [], [], [], [], []
     for r in rows:
         legal = {a: v for a, v in r["arms"].items() if v.get("legal")}
-        cyc = {a: v["cycles"] for a, v in legal.items()
-               if isinstance(v.get("cycles"), int) and v.get("correct")}
+        cyc = {a: v["cycles"] for a, v in legal.items() if isinstance(v.get("cycles"), int) and v.get("correct")}
         pick = r["rule_choice"]
         if pick not in cyc:
             # Three different things land here and only one is a rule failure. Collapsing them would
@@ -246,23 +288,28 @@ def main(argv: list[str] | None = None) -> int:
                 inexpressible.append((r["heldout"], r["arms"]["panel"]["reason"]))
                 verdict = "N/A  "
             elif not legal.get(pick, {}).get("legal", False):
-                losses.append((r["heldout"], "the rule chose a value that is illegal here while a "
-                                             "legal alternative existed -- rule is WRONG"))
+                losses.append(
+                    (
+                        r["heldout"],
+                        "the rule chose a value that is illegal here while a "
+                        "legal alternative existed -- rule is WRONG",
+                    )
+                )
                 verdict = "WRONG"
             else:
-                undet.append((r["heldout"], "the rule's choice is legal but produced no usable "
-                                            "cycle count"))
+                undet.append((r["heldout"], "the rule's choice is legal but produced no usable cycle count"))
                 verdict = "UNDET"
-            print(f"  {r['heldout']:<20} rule={pick:<9} {verdict} "
-                  f"{'no wave-A value fits this shape' if not any_legal else ''}")
+            print(
+                f"  {r['heldout']:<20} rule={pick:<9} {verdict} "
+                f"{'no wave-A value fits this shape' if not any_legal else ''}"
+            )
             continue
         best = min(cyc, key=lambda a: cyc[a])
         delta = {a: cyc[a] for a in cyc}
-        margin = (max(cyc.values()) - min(cyc.values()))
+        margin = max(cyc.values()) - min(cyc.values())
         verdict = "WINS " if best == pick and margin else ("TIES " if margin == 0 else "LOSES")
         if verdict == "LOSES":
-            losses.append((r["heldout"], f"rule picked {pick} at {cyc[pick]}, best was {best} "
-                                         f"at {cyc[best]}"))
+            losses.append((r["heldout"], f"rule picked {pick} at {cyc[pick]}, best was {best} at {cyc[best]}"))
         elif verdict == "TIES ":
             ties.append(r["heldout"])
         else:
@@ -272,41 +319,68 @@ def main(argv: list[str] | None = None) -> int:
     # A shape no wave-A value can express does not bear on whether the rule RANKS correctly, so it
     # is excluded from the verdict and reported as the coverage gap it is.
     ok = not losses and not undet
-    print(f"\n  wins={len(wins)} ties={len(ties)} losses={len(losses)} "
-          f"undetermined={len(undet)} inexpressible={len(inexpressible)}")
+    print(
+        f"\n  wins={len(wins)} ties={len(ties)} losses={len(losses)} "
+        f"undetermined={len(undet)} inexpressible={len(inexpressible)}"
+    )
     for name, why in inexpressible:
         print(f"    - {name}: NOT a rule failure -- no wave-A value fits. {why[:110]}")
     for name, d in losses + undet:
         print(f"    ! {name}: {d}")
     print(f"  RULE {'GENERALIZES -- the default may change' if ok else 'FALSIFIED -- do NOT change the default'}")
 
-    prod = new_product("recipe-select", version=args.version, target="gemmini",
-                       notes="held-out generalization of the panel-if-fits rule")
+    prod = new_product(
+        "recipe-select",
+        version=args.version,
+        target="gemmini",
+        notes="held-out generalization of the panel-if-fits rule",
+    )
     out = prod.add_artifact("heldout_rule.json")
-    out.write_text(json.dumps({
-        "rule": ("activation_residency = panel, unconditionally on every shape this lowering can "
-                 "emit. The capacity predicate originally proposed here does NOT discriminate: both "
-                 "residency values reserve the same rows (the lowering stages the whole activation "
-                 "grid either way; only the TRANSFER count differs), so a shape that defeats one "
-                 "defeats the other."),
-        "rule_supersedes": ("panel if Kt*(Mt+Nt) <= operand_rows/DIM else per_tile -- falsified by "
-                            "the footprint arithmetic, not by the cycle measurements"),
-        "fitting_shapes": sorted(FITTING), "engine": args.engine,
-        "machine": {"dim": geom.rows, "operand_rows": spad, "accumulator_rows": acc},
-        "rows": rows, "wins": wins, "ties": ties, "losses": losses, "undetermined": undet,
-        "inexpressible": inexpressible, "generalizes": ok,
-        "inexpressible_means": ("no value of this dimension can express the shape -- a gap in what "
-                                "the compiler can EMIT (it needs a blocked-residency value), not "
-                                "evidence about the rule; excluded from the verdict"),
-        "citation_constraint": ("cycles describe GemminiGsimSerialClkConfig; its accelerator modules "
-                               "are identical to stock GemminiRocketConfig (only ClockSourceAtFreqMHz "
-                               "x2 and one IO cell differ), but the engines were measured to disagree "
-                               "by +1/+6 cycles, so these are not Verilator-equivalent numbers"),
-        "provenance": PROV.record(pins={}, sources=[FORK / "mlir_oot/lowering/isa.py",
-                                                    FORK / "mlir_oot/lowering/recipe.py",
-                                                    Path(__file__)],
-                                  artifacts={"gsim_emu": GSIM_EMU}),
-    }, indent=1), encoding="utf-8")
+    out.write_text(
+        json.dumps(
+            {
+                "rule": (
+                    "activation_residency = panel, unconditionally on every shape this lowering can "
+                    "emit. The capacity predicate originally proposed here does NOT discriminate: both "
+                    "residency values reserve the same rows (the lowering stages the whole activation "
+                    "grid either way; only the TRANSFER count differs), so a shape that defeats one "
+                    "defeats the other."
+                ),
+                "rule_supersedes": (
+                    "panel if Kt*(Mt+Nt) <= operand_rows/DIM else per_tile -- falsified by "
+                    "the footprint arithmetic, not by the cycle measurements"
+                ),
+                "fitting_shapes": sorted(FITTING),
+                "engine": args.engine,
+                "machine": {"dim": geom.rows, "operand_rows": spad, "accumulator_rows": acc},
+                "rows": rows,
+                "wins": wins,
+                "ties": ties,
+                "losses": losses,
+                "undetermined": undet,
+                "inexpressible": inexpressible,
+                "generalizes": ok,
+                "inexpressible_means": (
+                    "no value of this dimension can express the shape -- a gap in what "
+                    "the compiler can EMIT (it needs a blocked-residency value), not "
+                    "evidence about the rule; excluded from the verdict"
+                ),
+                "citation_constraint": (
+                    "cycles describe GemminiGsimSerialClkConfig; its accelerator modules "
+                    "are identical to stock GemminiRocketConfig (only ClockSourceAtFreqMHz "
+                    "x2 and one IO cell differ), but the engines were measured to disagree "
+                    "by +1/+6 cycles, so these are not Verilator-equivalent numbers"
+                ),
+                "provenance": PROV.record(
+                    pins={},
+                    sources=[FORK / "mlir_oot/lowering/isa.py", FORK / "mlir_oot/lowering/recipe.py", Path(__file__)],
+                    artifacts={"gsim_emu": GSIM_EMU},
+                ),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     prod.write_manifest()
     print(f"\nproduct: {prod.path}")
     return 0 if ok else 1

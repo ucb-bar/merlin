@@ -17,6 +17,7 @@ symlink files, not dirs). This root is used ONLY by the operator-side grader (qa
 hidden phase); it includes golden.yaml. The AGENT never sees this root — its workspace is
 golden-masked separately.
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,9 +31,9 @@ OUT = C.EXP / "scripts" / "pilot_capsules"
 # (subset_name, source_capsule_dir) — the public half is named because it IS public.
 N_HOLDOUTS = 3
 PUBLIC = [
-    ("A0_config_smoke",        CAPS / "isa" / "A0_config_smoke"),
-    ("A2_single_tile_matmul",  CAPS / "isa" / "A2_single_tile_matmul"),
-    ("A4_acc_scale_i8",        CAPS / "isa" / "A4_acc_scale_i8"),
+    ("A0_config_smoke", CAPS / "isa" / "A0_config_smoke"),
+    ("A2_single_tile_matmul", CAPS / "isa" / "A2_single_tile_matmul"),
+    ("A4_acc_scale_i8", CAPS / "isa" / "A4_acc_scale_i8"),
     ("B0_quantized_linear_i8", CAPS / "layers" / "B0_quantized_linear_i8"),
 ]
 

@@ -48,6 +48,7 @@ Usage::
 
     gemmini_dma_occupancy.py --target T [--shape 16x16x16]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -58,15 +59,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                                          # noqa: E402
-from merlin.perf.occupancy import joint_counts                                     # noqa: E402
-
-from gemmini_occupancy import (                                                    # noqa: E402
+from gemmini_occupancy import (  # noqa: E402
     PRODUCER_DECLARED_IDLE,
     STATE_SIGNALS,
     _contract,
     mlc_dir,
 )
+
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.perf.occupancy import joint_counts  # noqa: E402
 
 #: The design's DMA master bundle. Read from the state manifest rather than written down: the bundle
 #: is the one whose A-channel valid the manifest declares, and the responder binds by that.
@@ -75,7 +76,7 @@ DMA_BUNDLE = "auto_spad_id_out"
 
 def _model(target: str):
     sys.path.insert(0, str(mlc_dir()))
-    from mlc.backends.cosim_core import CosimCore                  # noqa: PLC0415
+    from mlc.backends.cosim_core import CosimCore  # noqa: PLC0415
     from mlc.backends.protocols import RoCCAdapter, TileLinkSlave  # noqa: PLC0415
 
     outputs = mlc_dir() / "runs" / "circt-arc" / target / "outputs"
@@ -92,11 +93,12 @@ def _model(target: str):
 
 def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
     """Move operands in, compute, move the result out -- recording every controller every cycle."""
-    import numpy as np                                             # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
 
     # The backend is loaded through the target-backend resolver, so the module comes from wherever
     # this target's package actually lives rather than from a guessed import path.
-    from merlin.runtime.backends import base as _bk            # noqa: PLC0415
+    from merlin.runtime.backends import base as _bk  # noqa: PLC0415
+
     G = _bk.get_backend(target).gemmini_codegen_mlir
 
     isa = G._isa()
@@ -124,7 +126,7 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
 
     core.reset()
     slave.step()
-    b_slot, a_slot = 0, kt_n * nt * dim          # B tiles resident first, then the A tile slot
+    b_slot, a_slot = 0, kt_n * nt * dim  # B tiles resident first, then the A tile slot
 
     rocc.issue(isa.K_FLUSH, 0, 0, on_cycle=on_cycle)
     rocc.run_until_idle(drain=0, on_cycle=on_cycle)
@@ -134,8 +136,7 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
     for tk in range(kt_n):
         for tj in range(nt):
             off = (tk * dim) * n + tj * dim
-            rocc.issue(isa.K_MVIN, b_addr + off, G._pack(b_slot + (tk * nt + tj) * dim),
-                       on_cycle=on_cycle)
+            rocc.issue(isa.K_MVIN, b_addr + off, G._pack(b_slot + (tk * nt + tj) * dim), on_cycle=on_cycle)
     # A configuration word is GLOBAL state, not a tracked dependency: changing the load stride while
     # earlier move-ins are still in flight would apply the new stride to them. The queue orders
     # data hazards, not this, so drain before reconfiguring.
@@ -161,11 +162,9 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
                 # scaled narrow one), so it belongs on the move-out and not here -- the target's own
                 # readout bits already separate the two, and the bare accumulator base is the one
                 # without it.
-                cad = isa.ACC_I8 if tk == 0 else (isa.ACC_I8 | isa.ACC_ACCUM)   # write side
-                rocc.issue(isa.K_PRELOAD, G._pack(b_slot + (tk * nt + tj) * dim), G._pack(cad),
-                           on_cycle=on_cycle)
-                rocc.issue(isa.K_COMPUTE_PRELOADED, G._pack(a_slot + tk * dim),
-                           G._pack(0xFFFFFFFF), on_cycle=on_cycle)
+                cad = isa.ACC_I8 if tk == 0 else (isa.ACC_I8 | isa.ACC_ACCUM)  # write side
+                rocc.issue(isa.K_PRELOAD, G._pack(b_slot + (tk * nt + tj) * dim), G._pack(cad), on_cycle=on_cycle)
+                rocc.issue(isa.K_COMPUTE_PRELOADED, G._pack(a_slot + tk * dim), G._pack(0xFFFFFFFF), on_cycle=on_cycle)
             rocc.run_until_idle(on_cycle=on_cycle)
             c_off = (ti * dim) * n + tj * dim
             rocc.issue(isa.K_MVOUT, c_addr + c_off, G._pack(isa.ACC_I8), on_cycle=on_cycle)
@@ -175,16 +174,19 @@ def run(target: str, m: int, k: int, n: int, dram_base: int = 0) -> dict:
     got = np.frombuffer(slave.captured(c_addr, m * n), dtype="i1").reshape(m, n)
     ref = np.clip(a.astype(np.int32) @ b.astype(np.int32), -128, 127).astype(np.int8)
 
-    hot = {s: [v != PRODUCER_DECLARED_IDLE for v in trace[s]] for s in present
-           if len(set(trace[s])) > 1}
+    hot = {s: [v != PRODUCER_DECLARED_IDLE for v in trace[s]] for s in present if len(set(trace[s])) > 1}
     unmeasured = [s for s in present if s not in hot]
-    jc = joint_counts(hot) if hot else {"sampled_cycles": 0, "overlap_any": None,
-                                        "overlap_observable": False}
-    return {"shape": f"{m}x{k}x{n}", "cycles_recorded": len(trace[present[0]]),
-            "bit_exact": bool(np.array_equal(got, ref)),
-            "dma_reads": slave.reads, "dma_writes": slave.writes,
-            "joint": jc, "unmeasured_columns": unmeasured,
-            "idle_encoding": {"value": PRODUCER_DECLARED_IDLE, "basis": "declared_by_producer"}}
+    jc = joint_counts(hot) if hot else {"sampled_cycles": 0, "overlap_any": None, "overlap_observable": False}
+    return {
+        "shape": f"{m}x{k}x{n}",
+        "cycles_recorded": len(trace[present[0]]),
+        "bit_exact": bool(np.array_equal(got, ref)),
+        "dma_reads": slave.reads,
+        "dma_writes": slave.writes,
+        "joint": jc,
+        "unmeasured_columns": unmeasured,
+        "idle_encoding": {"value": PRODUCER_DECLARED_IDLE, "basis": "declared_by_producer"},
+    }
 
 
 def main() -> int:
@@ -194,21 +196,30 @@ def main() -> int:
     args = ap.parse_args()
 
     runs = []
-    for sh in (args.shape or ["16x16x16"]):
+    for sh in args.shape or ["16x16x16"]:
         m, k, n = (int(v) for v in sh.split("x"))
         r = run(args.target, m, k, n)
         runs.append(r)
         j = r["joint"]
-        print(f"{sh:12s} cycles={r['cycles_recorded']:6d} bit_exact={r['bit_exact']} "
-              f"dma(r/w)={r['dma_reads']}/{r['dma_writes']}")
-        print(f"             observable={j.get('overlap_observable')} overlap={j.get('overlap_any')} "
-              f"idle={j.get('idle_cycles')} live={j.get('live_columns')}")
+        print(
+            f"{sh:12s} cycles={r['cycles_recorded']:6d} bit_exact={r['bit_exact']} "
+            f"dma(r/w)={r['dma_reads']}/{r['dma_writes']}"
+        )
+        print(
+            f"             observable={j.get('overlap_observable')} overlap={j.get('overlap_any')} "
+            f"idle={j.get('idle_cycles')} live={j.get('live_columns')}"
+        )
         print(f"             busy={ {k2: v for k2, v in (j.get('busy') or {}).items() if v} }")
 
-    pd = A.new_product("perf-ledger", version=4, target=args.target,
-                       notes="joint controller occupancy with the movement path exercised")
-    (pd.path / "dma_occupancy.json").write_text(json.dumps(
-        {"target": args.target, "engines": _contract(args.target) and None, "runs": runs}, indent=1))
+    pd = A.new_product(
+        "perf-ledger",
+        version=4,
+        target=args.target,
+        notes="joint controller occupancy with the movement path exercised",
+    )
+    (pd.path / "dma_occupancy.json").write_text(
+        json.dumps({"target": args.target, "engines": _contract(args.target) and None, "runs": runs}, indent=1)
+    )
     print(f"\nwrote {pd.path / 'dma_occupancy.json'}")
     return 0
 

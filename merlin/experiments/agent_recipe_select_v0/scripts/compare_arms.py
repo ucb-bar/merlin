@@ -14,6 +14,7 @@ per-arm improvement factors are reported beside it rather than instead of it.
 Both arms are measured on GSIM. FireSim cycles are a different column entirely and never enter here
 (the same capsule reads 510 there and 317 under Verilator).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,7 +23,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _track as T                                                        # noqa: E402
+import _track as T  # noqa: E402
 
 T.assert_right_merlin()
 RUNS = T.REPO / "out" / "runs" / "gemmini" / "recipe-select"
@@ -58,8 +59,12 @@ def recipe_results() -> dict[str, dict]:
                     # "(0 invalid," -> the count carries the opening paren; strip it.
                     n_inv = int(tok[tok.index("invalid,") - 1].lstrip("("))
                     out[_shape_of(rec["workload"])] = {
-                        "baseline": base, "best": best, "invalid": n_inv,
-                        "wall_s": rec.get("wall_s"), "run": camp.name}
+                        "baseline": base,
+                        "best": best,
+                        "invalid": n_inv,
+                        "wall_s": rec.get("wall_s"),
+                        "run": camp.name,
+                    }
     return out
 
 
@@ -80,7 +85,7 @@ def autocomp_results() -> dict[str, dict]:
                 continue
             lat = j.get("latency")
             correct, compiled = bool(j.get("correct")), bool(j.get("compiled"))
-            if f.parent.name.endswith("-0"):          # iteration 0 IS the seed, not a candidate
+            if f.parent.name.endswith("-0"):  # iteration 0 IS the seed, not a candidate
                 if correct and isinstance(lat, int):
                     seed = lat if seed is None else min(seed, lat)
                 continue
@@ -96,10 +101,16 @@ def autocomp_results() -> dict[str, dict]:
             continue
         # AutoComp keeps the seed when nothing beats it, so the arm's result is the better of the two.
         arm_best = seed if best is None else min(best, seed if seed is not None else best)
-        out[tag] = {"baseline": seed, "best": arm_best, "candidates": n_cand,
-                    "correct": n_correct, "compiled_wrong": n_compiled_wrong,
-                    "uncompiled": n_uncompiled, "run": d.name,
-                    "complete": (d / "run_metrics.json").exists() and n_cand > 0}
+        out[tag] = {
+            "baseline": seed,
+            "best": arm_best,
+            "candidates": n_cand,
+            "correct": n_correct,
+            "compiled_wrong": n_compiled_wrong,
+            "uncompiled": n_uncompiled,
+            "run": d.name,
+            "complete": (d / "run_metrics.json").exists() and n_cand > 0,
+        }
     return out
 
 
@@ -122,7 +133,8 @@ def main(argv=None) -> int:
         row["autocomp_baseline"] = u["baseline"] if u else None
         row["autocomp_best"] = u["best"] if u else None
         row["autocomp_x_over_own_baseline"] = (
-            round(u["baseline"] / u["best"], 3) if u and u["baseline"] and u["best"] else None)
+            round(u["baseline"] / u["best"], 3) if u and u["baseline"] and u["best"] else None
+        )
         # THE comparable number: absolute cycles, same oracle. >1 means the recipe arm is faster.
         if r and u and u["best"]:
             row["recipe_vs_autocomp_x"] = round(u["best"] / r["best"], 3)
@@ -143,21 +155,25 @@ def main(argv=None) -> int:
         print("no shapes completed on both arms yet")
         return 0
 
-    hdr = (f"{'shape':46} | {'recipe base':>11} {'recipe best':>11} {'x':>6} | "
-           f"{'ac base':>8} {'ac best':>8} {'x':>6} | {'recipe vs ac':>13} {'winner':>9}")
+    hdr = (
+        f"{'shape':46} | {'recipe base':>11} {'recipe best':>11} {'x':>6} | "
+        f"{'ac base':>8} {'ac best':>8} {'x':>6} | {'recipe vs ac':>13} {'winner':>9}"
+    )
     print(hdr)
     print("-" * len(hdr))
     for r in rows:
+
         def f(v, w, dp=0):
-            return (f"{v:>{w}.{dp}f}" if isinstance(v, float) else
-                    f"{v:>{w}}" if v is not None else f"{'-':>{w}}")
+            return f"{v:>{w}.{dp}f}" if isinstance(v, float) else f"{v:>{w}}" if v is not None else f"{'-':>{w}}"
+
         vs = r["recipe_vs_autocomp_x"]
-        vstxt = (f"{vs:.2f}x faster" if vs and vs >= 1 else
-                 f"{1/vs:.2f}x slower" if vs else "-")
-        print(f"{r['shape'][:46]:46} | {f(r['recipe_baseline'],11)} {f(r['recipe_best'],11)} "
-              f"{f(r['recipe_x_over_own_baseline'],6,2)} | {f(r['autocomp_baseline'],8)} "
-              f"{f(r['autocomp_best'],8)} {f(r['autocomp_x_over_own_baseline'],6,2)} | "
-              f"{vstxt:>13} {str(r['winner'] or '-'):>9}")
+        vstxt = f"{vs:.2f}x faster" if vs and vs >= 1 else f"{1 / vs:.2f}x slower" if vs else "-"
+        print(
+            f"{r['shape'][:46]:46} | {f(r['recipe_baseline'], 11)} {f(r['recipe_best'], 11)} "
+            f"{f(r['recipe_x_over_own_baseline'], 6, 2)} | {f(r['autocomp_baseline'], 8)} "
+            f"{f(r['autocomp_best'], 8)} {f(r['autocomp_x_over_own_baseline'], 6, 2)} | "
+            f"{vstxt:>13} {str(r['winner'] or '-'):>9}"
+        )
 
     both = [r for r in rows if r["recipe_vs_autocomp_x"]]
     if both:
@@ -166,10 +182,14 @@ def main(argv=None) -> int:
         for r in both:
             gm *= r["recipe_vs_autocomp_x"]
         gm **= 1.0 / len(both)
-        print(f"\nrecipe wins {wins}/{len(both)} shapes; geomean recipe-vs-autocomp {gm:.3f}x "
-              f"({'recipe faster' if gm >= 1 else 'autocomp faster'})")
-        print("cycles are GSIM for both arms. 'x over own baseline' is NOT comparable across arms: "
-              "the\nrecipe baseline is the compiler default, AutoComp's is a hand-written C seed.")
+        print(
+            f"\nrecipe wins {wins}/{len(both)} shapes; geomean recipe-vs-autocomp {gm:.3f}x "
+            f"({'recipe faster' if gm >= 1 else 'autocomp faster'})"
+        )
+        print(
+            "cycles are GSIM for both arms. 'x over own baseline' is NOT comparable across arms: "
+            "the\nrecipe baseline is the compiler default, AutoComp's is a hand-written C seed."
+        )
     return 0
 
 

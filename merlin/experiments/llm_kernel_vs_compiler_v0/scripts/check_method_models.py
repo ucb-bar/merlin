@@ -37,15 +37,15 @@ EXP = HERE.parent
 #: so the driver alone does not say which budget a run spends.
 ALLOWED_PROVIDERS = {
     "subscription": "subscription_notional",  # ChatGPT seat: billed 0, notional projection only
-    "bedrock": "metered",                     # AWS, bearer auth
-    "google": "metered",                      # Google API key -- a SEPARATE credential and budget
+    "bedrock": "metered",  # AWS, bearer auth
+    "google": "metered",  # Google API key -- a SEPARATE credential and budget
 }
 
 #: Which drivers can carry which provider. A mismatch here is a launch failure, not a policy call.
 PROVIDER_DRIVERS = {
     "subscription": frozenset({"codex"}),
     "bedrock": frozenset({"converse", "opencode"}),
-    "google": frozenset({"opencode"}),        # opencode is the multi-provider driver
+    "google": frozenset({"opencode"}),  # opencode is the multi-provider driver
 }
 
 #: Vendor tokens refused on a metered Bedrock route. Matched against the FIRST dotted segment of the
@@ -88,7 +88,7 @@ def violations(cfg: dict, *, where: str) -> list[str]:
             f"(allowed: {sorted(ALLOWED_PROVIDERS)}). Every agent run uses the Codex seat, "
             f"Bedrock, or the Google API."
         )
-        return out                      # nothing else can be judged against an unknown route
+        return out  # nothing else can be judged against an unknown route
 
     if driver not in PROVIDER_DRIVERS[provider]:
         out.append(
@@ -146,17 +146,21 @@ def main(argv: list[str] | None = None) -> int:
         v = violations(cfg, where=str(rel))
         bad += v
         mark = "FAIL" if v else "ok  "
-        print(f"  [{mark}] {cfg.get('method', p.parent.name):18s} "
-              f"provider={cfg.get('provider')!s:13s} driver={cfg.get('driver')!s:10s} "
-              f"model={cfg.get('model')}")
+        print(
+            f"  [{mark}] {cfg.get('method', p.parent.name):18s} "
+            f"provider={cfg.get('provider')!s:13s} driver={cfg.get('driver')!s:10s} "
+            f"model={cfg.get('model')}"
+        )
 
     if bad:
         print()
         for b in bad:
             print(f"  !! {b}")
         return 1
-    print(f"\n  {len(found)} method(s): every agent run routes through an approved provider "
-          f"({', '.join(sorted(ALLOWED_PROVIDERS))}).")
+    print(
+        f"\n  {len(found)} method(s): every agent run routes through an approved provider "
+        f"({', '.join(sorted(ALLOWED_PROVIDERS))})."
+    )
     return 0
 
 

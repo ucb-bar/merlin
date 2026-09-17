@@ -7,6 +7,7 @@ content -> same hashes. Does not mutate anything except the output manifest.
 
 Usage: .venv/bin/python experiments/capsule_bench/targets/<target>/scripts/freeze_state.py
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -19,6 +20,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+
 REPO = C.REPO
 TARGET = C.TARGET
 OUT = C.REPORTS / "capsule_bench_v0_freeze_manifest.yaml"
@@ -37,8 +39,7 @@ _SKIP_PARTS = {"build", "__pycache__", ".git"}
 
 def _sh(args: list[str]) -> str:
     try:
-        return subprocess.run(args, cwd=str(REPO), capture_output=True, text=True,
-                              timeout=60).stdout.strip()
+        return subprocess.run(args, cwd=str(REPO), capture_output=True, text=True, timeout=60).stdout.strip()
     except Exception:
         return ""
 
@@ -83,8 +84,10 @@ def _tool_version(args: list[str]) -> str:
 
 def main() -> int:
     import importlib
+
     try:
         from merlin.targetgen.contract import toolchain as tc
+
         llvm = f"{tc.LLVM_VERSION}@{tc.LLVM_COMMIT}"
     except Exception:
         llvm = "unknown"
@@ -116,7 +119,8 @@ def main() -> int:
             "llvm_mlir": llvm,
             "riscv_gcc": gcc,
             "spike": _tool_version([gcc.replace("riscv64-unknown-elf-gcc", "spike"), "--help"])
-                     if gcc != "unknown" else "unknown",
+            if gcc != "unknown"
+            else "unknown",
             "clang": _tool_version(["clang-23", "--version"]),
         },
         "capsule_count": n_caps,
@@ -131,8 +135,10 @@ def main() -> int:
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(yaml.safe_dump(manifest, sort_keys=False), encoding="utf-8")
     print(f"wrote {OUT.relative_to(REPO)}")
-    print(f"  repo_sha={manifest['repo_sha'][:12]} dirty={manifest['working_tree_dirty']} "
-          f"caps={n_caps} public={manifest['public_dev_passed']} hidden={manifest['hidden_passed']}")
+    print(
+        f"  repo_sha={manifest['repo_sha'][:12]} dirty={manifest['working_tree_dirty']} "
+        f"caps={n_caps} public={manifest['public_dev_passed']} hidden={manifest['hidden_passed']}"
+    )
     for name, h in manifest["artifact_hashes"].items():
         print(f"  {name}: {(h['sha256'] or 'absent')[:16]} ({h['n_files']} files)")
     return 0

@@ -10,6 +10,7 @@ the Converse/OpenCode drivers); a small/fast ``background`` model handles chores
 tiers drive the ``claude`` CLI on Bedrock (``CLAUDE_CODE_SUBAGENT_MODEL`` / ``ANTHROPIC_SMALL_FAST_MODEL``);
 non-Anthropic tiers drive the Converse / OpenCode loops.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -24,9 +25,10 @@ MODELS = {
     "sonnet": "us.anthropic.claude-sonnet-4-6",
     "haiku": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
     # Non-Anthropic (Converse / OpenCode).
-    "glm5": "zai.glm-5", "glm4.7": "zai.glm-4.7",
-    "deepseek": "deepseek.v3.2",              # tools-capable (Sonnet-class reasoning)
-    "deepseek-r1": "deepseek.r1-v1:0",        # NO tools (Converse rejects its toolConfig) — not agentic
+    "glm5": "zai.glm-5",
+    "glm4.7": "zai.glm-4.7",
+    "deepseek": "deepseek.v3.2",  # tools-capable (Sonnet-class reasoning)
+    "deepseek-r1": "deepseek.r1-v1:0",  # NO tools (Converse rejects its toolConfig) — not agentic
     "nemotron": "nvidia.nemotron-super-3-120b",
     "kimi": "moonshotai.kimi-k2.5",
     "qwen-coder": "qwen.qwen3-coder-next",
@@ -52,14 +54,17 @@ def resolve(model: str) -> str:
 @dataclass(frozen=True)
 class Tier:
     """A (primary, subagent, background) model mix. ``None`` tiers stay unset (the driver keeps its default)."""
+
     primary: str
     subagent: str | None = None
     background: str | None = None
 
     def resolved(self) -> "Tier":
-        return Tier(resolve(self.primary),
-                    resolve(self.subagent) if self.subagent else None,
-                    resolve(self.background) if self.background else None)
+        return Tier(
+            resolve(self.primary),
+            resolve(self.subagent) if self.subagent else None,
+            resolve(self.background) if self.background else None,
+        )
 
 
 # The two default tier mixes (mirror chia's ANTHROPIC_TIER / NON_ANTHROPIC_TIER). Among the non-Anthropic

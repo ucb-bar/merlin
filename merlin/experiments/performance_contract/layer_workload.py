@@ -25,6 +25,7 @@ Usage::
     layer_workload.py run     --target T --tier vsim --shape 32x1024x512
     layer_workload.py project --target T --tier vsim --shape 416x832x416
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,22 +38,34 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                     # noqa: E402
-from merlin.common import provenance as PV                    # noqa: E402
-from merlin.common.paths import ext_path                      # noqa: E402
-from merlin.perf import workload_gen as WG                    # noqa: E402
-from merlin.targetgen import program_oracle as PO             # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.common import provenance as PV  # noqa: E402
+from merlin.common.paths import ext_path  # noqa: E402
+from merlin.perf import workload_gen as WG  # noqa: E402
+from merlin.targetgen import program_oracle as PO  # noqa: E402
 
 # Which of each target's instructions plays each role. Derived candidates for any target are printed by
 # ``probe --show-candidates``; the choice among same-role instructions (which matrix unit, overwriting or
 # accumulating multiply, which accumulate format's readout) is this experiment's, not the hardware's.
 OP_SELECTIONS = {
     "atlas": dict(
-        add="ADD", add_imm="ADDI", load_upper="LUI", branch_ne="BNE", stall="DELAY", halt="EBREAK",
-        dma_load="DMA_LOAD_CH0", dma_store="DMA_STORE_CH0", dma_wait="DMA_WAIT_CH0",
-        tile_load="VLOAD", tile_store="VSTORE", transpose="VTRPOSE_XLU",
-        weight_push="VMATPUSH_WEIGHT_MXU0", contract="VMATMUL_MXU0",
-        contract_accumulate="VMATMUL_ACC_MXU0", acc_read="VMATPOP_BF16_ACC_MXU0"),
+        add="ADD",
+        add_imm="ADDI",
+        load_upper="LUI",
+        branch_ne="BNE",
+        stall="DELAY",
+        halt="EBREAK",
+        dma_load="DMA_LOAD_CH0",
+        dma_store="DMA_STORE_CH0",
+        dma_wait="DMA_WAIT_CH0",
+        tile_load="VLOAD",
+        tile_store="VSTORE",
+        transpose="VTRPOSE_XLU",
+        weight_push="VMATPUSH_WEIGHT_MXU0",
+        contract="VMATMUL_MXU0",
+        contract_accumulate="VMATMUL_ACC_MXU0",
+        acc_read="VMATPOP_BF16_ACC_MXU0",
+    ),
 }
 # The accumulate format each selection's readout instruction reads. It must agree with the datapath the
 # workload's golden models, so it is pinned alongside the selection rather than inferred.
@@ -68,7 +81,8 @@ def kernel_ops(target: str) -> WG.KernelOps:
     if sel is None:
         raise SystemExit(
             f"no instruction-role selection for target {target!r}; add one to OP_SELECTIONS "
-            f"(run `probe --show-candidates` for the derived menu)")
+            f"(run `probe --show-candidates` for the derived menu)"
+        )
     return WG.KernelOps(**sel)
 
 
@@ -78,10 +92,13 @@ def facts_for(target: str) -> WG.MachineFacts:
 
 def model_ext_for(target: str) -> str:
     from merlin.targetgen.capsule_runner import _endpoint_of
+
     _kind, ext = _endpoint_of(target)
     if not ext:
-        raise SystemExit(f"{target!r}: its contract declares no runner.model_ext; the program oracle "
-                         f"needs the model project to lay out operands")
+        raise SystemExit(
+            f"{target!r}: its contract declares no runner.model_ext; the program oracle "
+            f"needs the model project to lay out operands"
+        )
     return ext
 
 
@@ -96,17 +113,26 @@ def make_runner(target: str, tier: str, workdir: Path):
         ks = wd / "kernel.S"
         ks.write_text(kernel_text)
         if tier == "func":
-            return PO.run_program_functional_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                                                    max_cycles=max_cycles, workdir=wd, timeout=timeout)
+            return PO.run_program_functional_oracle(
+                target, model_ext=model_ext, cb=cb, kernel_s=ks, max_cycles=max_cycles, workdir=wd, timeout=timeout
+            )
         if tier == "arc":
-            return PO.run_program_oracle(target, model_ext=model_ext, cb=cb, kernel_s=ks,
-                                         max_cycles=max_cycles, workdir=wd, timeout=timeout)
+            return PO.run_program_oracle(
+                target, model_ext=model_ext, cb=cb, kernel_s=ks, max_cycles=max_cycles, workdir=wd, timeout=timeout
+            )
         if tier == "vsim":
-            return PO.run_program_verilator_oracle(target, model_ext=model_ext,
-                                                   vsim_dir=ext_path(f"{target}_vsim"), cb=cb,
-                                                   kernel_s=ks, max_cycles=max_cycles, workdir=wd,
-                                                   timeout=timeout)
+            return PO.run_program_verilator_oracle(
+                target,
+                model_ext=model_ext,
+                vsim_dir=ext_path(f"{target}_vsim"),
+                cb=cb,
+                kernel_s=ks,
+                max_cycles=max_cycles,
+                workdir=wd,
+                timeout=timeout,
+            )
         raise SystemExit(f"unknown tier {tier!r}; one of {TIERS}")
+
     return run
 
 
@@ -125,9 +151,16 @@ def probe(target: str, tier: str, workdir: Path, *, force: bool = False) -> dict
     facts, ops = facts_for(target), kernel_ops(target)
     runner = make_runner(target, tier, workdir)
     # a minimal command buffer: the probe kernel computes nothing, but the oracle needs an output region
-    probe_cb = {"tensors": {"probe": {"role": "output", "shape": [1, facts.tile.cols],
-                                      "dtype": facts.accum_dtype,
-                                      "base": facts.dram_base + 0x40}}}
+    probe_cb = {
+        "tensors": {
+            "probe": {
+                "role": "output",
+                "shape": [1, facts.tile.cols],
+                "dtype": facts.accum_dtype,
+                "base": facts.dram_base + 0x40,
+            }
+        }
+    }
 
     def run_kernel(src, max_cycles):
         try:
@@ -140,19 +173,24 @@ def probe(target: str, tier: str, workdir: Path, *, force: bool = False) -> dict
     def run_matmul(plan, max_cycles):
         return _run_plan(runner, plan, max_cycles)[1]
 
-    from merlin.targetgen import corpus_operands as CO
     import numpy as np
+
+    from merlin.targetgen import corpus_operands as CO
+
     e = facts.tile.rows
-    A0 = np.asarray(CO.operand_values((e, e), facts.operand_dtype, salt=0xA7),
-                    dtype=np.float32).reshape(e, e)
-    W0 = np.asarray(CO.operand_values((e, e), facts.operand_dtype, salt=0x5E),
-                    dtype=np.float32).reshape(e, e)
+    A0 = np.asarray(CO.operand_values((e, e), facts.operand_dtype, salt=0xA7), dtype=np.float32).reshape(e, e)
+    W0 = np.asarray(CO.operand_values((e, e), facts.operand_dtype, salt=0x5E), dtype=np.float32).reshape(e, e)
     settle = WG.probe_settle(facts, ops, cf, run_matmul, operands=(A0, W0))
-    out = {"target": target, "tier": tier,
-           "control_flow": {"branch_imm_scale": cf.branch_imm_scale, "delay_slots": cf.delay_slots,
-                            "provenance": cf.provenance},
-           "settle": {"tensor": settle.tensor, "mxu": settle.mxu, "vpu": settle.vpu,
-                      "provenance": settle.provenance}}
+    out = {
+        "target": target,
+        "tier": tier,
+        "control_flow": {
+            "branch_imm_scale": cf.branch_imm_scale,
+            "delay_slots": cf.delay_slots,
+            "provenance": cf.provenance,
+        },
+        "settle": {"tensor": settle.tensor, "mxu": settle.mxu, "vpu": settle.vpu, "provenance": settle.provenance},
+    }
     p.write_text(json.dumps(out, indent=2) + "\n")
     return out
 
@@ -160,8 +198,10 @@ def probe(target: str, tier: str, workdir: Path, *, force: bool = False) -> dict
 def load_contract(target: str, tier: str, workdir: Path) -> tuple[WG.ControlFlow, WG.Settle]:
     d = probe(target, tier, workdir)
     c, s = d["control_flow"], d["settle"]
-    return (WG.ControlFlow(c["branch_imm_scale"], c["delay_slots"], c["provenance"]),
-            WG.Settle(s["tensor"], s["mxu"], s["vpu"], s["provenance"]))
+    return (
+        WG.ControlFlow(c["branch_imm_scale"], c["delay_slots"], c["provenance"]),
+        WG.Settle(s["tensor"], s["mxu"], s["vpu"], s["provenance"]),
+    )
 
 
 # ---------------------------------------------------------------------------------------------------
@@ -179,23 +219,21 @@ def _run_plan(runner, plan: WG.MatmulPlan, max_cycles: int, timeout: int = 7200)
     return res, next(iter(res["outputs"].values()))
 
 
-def build_plan(target: str, tier: str, shape: str, workdir: Path, *,
-               with_operands: bool = True) -> WG.MatmulPlan:
+def build_plan(target: str, tier: str, shape: str, workdir: Path, *, with_operands: bool = True) -> WG.MatmulPlan:
     """The plan for ``MxKxN``. ``with_operands`` False builds the PROGRAM only -- the shape, the
     addresses and the kernel -- which is all a footprint check or a wall-clock projection needs, and
     skips synthesising a layer's worth of operands and its reference."""
     import numpy as np
 
     from merlin.targetgen import corpus_operands as CO
+
     m, k, n = (int(x) for x in shape.split("x"))
     facts, ops = facts_for(target), kernel_ops(target)
     cf, settle = load_contract(target, tier, workdir)
     A = W = None
     if with_operands:
-        A = np.asarray(CO.operand_values((m, k), facts.operand_dtype, salt=0xA7),
-                       dtype=np.float32).reshape(m, k)
-        W = np.asarray(CO.operand_values((k, n), facts.operand_dtype, salt=0x5E),
-                       dtype=np.float32).reshape(k, n)
+        A = np.asarray(CO.operand_values((m, k), facts.operand_dtype, salt=0xA7), dtype=np.float32).reshape(m, k)
+        W = np.asarray(CO.operand_values((k, n), facts.operand_dtype, salt=0x5E), dtype=np.float32).reshape(k, n)
     return WG.plan_matmul(facts, ops, m=m, k=k, n=n, control_flow=cf, settle=settle, A=A, W=W)
 
 
@@ -213,21 +251,38 @@ def describe(plan: WG.MatmulPlan, rep: WG.AliasReport, *, rate: float | None) ->
         "footprint_bytes": rep.footprint_bytes,
         "moved_bytes": plan.moved_bytes(),
         "transfer_amplification": round(plan.transfer_amplification(), 3),
-        "alias": {"ok": rep.ok, "window": rep.window, "reason": rep.reason,
-                  "wrapped": list(rep.wrapped),
-                  "collisions": [list(c) for c in rep.collisions],
-                  "spans": [{"name": s.name, "base": s.base, "nbytes": s.nbytes,
-                             "reduced_lo": s.reduced_lo, "reduced_hi": s.reduced_hi,
-                             "wraps": s.wraps} for s in rep.spans]},
-        "control_flow": {"branch_imm_scale": plan.control_flow.branch_imm_scale,
-                         "delay_slots": plan.control_flow.delay_slots,
-                         "provenance": plan.control_flow.provenance},
-        "settle": {"tensor": plan.settle.tensor, "mxu": plan.settle.mxu, "vpu": plan.settle.vpu,
-                   "provenance": plan.settle.provenance},
+        "alias": {
+            "ok": rep.ok,
+            "window": rep.window,
+            "reason": rep.reason,
+            "wrapped": list(rep.wrapped),
+            "collisions": [list(c) for c in rep.collisions],
+            "spans": [
+                {
+                    "name": s.name,
+                    "base": s.base,
+                    "nbytes": s.nbytes,
+                    "reduced_lo": s.reduced_lo,
+                    "reduced_hi": s.reduced_hi,
+                    "wraps": s.wraps,
+                }
+                for s in rep.spans
+            ],
+        },
+        "control_flow": {
+            "branch_imm_scale": plan.control_flow.branch_imm_scale,
+            "delay_slots": plan.control_flow.delay_slots,
+            "provenance": plan.control_flow.provenance,
+        },
+        "settle": {
+            "tensor": plan.settle.tensor,
+            "mxu": plan.settle.mxu,
+            "vpu": plan.settle.vpu,
+            "provenance": plan.settle.provenance,
+        },
     }
     if rate:
-        d["projection"] = {"cycles_per_second": rate,
-                           "projected_seconds": None}
+        d["projection"] = {"cycles_per_second": rate, "projected_seconds": None}
     return d
 
 
@@ -251,9 +306,12 @@ def cmd_project(args) -> int:
     mt, kt, nt = plan.tiles
     if args.cycles_per_pass:
         cycles = args.cycles_per_pass * mt * kt * nt
-        d["projection"] = {"cycles_per_pass": args.cycles_per_pass, "projected_cycles": cycles,
-                           "cycles_per_second": args.rate,
-                           "projected_seconds": (cycles / args.rate) if args.rate else None}
+        d["projection"] = {
+            "cycles_per_pass": args.cycles_per_pass,
+            "projected_cycles": cycles,
+            "cycles_per_second": args.rate,
+            "projected_seconds": (cycles / args.rate) if args.rate else None,
+        }
     print(json.dumps(d, indent=2))
     return 0 if rep.ok else 1
 
@@ -283,12 +341,17 @@ def cmd_run(args) -> int:
         print(json.dumps(rec["result"], indent=2))
         return 1
     ok = plan.matches(out)
-    rec["result"] = {"ran": True, "halted": True, "bit_exact": ok, "cycles": int(res["cycles"]),
-                     "wall_seconds": round(res["wall_seconds"], 2),
-                     "cycles_per_second": round(int(res["cycles"]) / max(res["wall_seconds"], 1e-9), 1),
-                     "cycles_per_tile_pass": round(int(res["cycles"]) / max(1, rec["tiles"]["passes"]), 1),
-                     "oracle": res.get("oracle"),
-                     "gate": f"bit-exact vs {plan.facts.accum_dtype} accumulation"}
+    rec["result"] = {
+        "ran": True,
+        "halted": True,
+        "bit_exact": ok,
+        "cycles": int(res["cycles"]),
+        "wall_seconds": round(res["wall_seconds"], 2),
+        "cycles_per_second": round(int(res["cycles"]) / max(res["wall_seconds"], 1e-9), 1),
+        "cycles_per_tile_pass": round(int(res["cycles"]) / max(1, rec["tiles"]["passes"]), 1),
+        "oracle": res.get("oracle"),
+        "gate": f"bit-exact vs {plan.facts.accum_dtype} accumulation",
+    }
     if not ok:
         rec["result"]["divergence"] = plan.divergence(out)
     _emit(args, plan, rec)
@@ -304,19 +367,25 @@ def _emit(args, plan: WG.MatmulPlan, rec: dict) -> None:
             pins[name] = PV.verify(name)
         except Exception as e:  # noqa: BLE001 — an unverifiable pin is recorded as such, never dropped
             rec.setdefault("pin_errors", {})[name] = f"{type(e).__name__}: {e}"
-    rec["provenance"] = PV.record(pins=pins, extra={
-        "generator": "merlin.perf.workload_gen.plan_matmul",
-        "oracle_tier": args.tier,
-        "machine_facts": plan.facts.provenance,
-    })
+    rec["provenance"] = PV.record(
+        pins=pins,
+        extra={
+            "generator": "merlin.perf.workload_gen.plan_matmul",
+            "oracle_tier": args.tier,
+            "machine_facts": plan.facts.provenance,
+        },
+    )
     if args.no_product:
         return
-    prod = A.new_product("perf-workload", version=1, target=args.target,
-                         notes=f"layer-scale generated matmul {plan.m}x{plan.k}x{plan.n} on {args.tier}")
+    prod = A.new_product(
+        "perf-workload",
+        version=1,
+        target=args.target,
+        notes=f"layer-scale generated matmul {plan.m}x{plan.k}x{plan.n} on {args.tier}",
+    )
     prod.add_artifact("workload_record.json").write_text(json.dumps(rec, indent=2) + "\n")
     prod.add_artifact("kernel.S").write_text(plan.kernel_s)
-    prod.add_artifact("command_buffer.json").write_text(
-        json.dumps(plan.command_buffer(), indent=2) + "\n")
+    prod.add_artifact("command_buffer.json").write_text(json.dumps(plan.command_buffer(), indent=2) + "\n")
     prod.write_manifest()
     print(f"# product: {prod.path}", file=sys.stderr)
 
@@ -341,8 +410,12 @@ def main(argv=None) -> int:
             s.set_defaults(func=cmd_probe)
         else:
             s.add_argument("--shape", required=True, help="MxKxN, e.g. 32x1024x512")
-            s.add_argument("--rate", type=float, default=None,
-                           help="measured cycles/second on this tier, for the wall-clock projection")
+            s.add_argument(
+                "--rate",
+                type=float,
+                default=None,
+                help="measured cycles/second on this tier, for the wall-clock projection",
+            )
             if name == "project":
                 s.add_argument("--cycles-per-pass", type=float, default=None)
                 s.set_defaults(func=cmd_project)

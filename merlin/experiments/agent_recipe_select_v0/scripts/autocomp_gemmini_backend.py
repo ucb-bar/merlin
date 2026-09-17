@@ -22,6 +22,7 @@ unit on both sides, so a per-candidate comparison is invalid and only spend-to-q
 meaningful. Likewise a compiler-constructed candidate cannot be malformed, so a 0% invalid rate on
 that side is a property of the mechanism, not evidence the model is better at writing code.
 """
+
 from __future__ import annotations
 
 import json
@@ -31,7 +32,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _track as T                                                    # noqa: E402
+import _track as T  # noqa: E402
 
 #: merlin's interpreter, resolved EXPLICITLY. AutoComp runs under its own venv, and an evaluator that
 #: inherited `sys.executable` from its caller once graded a known-good reference kernel as wrong.
@@ -73,8 +74,7 @@ class GsimGemminiEvalBackend:
     NAME_A = "A0"
     NAME_B = "W"
 
-    def __init__(self, *, M: int, K: int, N: int, workdir: Path, simulator: str = "gsim",
-                 timeout: int = 3600):
+    def __init__(self, *, M: int, K: int, N: int, workdir: Path, simulator: str = "gsim", timeout: int = 3600):
         self.M, self.K, self.N = M, K, N
         self.workdir = Path(workdir)
         self.workdir.mkdir(parents=True, exist_ok=True)
@@ -112,7 +112,7 @@ class GsimGemminiEvalBackend:
             # The model had the ISA right and the spelling wrong, because the rules named no
             # primitive at all and the seed it is asked to beat uses only `tiled_matmul_auto`.
             # Scoring an arm on an API we never showed it measures our prompt, not the model.
-            "The low-level ISA is available as MACROS from \"include/gemmini.h\", and every name "
+            'The low-level ISA is available as MACROS from "include/gemmini.h", and every name '
             "carries a `gemmini_` prefix -- there are no bare `mvin`/`preload`/`config_ld` "
             "functions and calling them will not link. The ones that matter here are: "
             "gemmini_config_ex, gemmini_config_ld, gemmini_config_st, gemmini_extended_config_ex, "
@@ -144,37 +144,71 @@ class GsimGemminiEvalBackend:
             name = f"ac_cand_{self._n:04d}"
             src = self.workdir / f"{name}.src.c"
             src.write_text(clean_code(code), encoding="utf-8")
-            argv = [str(MERLIN_PY), str(EVALUATOR), "--source", str(src), "--name", name,
-                    "--workdir", str(self.workdir), "--M", str(self.M), "--K", str(self.K),
-                    "--N", str(self.N), "--name-a", self.NAME_A, "--name-b", self.NAME_B,
-                    "--simulator", sim, "--timeout", str(self.timeout)]
+            argv = [
+                str(MERLIN_PY),
+                str(EVALUATOR),
+                "--source",
+                str(src),
+                "--name",
+                name,
+                "--workdir",
+                str(self.workdir),
+                "--M",
+                str(self.M),
+                "--K",
+                str(self.K),
+                "--N",
+                str(self.N),
+                "--name-a",
+                self.NAME_A,
+                "--name-b",
+                self.NAME_B,
+                "--simulator",
+                sim,
+                "--timeout",
+                str(self.timeout),
+            ]
             t0 = time.time()
             try:
                 # +180s so the evaluator's own timeout fires first and reports a REASON, rather than
                 # this wrapper killing it and leaving an unattributable failure.
-                r = subprocess.run(argv, capture_output=True, text=True,
-                                   timeout=self.timeout + 180)
+                r = subprocess.run(argv, capture_output=True, text=True, timeout=self.timeout + 180)
                 res = json.loads((r.stdout or "").strip().splitlines()[-1])
             except Exception as exc:
-                res = {"compiled": False, "correct": False, "cycles": None,
-                       "detail": f"evaluator failed: {type(exc).__name__}: {exc}"}
+                res = {
+                    "compiled": False,
+                    "correct": False,
+                    "cycles": None,
+                    "detail": f"evaluator failed: {type(exc).__name__}: {exc}",
+                }
             dur = time.time() - t0
-            rec = {"index": self._n, "name": name, "source_chars": len(code),
-                   "compiled": res.get("compiled"), "correct": res.get("correct"),
-                   "cycles": res.get("cycles"),
-                   "latency": res["cycles"] if (res.get("correct")
-                                                and isinstance(res.get("cycles"), int))
-                   else float("inf"),
-                   "stderr": res.get("detail") or "",
-                   "eval_seconds": round(dur, 2), "engine": sim,
-                   "engine_config": res.get("engine_config", T.GSIM_CONFIG)}
+            rec = {
+                "index": self._n,
+                "name": name,
+                "source_chars": len(code),
+                "compiled": res.get("compiled"),
+                "correct": res.get("correct"),
+                "cycles": res.get("cycles"),
+                "latency": res["cycles"]
+                if (res.get("correct") and isinstance(res.get("cycles"), int))
+                else float("inf"),
+                "stderr": res.get("detail") or "",
+                "eval_seconds": round(dur, 2),
+                "engine": sim,
+                "engine_config": res.get("engine_config", T.GSIM_CONFIG),
+            }
             self.trajectory.append(rec)
             # AutoComp's contract: `latency` is the score, inf means unusable, and `stderr` is its
             # diagnostic channel — so the reason rides there and the model can repair from it.
-            out.append({"correct": bool(rec["correct"]), "compiled": bool(rec["compiled"]),
-                        "test_results": [{"correct": bool(rec["correct"]),
-                                          "latency": rec["latency"]}],
-                        "stderr": rec["stderr"], "latency": rec["latency"]})
+            out.append(
+                {
+                    "correct": bool(rec["correct"]),
+                    "compiled": bool(rec["compiled"]),
+                    "test_results": [{"correct": bool(rec["correct"]), "latency": rec["latency"]}],
+                    "stderr": rec["stderr"],
+                    "latency": rec["latency"],
+                }
+            )
         return out
 
     # -- seed ------------------------------------------------------------------------------
@@ -190,10 +224,26 @@ class GsimGemminiEvalBackend:
         arm — breaking its own measurement contract — and one the recipe arm cannot exhibit, because
         it never touches the harness. It is reported, not designed away.
         """
-        r = subprocess.run([str(MERLIN_PY), str(EVALUATOR), "--emit-seed",
-                            "--M", str(self.M), "--K", str(self.K), "--N", str(self.N),
-                            "--name-a", self.NAME_A, "--name-b", self.NAME_B],
-                           capture_output=True, text=True, timeout=300)
+        r = subprocess.run(
+            [
+                str(MERLIN_PY),
+                str(EVALUATOR),
+                "--emit-seed",
+                "--M",
+                str(self.M),
+                "--K",
+                str(self.K),
+                "--N",
+                str(self.N),
+                "--name-a",
+                self.NAME_A,
+                "--name-b",
+                self.NAME_B,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
         if r.returncode != 0 or not r.stdout.strip():
             raise SystemExit(f"could not emit the seed kernel: {r.stderr[-800:]}")
         return r.stdout

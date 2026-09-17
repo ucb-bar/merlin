@@ -3,6 +3,7 @@
 Source and corpus files are copies, not hard links. Runtime dependencies remain external and are
 listed separately: their executable/hardware identities are verified by campaign preflight.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -12,8 +13,13 @@ import shutil
 from pathlib import Path
 
 SOURCE_ROOTS = (
-    "merlin/python", "merlin/contract", "merlin/targets", "merlin/schemas", "build_tools",
-    "merlin/experiments/gemmini_perf_bench", "merlin/experiments/capsule_bench",
+    "merlin/python",
+    "merlin/contract",
+    "merlin/targets",
+    "merlin/schemas",
+    "build_tools",
+    "merlin/experiments/gemmini_perf_bench",
+    "merlin/experiments/capsule_bench",
 )
 OMIT = {"__pycache__", "_qa_ws"}
 SCHEMA = "merlin.performance-source-snapshot.v1"
@@ -32,8 +38,7 @@ def sha_file(path: Path) -> str:
 
 
 def seal(root: Path, stem: str, document: object) -> Path:
-    payload = (json.dumps(document, sort_keys=True, separators=(",", ":"),
-                          allow_nan=False) + "\n").encode()
+    payload = (json.dumps(document, sort_keys=True, separators=(",", ":"), allow_nan=False) + "\n").encode()
     digest = hashlib.sha256(payload).hexdigest()
     path = root / f"{stem}.{digest}.json"
     with path.open("xb") as stream:
@@ -49,29 +54,39 @@ def load_seal(root: Path, stem: str) -> tuple[Path, dict]:
     if len(files) != 1:
         raise SnapshotError(f"expected one {stem} seal in {root}")
     path = files[0]
-    if (path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o222
-            or path.name != f"{stem}.{sha_file(path)}.json"):
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or path.stat().st_mode & 0o222
+        or path.name != f"{stem}.{sha_file(path)}.json"
+    ):
         raise SnapshotError(f"invalid {stem} seal: {path}")
     return path, json.loads(path.read_text())
 
 
-def create(source: Path, destination: Path, *, output_root: Path,
-           source_roots: tuple[str, ...] = SOURCE_ROOTS,
-           target_name: str | None = None) -> Path:
+def create(
+    source: Path,
+    destination: Path,
+    *,
+    output_root: Path,
+    source_roots: tuple[str, ...] = SOURCE_ROOTS,
+    target_name: str | None = None,
+) -> Path:
     """Publish a private snapshot. An interrupted destination cannot masquerade as a seal."""
     source, destination = source.resolve(), destination.absolute()
-    if target_name is not None and (not target_name or Path(target_name).name != target_name
-                                    or target_name in (".", "..")):
+    if target_name is not None and (
+        not target_name or Path(target_name).name != target_name or target_name in (".", "..")
+    ):
         raise SnapshotError("target_name must be one safe path component")
     if destination.exists() or destination.is_symlink():
         raise SnapshotError(f"snapshot destination already exists: {destination}")
     destination.mkdir(parents=True, mode=0o700)
     files = {}
-    target_directories = {
-        path.name for path in
-        (source / "merlin/experiments/capsule_bench/targets").iterdir()
-        if path.is_dir()
-    } if target_name is not None else set()
+    target_directories = (
+        {path.name for path in (source / "merlin/experiments/capsule_bench/targets").iterdir() if path.is_dir()}
+        if target_name is not None
+        else set()
+    )
 
     def ignored(directory: str, names: list[str]) -> set[str]:
         omitted = set(names) & OMIT
@@ -83,12 +98,10 @@ def create(source: Path, destination: Path, *, output_root: Path,
             omitted.add("capsules")
         current = Path(directory).resolve()
         if target_name is not None:
-            if current in (source / "merlin/experiments/capsule_bench/targets",
-                           source / "merlin/targets"):
+            if current in (source / "merlin/experiments/capsule_bench/targets", source / "merlin/targets"):
                 omitted.update(name for name in names if name != target_name)
             elif current == source / "merlin/contract/capsules":
-                omitted.update(name for name in names
-                               if name in target_directories and name != target_name)
+                omitted.update(name for name in names if name in target_directories and name != target_name)
         return omitted
 
     for relative in source_roots:
@@ -109,16 +122,26 @@ def create(source: Path, destination: Path, *, output_root: Path,
             files[relative] = digest
             path.chmod(path.stat().st_mode & ~0o222)
     links = {}
-    for relative, target in (("out", output_root), (".venv", source / ".venv"),
-                             ("third_party", source / "third_party")):
+    for relative, target in (
+        ("out", output_root),
+        (".venv", source / ".venv"),
+        ("third_party", source / "third_party"),
+    ):
         if target.exists():
             (destination / relative).symlink_to(target.resolve(), target_is_directory=True)
             links[relative] = str(target.resolve())
-    receipt = seal(destination, "snapshot", {
-        "schema": SCHEMA, "source_root": str(source), "source_roots": list(source_roots),
-        "files": files, "external_links": links,
-        "limits": "External tools and outputs are not immutable source; campaign pins verify engines.",
-    })
+    receipt = seal(
+        destination,
+        "snapshot",
+        {
+            "schema": SCHEMA,
+            "source_root": str(source),
+            "source_roots": list(source_roots),
+            "files": files,
+            "external_links": links,
+            "limits": "External tools and outputs are not immutable source; campaign pins verify engines.",
+        },
+    )
     for path in destination.rglob("*"):
         if not path.is_symlink() and path.is_dir():
             path.chmod(path.stat().st_mode & ~0o222)
@@ -146,8 +169,11 @@ def verify(root: Path) -> dict:
                 continue
             relative = candidate.relative_to(root).as_posix()
             actual.add(relative)
-            if (candidate.is_symlink() or candidate.stat().st_mode & 0o222
-                    or receipt["files"].get(relative) != sha_file(candidate)):
+            if (
+                candidate.is_symlink()
+                or candidate.stat().st_mode & 0o222
+                or receipt["files"].get(relative) != sha_file(candidate)
+            ):
                 raise SnapshotError(f"snapshot source changed: {relative}")
     if actual != set(receipt["files"]):
         raise SnapshotError("snapshot source set changed")

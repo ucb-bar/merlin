@@ -7,10 +7,13 @@ the local harness scripts (``run_baseline_qa_loop``, ``preflight_sandbox``, ``ru
 so their call sites are unchanged. It binds the LEGIT tools back over the /scratch* masks and binds NO
 answer surface.
 """
+
 from __future__ import annotations
+
 from pathlib import Path
 
 import _common as C
+
 from merlin.targetgen.sandbox import toolchain as _TC
 from merlin.targetgen.target_experiment import load_target_experiment
 
@@ -23,8 +26,7 @@ def _te():
 # Re-exported constants some local scripts / the readiness check reference by name.
 CHIPYARD_VERILATOR = _TC.SIM_TOOLCHAINS["chipyard"].bind_paths[1]
 MERLIN_CLANG = _TC.MERLIN_CLANG
-MEMORY_DIR = str(__import__("merlin.targetgen.sandbox.answer_surfaces", fromlist=["x"])
-                 .experimenter_memory_dir())
+MEMORY_DIR = str(__import__("merlin.targetgen.sandbox.answer_surfaces", fromlist=["x"]).experimenter_memory_dir())
 NESTED_SESSION_VARS = list(_TC.NESTED_SESSION_VARS)
 CURATED_HARNESS = _TC.curated_harness_dir(_te())
 

@@ -14,7 +14,9 @@ Sections (each is an independent pass/fail; a failure does not abort the rest):
 
 Exit 0 = GO. Non-zero = NO-GO.  Usage: readiness_check.py
 """
+
 from __future__ import annotations
+
 import importlib
 import os
 import signal
@@ -27,14 +29,15 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
-from merlin.common.paths import ext_path, repo_root  # noqa: E402
+
 from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable scratch for probes
+from merlin.common.paths import ext_path, repo_root  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
 
 # Repo root + venv interpreter come from the canonical path helpers (never Path(__file__).parents[N],
 # and never EXP.parent.parent — that resolves the merlin/ subdir, not the repo root where .venv lives).
 REPO = repo_root()
-EXP = C.EXP                                    # the active target's experiment dir (descriptor-driven)
+EXP = C.EXP  # the active target's experiment dir (descriptor-driven)
 TARGET = C.TARGET
 _TE = load_target_experiment(EXP / "target_experiment.yaml")
 PY = str(REPO / ".venv/bin/python")
@@ -71,8 +74,8 @@ def section(t):
 # ---- A. starter kit -------------------------------------------------------------------------------
 def test_starter_kit():
     section("A. OOT starter kit (parse→verify→cmdbuf→transforms→validate)")
-    from merlin.targetgen.oot_starterkit import parse_interface, CommandBufferBuilder, transforms
-    from merlin.targetgen.oot_starterkit.verify import validate, structural_checks
+    from merlin.targetgen.oot_starterkit import CommandBufferBuilder, parse_interface, transforms
+    from merlin.targetgen.oot_starterkit.verify import structural_checks, validate
 
     # parse a REAL interface capsule from the contract corpus
     cap = next((REPO / "merlin/contract/capsules").rglob("capsule.interface.mlir"), None)
@@ -88,36 +91,48 @@ def test_starter_kit():
     # cmdbuf builder: schema-valid when populated, rejects empty
     try:
         b = CommandBufferBuilder(TARGET, backend="x", abi_version="0.1")
-        b.tensor("A", [16, 16], "i8"); b.command("MATMUL", {"dst": "A"})
+        b.tensor("A", [16, 16], "i8")
+        b.command("MATMUL", {"dst": "A"})
         good = b.validate()
-        b2 = CommandBufferBuilder(TARGET); empty = b2.validate()
-        _ok("CommandBufferBuilder valid-when-populated, rejects-empty",
-            not good and bool(empty), f"good_findings={good}, empty_findings={len(empty)}")
+        b2 = CommandBufferBuilder(TARGET)
+        empty = b2.validate()
+        _ok(
+            "CommandBufferBuilder valid-when-populated, rejects-empty",
+            not good and bool(empty),
+            f"good_findings={good}, empty_findings={len(empty)}",
+        )
     except Exception as e:
         _ok("CommandBufferBuilder", False, f"{type(e).__name__}: {e}")
 
     # generic transforms
     try:
-        plan = transforms.im2col((1, 8, 8, 4), (3, 3, 4, 8), stride=(1, 1),  # weight [kh,kw,cin,cout]
-                                 padding=(0, 0, 0, 0), dilation=(1, 1))
+        plan = transforms.im2col(
+            (1, 8, 8, 4),
+            (3, 3, 4, 8),
+            stride=(1, 1),  # weight [kh,kw,cin,cout]
+            padding=(0, 0, 0, 0),
+            dilation=(1, 1),
+        )
         tiles = transforms.tile_to_dim(32, 32, 16, 16)
-        _ok("transforms.im2col + tile_to_dim", plan is not None and len(tiles) == 4,
-            f"tiles={len(tiles)}")
+        _ok("transforms.im2col + tile_to_dim", plan is not None and len(tiles) == 4, f"tiles={len(tiles)}")
     except Exception as e:
         _ok("transforms", False, f"{type(e).__name__}: {e}")
 
     # validate(): catches a use-before-config / UNKNOWN-funct trace, clears a clean one
     try:
-        bad_trace = {"instructions": [{"name": "COMPUTE_PRELOADED", "funct": 4},
-                                      {"name": "UNKNOWN", "funct": "UNKNOWN"}]}
-        clean_trace = {"instructions": [{"name": "CONFIG_EX", "funct": 0},
-                                        {"name": "COMPUTE_PRELOADED", "funct": 4}]}
-        gh = (REPO / _TE.isa_headers[0]) if _TE.isa_headers else None   # target's ISA header (descriptor)
+        bad_trace = {
+            "instructions": [{"name": "COMPUTE_PRELOADED", "funct": 4}, {"name": "UNKNOWN", "funct": "UNKNOWN"}]
+        }
+        clean_trace = {"instructions": [{"name": "CONFIG_EX", "funct": 0}, {"name": "COMPUTE_PRELOADED", "funct": 4}]}
+        gh = (REPO / _TE.isa_headers[0]) if _TE.isa_headers else None  # target's ISA header (descriptor)
         ghp = str(gh) if gh and gh.is_file() else None
         caught = structural_checks(bad_trace)
         clean = structural_checks(clean_trace)
-        _ok("verify.structural_checks catches bad, clears clean",
-            bool(caught) and not clean, f"bad_findings={len(caught)}, clean_findings={len(clean)}")
+        _ok(
+            "verify.structural_checks catches bad, clears clean",
+            bool(caught) and not clean,
+            f"bad_findings={len(caught)}, clean_findings={len(clean)}",
+        )
     except Exception as e:
         _ok("verify.structural_checks", False, f"{type(e).__name__}: {e}")
 
@@ -132,11 +147,16 @@ def test_generators():
     # distinction is made -- the same call the generators themselves make.
     try:
         from merlin.targetgen.rtl import facts as _facts
+
         _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the RTL-facts generators")
     except NotImplementedError as e:
         why = str(e).split(". ")[0][:90]
-        for name in ("gen_isa_module generates", "gen_rtl_digest generates",
-                     "gen_numeric_facts generates", "generated numeric checker"):
+        for name in (
+            "gen_isa_module generates",
+            "gen_rtl_digest generates",
+            "gen_numeric_facts generates",
+            "generated numeric checker",
+        ):
             _na(name, why)
         return
     except _facts.FactsEmpty as e:
@@ -146,24 +166,28 @@ def test_generators():
         # to be GROUNDED in those facts. Both this repo's newest two targets are in exactly that state.
         _ok("the RTL-facts artifact carries facts", False, str(e).split(" — ")[0][:110])
         return
-    except Exception:      # noqa: BLE001 — any OTHER problem is the generators' to report, below
+    except Exception:  # noqa: BLE001 — any OTHER problem is the generators' to report, below
         pass
     with tempfile.TemporaryDirectory() as td:
         td = Path(td)
-        for mod, out in [("gen_isa_module", f"{TARGET}_isa.py"),
-                         ("gen_rtl_digest", "RTL_DIGEST.md"),
-                         ("gen_numeric_facts", "numeric_facts.py")]:
+        for mod, out in [
+            ("gen_isa_module", f"{TARGET}_isa.py"),
+            ("gen_rtl_digest", "RTL_DIGEST.md"),
+            ("gen_numeric_facts", "numeric_facts.py"),
+        ]:
             # These RTL-facts generators require an explicit --target (the gemmini default was retired
             # in the target-generalization work); pass the active target so they run for any target.
-            r = subprocess.run([PY, "-m", f"merlin.targetgen.rtl.{mod}",
-                                "--target", TARGET, "--out", str(td / out)],
-                               cwd=str(REPO), capture_output=True, text=True)
+            r = subprocess.run(
+                [PY, "-m", f"merlin.targetgen.rtl.{mod}", "--target", TARGET, "--out", str(td / out)],
+                cwd=str(REPO),
+                capture_output=True,
+                text=True,
+            )
             # EITHER STREAM. One generator writes its refusal to stderr and one to stdout (with rc=0),
             # and reading only stderr saw an empty string for the second -- so an honest decline was
             # indistinguishable from "produced nothing", which is the very confusion this check exists
             # to resolve.
-            _lines = [ln for ln in (r.stderr.strip().splitlines()
-                                    + r.stdout.strip().splitlines()) if ln.strip()]
+            _lines = [ln for ln in (r.stderr.strip().splitlines() + r.stdout.strip().splitlines()) if ln.strip()]
             tail = next((ln for ln in _lines if ln.startswith("n/a")), (_lines or [""])[-1])
             # A DECLINE IS NOT A CRASH, and this check could not tell them apart. These generators are
             # written to fail CLOSED: `gen_isa_module` refuses to emit an encoder for a device with no
@@ -172,15 +196,19 @@ def test_generators():
             # that refusal as a FAIL made a self-hosted-ISA target un-launchable for doing the right
             # thing, and it would have hidden a real crash behind the same red mark.
             declined = tail.startswith("n/a")
-            _ok(f"{mod} generates", (r.returncode == 0 and (td / out).exists()) or declined,
-                (f"n/a (fail-closed decline, not a crash): {tail[4:120]}" if declined else tail[:80]))
+            _ok(
+                f"{mod} generates",
+                (r.returncode == 0 and (td / out).exists()) or declined,
+                (f"n/a (fail-closed decline, not a crash): {tail[4:120]}" if declined else tail[:80]),
+            )
         # the generated numeric checker flags a narrow accumulator
         try:
             sys.path.insert(0, str(td))
-            nf = importlib.import_module("numeric_facts"); importlib.reload(nf)
+            nf = importlib.import_module("numeric_facts")
+            importlib.reload(nf)
             findings = nf.check_numeric_shapes(
-                {"tensors": {"acc": {"dtype": "i8"}},
-                 "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]})
+                {"tensors": {"acc": {"dtype": "i8"}}, "commands": [{"opcode": "MATMUL", "operands": {"dst": "acc"}}]}
+            )
             # The rule can only fire where the target's OWN facts ground an accumulator width. A target
             # whose RTL facts declare no datapath and no memory (atlas: both empty) has nothing to
             # ground it, so the generated checker fail-closed SKIPS the rule -- which is the correct
@@ -188,12 +216,14 @@ def test_generators():
             # accumulator. Report n/a and say which fact is missing.
             _acc = getattr(nf, "ACC_WIDTH_BITS", None)
             if _acc is None:
-                _ok("generated numeric checker flags narrow accumulator", True,
+                _ok(
+                    "generated numeric checker flags narrow accumulator",
+                    True,
                     f"n/a for {TARGET!r}: RTL facts ground no accumulator width "
-                    f"(no datapath/memory fact) -> the rule fail-closed skips, as designed")
+                    f"(no datapath/memory fact) -> the rule fail-closed skips, as designed",
+                )
             else:
-                _ok("generated numeric checker flags narrow accumulator", bool(findings),
-                    (findings or ["—"])[0][:70])
+                _ok("generated numeric checker flags narrow accumulator", bool(findings), (findings or ["—"])[0][:70])
         except Exception as e:
             _ok("generated numeric checker", False, f"{type(e).__name__}: {e}")
         finally:
@@ -207,7 +237,9 @@ def test_circt_gate():
     section("C. CIRCT sim-skip gate (reject skips sim; clean runs it)")
     try:
         import inspect
-        from merlin.targetgen.circt_gate import gated_adapter, CIRCTReject  # noqa: F401
+
+        from merlin.targetgen.circt_gate import CIRCTReject, gated_adapter  # noqa: F401
+
         ran = {"n": 0}
 
         def inner(llvm_text, workdir, timeout):
@@ -219,9 +251,11 @@ def test_circt_gate():
         # reject-skips-sim / clean-runs-sim behavior was unit-validated separately; here we assert the
         # wiring + signature so the loop won't TypeError at runtime.)
         params = list(inspect.signature(gated).parameters)
-        _ok("gated_adapter wraps with the sim-adapter signature the loop calls",
+        _ok(
+            "gated_adapter wraps with the sim-adapter signature the loop calls",
             callable(gated) and {"llvm_text", "workdir", "timeout"}.issubset(set(params)),
-            f"params={params}")
+            f"params={params}",
+        )
     except Exception as e:
         _ok("circt_gate.gated_adapter", False, f"{type(e).__name__}: {e}")
 
@@ -229,33 +263,51 @@ def test_circt_gate():
 # ---- D. harness wiring ----------------------------------------------------------------------------
 def test_harness():
     section("D. harness wiring (dry-run matrix + aggregator)")
-    r = subprocess.run([PY, str(SCRIPTS / "launch_ab_batch.py"), "--tag", "readiness_probe",
-                        "--experiment", "realistic", "--repeats", "3", "--condition", "both", "--dry-run"],
-                       cwd=str(REPO), capture_output=True, text=True)
+    r = subprocess.run(
+        [
+            PY,
+            str(SCRIPTS / "launch_ab_batch.py"),
+            "--tag",
+            "readiness_probe",
+            "--experiment",
+            "realistic",
+            "--repeats",
+            "3",
+            "--condition",
+            "both",
+            "--dry-run",
+        ],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+    )
     out = r.stdout
     n_runs = out.count("run-id=")
     has_nk = "nokernel" in out and "_nk_" in out
     has_kern = "_hwbringup_v0" in out
-    _ok("launch_ab_batch dry-run = 18 runs, both conditions, fresh ids",
+    _ok(
+        "launch_ab_batch dry-run = 18 runs, both conditions, fresh ids",
         r.returncode == 0 and n_runs == 18 and has_nk and has_kern,
-        f"n_runs={n_runs}, nokernel={has_nk}, kernels={has_kern}")
+        f"n_runs={n_runs}, nokernel={has_nk}, kernels={has_kern}",
+    )
     # Write to a throwaway dir: this is a WIRING probe, and the real ab_results.json is a result.
     # (Running readiness under a non-gemmini descriptor used to overwrite that target's aggregate
     #  with an all-zero skeleton, because tag "abc4" matches no run there.)
     probe_out = cache_dir("readiness_probe") / "agg_ab_results"
-    r2 = subprocess.run([PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4",
-                         "--out-dir", str(probe_out)],
-                        cwd=str(REPO), capture_output=True, text=True)
+    r2 = subprocess.run(
+        [PY, str(SCRIPTS / "agg_ab_results.py"), "--tag", "abc4", "--out-dir", str(probe_out)],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+    )
     _ok("agg_ab_results runs", r2.returncode == 0, (r2.stdout.strip().splitlines() or [""])[0][:70])
 
 
 # ---- E. anti-cheat gate ---------------------------------------------------------------------------
 def test_verify_no_cheat():
     section("E. anti-cheat gate (verify_no_cheat.py)")
-    r = subprocess.run([PY, str(SCRIPTS / "verify_no_cheat.py")], cwd=str(REPO),
-                       capture_output=True, text=True)
-    _ok("verify_no_cheat PASS", r.returncode == 0,
-        (r.stdout.strip().splitlines() or [""])[-1][:80])
+    r = subprocess.run([PY, str(SCRIPTS / "verify_no_cheat.py")], cwd=str(REPO), capture_output=True, text=True)
+    _ok("verify_no_cheat PASS", r.returncode == 0, (r.stdout.strip().splitlines() or [""])[-1][:80])
 
 
 # ---- F. bundle integrity --------------------------------------------------------------------------
@@ -279,8 +331,11 @@ def test_corpus_fits_the_endpoint():
     roots = [r for r in _TE.graded_roots() if r.is_dir()]
     caps = sorted({c for r in roots for c in r.rglob("capsule.yaml")})
     if not caps:
-        _ok("the graded capsule roots have capsules", False,
-            f"none under {[str(r) for r in roots] or _TE.capsule_corpus}")
+        _ok(
+            "the graded capsule roots have capsules",
+            False,
+            f"none under {[str(r) for r in roots] or _TE.capsule_corpus}",
+        )
         return
     demanded: set[str] = set()
     for cap in caps:
@@ -296,28 +351,39 @@ def test_corpus_fits_the_endpoint():
     # Note what a trivial pass here does NOT mean: a capsule declaring `instruction_classes: []` cannot
     # FAIL a coverage check either, so this row says the corpus asks for nothing, not that it is rigorous.
     if not demanded:
-        _ok("the corpus demands no instruction classes this endpoint lacks", True,
-            f"{len(caps)} capsule(s), none declaring instruction_classes "
-            f"(so none can fail coverage either)")
+        _ok(
+            "the corpus demands no instruction classes this endpoint lacks",
+            True,
+            f"{len(caps)} capsule(s), none declaring instruction_classes (so none can fail coverage either)",
+        )
         return
 
     has_isa = True
     try:
         from merlin.targetgen.rtl import facts as _facts
+
         _facts.decode_body(_facts.load_facts(TARGET), TARGET, needs="the corpus's instruction classes")
     except NotImplementedError:
         has_isa = False
     except Exception:  # noqa: BLE001 — cannot tell; do not manufacture a verdict either way
-        _na("corpus instruction classes match the target's vocabulary",
-            "the target's facts could not be loaded, so this cannot be decided")
+        _na(
+            "corpus instruction classes match the target's vocabulary",
+            "the target's facts could not be loaded, so this cannot be decided",
+        )
         return
-    _ok("the corpus demands no instruction classes this endpoint lacks", has_isa,
+    _ok(
+        "the corpus demands no instruction classes this endpoint lacks",
+        has_isa,
         f"{len(caps)} capsule(s) demand {len(demanded)} instruction class(es) "
-        + (f"e.g. {sorted(demanded)[:4]}" if has_isa else
-           f"({sorted(demanded)[:4]}...) but this target has no instruction decode at all -- it is a "
-           f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at "
-           f"{', '.join(r.name for r in roots)} belongs to another target; this one needs its own "
-           f"(contract/capsules/generate_corpus.py + a profile)"))
+        + (
+            f"e.g. {sorted(demanded)[:4]}"
+            if has_isa
+            else f"({sorted(demanded)[:4]}...) but this target has no instruction decode at all -- it is a "
+            f"{(_TE.sim_via or 'arc')}-graded command endpoint. The corpus at "
+            f"{', '.join(r.name for r in roots)} belongs to another target; this one needs its own "
+            f"(contract/capsules/generate_corpus.py + a profile)"
+        ),
+    )
 
 
 def test_graded_path_is_the_declared_one():
@@ -341,7 +407,8 @@ def test_graded_path_is_the_declared_one():
     from merlin.targetgen import capsule_grade as CG
     from merlin.targetgen import capsule_runner as CR
     from merlin.targetgen.contract.materialize import (
-        public_capsules_for, validate_materialized_cohort,
+        public_capsules_for,
+        validate_materialized_cohort,
     )
 
     pub_roots, hid_roots = _TE.graded_roots(), _TE.hidden_roots()
@@ -364,27 +431,33 @@ def test_graded_path_is_the_declared_one():
         declared_capability = set(getattr(_TE, "graded_capability_exclude", ()) or ())
         declared_resource = set(getattr(_TE, "graded_resource_exclude", ()) or ())
         explicit_split = bool(declared_capability or declared_resource)
-        missing_capability_exclusions = ([] if search_include else sorted(proven_excluded - (
-            declared_capability if explicit_split else excluded)))
-        extra_capability_exclusions = ([] if search_include else sorted(
-            (declared_capability - proven_excluded) if explicit_split else set()))
-        resource_excluded = (set() if search_include else
-                             declared_resource if explicit_split else (excluded - proven_excluded))
-        invalid_resource_exclusions = ([] if search_include else sorted(
-            name for name in resource_excluded
-            if (source_by_name.get(name) or {}).get("kind") != "model"))
+        missing_capability_exclusions = (
+            [] if search_include else sorted(proven_excluded - (declared_capability if explicit_split else excluded))
+        )
+        extra_capability_exclusions = (
+            [] if search_include else sorted((declared_capability - proven_excluded) if explicit_split else set())
+        )
+        resource_excluded = (
+            set() if search_include else declared_resource if explicit_split else (excluded - proven_excluded)
+        )
+        invalid_resource_exclusions = (
+            []
+            if search_include
+            else sorted(name for name in resource_excluded if (source_by_name.get(name) or {}).get("kind") != "model")
+        )
         admitted_models = sorted(
-            name for name, cap in source_by_name.items()
-            if cap.get("kind") == "model" and name not in excluded)
+            name for name, cap in source_by_name.items() if cap.get("kind") == "model" and name not in excluded
+        )
         required_models = set(getattr(_TE, "graded_required_models", ()) or ())
         resource_policy = getattr(_TE, "graded_resource_policy", None)
-        resource_policy_ok = (not explicit_split or (
+        resource_policy_ok = not explicit_split or (
             resource_policy == "representative_l3_capstones_v1"
             and set(admitted_models) == required_models
-            and bool(required_models)))
-        search_policy_ok = (not search_include or (
-            bool(getattr(_TE, "graded_cohort_policy", None))
-            and search_include == (set(source_by_name) - excluded)))
+            and bool(required_models)
+        )
+        search_policy_ok = not search_include or (
+            bool(getattr(_TE, "graded_cohort_policy", None)) and search_include == (set(source_by_name) - excluded)
+        )
 
         # THE PHASE PARTITION, RE-DERIVED HERE rather than taken from the descriptor's word. A
         # capsule-bench run serves ONE phase, and `phase_policy.phase_of` decides which phase a member
@@ -416,35 +489,35 @@ def test_graded_path_is_the_declared_one():
         if phase_number is not None:
             from merlin.targetgen import cert_cost as _CCST
             from merlin.targetgen import phase_policy as _PP
+
             _fit = _CCST.fit_for(TARGET)
             _cycle_accurate = _PP.cycle_accurate_seen(TARGET)
             _serves = {_PP.BOTH, _PP.PHASE1} if phase_number == 1 else {_PP.BOTH, _PP.PHASE2}
             for cap in source_caps:
                 name = str(cap.get("name"))
                 if name in proven_excluded or name in set(resource_excluded):
-                    continue          # already out of the denominator, for a different, stated reason
-                v = _PP.phase_of(cap, target=TARGET, fit=_fit, budget_s=phase_budget,
-                                 cycle_accurate_available=_cycle_accurate)
+                    continue  # already out of the denominator, for a different, stated reason
+                v = _PP.phase_of(
+                    cap, target=TARGET, fit=_fit, budget_s=phase_budget, cycle_accurate_available=_cycle_accurate
+                )
                 if v.phase == _PP.UNDETERMINED:
                     phase_undetermined.append(name)
                 elif v.phase not in _serves:
                     derived_phase2.add(name)
         missing_phase2 = sorted(derived_phase2 - declared_phase2)
         extra_phase2 = sorted(declared_phase2 - derived_phase2)
-        phase_declared_ok = (phase_number is None
-                             or (phase_budget is not None and bool(phase_policy_name)
-                                 and declared_phase_exclude <= declared_phase2))
+        phase_declared_ok = phase_number is None or (
+            phase_budget is not None and bool(phase_policy_name) and declared_phase_exclude <= declared_phase2
+        )
 
         caps = [c for c in source_caps if str(c.get("name")) not in excluded]
         n_pub = len(caps)
-        hidden_source = (CR.discover_capsules(
-            hid_roots, labels={"hidden"}, contract=contract) if hid_roots else [])
+        hidden_source = CR.discover_capsules(hid_roots, labels={"hidden"}, contract=contract) if hid_roots else []
         hidden_ops = [c for c in hidden_source if c.get("kind") != "model"]
         _hidden_eligible, hidden_ineligible = CR._split_ineligible(hidden_ops, TARGET)
         hidden_excluded_names = {str(row.get("capsule")) for row in hidden_ineligible}
         n_hid = len(hidden_source)
-        n_hid_admitted = sum(
-            str(cap.get("name")) not in hidden_excluded_names for cap in hidden_source)
+        n_hid_admitted = sum(str(cap.get("name")) not in hidden_excluded_names for cap in hidden_source)
 
         # Generate the exact formal-compatible public root and validate its admission record against
         # the descriptor parsed at readiness start. This is the executable descriptor-SHA binding;
@@ -452,77 +525,119 @@ def test_graded_path_is_the_declared_one():
         materialized_root = public_capsules_for(_TE)
         cohort_record = validate_materialized_cohort(materialized_root, _TE)
     except Exception as exc:  # noqa: BLE001
-        _ok("the resolved capsule roots load", False,
-            f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} "
-            f"(roots={[str(r) for r in pub_roots]})")
+        _ok(
+            "the resolved capsule roots load",
+            False,
+            f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]} (roots={[str(r) for r in pub_roots]})",
+        )
         return
-    _ok("formal cohort is known and bound to its declared capability/resource/search policy",
-        (not unknown_exclusions and not missing_capability_exclusions
-         and not extra_capability_exclusions and not invalid_resource_exclusions
-         and not invalid_search_includes
-         and (bool(admitted_models) or bool(search_include)) and resource_policy_ok
-         and search_policy_ok),
+    _ok(
+        "formal cohort is known and bound to its declared capability/resource/search policy",
+        (
+            not unknown_exclusions
+            and not missing_capability_exclusions
+            and not extra_capability_exclusions
+            and not invalid_resource_exclusions
+            and not invalid_search_includes
+            and (bool(admitted_models) or bool(search_include))
+            and resource_policy_ok
+            and search_policy_ok
+        ),
         f"source_pool={len(source_caps)}, admitted={n_pub}, declared_excluded={len(excluded)}, "
         f"hardware_proven_ineligible={len(proven_excluded)}, "
         f"resource_bounded_models={len(resource_excluded)}, admitted_models={admitted_models}, "
         f"resource_policy={resource_policy}, required_models={sorted(required_models)}, "
         f"search_policy={getattr(_TE, 'graded_cohort_policy', None)}, "
         f"search_members={len(search_include)}"
-        + (f", unknown={unknown_exclusions}, missing_hardware={missing_capability_exclusions}, "
-             f"extra_hardware={extra_capability_exclusions}, "
-             f"invalid_resource={invalid_resource_exclusions}, "
-             f"hardware_ineligible_search_members={invalid_search_includes}" if
-           unknown_exclusions or missing_capability_exclusions or extra_capability_exclusions
-           or invalid_resource_exclusions or invalid_search_includes
-           or not resource_policy_ok else ""))
-    _ok("the recorded phase partition is exactly what the phase verdict derives at the declared budget",
+        + (
+            f", unknown={unknown_exclusions}, missing_hardware={missing_capability_exclusions}, "
+            f"extra_hardware={extra_capability_exclusions}, "
+            f"invalid_resource={invalid_resource_exclusions}, "
+            f"hardware_ineligible_search_members={invalid_search_includes}"
+            if unknown_exclusions
+            or missing_capability_exclusions
+            or extra_capability_exclusions
+            or invalid_resource_exclusions
+            or invalid_search_includes
+            or not resource_policy_ok
+            else ""
+        ),
+    )
+    _ok(
+        "the recorded phase partition is exactly what the phase verdict derives at the declared budget",
         (phase_declared_ok and not missing_phase2 and not extra_phase2 and not phase_undetermined),
-        (f"phase={phase_number}, budget={phase_budget}s, policy={phase_policy_name}, "
-         f"serves_phase_{phase_number}={n_pub - len(declared_phase2)} of {n_pub} admitted, "
-         f"phase-2-only recorded={len(declared_phase2)} derived={len(derived_phase2)}, "
-         f"held out on phase grounds={len(declared_phase_exclude)}"
-         + (f", MISSING from the record={missing_phase2[:6]}" if missing_phase2 else "")
-         + (f", recorded but not derived={extra_phase2[:6]}" if extra_phase2 else "")
-         + (f", UNDETERMINED={phase_undetermined[:6]} (no certification history to decide on; "
-            f"certify this target's corpus rather than filing the gap against the corpus)"
-            if phase_undetermined else "")
-         ) if phase_number is not None else "no phase partition declared")
-    _ok("the public grade resolves to a non-empty suite", n_pub > 0,
+        (
+            f"phase={phase_number}, budget={phase_budget}s, policy={phase_policy_name}, "
+            f"serves_phase_{phase_number}={n_pub - len(declared_phase2)} of {n_pub} admitted, "
+            f"phase-2-only recorded={len(declared_phase2)} derived={len(derived_phase2)}, "
+            f"held out on phase grounds={len(declared_phase_exclude)}"
+            + (f", MISSING from the record={missing_phase2[:6]}" if missing_phase2 else "")
+            + (f", recorded but not derived={extra_phase2[:6]}" if extra_phase2 else "")
+            + (
+                f", UNDETERMINED={phase_undetermined[:6]} (no certification history to decide on; "
+                f"certify this target's corpus rather than filing the gap against the corpus)"
+                if phase_undetermined
+                else ""
+            )
+        )
+        if phase_number is not None
+        else "no phase partition declared",
+    )
+    _ok(
+        "the public grade resolves to a non-empty suite",
+        n_pub > 0,
         f"{n_pub} admitted capsule(s) from {len(source_caps)} source-pool capsule(s) over "
-        f"{len(pub_roots)} root(s): " + ", ".join(r.name for r in pub_roots))
+        f"{len(pub_roots)} root(s): " + ", ".join(r.name for r in pub_roots),
+    )
     expected_source = getattr(_TE, "graded_expected_source_capsules", None)
     expected_admitted = getattr(_TE, "graded_expected_admitted_capsules", None)
-    public_counts_declared = not explicit_split or (
-        expected_source is not None and expected_admitted is not None)
-    public_counts_match = (public_counts_declared
-                           and (expected_source is None or len(source_caps) == expected_source)
-                           and (expected_admitted is None or n_pub == expected_admitted))
-    _ok("the public cohort matches its descriptor-frozen cardinalities", public_counts_match,
+    public_counts_declared = not explicit_split or (expected_source is not None and expected_admitted is not None)
+    public_counts_match = (
+        public_counts_declared
+        and (expected_source is None or len(source_caps) == expected_source)
+        and (expected_admitted is None or n_pub == expected_admitted)
+    )
+    _ok(
+        "the public cohort matches its descriptor-frozen cardinalities",
+        public_counts_match,
         f"source={len(source_caps)}, admitted={n_pub}, capability_excluded={len(proven_excluded)}, "
         f"resource_excluded={len(resource_excluded)}, expected_source={expected_source}, "
-        f"expected_admitted={expected_admitted}")
-    _ok("the materialized cohort is bound to the current descriptor and exact admitted contents",
-        (cohort_record.get("n_source_capsules") == len(source_caps)
-         and cohort_record.get("n_admitted_capsules") == n_pub),
+        f"expected_admitted={expected_admitted}",
+    )
+    _ok(
+        "the materialized cohort is bound to the current descriptor and exact admitted contents",
+        (
+            cohort_record.get("n_source_capsules") == len(source_caps)
+            and cohort_record.get("n_admitted_capsules") == n_pub
+        ),
         f"source={cohort_record.get('n_source_capsules')}, "
         f"admitted={cohort_record.get('n_admitted_capsules')}, "
-        f"policy={cohort_record.get('policy')}")
-    _ok("the hidden grade resolves to its OWN capsules", n_hid > 0,
+        f"policy={cohort_record.get('policy')}",
+    )
+    _ok(
+        "the hidden grade resolves to its OWN capsules",
+        n_hid > 0,
         f"{n_hid} capsule(s) at {hid_roots[0].name if hid_roots else '(none declared)'}"
-        if hid_roots else "no hidden/ beside this corpus — the hidden phase would score 0/0")
+        if hid_roots
+        else "no hidden/ beside this corpus — the hidden phase would score 0/0",
+    )
     expected_hidden_source = getattr(_TE, "hidden_expected_source_capsules", None)
     expected_hidden_admitted = getattr(_TE, "hidden_expected_admitted_capsules", None)
     hidden_counts_declared = not explicit_split or (
-        expected_hidden_source is not None and expected_hidden_admitted is not None)
-    hidden_counts_match = (hidden_counts_declared
-                           and (expected_hidden_source is None or n_hid == expected_hidden_source)
-                           and (expected_hidden_admitted is None
-                                or n_hid_admitted == expected_hidden_admitted))
-    _ok("the sealed hidden cohort matches capability-admission cardinalities",
+        expected_hidden_source is not None and expected_hidden_admitted is not None
+    )
+    hidden_counts_match = (
+        hidden_counts_declared
+        and (expected_hidden_source is None or n_hid == expected_hidden_source)
+        and (expected_hidden_admitted is None or n_hid_admitted == expected_hidden_admitted)
+    )
+    _ok(
+        "the sealed hidden cohort matches capability-admission cardinalities",
         hidden_counts_match,
         f"source={n_hid}, admitted={n_hid_admitted}, "
         f"capability_excluded={len(hidden_excluded_names)}, "
-        f"expected_source={expected_hidden_source}, expected_admitted={expected_hidden_admitted}")
+        f"expected_source={expected_hidden_source}, expected_admitted={expected_hidden_admitted}",
+    )
 
     if not n_pub:
         return
@@ -540,26 +655,49 @@ def test_graded_path_is_the_declared_one():
         # reason -- 0 graded, 0 passed, "fails" -- i.e. exactly the vacuity it exists to detect.
         tool = pkg / "tool.py"
         tool.write_text("import sys\nsys.exit(2)\n", encoding="utf-8")
-        (pkg / "manifest.yaml").write_text(yaml.safe_dump({
-            "artifact_type": "mlir_oot_target_backend", "target": TARGET, "language": "python",
-            "authoring": {"mode": "hand_curated"}, "integrity_exempt": True,
-            "entrypoints": {"tool": "tool.py"},
-            "commands": {k: {"argv": ["python3", "tool.py", k]} for k in
-                         ("parse", "lower_interface_to_target",
-                          "emit_command_buffer", "lower_target_to_llvm")},
-        }, sort_keys=False), encoding="utf-8")
+        (pkg / "manifest.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "artifact_type": "mlir_oot_target_backend",
+                    "target": TARGET,
+                    "language": "python",
+                    "authoring": {"mode": "hand_curated"},
+                    "integrity_exempt": True,
+                    "entrypoints": {"tool": "tool.py"},
+                    "commands": {
+                        k: {"argv": ["python3", "tool.py", k]}
+                        for k in ("parse", "lower_interface_to_target", "emit_command_buffer", "lower_target_to_llvm")
+                    },
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
         try:
-            res = CR.run_suite(caps, pkg, runs_root=runs, contract=contract,
-                               oracle_adapters={}, target=TARGET, no_oracle=True, timeout=120)
+            res = CR.run_suite(
+                caps,
+                pkg,
+                runs_root=runs,
+                contract=contract,
+                oracle_adapters={},
+                target=TARGET,
+                no_oracle=True,
+                timeout=120,
+            )
         except Exception as exc:  # noqa: BLE001
-            _ok("the resolved suite runs against a submission", False,
-                f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}")
+            _ok(
+                "the resolved suite runs against a submission",
+                False,
+                f"{type(exc).__name__}: {str(exc).splitlines()[0][:160]}",
+            )
             return
     passed = [r for r in res if r.get("passed") or r.get("functional_pass")]
-    _ok("every resolved capsule is graded, and an empty submission passes none of them",
+    _ok(
+        "every resolved capsule is graded, and an empty submission passes none of them",
         len(res) == n_pub and not passed,
         f"graded {len(res)}/{n_pub}, passed {len(passed)}"
-        + (f" — {[r.get('capsule') for r in passed][:4]}" if passed else ""))
+        + (f" — {[r.get('capsule') for r in passed][:4]}" if passed else ""),
+    )
 
 
 def test_contract_provenance():
@@ -578,23 +716,38 @@ def test_contract_provenance():
     """
     section("J. contract provenance (the contract read == the contract declared)")
     from merlin.targetgen.target_experiment import declared_vs_resolved_contract
+
     declared, resolved, verdict = declared_vs_resolved_contract(_TE)
-    rel = (lambda p: str(Path(p).relative_to(REPO)) if p else "(none)")
+    rel = lambda p: str(Path(p).relative_to(REPO)) if p else "(none)"
     if verdict == "mismatch":
-        _ok("the declared contract is the one in use", False,
+        _ok(
+            "the declared contract is the one in use",
+            False,
             f"descriptor declares {rel(declared)} but the tooling reads {rel(resolved)} — "
-            f"decide which is authoritative; they differ in content")
+            f"decide which is authoritative; they differ in content",
+        )
     elif verdict == "none":
-        _ok("the target has a capability contract", False,
-            "no contract declared and none resolves — every derived fact would be missing")
+        _ok(
+            "the target has a capability contract",
+            False,
+            "no contract declared and none resolves — every derived fact would be missing",
+        )
     elif verdict == "stale_declaration":
-        _ok("the declared contract exists", False,
+        _ok(
+            "the declared contract exists",
+            False,
             f"descriptor declares {_TE.declared_contract}, which is not there; the tooling silently "
-            f"reads {rel(resolved)} instead")
+            f"reads {rel(resolved)} instead",
+        )
     else:
-        _ok("the declared contract is the one in use", True,
-            {"agree": f"both resolve to {rel(resolved or declared)}",
-             "declared_only": f"registry resolves none; using the declared {rel(declared)}"}[verdict])
+        _ok(
+            "the declared contract is the one in use",
+            True,
+            {
+                "agree": f"both resolve to {rel(resolved or declared)}",
+                "declared_only": f"registry resolves none; using the declared {rel(declared)}",
+            }[verdict],
+        )
 
 
 def test_isa_encoding_agrees_with_rtl():
@@ -613,76 +766,99 @@ def test_isa_encoding_agrees_with_rtl():
     """
     section("K. ISA encoding vs RTL (the derived encoding is the one the hardware decodes)")
     from merlin.targetgen import isa_rtl_crosscheck as X
+
     rep = X.crosscheck(TARGET)
     usable = [s.kind for s in rep.sources if s.usable]
-    _ok("this target's encoding has a hardware evidence source",
+    _ok(
+        "this target's encoding has a hardware evidence source",
         bool(usable) and bool(rep.covered_mnemonics),
         f"usable: {', '.join(usable) or 'NONE'}; compared {len(rep.covered_mnemonics)} instruction(s), "
         f"{len(rep.uncovered_mnemonics)} not covered"
-        + (" — nothing was verified; this is not a pass" if not rep.covered_mnemonics else ""))
+        + (" — nothing was verified; this is not a pass" if not rep.covered_mnemonics else ""),
+    )
 
     undeclared = X.undeclared_disagreements(rep)
-    _ok("no instruction's declared encoding is contradicted by this target's hardware",
+    _ok(
+        "no instruction's declared encoding is contradicted by this target's hardware",
         not undeclared,
-        (f"{len(undeclared)} undeclared: " + "; ".join(
-            f"{m} spec={r['declared']} vs {sorted(r['evidence'].values())}"
-            for m, r in sorted(undeclared.items())[:6])
-         + f"  -> resolve or record in {X.errata_path().relative_to(REPO)} "
-           f"(build_tools/scripts/check_isa_matches_rtl.py --target {TARGET})")
-        if undeclared else
-        f"{len(rep.covered_mnemonics)} compared against {', '.join(usable)}")
+        (
+            f"{len(undeclared)} undeclared: "
+            + "; ".join(
+                f"{m} spec={r['declared']} vs {sorted(r['evidence'].values())}"
+                for m, r in sorted(undeclared.items())[:6]
+            )
+            + f"  -> resolve or record in {X.errata_path().relative_to(REPO)} "
+            f"(build_tools/scripts/check_isa_matches_rtl.py --target {TARGET})"
+        )
+        if undeclared
+        else f"{len(rep.covered_mnemonics)} compared against {', '.join(usable)}",
+    )
 
     # The consumer seam, exercised rather than assumed: an erratum that never reaches the linter tells
     # the agent nothing, and a promotion path that is wrapped in try/except is indistinguishable from an
     # idle one until something asserts it fired.
     bad = X.contradicted_mnemonics(TARGET)
     if bad:
-        from merlin.targetgen.isa_model import isa_model_for_target
         from merlin.targetgen import isa_lint
+        from merlin.targetgen.isa_model import isa_model_for_target
+
         # Exercise the stale SHIPPED definition, not the production model after reviewed errata have
         # already corrected it.  The latter must be clean by construction; only the former proves that
         # the linter warns an agent that hand-emits the contradicted bits.
         model = isa_model_for_target(TARGET, apply_corrections=False)
         mnem = next((m for m in bad if m in (model.by_mnemonic or {})), None)
         if mnem is None:
-            _na("the linter warns a backend off a contradicted encoding",
-                "the contradicted entries are not per-mnemonic for this target, so no word can carry one")
+            _na(
+                "the linter warns a backend off a contradicted encoding",
+                "the contradicted entries are not per-mnemonic for this target, so no word can carry one",
+            )
         else:
             word = int((model.by_mnemonic[mnem] or {}).get("fixed_value") or 0)
             rules = [f["rule"] for f in isa_lint.lint(model, [word])]
-            _ok("the linter warns a backend off a contradicted encoding",
+            _ok(
+                "the linter warns a backend off a contradicted encoding",
                 "encoding_contradicts_rtl" in rules,
-                f"emitting the shipped encoding of {mnem} raises: {', '.join(sorted(set(rules))) or 'nothing'}")
+                f"emitting the shipped encoding of {mnem} raises: {', '.join(sorted(set(rules))) or 'nothing'}",
+            )
     else:
-        _na("the linter warns a backend off a contradicted encoding",
-            "this target has no contradicted encoding to warn about")
+        _na(
+            "the linter warns a backend off a contradicted encoding",
+            "this target has no contradicted encoding to warn about",
+        )
 
 
 def test_bundles():
     section("F. bundle integrity (6 bundles parse; prompt APIs import)")
     # conditions DERIVED from the target's materialized bundles (gemmini kernel+nokernel; atlas
     # kernel-only) — not a hardcoded gemmini set.
-    expected = [f"{arm}_{cond}" for arm in
-                ("raw_baseline", "merlin_assisted", "merlin_assisted_rtlchecks")
-                for cond in C.experiment_conditions()]
+    expected = [
+        f"{arm}_{cond}"
+        for arm in ("raw_baseline", "merlin_assisted", "merlin_assisted_rtlchecks")
+        for cond in C.experiment_conditions()
+    ]
     missing = [b for b in expected if not (BUNDLES / b / "STARTER_PROMPT.md").is_file()]
     _ok("all 6 bundles present with prompts", not missing, f"missing={missing}")
     for b in expected:
         m = BUNDLES / b / "input_bundle_manifest.yaml"
         try:
-            yaml.safe_load(m.read_text()); ok = True; d = ""
+            yaml.safe_load(m.read_text())
+            ok = True
+            d = ""
         except Exception as e:
-            ok = False; d = str(e)[:50]
+            ok = False
+            d = str(e)[:50]
         if not ok:
             _ok(f"{b} manifest parses", ok, d)
     # APIs referenced by the merlin prompts must import
-    api_ok = True; detail = ""
+    api_ok = True
+    detail = ""
     try:
         from merlin.targetgen.oot_starterkit import parse_interface, CommandBufferBuilder, transforms  # noqa
         from merlin.targetgen.oot_starterkit.verify import validate  # noqa
         from merlin.targetgen.oot_starterkit.dialect import parse_to_verified_ir  # noqa
     except Exception as e:
-        api_ok = False; detail = f"{type(e).__name__}: {e}"
+        api_ok = False
+        detail = f"{type(e).__name__}: {e}"
     _ok("every API the prompts name imports", api_ok, detail)
 
 
@@ -690,6 +866,7 @@ def test_sandbox_authoring_tools():
     """The paid Arm4 path, not the host checkout: frozen grants + bwrap + live broker requests."""
     section("F2. promised authoring tools in the assembled bwrap snapshot")
     import tooling_readiness
+
     check = tooling_readiness.sandbox_authoring_readiness(TARGET, "merlin_assisted_rtlchecks")
     _ok(check["check"], check["ok"], check["evidence"])
 
@@ -723,15 +900,18 @@ def test_every_declared_grant_resolves():
         except yaml.YAMLError as e:
             missing.append(f"{man.parent.name}: unparseable ({type(e).__name__})")
             continue
-        for entry in (doc.get("allowed") or []):
+        for entry in doc.get("allowed") or []:
             rel = str((entry or {}).get("path") or "")
             if not rel:
                 continue
             n_grants += 1
             if _BW.path_kind(_BW.resolve_grant(rel, REPO)) == "missing":
                 missing.append(f"{man.parent.name}: {rel}")
-    _ok(f"every allowed grant resolves ({n_grants} across {len(bundles)} bundle(s))",
-        not missing, "; ".join(sorted(set(missing))[:4]) if missing else "")
+    _ok(
+        f"every allowed grant resolves ({n_grants} across {len(bundles)} bundle(s))",
+        not missing,
+        "; ".join(sorted(set(missing))[:4]) if missing else "",
+    )
 
 
 def test_every_grant_survives_the_assembled_sandbox():
@@ -751,7 +931,10 @@ def test_every_grant_survives_the_assembled_sandbox():
     and stat the paths from inside.
     """
     section("F4. every grant is readable inside the assembled sandbox (and denials stay masked)")
-    import shutil, subprocess, tempfile
+    import shutil
+    import subprocess
+    import tempfile
+
     from merlin.targetgen.sandbox import bwrap as _BW
 
     if not shutil.which("bwrap"):
@@ -774,18 +957,18 @@ def test_every_grant_survives_the_assembled_sandbox():
                 findings.append(f"GRANT_INVISIBLE {man.parent.name}: unparseable ({type(e).__name__})")
                 continue
             allows = []
-            for entry in (doc.get("allowed") or []):
+            for entry in doc.get("allowed") or []:
                 rel = str((entry or {}).get("path") or "")
                 if not rel:
                     continue
                 dest = _BW.resolve_grant(rel, REPO)
-                if _BW.path_kind(dest) != "missing":   # F3 owns the unresolvable case
+                if _BW.path_kind(dest) != "missing":  # F3 owns the unresolvable case
                     allows.append((rel, dest.absolute()))
             lines: list[str] = []
             for rel, dest in allows:
                 n_allow += 1
                 lines.append(f"[ -e '{dest}' ] || echo 'GRANT_INVISIBLE {rel}'")
-            for entry in (doc.get("denied") or []):
+            for entry in doc.get("denied") or []:
                 rel = str((entry or {}).get("path") or "")
                 if not rel:
                     continue
@@ -796,8 +979,8 @@ def test_every_grant_survives_the_assembled_sandbox():
                 n_deny += 1
                 if kind != "dir":
                     lines.append(
-                        f"[ \"$(stat -c%s '{dest}' 2>/dev/null || echo -1)\" -eq 0 ]"
-                        f" || echo 'DENY_LEAKED {rel}'")
+                        f"[ \"$(stat -c%s '{dest}' 2>/dev/null || echo -1)\" -eq 0 ] || echo 'DENY_LEAKED {rel}'"
+                    )
                     continue
                 # A deny of a DIR does not mean the dir is empty inside the box. Two things legitimately
                 # remain: the writable workspace (which may live under a denied tree -- an arm withheld
@@ -819,12 +1002,14 @@ def test_every_grant_survives_the_assembled_sandbox():
                 for child in must_vanish[:40]:
                     lines.append(
                         f"[ -n \"$(find '{child}' -type f -print -quit 2>/dev/null)\" ]"
-                        f" && echo 'DENY_LEAKED {rel} ({child.name})' || true")
+                        f" && echo 'DENY_LEAKED {rel} ({child.name})' || true"
+                    )
             if not lines:
                 continue
             argv = _BW.base_argv(ws, doc, repo=REPO, _policy_test_live_inputs=True)
-            r = subprocess.run(argv + ["/bin/bash", "-lc", "\n".join(lines)],
-                               capture_output=True, text=True, timeout=300)
+            r = subprocess.run(
+                argv + ["/bin/bash", "-lc", "\n".join(lines)], capture_output=True, text=True, timeout=300
+            )
             for out in r.stdout.splitlines():
                 if out.strip():
                     findings.append(f"{out.strip()}  [{man.parent.name}]")
@@ -838,11 +1023,14 @@ def test_every_grant_survives_the_assembled_sandbox():
     leaked = [f for f in uniq if f.startswith("DENY_LEAKED")]
     detail = ""
     if invisible or leaked:
-        detail = (f"{len(invisible)} invisible grant(s), {len(leaked)} leaked denial(s) — "
-                  + "; ".join((invisible + leaked)[:4]))
-    _ok(f"{n_allow} grant(s) visible and {n_deny} denial(s) masked inside bwrap "
-        f"across {len(bundles)} bundle(s)",
-        not uniq, detail)
+        detail = f"{len(invisible)} invisible grant(s), {len(leaked)} leaked denial(s) — " + "; ".join(
+            (invisible + leaked)[:4]
+        )
+    _ok(
+        f"{n_allow} grant(s) visible and {n_deny} denial(s) masked inside bwrap across {len(bundles)} bundle(s)",
+        not uniq,
+        detail,
+    )
 
 
 def _kill_our_simulators(token: str = "simulator-chipyard") -> None:
@@ -872,7 +1060,7 @@ def _kill_our_simulators(token: str = "simulator-chipyard") -> None:
             continue
         # Ours only: climb PPid to see whether this process descends from this checker.
         cur, ours = pid, False
-        for _ in range(64):                      # bounded: a cycle or a reparent must not spin
+        for _ in range(64):  # bounded: a cycle or a reparent must not spin
             if cur == me:
                 ours = True
                 break
@@ -896,6 +1084,7 @@ def _oracle_sim_via() -> str:
     """The target's declared bespoke sim (``toolchain.sim_via``) — ``"chipyard"`` for gemmini, ``""``
     (arc-only / program oracle) for a self-hosted-ISA target like atlas. Routes section G, no literal."""
     from merlin.targetgen.target_experiment import load_target_experiment
+
     desc = EXP / "target_experiment.yaml"
     return (load_target_experiment(desc).sim_via or "").strip() if desc.is_file() else ""
 
@@ -918,8 +1107,10 @@ def test_oracles_endtoend():
     import os as _os
     import tempfile as _tf
     import time as _time
+
     section("G. oracles RUN end-to-end (real verdict, not just present)")
     from merlin.targetgen import capsule_runner as CR
+
     sim_via = _oracle_sim_via()
     if sim_via != "chipyard":
         # self-hosted-ISA program oracle (arc cosim + model venv); no chipyard reference backend exists.
@@ -927,9 +1118,11 @@ def test_oracles_endtoend():
         # (The arc native model does not re-probe cleanly inside a process that has already exercised the
         # other mlc-touching readiness sections; the launcher always checks in a clean process, so that
         # subprocess result is the faithful pre-launch signal.)
-        probe = ("import json,sys;from merlin.targetgen import capsule_runner as CR;"
-                 f"ok,why=CR.oracle_available({TARGET!r},{sim_via!r});"
-                 "print(json.dumps({'ok':bool(ok),'why':why}))")
+        probe = (
+            "import json,sys;from merlin.targetgen import capsule_runner as CR;"
+            f"ok,why=CR.oracle_available({TARGET!r},{sim_via!r});"
+            "print(json.dumps({'ok':bool(ok),'why':why}))"
+        )
         pr = subprocess.run([PY, "-c", probe], cwd=str(REPO), capture_output=True, text=True)
         try:
             res = _json.loads([ln for ln in pr.stdout.splitlines() if ln.strip()][-1])
@@ -952,6 +1145,7 @@ def test_oracles_endtoend():
             mods = {t: getattr(fn, "__module__", "") for t, fn in ad.items()}
             try:
                 from merlin.targetgen import corpus_spec as _CS
+
                 need = list(_CS.derive_binding(_TE).tiers)
             except Exception:  # noqa: BLE001 — no corpus binding yet; the adapter set is its own floor
                 need = sorted(ad)
@@ -971,11 +1165,13 @@ def test_oracles_endtoend():
                 except Exception:  # noqa: BLE001
                     continue
             self_derived = not declared
-            _ok("every tier the corpus requires resolves to an adapter",
+            _ok(
+                "every tier the corpus requires resolves to an adapter",
                 bool(ad) and not missing,
-                f"need={need} have={sorted(ad)}" + (f" MISSING={missing}" if missing else "")
-                + (" (tiers self-derived from the adapter set — the corpus declares none)"
-                   if self_derived else ""))
+                f"need={need} have={sorted(ad)}"
+                + (f" MISSING={missing}" if missing else "")
+                + (" (tiers self-derived from the adapter set — the corpus declares none)" if self_derived else ""),
+            )
             # An external_backend endpoint is graded by the PROGRAM oracle, and "resolves to an adapter"
             # would be satisfied by the arc default it must NOT be using. That check is kept, but routed
             # from the contract's endpoint kind rather than assumed for every non-chipyard target.
@@ -989,11 +1185,17 @@ def test_oracles_endtoend():
             _eng = CR._SIM_ORACLES.get(sim_via if sim_via else CR._bespoke_sim_via(TARGET))
             _exclusive = bool(getattr(_eng, "exclusive", False))
             if _exclusive:
-                _ok(f"the declared exclusive sim ({sim_via or CR._bespoke_sim_via(TARGET)}) owns the "
-                    f"graded tiers", bool(mods), str(mods))
+                _ok(
+                    f"the declared exclusive sim ({sim_via or CR._bespoke_sim_via(TARGET)}) owns the graded tiers",
+                    bool(mods),
+                    str(mods),
+                )
             elif endpoint_kind == "external_backend":
-                _ok("the program oracle owns the graded tiers (external_backend endpoint)",
-                    bool(mods) and all("program_oracle" in m for m in mods.values()), str(mods))
+                _ok(
+                    "the program oracle owns the graded tiers (external_backend endpoint)",
+                    bool(mods) and all("program_oracle" in m for m in mods.values()),
+                    str(mods),
+                )
             if sim_via and not _exclusive:
                 # `_sim_engine_adapters` returns {} for an unknown engine, which is indistinguishable in
                 # the result from a target that declared nothing -- so compare against the arc-only set.
@@ -1005,17 +1207,22 @@ def test_oracles_endtoend():
                 except Exception:  # noqa: BLE001 — no arc/program default here; every adapter is bespoke
                     _baseline = set()
                 bespoke = {t for t in ad if t not in _baseline}
-                _ok(f"the declared sim ({sim_via}) contributes a real adapter", bool(bespoke),
-                    str(sorted(bespoke)) if bespoke
+                _ok(
+                    f"the declared sim ({sim_via}) contributes a real adapter",
+                    bool(bespoke),
+                    str(sorted(bespoke))
+                    if bespoke
                     else f"no adapter registered for sim_via={sim_via!r}; grading falls back to the arc "
-                         f"default ({sorted(mods.values())}), so the declared oracle never runs")
+                    f"default ({sorted(mods.values())}), so the declared oracle never runs",
+                )
         except Exception as e:  # noqa: BLE001
             _ok("oracle_adapters resolves the program-oracle ladder", False, f"{type(e).__name__}: {e}")
         return
     ref = REPO / "out/artifacts/targets" / TARGET / "agent_spec_v1_mlir_oot"
     if not (ref / "manifest.yaml").is_file():
-        _ok("reference backend agent_spec_v1 present", False, "missing"); return
-    _cy = ext_path("chipyard")   # resolve the real chipyard (.env MERLIN_EXT_CHIPYARD), same as the sandbox
+        _ok("reference backend agent_spec_v1 present", False, "missing")
+        return
+    _cy = ext_path("chipyard")  # resolve the real chipyard (.env MERLIN_EXT_CHIPYARD), same as the sandbox
     CE = str(_cy / ".conda-env") if _cy else "/path/to/chipyard/.conda-env"
     _compat = str(REPO / ".compat_lib")
     env = dict(_os.environ)
@@ -1025,9 +1232,27 @@ def test_oracles_endtoend():
     env["LD_LIBRARY_PATH"] = f"{_compat}:{CE}/lib:{CE}/riscv-tools/lib:" + env.get("LD_LIBRARY_PATH", "")
 
     def _grade(sub, sim, to, cap="A1_mvin_mvout"):
-        r = subprocess.run([PY, str(SCRIPTS / "agent_selfcheck.py"), "--submission", str(sub),
-                            "--sim", sim, "--capsules", cap, "--workers", "1", "--timeout", str(to)],
-                           cwd=str(SCRIPTS), env=env, capture_output=True, text=True, timeout=to + 120)
+        r = subprocess.run(
+            [
+                PY,
+                str(SCRIPTS / "agent_selfcheck.py"),
+                "--submission",
+                str(sub),
+                "--sim",
+                sim,
+                "--capsules",
+                cap,
+                "--workers",
+                "1",
+                "--timeout",
+                str(to),
+            ],
+            cwd=str(SCRIPTS),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=to + 120,
+        )
         # The grader prints human diagnostics ("tier plan: ...", "model gate: ...") on the same stdout
         # that carries the verdict, so a bare loads() of the whole stream fails and every oracle check
         # here reported n=None -- a NO-GO that blamed the oracles for a stream-parsing bug. Scan for the
@@ -1055,14 +1280,17 @@ def test_oracles_endtoend():
         # filesystem, which is the small, nearly-full one on this host.
         clean = Path(_tf.mkdtemp(prefix="clean_cpp_")) / "sub"
         import shutil as _sh
+
         _sh.copytree(ref, clean, symlinks=True)
         for bd in clean.rglob("build"):
             if bd.is_dir():
                 _sh.rmtree(bd, ignore_errors=True)
         cb = _grade(clean, "spike", 700)
-        _ok("C++ builds FROM CLEAN (cmake configure ok — catches libidn-class env bugs)",
-            cb.get("n_capsules") == 1 and "FAIL[build]" not in str(cb.get("error", "")) and
-            "libidn" not in str(cb), f"n={cb.get('n_passed')}/{cb.get('n_capsules')} {str(cb.get('error',''))[:60]}")
+        _ok(
+            "C++ builds FROM CLEAN (cmake configure ok — catches libidn-class env bugs)",
+            cb.get("n_capsules") == 1 and "FAIL[build]" not in str(cb.get("error", "")) and "libidn" not in str(cb),
+            f"n={cb.get('n_passed')}/{cb.get('n_capsules')} {str(cb.get('error', ''))[:60]}",
+        )
 
         # What this probe means is "the SCREEN tier runs and returns a real verdict". It must not assert
         # all_pass: the capsules declare a cycle-accurate cert tier as mandatory, and --sim spike supplies
@@ -1071,26 +1299,43 @@ def test_oracles_endtoend():
         sp = _grade(ref, "spike", 300)
         c = (sp.get("per_capsule") or [{}])[0]
         _spike_tier = (c.get("tiers") or {}).get("L2") or c.get("barrier_status")
-        _ok("spike RUNS to a real L2=pass on the reference backend",
+        _ok(
+            "spike RUNS to a real L2=pass on the reference backend",
             sp.get("n_capsules") == 1 and _spike_tier == "pass",
-            f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error','')[:50]}")
+            f"L2={_spike_tier} n={sp.get('n_passed')}/{sp.get('n_capsules')} {sp.get('error', '')[:50]}",
+        )
         # Probe a COMPUTE capsule for the L3 cert — a movement-only capsule (A1) tops out below L3, so it
         # can never certify verilator's numerical tier. And agent_selfcheck reports the reached tier on its
         # per-capsule record as barrier_tier/barrier_status (there is NO "tiers" map — the same field the
         # spike check above reads), so the old tiers["L3"] read was a field-name bug that ALWAYS yielded
         # None: a false NO-GO that also blocked .oracle_timing.json, which the launcher refuses to start
         # without. Verilator was running fine the whole time.
-        t0 = _time.time(); ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul"); dt = _time.time() - t0
+        t0 = _time.time()
+        ve = _grade(ref, "verilator", 900, cap="A2_single_tile_matmul")
+        dt = _time.time() - t0
         cv = (ve.get("per_capsule") or [{}])[0]
-        l3 = (ve.get("all_pass") and ve.get("n_capsules") == 1
-              and cv.get("barrier_tier") == "L3" and cv.get("barrier_status") == "pass")
-        _ok("verilator RUNS to a real L3=pass (not 0-capsules / timeout)", l3,
+        l3 = (
+            ve.get("all_pass")
+            and ve.get("n_capsules") == 1
+            and cv.get("barrier_tier") == "L3"
+            and cv.get("barrier_status") == "pass"
+        )
+        _ok(
+            "verilator RUNS to a real L3=pass (not 0-capsules / timeout)",
+            l3,
             f"{dt:.0f}s n={ve.get('n_passed')}/{ve.get('n_capsules')} "
-            f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}")
+            f"barrier={cv.get('barrier_tier')}/{cv.get('barrier_status')}",
+        )
         if l3:
-            (SCRIPTS / ".oracle_timing.json").write_text(_json.dumps(
-                {"verilator_per_capsule_s": round(dt, 1), "config": "GemminiRocketConfig",
-                 "measured_by": "readiness_check"}))
+            (SCRIPTS / ".oracle_timing.json").write_text(
+                _json.dumps(
+                    {
+                        "verilator_per_capsule_s": round(dt, 1),
+                        "config": "GemminiRocketConfig",
+                        "measured_by": "readiness_check",
+                    }
+                )
+            )
             _ok("wrote .oracle_timing.json (T_obs for the driver timeout)", True, f"T_obs={dt:.0f}s")
         # WHICH ENGINE WOULD CERTIFY, AND WHAT IT WAS CHOSEN OVER — reported, never gated.
         #
@@ -1113,10 +1358,14 @@ def test_oracles_endtoend():
             _na("L3 elaborated-RTL engine", _eng.get("reason", "no engine resolved"))
 
         # NEGATIVE: an empty submission must produce 0 capsules / error -> the abc7 signature is caught
-        empt = Path(_tf.mkdtemp()) / "sub"; empt.mkdir(parents=True)   # honours TMPDIR
+        empt = Path(_tf.mkdtemp()) / "sub"
+        empt.mkdir(parents=True)  # honours TMPDIR
         ne = _grade(empt, "spike", 60)
-        _ok("empty submission -> NO-GO signal (0 capsules / error)",
-            ne.get("n_capsules", 0) == 0 or "error" in ne, str(ne.get("error", ""))[:50])
+        _ok(
+            "empty submission -> NO-GO signal (0 capsules / error)",
+            ne.get("n_capsules", 0) == 0 or "error" in ne,
+            str(ne.get("error", ""))[:50],
+        )
     finally:
         _kill_our_simulators()
 
@@ -1131,23 +1380,31 @@ def test_semantic_coverage_measurable():
     the corpus can raise a violation when the compiler falls back on work the hardware can do.
     """
     section("K. semantic coverage measurable (ARR denominator)")
+    import yaml as _yaml
+
     from merlin.targetgen import capability_probes as _cp
     from merlin.targetgen import coverage_report as _cr
     from merlin.targetgen import eligibility as _el
-    import yaml as _yaml
 
     cap = _el.capability_map_for_target(C.TARGET)
-    _ok("target declares semantic capabilities", bool(cap),
-        f"{sorted(cap)}" if cap else "none declared -> every region ineligible, ARR undefined, the "
-                                     "target is outside the measurement entirely")
+    _ok(
+        "target declares semantic capabilities",
+        bool(cap),
+        f"{sorted(cap)}"
+        if cap
+        else "none declared -> every region ineligible, ARR undefined, the target is outside the measurement entirely",
+    )
     if not cap:
         return
 
     probes = _cp.synthesize(cap, target=C.TARGET)
     per_fam = {f for p in probes for f in [p.descriptor.resolved_family()] if f}
-    _ok("every declared family is probeable", per_fam >= set(cap),
+    _ok(
+        "every declared family is probeable",
+        per_fam >= set(cap),
         f"{len(probes)} probes over {sorted(per_fam)}"
-        + (f"; UNPROBED: {sorted(set(cap) - per_fam)}" if set(cap) - per_fam else ""))
+        + (f"; UNPROBED: {sorted(set(cap) - per_fam)}" if set(cap) - per_fam else ""),
+    )
 
     # The denominator must be non-empty on THIS target's own corpus. Graded with an empty outcome so
     # this measures the denominator, not the compiler: n_eligible must be > 0 whatever the compiler did.
@@ -1155,8 +1412,11 @@ def test_semantic_coverage_measurable():
     # A target that owns a capsule subdirectory uses it; the one predating that convention occupies the
     # shared kind directories at the root. Resolved from the tree, never from a target-name table.
     _caps_root = REPO / "merlin" / "contract" / "capsules"
-    roots = [_caps_root / C.TARGET] if (_caps_root / C.TARGET).is_dir() else \
-        [_caps_root / d for d in ("isa", "layers", "model_slices", "model", "hidden")]
+    roots = (
+        [_caps_root / C.TARGET]
+        if (_caps_root / C.TARGET).is_dir()
+        else [_caps_root / d for d in ("isa", "layers", "model_slices", "model", "hidden")]
+    )
     for r in roots:
         if r.is_dir():
             for f in sorted(r.rglob("capsule.yaml")):
@@ -1164,17 +1424,26 @@ def test_semantic_coverage_measurable():
                 if c.get("name"):
                     caps[c["name"]] = c
     cov = _cr._acceleratable_coverage([{"capsule": n, "tiers": {}} for n in caps], caps, C.TARGET)
-    _ok("ARR denominator is non-empty", cov["n_eligible"] > 0,
+    _ok(
+        "ARR denominator is non-empty",
+        cov["n_eligible"] > 0,
         f"n_eligible={cov['n_eligible']} of {len(caps)} capsules"
-        + (f", n_undetermined={cov['n_undetermined']}" if cov.get("n_undetermined") else ""))
-    _ok("must_accelerate can actually fire", bool(cov["must_accelerate_violations"]),
+        + (f", n_undetermined={cov['n_undetermined']}" if cov.get("n_undetermined") else ""),
+    )
+    _ok(
+        "must_accelerate can actually fire",
+        bool(cov["must_accelerate_violations"]),
         f"{len(cov['must_accelerate_violations'])} capsule(s) would violate if the compiler accelerated "
-        f"nothing — a corpus where this is 0 passes vacuously whatever the compiler does")
+        f"nothing — a corpus where this is 0 passes vacuously whatever the compiler does",
+    )
     undet = cov.get("n_undetermined", 0)
     frac = undet / max(len(caps), 1)
-    _ok("undetermined regions bounded", frac <= 0.25,
+    _ok(
+        "undetermined regions bounded",
+        frac <= 0.25,
         f"{undet}/{len(caps)} ({frac:.0%}) of the corpus is in families no evidence source could decide; "
-        f"an ARR computed over the remainder should not be quoted alone")
+        f"an ARR computed over the remainder should not be quoted alone",
+    )
 
 
 # ---- L. the launch interpreter runs THIS checkout ---------------------------------------------------
@@ -1202,8 +1471,11 @@ def test_the_launch_interpreter_runs_this_checkout():
     probe = "import merlin, sys; sys.stdout.write(merlin.__file__)"
     r = subprocess.run([PY, "-c", probe], capture_output=True, text=True)
     if r.returncode != 0:
-        _ok("the launch interpreter can import merlin", False,
-            (r.stderr or "").strip().splitlines()[-1][:160] if r.stderr else f"rc={r.returncode}")
+        _ok(
+            "the launch interpreter can import merlin",
+            False,
+            (r.stderr or "").strip().splitlines()[-1][:160] if r.stderr else f"rc={r.returncode}",
+        )
         return
     resolved = Path((r.stdout or "").strip()).resolve()
     try:
@@ -1215,22 +1487,34 @@ def test_the_launch_interpreter_runs_this_checkout():
     # from both trees and an unpinned run in a worktree executes MAIN's library while reading the
     # worktree's code. Naming the remedy keeps that from being read as a broken gate.
     remedy = f"  (expected under {REPO}; if launching from a worktree, set PYTHONPATH={REPO}/merlin/python)"
-    _ok("the launch interpreter imports merlin from THIS checkout", inside,
-        f"{PY} -> {resolved}" + ("" if inside else remedy))
+    _ok(
+        "the launch interpreter imports merlin from THIS checkout",
+        inside,
+        f"{PY} -> {resolved}" + ("" if inside else remedy),
+    )
 
 
 def main() -> int:
     sys.path.insert(0, str(REPO / "merlin" / "python"))
     print("READINESS CHECK — exercising all tooling (no agent launched)")
-    for fn in (test_starter_kit, test_generators, test_circt_gate, test_harness,
-               test_oracles_endtoend, test_verify_no_cheat, test_corpus_fits_the_endpoint,
-               test_graded_path_is_the_declared_one, test_contract_provenance,
-               test_isa_encoding_agrees_with_rtl, test_bundles,
-               test_sandbox_authoring_tools,
-               test_every_declared_grant_resolves,
-               test_every_grant_survives_the_assembled_sandbox,
-               test_semantic_coverage_measurable,
-               test_the_launch_interpreter_runs_this_checkout):
+    for fn in (
+        test_starter_kit,
+        test_generators,
+        test_circt_gate,
+        test_harness,
+        test_oracles_endtoend,
+        test_verify_no_cheat,
+        test_corpus_fits_the_endpoint,
+        test_graded_path_is_the_declared_one,
+        test_contract_provenance,
+        test_isa_encoding_agrees_with_rtl,
+        test_bundles,
+        test_sandbox_authoring_tools,
+        test_every_declared_grant_resolves,
+        test_every_grant_survives_the_assembled_sandbox,
+        test_semantic_coverage_measurable,
+        test_the_launch_interpreter_runs_this_checkout,
+    ):
         try:
             fn()
         except Exception as e:
@@ -1239,8 +1523,7 @@ def main() -> int:
     n_fail = sum(1 for _, ok, _ in results if ok is False)
     n_na = sum(1 for _, ok, _ in results if ok is None)
     n = n_pass + n_fail
-    print(f"\n{'='*60}\nREADINESS: {n_pass}/{n} checks passed"
-          + (f" ({n_na} N/A for this endpoint)" if n_na else ""))
+    print(f"\n{'=' * 60}\nREADINESS: {n_pass}/{n} checks passed" + (f" ({n_na} N/A for this endpoint)" if n_na else ""))
     # A GATE THAT ASSERTED NOTHING IS NOT A GO. `n_fail == 0` is vacuously true when no check recorded
     # a verdict at all -- every section returning early on a missing precondition would print
     # "0/0 checks passed" and then GO, which is the one outcome this script exists to make impossible.
@@ -1249,8 +1532,11 @@ def main() -> int:
     go = n_fail == 0 and n_pass > 0
     if n_fail == 0 and n_pass == 0:
         print("  [FAIL] readiness recorded no pass/fail verdict — nothing was actually checked")
-    print("🟢 GO — all tooling verified; ready for an A/B run pending your approval."
-          if go else "🔴 NO-GO — resolve the FAILs above before launching.")
+    print(
+        "🟢 GO — all tooling verified; ready for an A/B run pending your approval."
+        if go
+        else "🔴 NO-GO — resolve the FAILs above before launching."
+    )
     return 0 if go else 1
 
 

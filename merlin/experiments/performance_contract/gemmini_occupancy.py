@@ -30,6 +30,7 @@ Usage::
 
     gemmini_occupancy.py --target T [--shape 16x16x16] [--shape 32x32x32]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,8 +41,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                                          # noqa: E402
-from merlin.perf.occupancy import (                                               # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.perf.occupancy import (  # noqa: E402
     calibrate_state_idle,
     declared_engines,
     joint_counts,
@@ -51,9 +52,7 @@ from merlin.perf.occupancy import (                                             
 #: The controller state registers, and the memory-path busy ports the calibration pairs against.
 #: Both lists are the DESIGN's own signal names, read from its state manifest -- this module does not
 #: invent one, and a name absent from the manifest is reported rather than silently skipped.
-STATE_SIGNALS = ("ex_controller/control_state",
-                 "load_controller/control_state",
-                 "store_controller/control_state")
+STATE_SIGNALS = ("ex_controller/control_state", "load_controller/control_state", "store_controller/control_state")
 PORT_SIGNALS = ("spad/io_busy", "spad/reader/xactTracker/io_busy", "spad/writer/io_busy")
 #: The idle encoding the MODELLING REPO declares for these state registers (its occupancy engine
 #: reads a controller as busy when its state is non-zero). Used only when the pairing derivation
@@ -99,7 +98,7 @@ class _in_mlc_checkout:
 def _cosim(target: str):
     """The target's co-simulation model, plus the signals its manifest actually exposes."""
     sys.path.insert(0, str(mlc_dir()))
-    from mlc.backends.cosim import GemminiCosim                    # noqa: PLC0415
+    from mlc.backends.cosim import GemminiCosim  # noqa: PLC0415
 
     outputs = mlc_dir() / "runs" / "circt-arc" / target / "outputs"
     so = next(iter(sorted(outputs.parent.glob("native_run/*.so"))), None)
@@ -117,7 +116,7 @@ def trace_matmul(target: str, m: int, k: int, n: int) -> tuple[dict, dict]:
     its command sequence: the workload stays exactly the one the model already drives bit-exactly, so
     this measures the same execution the functional path grades and not a re-creation of it.
     """
-    import numpy as np                                            # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
 
     with _in_mlc_checkout(mlc_dir()):
         cosim, declared = _cosim(target)
@@ -142,9 +141,13 @@ def trace_matmul(target: str, m: int, k: int, n: int) -> tuple[dict, dict]:
     core.tick = _tick
 
     ref = a.astype(np.int32) @ b.astype(np.int32)
-    return trace, {"shape": f"{m}x{k}x{n}", "cycles_recorded": len(trace[present[0]]) if present else 0,
-                   "signals_present": present, "signals_absent": absent,
-                   "bit_exact": bool(np.array_equal(np.asarray(got, dtype=np.int32), ref))}
+    return trace, {
+        "shape": f"{m}x{k}x{n}",
+        "cycles_recorded": len(trace[present[0]]) if present else 0,
+        "signals_present": present,
+        "signals_absent": absent,
+        "bit_exact": bool(np.array_equal(np.asarray(got, dtype=np.int32), ref)),
+    }
 
 
 def analyse(target: str, traces: list[dict], metas: list[dict]) -> dict:
@@ -162,14 +165,21 @@ def analyse(target: str, traces: list[dict], metas: list[dict]) -> dict:
     # and the distinction has to survive into the report rather than being flattened into a value.
     if calib.get("idle_value") is None:
         varying = [s for s in states if any(len(set(t.get(s, ()))) > 1 for t in traces)]
-        constant_ports = [s for s in ports
-                          if all(len(set(t.get(s, ()))) < 2 for t in traces)]
-        calib = dict(calib, idle_value=PRODUCER_DECLARED_IDLE, basis="declared_by_producer",
-                     paired_with=None, constant_ports=constant_ports, varying_states=varying,
-                     detail=("no busy port varies on this workload, so the encoding could not be "
-                             "cross-checked; using the value the modelling repo's own occupancy "
-                             "engine declares. DECLARED, not derived -- and unverifiable until a "
-                             "workload exercises a port"))
+        constant_ports = [s for s in ports if all(len(set(t.get(s, ()))) < 2 for t in traces)]
+        calib = dict(
+            calib,
+            idle_value=PRODUCER_DECLARED_IDLE,
+            basis="declared_by_producer",
+            paired_with=None,
+            constant_ports=constant_ports,
+            varying_states=varying,
+            detail=(
+                "no busy port varies on this workload, so the encoding could not be "
+                "cross-checked; using the value the modelling repo's own occupancy "
+                "engine declares. DECLARED, not derived -- and unverifiable until a "
+                "workload exercises a port"
+            ),
+        )
 
     engines = declared_engines(_contract(target))
     out = {"target": target, "calibration": calib, "declared_engines": engines, "runs": []}
@@ -190,8 +200,10 @@ def analyse(target: str, traces: list[dict], metas: list[dict]) -> dict:
 
 
 def _contract(target: str) -> dict:
-    from merlin.targetgen.rtl.facts import target_contract_path    # noqa: PLC0415
-    import yaml                                                    # noqa: PLC0415
+    import yaml  # noqa: PLC0415
+
+    from merlin.targetgen.rtl.facts import target_contract_path  # noqa: PLC0415
+
     return yaml.safe_load(target_contract_path(target).read_text())
 
 
@@ -222,7 +234,7 @@ def instance_modules(target: str) -> dict[str, str]:
         at = tail.find("@")
         if not quoted or at == -1:
             continue
-        module = tail[at + 1:].split("(")[0].split("<")[0].strip()
+        module = tail[at + 1 :].split("(")[0].split("<")[0].strip()
         if name and module:
             out.setdefault(name, module)
     return out
@@ -235,7 +247,7 @@ def engine_by_module(target: str) -> dict[str, str]:
     synthesis FSM inventory, whose engines are named by module already. A module in neither is absent,
     not defaulted -- a column in it stays unbound and is reported as such.
     """
-    from merlin.targetgen.rtl.fsm import fsm_inventory                # noqa: PLC0415
+    from merlin.targetgen.rtl.fsm import fsm_inventory  # noqa: PLC0415
 
     out: dict[str, str] = {}
     for unit in (_contract(target) or {}).get("compute_units") or ():
@@ -248,7 +260,7 @@ def engine_by_module(target: str) -> dict[str, str]:
             if module:
                 out.setdefault(module, module)
     except OSError:
-        pass                          # no extraction on disk: the contract's own units still stand
+        pass  # no extraction on disk: the contract's own units still stand
     return out
 
 
@@ -286,40 +298,48 @@ def mechanism_traces(target: str, traces: list[dict], metas: list[dict]) -> list
                 binding[c] = engine
             else:
                 unbound.append(c)
-        out.append({
-            "capsule": f"cosim_matmul_{meta.get('shape')}",
-            "columns": {c: list(trace[c]) for c in present if c in trace},
-            # Derived: instance -> module from the design's HW dialect, module -> engine from the
-            # target's own declarations. A column whose instance resolves to no declared engine is left
-            # OUT of the binding and reported unbound, never attached to whichever engine is nearest.
-            "binding": binding,
-            "port_columns": ports,
-            "state_columns": states,
-            "unmeasured_units": list(meta.get("signals_absent") or ()),
-            "work": (f"{meta.get('shape')} i8 matmul, bit_exact={meta.get('bit_exact')}"
-                     if meta.get("bit_exact") is not None else None),
-            # The recording wraps the model's clock and samples state; it does not observe when a
-            # controller's work COMPLETED. Stated, because defaulting it True satisfies a gate nothing
-            # measured.
-            "completion_observable": False,
-            "provenance": (f"co-simulation model of {target} under MERLIN_MLC_DIR, recorded per cycle "
-                           f"around its own matmul driver; column->engine derived via the design's "
-                           f"own hw.instance map"
-                           + (f"; UNBOUND (no declared engine for their module): {sorted(unbound)}"
-                              if unbound else "")),
-        })
+        out.append(
+            {
+                "capsule": f"cosim_matmul_{meta.get('shape')}",
+                "columns": {c: list(trace[c]) for c in present if c in trace},
+                # Derived: instance -> module from the design's HW dialect, module -> engine from the
+                # target's own declarations. A column whose instance resolves to no declared engine is left
+                # OUT of the binding and reported unbound, never attached to whichever engine is nearest.
+                "binding": binding,
+                "port_columns": ports,
+                "state_columns": states,
+                "unmeasured_units": list(meta.get("signals_absent") or ()),
+                "work": (
+                    f"{meta.get('shape')} i8 matmul, bit_exact={meta.get('bit_exact')}"
+                    if meta.get("bit_exact") is not None
+                    else None
+                ),
+                # The recording wraps the model's clock and samples state; it does not observe when a
+                # controller's work COMPLETED. Stated, because defaulting it True satisfies a gate nothing
+                # measured.
+                "completion_observable": False,
+                "provenance": (
+                    f"co-simulation model of {target} under MERLIN_MLC_DIR, recorded per cycle "
+                    f"around its own matmul driver; column->engine derived via the design's "
+                    f"own hw.instance map"
+                    + (f"; UNBOUND (no declared engine for their module): {sorted(unbound)}" if unbound else "")
+                ),
+            }
+        )
     return out
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True)
-    ap.add_argument("--shape", action="append", default=None,
-                    help="MxKxN; repeatable (default: two sizes)")
-    ap.add_argument("--write-trace", action="store_true",
-                    help="also write mechanism_trace.json -- the PER-CYCLE columns, in the shape "
-                         "perf_calibrate.py --traces consumes. Without it only the aggregate is kept "
-                         "and the calibration seam has nothing to read")
+    ap.add_argument("--shape", action="append", default=None, help="MxKxN; repeatable (default: two sizes)")
+    ap.add_argument(
+        "--write-trace",
+        action="store_true",
+        help="also write mechanism_trace.json -- the PER-CYCLE columns, in the shape "
+        "perf_calibrate.py --traces consumes. Without it only the aggregate is kept "
+        "and the calibration seam has nothing to read",
+    )
     args = ap.parse_args()
     shapes = args.shape or ["16x16x16", "32x32x32"]
 
@@ -329,20 +349,28 @@ def main() -> int:
         trace, meta = trace_matmul(args.target, m, k, n)
         traces.append(trace)
         metas.append(meta)
-        print(f"{sh:14s} cycles={meta['cycles_recorded']:6d} bit_exact={meta['bit_exact']} "
-              f"absent={meta['signals_absent']}", flush=True)
+        print(
+            f"{sh:14s} cycles={meta['cycles_recorded']:6d} bit_exact={meta['bit_exact']} "
+            f"absent={meta['signals_absent']}",
+            flush=True,
+        )
 
     rep = analyse(args.target, traces, metas)
-    print(f"\nidle calibration: value={rep['calibration']['idle_value']!r} "
-          f"paired_with={rep['calibration']['paired_with']}")
+    print(
+        f"\nidle calibration: value={rep['calibration']['idle_value']!r} "
+        f"paired_with={rep['calibration']['paired_with']}"
+    )
     for r in rep["runs"]:
         j = r["joint"]
-        print(f"  {r['shape']:12s} sampled={j.get('sampled_cycles')} "
-              f"idle={j.get('idle_cycles')} overlap={j.get('overlap_any')} "
-              f"busy={ {k: v for k, v in (j.get('busy') or {}).items() if v} }")
+        print(
+            f"  {r['shape']:12s} sampled={j.get('sampled_cycles')} "
+            f"idle={j.get('idle_cycles')} overlap={j.get('overlap_any')} "
+            f"busy={ {k: v for k, v in (j.get('busy') or {}).items() if v} }"
+        )
 
-    pd = A.new_product("perf-ledger", version=3, target=args.target,
-                       notes="joint controller occupancy from the co-simulation model")
+    pd = A.new_product(
+        "perf-ledger", version=3, target=args.target, notes="joint controller occupancy from the co-simulation model"
+    )
     (pd.path / "occupancy.json").write_text(json.dumps(rep, indent=1))
     print(f"\nwrote {pd.path / 'occupancy.json'}")
     if args.write_trace:

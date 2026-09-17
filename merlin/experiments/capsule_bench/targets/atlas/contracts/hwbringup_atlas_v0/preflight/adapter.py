@@ -1,4 +1,5 @@
 """Atlas-owned hooks for the generic inline-assembly preflight protocol."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -13,8 +14,7 @@ def assemble(*, source: str, fixture: dict, **_kwargs) -> dict:
     path = root / str(fixture["assembler_path"])
     if not path.is_file():
         raise RuntimeError(f"declared target assembler is absent: {path}")
-    spec = importlib.util.spec_from_file_location(
-        f"_target_preflight_assembler_{abs(hash(path.resolve())):x}", path)
+    spec = importlib.util.spec_from_file_location(f"_target_preflight_assembler_{abs(hash(path.resolve())):x}", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"could not import declared target assembler: {path}")
     module = importlib.util.module_from_spec(spec)
@@ -25,8 +25,15 @@ def assemble(*, source: str, fixture: dict, **_kwargs) -> dict:
     return {"words": list(hook(source))}
 
 
-def run(*, te, words: list[int], preload: list[tuple[int, bytes]],
-        readback: list[tuple[int, int]], max_cycles: int, **_kwargs) -> dict:
+def run(
+    *,
+    te,
+    words: list[int],
+    preload: list[tuple[int, bytes]],
+    readback: list[tuple[int, int]],
+    max_cycles: int,
+    **_kwargs,
+) -> dict:
     """Run assembled words on the descriptor target's discovered Arc program backend."""
     result = run_raw_program(te.target, words=words, preload=preload, max_cycles=max_cycles)
     return {
@@ -34,8 +41,5 @@ def run(*, te, words: list[int], preload: list[tuple[int, bytes]],
         "cycles": int(result.cycles),
         "reads": int(result.reads),
         "writes": int(result.writes),
-        "memory": {
-            address: bytes(result.slave.captured(address, size))
-            for address, size in readback
-        },
+        "memory": {address: bytes(result.slave.captured(address, size)) for address, size in readback},
     }

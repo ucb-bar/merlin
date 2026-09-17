@@ -28,6 +28,7 @@ decision for a contractually bound one.
 The arithmetic lives in :mod:`merlin.perf.residency_claim`, which names no target, no store and no
 band. This module owns only the declaration and evidence contract.
 """
+
 from __future__ import annotations
 
 import copy
@@ -72,9 +73,11 @@ _PROPOSED_ACCEPTANCE: dict[str, Any] = {
     "replicates": {
         "minimum_count": 2,
         "identities_authored_by": "run",
-        "why": ("two replicates are the smallest set that MEASURES the dispersion this family's "
-                "noise band is read from; one replicate leaves it UNDETERMINABLE, and assuming it "
-                "zero on a deterministic simulator is the assumption this contract refuses"),
+        "why": (
+            "two replicates are the smallest set that MEASURES the dispersion this family's "
+            "noise band is read from; one replicate leaves it UNDETERMINABLE, and assuming it "
+            "zero on a deterministic simulator is the assumption this contract refuses"
+        ),
     },
     "evidence": {
         "correctness_simulator": "spike",
@@ -89,19 +92,23 @@ _PROPOSED_ACCEPTANCE: dict[str, Any] = {
         "kind": "measured_replicate_dispersion",
         "declared_constant": None,
         "predicate": "fitted_rates_agree_iff_exactly_equal_when_the_measured_dispersion_is_zero",
-        "why": ("a constant written here would be a knob somebody can turn until the answer "
-                "changes. The band is read off the evidence instead: replicates that are observed "
-                "IDENTICAL make the dispersion zero by measurement, so agreement means exact "
-                "rational equality. A member with one replicate has an UNDETERMINABLE dispersion "
-                "and its band is refused rather than assumed noiseless"),
+        "why": (
+            "a constant written here would be a knob somebody can turn until the answer "
+            "changes. The band is read off the evidence instead: replicates that are observed "
+            "IDENTICAL make the dispersion zero by measurement, so agreement means exact "
+            "rational equality. A member with one replicate has an UNDETERMINABLE dispersion "
+            "and its band is refused rather than assumed noiseless"
+        ),
     },
     "transient_guard": {
         "module": "merlin.perf.fill_transient.transient_verdict",
         "applied": "per_residency_band",
         "on_in_fill_transient": "refuse_the_band_and_quote_no_rate",
-        "why": ("the sibling reduction-depth family was refuted because every one of its depths lay "
-                "inside the machine's overlap fill transient. This family's cheapest band starts at "
-                "the same depth, so a band is put through the guard before any rate is quoted"),
+        "why": (
+            "the sibling reduction-depth family was refuted because every one of its depths lay "
+            "inside the machine's overlap fill transient. This family's cheapest band starts at "
+            "the same depth, so a band is put through the guard before any rate is quoted"
+        ),
     },
 }
 
@@ -120,13 +127,13 @@ def _exact_declaration_equal(observed: object, expected: object) -> bool:
     if type(observed) is not type(expected):  # noqa: E721 - type identity is the security property
         return False
     if isinstance(expected, dict):
-        return (observed.keys() == expected.keys()
-                and all(_exact_declaration_equal(observed[key], value)
-                        for key, value in expected.items()))
+        return observed.keys() == expected.keys() and all(
+            _exact_declaration_equal(observed[key], value) for key, value in expected.items()
+        )
     if isinstance(expected, list):
-        return (len(observed) == len(expected)
-                and all(_exact_declaration_equal(left, right)
-                        for left, right in zip(observed, expected, strict=True)))
+        return len(observed) == len(expected) and all(
+            _exact_declaration_equal(left, right) for left, right in zip(observed, expected, strict=True)
+        )
     return observed == expected
 
 
@@ -170,17 +177,21 @@ def _descriptor_point(raw: object) -> dict[str, Any]:
     if acceptance is not None and not _exact_declaration_equal(acceptance, _PROPOSED_ACCEPTANCE):
         raise _Refusal(
             f"PR descriptor {name!r} declares an acceptance contract this analyzer does not "
-            "implement; a profile edit is an analyzer-version edit")
+            "implement; a profile edit is an analyzer-version edit"
+        )
 
     comparand = _mapping(performance.get("comparand"), f"PR descriptor {name} comparand")
-    if (comparand.get("kind") != "group_arithmetic"
-            or comparand.get("against") != "the_same_affine_fit_in_a_different_residency_regime"):
+    if (
+        comparand.get("kind") != "group_arithmetic"
+        or comparand.get("against") != "the_same_affine_fit_in_a_different_residency_regime"
+    ):
         raise _Refusal(f"PR descriptor {name!r} changes the group-arithmetic comparand")
     falsifier = _mapping(performance.get("falsifier"), f"PR descriptor {name} falsifier")
-    if (falsifier.get("observation") != "per_regime_fitted_rate_and_intercept"
-            or falsifier.get("fires_when")
-            != "the_rates_fitted_in_different_residency_regimes_agree_within_the_noise_band"
-            or falsifier.get("negative_control") != "two_disjoint_depth_ranges_inside_one_regime"):
+    if (
+        falsifier.get("observation") != "per_regime_fitted_rate_and_intercept"
+        or falsifier.get("fires_when") != "the_rates_fitted_in_different_residency_regimes_agree_within_the_noise_band"
+        or falsifier.get("negative_control") != "two_disjoint_depth_ranges_inside_one_regime"
+    ):
         raise _Refusal(f"PR descriptor {name!r} changes its falsifier or its negative control")
     gate = _mapping(performance.get("gate"), f"PR descriptor {name} gate")
     if gate.get("instrument") != "cycle_count":
@@ -216,8 +227,12 @@ def _descriptor_point(raw: object) -> dict[str, Any]:
         raise _Refusal(f"PR descriptor {name!r} operands must share one declared dtype")
     accum_dtype = attributes.get("output_dtype")
     numeric = _mapping(descriptor.get("numeric_policy"), f"PR descriptor {name} numeric policy")
-    if (not isinstance(accum_dtype, str) or not accum_dtype
-            or numeric.get("dtype") != accum_dtype or numeric.get("compare") != "exact_int"):
+    if (
+        not isinstance(accum_dtype, str)
+        or not accum_dtype
+        or numeric.get("dtype") != accum_dtype
+        or numeric.get("compare") != "exact_int"
+    ):
         raise _Refusal(f"PR descriptor {name!r} has no exact common accumulator/output dtype")
     tiers = _sequence(descriptor.get("required_oracle_tiers"), f"PR descriptor {name} tiers")
     if not {"L2", "L3"}.issubset(set(tiers)):
@@ -231,7 +246,8 @@ def _descriptor_point(raw: object) -> dict[str, Any]:
     if axis.get("derive") != _DERIVATION:
         raise _Refusal(
             f"PR descriptor {name!r} does not derive its depth from {_DERIVATION!r}; the residency "
-            "band would then be an assertion rather than a derivation")
+            "band would then be an assertion rather than a derivation"
+        )
     k = _positive_extent(axis.get("value"), f"{name}.K")
     band = axis.get("label")
     if not isinstance(band, str) or not band.strip():
@@ -239,12 +255,16 @@ def _descriptor_point(raw: object) -> dict[str, Any]:
     derivation = _mapping(axis.get("derivation"), f"PR descriptor {name} band derivation")
     by_regime = _mapping(derivation.get("by_regime"), f"PR descriptor {name} by_regime")
     own = _mapping(by_regime.get(band), f"PR descriptor {name} band {band}")
-    depths = [int(entry.get("K")) for entry in _sequence(own.get("points"), f"{name} band points")
-              if isinstance(entry, Mapping) and isinstance(entry.get("K"), int)]
+    depths = [
+        int(entry.get("K"))
+        for entry in _sequence(own.get("points"), f"{name} band points")
+        if isinstance(entry, Mapping) and isinstance(entry.get("K"), int)
+    ]
     if k not in depths:
         raise _Refusal(
             f"PR descriptor {name!r} declares band {band!r} but its own derivation does not place "
-            f"K={k} in that band; the label and the derivation disagree")
+            f"K={k} in that band; the label and the derivation disagree"
+        )
     capacity = derivation.get("capacity_rows")
     if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity <= 0:
         raise _Refusal(f"PR descriptor {name!r} band derivation carries no positive capacity")
@@ -272,8 +292,7 @@ def _validate_descriptors(descriptors: object) -> tuple[list[dict[str, Any]], di
     if len({point["capsule"] for point in points}) != len(points):
         raise _Refusal("PR frozen descriptors repeat a capsule name")
 
-    for field in ("M", "N", "operation", "operand_dtype", "accum_dtype", "epilogue",
-                  "capacity_rows"):
+    for field in ("M", "N", "operation", "operand_dtype", "accum_dtype", "epilogue", "capacity_rows"):
         values = {repr(point[field]) for point in points}
         if len(values) != 1:
             raise _Refusal(f"PR cohort control changed fixed field {field!r}")
@@ -294,11 +313,13 @@ def _validate_descriptors(descriptors: object) -> tuple[list[dict[str, Any]], di
         if len(depths) < 3:
             raise _Refusal(
                 f"PR band {band!r} carries {len(depths)} depth(s); the declared negative control "
-                "needs two disjoint depth ranges inside one regime, so a band needs three")
+                "needs two disjoint depth ranges inside one regime, so a band needs three"
+            )
     if len(bands) < 2:
         raise _Refusal(
             f"PR reaches {len(bands)} residency band(s); a residency differential needs two, one on "
-            "each side of a boundary")
+            "each side of a boundary"
+        )
 
     ordered = sorted(points, key=lambda point: (int(point["K"]), point["capsule"]))
     cohort = {
@@ -313,11 +334,13 @@ def _validate_descriptors(descriptors: object) -> tuple[list[dict[str, Any]], di
         "capacity_rows": points[0]["capacity_rows"],
         "capsules": [point["capsule"] for point in ordered],
         "K_values": [int(point["K"]) for point in ordered],
-        "bands": {band: {"capsules": [member["capsule"] for member in
-                                      sorted(members, key=lambda row: int(row["K"]))],
-                         "K_values": sorted(int(member["K"]) for member in members)}
-                  for band, members in sorted(
-                      bands.items(), key=lambda item: min(int(row["K"]) for row in item[1]))},
+        "bands": {
+            band: {
+                "capsules": [member["capsule"] for member in sorted(members, key=lambda row: int(row["K"]))],
+                "K_values": sorted(int(member["K"]) for member in members),
+            }
+            for band, members in sorted(bands.items(), key=lambda item: min(int(row["K"]) for row in item[1]))
+        },
     }
     return ordered, cohort
 
@@ -329,10 +352,8 @@ def _refused(reason: str, *, preflight: Mapping[str, Any] | None = None) -> dict
         "claim": _CLAIM,
         "status": RC.REFUSED,
         "method": copy.deepcopy(_PROPOSED_ACCEPTANCE["fit"]),
-        "contract_frozen": (bool(preflight.get("contract_frozen"))
-                            if preflight is not None else False),
-        "declaration": (copy.deepcopy(preflight.get("declaration"))
-                        if preflight is not None else None),
+        "contract_frozen": (bool(preflight.get("contract_frozen")) if preflight is not None else False),
+        "declaration": (copy.deepcopy(preflight.get("declaration")) if preflight is not None else None),
         "cohort": (copy.deepcopy(preflight.get("cohort")) if preflight is not None else None),
         "evidence": None,
         "verdict": None,
@@ -358,7 +379,8 @@ def preflight_pr_claim(descriptors: object, *, replicates: Sequence[str]) -> dic
             raise _Refusal(
                 f"PR was offered {len(identities)} replicate(s); this family's noise band is the "
                 "MEASURED replicate dispersion, and one replicate leaves it UNDETERMINABLE rather "
-                "than zero")
+                "than zero"
+            )
         points, cohort = _validate_descriptors(descriptors)
     except (KeyError, TypeError, ValueError) as exc:
         return {
@@ -373,11 +395,12 @@ def preflight_pr_claim(descriptors: object, *, replicates: Sequence[str]) -> dic
             "expected_identities": [],
             "refusal_reasons": [str(exc)],
         }
-    expected = [{"family": _FAMILY, "capsule": point["capsule"], "simulator": simulator,
-                 "replicate": replicate, "tier": tier}
-                for point in points
-                for replicate in identities
-                for simulator, tier in (("spike", "L2"), ("verilator", "L3"))]
+    expected = [
+        {"family": _FAMILY, "capsule": point["capsule"], "simulator": simulator, "replicate": replicate, "tier": tier}
+        for point in points
+        for replicate in identities
+        for simulator, tier in (("spike", "L2"), ("verilator", "L3"))
+    ]
     return {
         "schema_version": _SCHEMA_VERSION,
         "family": _FAMILY,
@@ -392,26 +415,28 @@ def preflight_pr_claim(descriptors: object, *, replicates: Sequence[str]) -> dic
     }
 
 
-def _validate_results(results: object, points: Sequence[Mapping[str, Any]],
-                      replicates: Sequence[str]) -> dict[str, dict[str, Any]]:
+def _validate_results(
+    results: object, points: Sequence[Mapping[str, Any]], replicates: Sequence[str]
+) -> dict[str, dict[str, Any]]:
     rows = _sequence(results, "PR result rows")
     expected_capsules = {str(point["capsule"]) for point in points}
-    family_rows = [row for row in rows
-                   if isinstance(row, Mapping)
-                   and isinstance(row.get("identity"), Mapping)
-                   and row["identity"].get("family") == _FAMILY]
+    family_rows = [
+        row
+        for row in rows
+        if isinstance(row, Mapping)
+        and isinstance(row.get("identity"), Mapping)
+        and row["identity"].get("family") == _FAMILY
+    ]
     expected_count = len(points) * len(replicates) * 2
     if len(family_rows) != expected_count:
-        raise _Refusal(
-            f"PR requires exactly {expected_count} result rows, observed {len(family_rows)}")
+        raise _Refusal(f"PR requires exactly {expected_count} result rows, observed {len(family_rows)}")
 
     indexed: dict[tuple[str, str, str], Mapping[str, Any]] = {}
     approaches: set[Any] = set()
     for row in family_rows:
         identity = _mapping(row.get("identity"), "PR result identity")
         key = (identity.get("capsule"), identity.get("simulator"), identity.get("replicate"))
-        if (key[0] not in expected_capsules or key[1] not in ("spike", "verilator")
-                or key[2] not in set(replicates)):
+        if key[0] not in expected_capsules or key[1] not in ("spike", "verilator") or key[2] not in set(replicates):
             raise _Refusal(f"PR result has an undeclared identity: {dict(identity)!r}")
         if key in indexed:
             raise _Refusal(f"PR result repeats identity {key!r}")
@@ -420,7 +445,8 @@ def _validate_results(results: object, points: Sequence[Mapping[str, Any]],
     if len(approaches) != 1 or not isinstance(next(iter(approaches)), str) or not next(iter(approaches)):
         raise _Refusal(
             f"PR rows name {len(approaches)} approach(es) {sorted(map(repr, approaches))}; the "
-            "cohort control requires one named approach across every member")
+            "cohort control requires one named approach across every member"
+        )
 
     observed: dict[str, dict[str, Any]] = {}
     for point in points:
@@ -429,19 +455,23 @@ def _validate_results(results: object, points: Sequence[Mapping[str, Any]],
         counter_readings: list[Any] = []
         for replicate in replicates:
             for simulator, tier, purpose, citable in (
-                    ("spike", "L2", "correctness_screen", False),
-                    ("verilator", "L3", "performance_certification", True)):
+                ("spike", "L2", "correctness_screen", False),
+                ("verilator", "L3", "performance_certification", True),
+            ):
                 key = (capsule, simulator, replicate)
                 row = indexed.get(key)
                 if row is None:
                     raise _Refusal(f"PR result is missing identity {key!r}")
-                if (row.get("tier") != tier or row.get("purpose") != purpose
-                        or row.get("citable") is not citable):
+                if row.get("tier") != tier or row.get("purpose") != purpose or row.get("citable") is not citable:
                     raise _Refusal(f"PR result {key!r} changes its L2/L3 evidence semantics")
-                if (row.get("correct") is not True or row.get("tier_status") != "pass"
-                        or row.get("grade_status") != "pass"
-                        or row.get("numeric_status") != "pass"
-                        or row.get("error") is not None or row.get("failure") is not None):
+                if (
+                    row.get("correct") is not True
+                    or row.get("tier_status") != "pass"
+                    or row.get("grade_status") != "pass"
+                    or row.get("numeric_status") != "pass"
+                    or row.get("error") is not None
+                    or row.get("failure") is not None
+                ):
                     raise _Refusal(f"PR result {key!r} is not a correct successful measurement")
                 cycles = row.get("cycles")
                 if simulator == "spike":
@@ -480,11 +510,10 @@ def _counter_set(counters: Any) -> Any:
     if len(engines) < 2 or not combinations:
         raise _Refusal(
             "the supplied counter set resolves fewer than two engines or no combinations; one engine "
-            "cannot overlap with itself, and an empty set would report every member as unmeasured")
-    by_combination = {frozenset(str(key).split("+")): str(name)
-                      for key, name in combinations.items()}
-    return OccupancyCounters(prefix=str(counters.get("prefix") or ""), engines=engines,
-                             by_combination=by_combination)
+            "cannot overlap with itself, and an empty set would report every member as unmeasured"
+        )
+    by_combination = {frozenset(str(key).split("+")): str(name) for key, name in combinations.items()}
+    return OccupancyCounters(prefix=str(counters.get("prefix") or ""), engines=engines, by_combination=by_combination)
 
 
 def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: Any) -> RC.Member:
@@ -503,26 +532,38 @@ def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: A
         proof = FT.partition_kwargs(partition)
     except FT.PartitionEvidenceError as exc:
         return RC.Member(
-            label=capsule, band=str(record["band"]), axis=int(record["K"]),
+            label=capsule,
+            band=str(record["band"]),
+            axis=int(record["K"]),
             replicate_cycles=tuple(record["replicate_cycles"]),
-            overlap_detail=str(exc))
+            overlap_detail=str(exc),
+        )
 
     readings = list(record["counter_readings"])
     absent = [index for index, values in enumerate(readings) if not isinstance(values, Mapping)]
     if absent:
         return RC.Member(
-            label=capsule, band=str(record["band"]), axis=int(record["K"]),
+            label=capsule,
+            band=str(record["band"]),
+            axis=int(record["K"]),
             replicate_cycles=tuple(record["replicate_cycles"]),
-            overlap_detail=(f"{len(absent)} of {len(readings)} timing replicate(s) carry no "
-                            "combination-counter reading; an unread counter is UNKNOWN, never zero"))
-    normalised = [{str(name): int(value) for name, value in sorted(dict(values).items())}
-                  for values in readings]
+            overlap_detail=(
+                f"{len(absent)} of {len(readings)} timing replicate(s) carry no "
+                "combination-counter reading; an unread counter is UNKNOWN, never zero"
+            ),
+        )
+    normalised = [{str(name): int(value) for name, value in sorted(dict(values).items())} for values in readings]
     if any(entry != normalised[0] for entry in normalised[1:]):
         return RC.Member(
-            label=capsule, band=str(record["band"]), axis=int(record["K"]),
+            label=capsule,
+            band=str(record["band"]),
+            axis=int(record["K"]),
             replicate_cycles=tuple(record["replicate_cycles"]),
-            overlap_detail=("the replicates disagree about their own combination counters, so this "
-                            "member has no single overlap reading to attribute"))
+            overlap_detail=(
+                "the replicates disagree about their own combination counters, so this "
+                "member has no single overlap reading to attribute"
+            ),
+        )
     # THE COUNTER WINDOW, and why it is the SMALLEST replicate rather than an average or the first.
     # The readings above are already known identical across replicates; the cycle counts need not be,
     # and a member whose replicates disagree is refused by its band rather than collapsed here. The
@@ -533,20 +574,31 @@ def _member(capsule: str, record: Mapping[str, Any], counters: Any, partition: A
     reading = eta_from_counters(dict(normalised[0]), counters, measurement_cycles=window, **proof)
     if reading.get("state") != "measured":
         return RC.Member(
-            label=capsule, band=str(record["band"]), axis=int(record["K"]),
+            label=capsule,
+            band=str(record["band"]),
+            axis=int(record["K"]),
             replicate_cycles=tuple(record["replicate_cycles"]),
-            overlap_detail=str(reading.get("why") or "the counter reading is not measured"))
+            overlap_detail=str(reading.get("why") or "the counter reading is not measured"),
+        )
     return RC.Member(
-        label=capsule, band=str(record["band"]), axis=int(record["K"]),
+        label=capsule,
+        band=str(record["band"]),
+        axis=int(record["K"]),
         replicate_cycles=tuple(record["replicate_cycles"]),
         realised_overlap=int(reading["realised_cycles"]),
         available_overlap=int(reading["available_cycles"]),
-        overlap_detail=str(reading.get("note") or ""))
+        overlap_detail=str(reading.get("note") or ""),
+    )
 
 
-def analyze_pr_claim(descriptors: object, results: object, *,
-                     replicates: Sequence[str] | None = None,
-                     counters: Any = None, partition: Any = None) -> dict[str, Any]:
+def analyze_pr_claim(
+    descriptors: object,
+    results: object,
+    *,
+    replicates: Sequence[str] | None = None,
+    counters: Any = None,
+    partition: Any = None,
+) -> dict[str, Any]:
     """Decide PR from exact frozen descriptors, exact run-authored rows, and derived counters.
 
     ``counters`` is the combination-counter set derived from the target's OWN shipped header
@@ -574,7 +626,8 @@ def analyze_pr_claim(descriptors: object, results: object, *,
         return _refused(
             "the run's replicate schedule was not supplied; PR declares no replicate count of its "
             "own and one cannot be invented here, because this family's noise band IS the measured "
-            "dispersion across the identities the run actually executed")
+            "dispersion across the identities the run actually executed"
+        )
     preflight = preflight_pr_claim(descriptors, replicates=replicates)
     if preflight["status"] != "READY":
         return _refused(str(preflight["refusal_reasons"][0]), preflight=preflight)
@@ -582,7 +635,9 @@ def analyze_pr_claim(descriptors: object, results: object, *,
         return _refused(
             "the target's derived combination-counter set was not supplied, so the per-band "
             "fill-transient guard cannot run; a rate quoted without that guard repeats the "
-            "refutation this family was built to avoid", preflight=preflight)
+            "refutation this family was built to avoid",
+            preflight=preflight,
+        )
     try:
         FT.partition_kwargs(partition)
     except FT.PartitionEvidenceError as exc:
@@ -591,9 +646,9 @@ def analyze_pr_claim(descriptors: object, results: object, *,
         counters = _counter_set(counters)
         points, _cohort = _validate_descriptors(descriptors)
         observed = _validate_results(results, points, list(preflight["replicates"]))
-        members = [_member(str(point["capsule"]), observed[str(point["capsule"])], counters,
-                           partition)
-                   for point in points]
+        members = [
+            _member(str(point["capsule"]), observed[str(point["capsule"])], counters, partition) for point in points
+        ]
         verdict = RC.residency_verdict(members)
     # NARROW ON PURPOSE. These two are the analyzer's own refusal vocabulary: `_Refusal` is every
     # contract/evidence rejection raised above, and `ResidencyEvidenceError` is the arithmetic
@@ -624,8 +679,10 @@ def analyze_pr_claim(descriptors: object, results: object, *,
         "verdict": verdict,
         "refusal_reasons": [verdict["reason"]] if status == RC.REFUSED else [],
         "refutation_reasons": (
-            [f"{row['lower_band']}|{row['upper_band']}" for row in verdict["boundaries"]
-             if row["falsifier_fired"]] if status == RC.REFUTED else []),
+            [f"{row['lower_band']}|{row['upper_band']}" for row in verdict["boundaries"] if row["falsifier_fired"]]
+            if status == RC.REFUTED
+            else []
+        ),
     }
 
 
@@ -649,13 +706,13 @@ def decision_boundary(decision: Mapping[str, Any] | None) -> dict[str, Any]:
     status = str(decision.get("status"))
     return {
         "module": "perf_pr_claim",
-        "identity_bridge":
-            "analyze_pr_claim(frozen_descriptors,sealed_result_rows,derived_counters,"
-            "circt_counter_partition)",
+        "identity_bridge": "analyze_pr_claim(frozen_descriptors,sealed_result_rows,derived_counters,"
+        "circt_counter_partition)",
         "promotion_integration": "integrated",
         "promotion_status": promotion_status(decision),
-        "reason": str((decision.get("verdict") or {}).get("reason")
-                      or (decision.get("refusal_reasons") or [status])[0]),
+        "reason": str(
+            (decision.get("verdict") or {}).get("reason") or (decision.get("refusal_reasons") or [status])[0]
+        ),
     }
 
 
@@ -684,6 +741,9 @@ def falsifier_evidence(decision: Mapping[str, Any], *, member_of: Any = None) ->
         if not isinstance(control, Mapping):
             continue
         identity = member_of(str(band["band"])) if callable(member_of) else member_of[str(band["band"])]
-        out.append(FalsifierEvidence(identity=identity, negative_control=True,
-                                     fired=bool(control["fired"]), reason=str(control["reason"])))
+        out.append(
+            FalsifierEvidence(
+                identity=identity, negative_control=True, fired=bool(control["fired"]), reason=str(control["reason"])
+            )
+        )
     return out

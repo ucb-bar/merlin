@@ -100,7 +100,7 @@ def inventory(mlir_path: Path) -> dict:
         # provenance() returns keys WITH the "prov." prefix. Reading them without it returned empty
         # for every row and silently fell back to the MLIR op name as the family, which reads as
         # "this model has no semantic families" rather than as a bug.
-        prov = {k[len("prov."):]: v for k, v in mq.provenance(op).items()}
+        prov = {k[len("prov.") :]: v for k, v in mq.provenance(op).items()}
         w, complete = wk.work_of(op)
         if not complete:
             incomplete += 1
@@ -110,20 +110,22 @@ def inventory(mlir_path: Path) -> dict:
                 shp, dt = mq.type_shape_dtype(res.type)
                 shapes.append(shp)
                 dtypes.append(dt)
-            except Exception:      # a result whose type is not a shaped tensor tells us nothing
+            except Exception:  # a result whose type is not a shaped tensor tells us nothing
                 continue
-        rows.append({
-            "mlir_op": name,
-            "family": prov.get("family") or "",
-            "op": prov.get("op") or "",
-            "role": prov.get("role") or "",
-            "region_id": prov.get("region_id") or "",
-            "work": int(w),
-            "work_complete": bool(complete),
-            "bytes": int(wk.footprint_bytes(op)),
-            "result_shapes": shapes,
-            "result_dtypes": dtypes,
-        })
+        rows.append(
+            {
+                "mlir_op": name,
+                "family": prov.get("family") or "",
+                "op": prov.get("op") or "",
+                "role": prov.get("role") or "",
+                "region_id": prov.get("region_id") or "",
+                "work": int(w),
+                "work_complete": bool(complete),
+                "bytes": int(wk.footprint_bytes(op)),
+                "result_shapes": shapes,
+                "result_dtypes": dtypes,
+            }
+        )
 
     opaque = _opaque_rows(text)
 
@@ -133,7 +135,7 @@ def inventory(mlir_path: Path) -> dict:
     for r in rows:
         by_family[r["op"] or r["family"] or r["mlir_op"]] += r["work"]
     for o in opaque:
-        by_family[f"opaque:{o['family']}"] += (o["work"] or 0)
+        by_family[f"opaque:{o['family']}"] += o["work"] or 0
 
     return {
         "source_mlir": str(mlir_path),
@@ -142,9 +144,7 @@ def inventory(mlir_path: Path) -> dict:
         "n_unpriced_ops": len(unpriced_ops),
         "n_incomplete_work": incomplete,
         "total_work": priced,
-        "priced_fraction": (
-            None if unpriced_ops else 1.0
-        ),
+        "priced_fraction": (None if unpriced_ops else 1.0),
         "work_by_family": dict(by_family.most_common()),
         "opaque": opaque,
         "rows": rows,
@@ -162,7 +162,7 @@ def _opaque_rows(text: str) -> list[dict]:
         s = line.strip()
         if not s.startswith("func.func private @"):
             continue
-        name, _, rest = s[len("func.func private @"):].partition("(")
+        name, _, rest = s[len("func.func private @") :].partition("(")
         args_txt, _, ret_txt = rest.rpartition(") ->")
         decls[name.strip()] = (_shapes_in(args_txt), (_shapes_in(ret_txt) or [[]])[0])
 
@@ -178,19 +178,22 @@ def _opaque_rows(text: str) -> list[dict]:
         fam = _opaque_family(callee)
         pricer = _OPAQUE_PRICERS.get(fam)
         per = pricer(arg_shapes, ret_shape) if pricer else None
-        out.append({
-            "callee": callee,
-            "count": n,
-            "family": fam,
-            "arg_shapes": arg_shapes,
-            "result_shape": ret_shape,
-            "work": (per * n) if per is not None else None,
-            "priced": per is not None,
-            "note": (
-                "priced from the declared signature" if per is not None else
-                "UNPRICED: no cost formula for this family -- work is UNKNOWN, not zero"
-            ),
-        })
+        out.append(
+            {
+                "callee": callee,
+                "count": n,
+                "family": fam,
+                "arg_shapes": arg_shapes,
+                "result_shape": ret_shape,
+                "work": (per * n) if per is not None else None,
+                "priced": per is not None,
+                "note": (
+                    "priced from the declared signature"
+                    if per is not None
+                    else "UNPRICED: no cost formula for this family -- work is UNKNOWN, not zero"
+                ),
+            }
+        )
     return out
 
 
@@ -200,12 +203,12 @@ def _shapes_in(txt: str) -> list[list[int]]:
     for chunk in txt.split("tensor<")[1:]:
         body = chunk.split(">", 1)[0]
         dims: list[int] = []
-        for part in body.split("x")[:-1]:      # last part is the element type
+        for part in body.split("x")[:-1]:  # last part is the element type
             part = part.strip()
             if part.lstrip("-").isdigit():
                 dims.append(int(part))
             else:
-                dims = []                      # dynamic or unparsable -> no shape claim
+                dims = []  # dynamic or unparsable -> no shape claim
                 break
         if dims:
             shapes.append(dims)
@@ -217,8 +220,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", action="append", default=None)
     ap.add_argument("--variant", default="fp32")
     ap.add_argument("--all", action="store_true")
-    ap.add_argument("--mlir", type=Path, default=None,
-                    help="inventory this MLIR directly, bypassing capture resolution")
+    ap.add_argument(
+        "--mlir", type=Path, default=None, help="inventory this MLIR directly, bypassing capture resolution"
+    )
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
 
@@ -232,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         if not names:
             raise SystemExit("nothing to do: pass --model, --all or --mlir")
         for m in names:
-            for variant in (a.variant, "int8", "fp32"):   # first variant that is actually present
+            for variant in (a.variant, "int8", "fp32"):  # first variant that is actually present
                 b = B.resolve(m, variant)
                 if b.mlir.exists():
                     jobs.append((f"{m}_{variant}", b.mlir))
@@ -248,8 +252,10 @@ def main(argv: list[str] | None = None) -> int:
         warn = ""
         if inv["n_unpriced_ops"]:
             warn = f"  ⚠️ {inv['n_unpriced_ops']} UNPRICED opaque op(s)"
-        print(f"  {label:28s} ops={inv['n_linalg_ops']:>5d} opaque={inv['n_opaque_ops']:<3d} "
-              f"work={inv['total_work']:>16,}{warn}")
+        print(
+            f"  {label:28s} ops={inv['n_linalg_ops']:>5d} opaque={inv['n_opaque_ops']:<3d} "
+            f"work={inv['total_work']:>16,}{warn}"
+        )
         print(f"      -> {dest}")
     return 0
 

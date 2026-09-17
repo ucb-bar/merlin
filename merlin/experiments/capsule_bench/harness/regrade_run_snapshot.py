@@ -5,6 +5,7 @@ The source run supplies identity and expected corpus hashes. Grading uses the cu
 the current target corpus only after its public contract bytes and hidden snapshot are shown to match
 the archived run. Each repeat receives a fresh copy of the exact archived submission.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -39,8 +40,7 @@ def _signature(score: dict) -> list[dict]:
     """Stable verdict projection: exclude timings and other expected run-to-run diagnostics."""
     rows = []
     for item in score.get("per_capsule", []):
-        row = {key: item.get(key) for key in ("capsule", "status", "failure_plane",
-                                              "mismatch_count")}
+        row = {key: item.get(key) for key in ("capsule", "status", "failure_plane", "mismatch_count")}
         row["numeric"] = item.get("numeric", item.get("numeric_status"))
         row["trace"] = item.get("trace", item.get("trace_status"))
         row["tiers"] = {
@@ -57,8 +57,11 @@ def _score_summary(score: dict) -> dict:
     for row in rows:
         if row.get("status") == "pass":
             continue
-        failed_tiers = [name for name, value in sorted((row.get("tiers") or {}).items())
-                        if ((value or {}).get("status") if isinstance(value, dict) else value) == "fail"]
+        failed_tiers = [
+            name
+            for name, value in sorted((row.get("tiers") or {}).items())
+            if ((value or {}).get("status") if isinstance(value, dict) else value) == "fail"
+        ]
         stage = row.get("failure_plane") or (failed_tiers[0] if failed_tiers else None)
         failure_stages[str(stage or row.get("numeric") or row.get("trace") or "unclassified")] += 1
     return {
@@ -84,10 +87,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-dir", required=True, help="immutable archived source run")
     parser.add_argument("--out", required=True, help="new output directory; must not already exist")
     parser.add_argument("--repeats", type=int, default=3)
-    parser.add_argument("--resume", action="store_true",
-                        help="reuse only fully completed repeats in an interrupted output directory")
-    parser.add_argument("--validate-only", action="store_true",
-                        help="verify source submission and corpus identity without running the grader")
+    parser.add_argument(
+        "--resume", action="store_true", help="reuse only fully completed repeats in an interrupted output directory"
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="verify source submission and corpus identity without running the grader",
+    )
     args = parser.parse_args(argv)
 
     source = Path(args.run_dir).resolve(strict=True)
@@ -126,11 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     if str(harness) not in sys.path:
         sys.path.insert(0, str(harness))
     import run_baseline_qa_loop as loop  # noqa: PLC0415
+
     expected_hidden = (environment.get("hidden_capsule_snapshot") or {}).get("content_sha256")
     hidden_rel = live_hidden_roots[0].resolve(strict=False).relative_to(repo_root())
     candidates = [*live_hidden_roots]
-    candidates.extend(sorted((descriptor.parent / "_qa_ws").glob(
-        f"*/bundle_inputs/repo/{hidden_rel.as_posix()}")))
+    candidates.extend(sorted((descriptor.parent / "_qa_ws").glob(f"*/bundle_inputs/repo/{hidden_rel.as_posix()}")))
     hidden_root = None
     hidden_record = None
     observed = []
@@ -144,8 +151,10 @@ def main(argv: list[str] | None = None) -> int:
             hidden_root, hidden_record = candidate, record
             break
     if hidden_root is None or hidden_record is None:
-        raise SystemExit("no available hidden capsule snapshot matches the archived run; refusing mixed "
-                         f"regrade (expected {expected_hidden}, observed {sorted(set(observed))})")
+        raise SystemExit(
+            "no available hidden capsule snapshot matches the archived run; refusing mixed "
+            f"regrade (expected {expected_hidden}, observed {sorted(set(observed))})"
+        )
 
     validation = {
         "source_run": str(source),
@@ -173,12 +182,23 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"repeat directory exists but is incomplete; refusing overwrite: {repeat}")
         if not reused:
             repeat.mkdir()
-            shutil.copytree(source_submission, repeat / "submission",
-                            ignore=shutil.ignore_patterns("build", "__pycache__", ".git"))
-            command = [sys.executable, str(grader), "--run-dir", str(repeat),
-                       "--arm", str(environment.get("arm") or "unknown"),
-                       "--model", str(environment.get("model") or "unknown"),
-                       "--capsules", public_arg, "--hidden-capsules", hidden_arg]
+            shutil.copytree(
+                source_submission, repeat / "submission", ignore=shutil.ignore_patterns("build", "__pycache__", ".git")
+            )
+            command = [
+                sys.executable,
+                str(grader),
+                "--run-dir",
+                str(repeat),
+                "--arm",
+                str(environment.get("arm") or "unknown"),
+                "--model",
+                str(environment.get("model") or "unknown"),
+                "--capsules",
+                public_arg,
+                "--hidden-capsules",
+                hidden_arg,
+            ]
             proc = subprocess.run(command, cwd=repo_root(), text=True, capture_output=True)
             returncode = proc.returncode
             (repeat / "grader.stdout.log").write_text(proc.stdout, encoding="utf-8")
@@ -192,9 +212,16 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"regrade {index} produced no hidden score (rc={returncode})")
         hidden_score = json.loads(hidden_score_path.read_text(encoding="utf-8"))
         signatures.append({"public": _signature(score), "hidden": _signature(hidden_score)})
-        repeats.append({"repeat": index, "grader_returncode": returncode, "reused": reused,
-                        "public": _score_summary(score), "hidden": _score_summary(hidden_score),
-                        "path": str(repeat)})
+        repeats.append(
+            {
+                "repeat": index,
+                "grader_returncode": returncode,
+                "reused": reused,
+                "public": _score_summary(score),
+                "hidden": _score_summary(hidden_score),
+                "path": str(repeat),
+            }
+        )
 
     deterministic = all(signature == signatures[0] for signature in signatures[1:])
     summary = {

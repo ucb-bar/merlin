@@ -21,7 +21,9 @@ Channel (under ``<ws>/.cca_channel/``):
   done_<id>       broker -> agent : completion marker
   STOP            driver -> broker: sentinel to exit
 """
+
 from __future__ import annotations
+
 import argparse
 import dataclasses
 import json
@@ -32,8 +34,8 @@ from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parents[3]
-sys.path.insert(0, str(_HERE))                                   # _common (parity with isa_tools_broker)
-sys.path.insert(0, str(_REPO / "merlin" / "python"))            # merlin (out-of-box, oracle-free use)
+sys.path.insert(0, str(_HERE))  # _common (parity with isa_tools_broker)
+sys.path.insert(0, str(_REPO / "merlin" / "python"))  # merlin (out-of-box, oracle-free use)
 
 
 def _bijection_to_dict(report) -> dict:
@@ -62,6 +64,7 @@ def _handle(req: dict) -> dict:
         if not target:
             return {"error": "check_bijection needs a target (the backend to diff)"}
         from merlin.kernels import cca_contract
+
         return _bijection_to_dict(cca_contract.check_bijection(target))
 
     if cmd == "escalation_ladder":
@@ -70,6 +73,7 @@ def _handle(req: dict) -> dict:
         if not target or not axis:
             return {"error": "escalation_ladder needs both axis and target"}
         from merlin.kernels import action_catalog
+
         # escalation_ladder already returns a list of plain dicts (action_class/target_seam/forkable_now/
         # seam_file/seam_kind/needs_new_code) — JSON-clean as-is. Wrap so an empty ladder is still an
         # honest, non-error answer (an axis with no route is a real, informative result).
@@ -99,7 +103,7 @@ def main(argv=None):
             if req_f.name in seen:
                 continue
             seen.add(req_f.name)
-            rid = req_f.stem[len("req_"):]
+            rid = req_f.stem[len("req_") :]
             resp = ch / f"resp_{rid}.json"
             try:
                 out = _handle(json.loads(req_f.read_text()))

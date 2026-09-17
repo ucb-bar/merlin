@@ -6,38 +6,69 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 _NA = None  # sentinel for metrics.csv NA column
 
 _ALL_COLUMNS = [
     # core identity
-    "run_id", "method", "seed", "is_smoke_test", "budget",
+    "run_id",
+    "method",
+    "seed",
+    "is_smoke_test",
+    "budget",
     # validation quality
-    "schema_valid", "xdsl_files", "xdsl_op_estimate",
-    "pass_tests_pass", "pass_tests_total",
-    "evidence_coverage", "unsupported_claim_rate",
-    "arch_rules_passed", "arch_rules_failed",
+    "schema_valid",
+    "xdsl_files",
+    "xdsl_op_estimate",
+    "pass_tests_pass",
+    "pass_tests_total",
+    "evidence_coverage",
+    "unsupported_claim_rate",
+    "arch_rules_passed",
+    "arch_rules_failed",
     # paper ablation columns (legacy names kept for compatibility)
-    "human_interventions", "cost_usd", "time_to_first_pass_s",
+    "human_interventions",
+    "cost_usd",
+    "time_to_first_pass_s",
     # generalization matrix (G0-G5): held-out success per axis, not shape alone
-    "heldout_shape_success", "heldout_layout_success", "heldout_dtype_success",
-    "heldout_surface_success", "heldout_composition_success", "heldout_fusion_success",
-    "heldout_model_success", "heldout_kernel_success",
+    "heldout_shape_success",
+    "heldout_layout_success",
+    "heldout_dtype_success",
+    "heldout_surface_success",
+    "heldout_composition_success",
+    "heldout_fusion_success",
+    "heldout_model_success",
+    "heldout_kernel_success",
     "merlin_core_files_modified",
     # tracking metadata
-    "tracking_mode", "mlflow_run_id", "otel_trace_id",
+    "tracking_mode",
+    "mlflow_run_id",
+    "otel_trace_id",
     # effort columns
-    "observed_cost_usd", "estimated_cost_usd", "cost_source",
-    "tokens_input", "tokens_output", "token_source",
-    "wall_clock_seconds", "time_to_first_validation_s",
-    "agent_turns", "tool_calls",
+    "observed_cost_usd",
+    "estimated_cost_usd",
+    "cost_source",
+    "tokens_input",
+    "tokens_output",
+    "token_source",
+    "wall_clock_seconds",
+    "time_to_first_validation_s",
+    "agent_turns",
+    "tool_calls",
 ]
 
 # Columns that are not numeric — excluded from mean±std in compare_runs
-_STRING_COLUMNS = frozenset({
-    "run_id", "method", "budget", "tracking_mode",
-    "mlflow_run_id", "otel_trace_id", "cost_source", "token_source",
-})
+_STRING_COLUMNS = frozenset(
+    {
+        "run_id",
+        "method",
+        "budget",
+        "tracking_mode",
+        "mlflow_run_id",
+        "otel_trace_id",
+        "cost_source",
+        "token_source",
+    }
+)
 
 
 def build_summary(manifest: dict, validator_results: dict, arch_rules: list[dict]) -> dict:
@@ -111,13 +142,16 @@ def write_metrics(run_dir: Path, summary: dict, validator_results: dict, arch_ru
     _write("xdsl_metrics.json", validator_results.get("xdsl", {}))
     _write("pass_metrics.json", validator_results.get("passes", {}))
     _write("design_metrics.json", validator_results.get("design", {}))
-    _write("effort_metrics.json", {
-        "human_interventions": None,
-        "cost_usd": None,
-        "wall_clock_seconds": summary.get("wall_clock_seconds"),
-        "tokens_input": summary.get("tokens_input"),
-        "tokens_output": summary.get("tokens_output"),
-        "agent_turns": summary.get("agent_turns"),
-        "tool_calls": summary.get("tool_calls"),
-    })
+    _write(
+        "effort_metrics.json",
+        {
+            "human_interventions": None,
+            "cost_usd": None,
+            "wall_clock_seconds": summary.get("wall_clock_seconds"),
+            "tokens_input": summary.get("tokens_input"),
+            "tokens_output": summary.get("tokens_output"),
+            "agent_turns": summary.get("agent_turns"),
+            "tool_calls": summary.get("tool_calls"),
+        },
+    )
     _write("summary_metrics.json", summary)

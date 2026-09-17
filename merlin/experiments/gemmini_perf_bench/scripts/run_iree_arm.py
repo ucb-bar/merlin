@@ -22,6 +22,7 @@ error?}}. Merge into a perf run with merge_iree_arm.py, then regenerate the repo
 Usage: run_iree_arm.py [--run-id perf_full_0001] [--max-macs 3000000] [--kernels all|id,id]
 All local tools (iree-compile + spike) — no Opus budget.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,18 +33,16 @@ import subprocess
 import time
 from pathlib import Path
 
+import _pbcommon as PB
 import yaml
 
-import _pbcommon as PB
-
-MERLIN = Path("/path/to/merlin-iree")          # DEPRECATED IREE-based merlin (NOT merlin)
+MERLIN = Path("/path/to/merlin-iree")  # DEPRECATED IREE-based merlin (NOT merlin)
 BUILD = MERLIN / "build" / "firesim-merlin-release"
 FIXTURES = MERLIN / "tests" / "integration" / "gemmini_spike" / "fixtures"
 RUNNER_TARGET = "bench_gemmini_spike_matmul"
-ELF = (BUILD / "runtime/plugins/merlin-samples/SaturnOPU/simple_embedding_ukernel"
-       / "bench_gemmini_spike_matmul")
+ELF = BUILD / "runtime/plugins/merlin-samples/SaturnOPU/simple_embedding_ukernel" / "bench_gemmini_spike_matmul"
 SPIKE = Path("/path/to/chipyard/.conda-env/riscv-tools/bin/spike")
-SPIKE_ISA = "rv64gcv_zicntr_zihpm"                  # zicntr enables rdcycle for the cycle metric
+SPIKE_ISA = "rv64gcv_zicntr_zihpm"  # zicntr enables rdcycle for the cycle metric
 
 BUILD_ENV = {
     **os.environ,
@@ -77,20 +76,41 @@ def build_shape(shape: str, log: Path) -> None:
     we touch build.ninja so ninja's env-stripped auto-regen doesn't clobber the configure."""
     with log.open("w") as f:
         subprocess.run(
-            ["cmake", "-S", str(MERLIN / "third_party/iree_bar"), "-B", str(BUILD),
-             f"-DGEMMINI_SPIKE_MATMUL_SHAPE={shape}"],
-            cwd=MERLIN, env=BUILD_ENV, stdout=f, stderr=subprocess.STDOUT, check=True)
+            [
+                "cmake",
+                "-S",
+                str(MERLIN / "third_party/iree_bar"),
+                "-B",
+                str(BUILD),
+                f"-DGEMMINI_SPIKE_MATMUL_SHAPE={shape}",
+            ],
+            cwd=MERLIN,
+            env=BUILD_ENV,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
         (BUILD / "build.ninja").touch()
-        subprocess.run(["ninja", "-C", str(BUILD), RUNNER_TARGET],
-                       cwd=MERLIN, env=BUILD_ENV, stdout=f, stderr=subprocess.STDOUT, check=True)
+        subprocess.run(
+            ["ninja", "-C", str(BUILD), RUNNER_TARGET],
+            cwd=MERLIN,
+            env=BUILD_ENV,
+            stdout=f,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
 
 
 _CYC_RE = re.compile(r"METRIC cycles (\d+)")
 
 
 def run_spike(log: Path, timeout: int) -> tuple[int | None, bool]:
-    out = subprocess.run([str(SPIKE), "--extension=gemmini", f"--isa={SPIKE_ISA}", str(ELF)],
-                         capture_output=True, text=True, timeout=timeout).stdout
+    out = subprocess.run(
+        [str(SPIKE), "--extension=gemmini", f"--isa={SPIKE_ISA}", str(ELF)],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    ).stdout
     log.write_text(out)
     m = _CYC_RE.search(out)
     cyc = int(m.group(1)) if m else None
@@ -101,15 +121,18 @@ def run_spike(log: Path, timeout: int) -> tuple[int | None, bool]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-id", default="perf_full_0001")
-    ap.add_argument("--max-macs", type=int, default=3_000_000,
-                    help="skip matmuls above this (spike-infeasible giants, e.g. tiny_llama lm_head)")
+    ap.add_argument(
+        "--max-macs",
+        type=int,
+        default=3_000_000,
+        help="skip matmuls above this (spike-infeasible giants, e.g. tiny_llama lm_head)",
+    )
     ap.add_argument("--kernels", default="all")
     ap.add_argument("--timeout", type=int, default=1200)
     a = ap.parse_args(argv)
 
     doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
-    corpus = ((doc.get("golden_kernels") or []) + (doc.get("model_kernels") or [])
-              + (doc.get("attention_kernels") or []))
+    corpus = (doc.get("golden_kernels") or []) + (doc.get("model_kernels") or []) + (doc.get("attention_kernels") or [])
     corpus = [k for k in corpus if k.get("op") == "matmul"]
     if a.kernels != "all":
         want = set(a.kernels.split(","))
@@ -146,11 +169,10 @@ def main(argv: list[str] | None = None) -> int:
             rec["correct"] = passed
             rec["util_pct"] = PB.utilization_pct(k["macs"], cyc)
             rec["wall_s"] = round(time.time() - t0, 1)
-            print(f"[{kid:34s}] cyc={cyc} pass={passed} util={rec['util_pct']}% "
-                  f"({rec['wall_s']}s)", flush=True)
+            print(f"[{kid:34s}] cyc={cyc} pass={passed} util={rec['util_pct']}% ({rec['wall_s']}s)", flush=True)
         except subprocess.CalledProcessError as e:
             rec["error"] = f"build failed (see {kid}.build.log)"
-            print(f"[{kid:34s}] BUILD-FAIL ({round(time.time()-t0,0)}s)", flush=True)
+            print(f"[{kid:34s}] BUILD-FAIL ({round(time.time() - t0, 0)}s)", flush=True)
         except subprocess.TimeoutExpired:
             rec["error"] = f"spike timeout > {a.timeout}s"
             print(f"[{kid:34s}] TIMEOUT", flush=True)

@@ -73,8 +73,9 @@ def _check(name: str, ok: bool, detail: str) -> dict:
     return {"check": name, "ok": bool(ok), "detail": detail}
 
 
-def run_canary(sandbox: str = "bwrap", timeout: int = 600,
-               arm: str | None = None, bundle_id: str = "") -> tuple[int, dict]:
+def run_canary(
+    sandbox: str = "bwrap", timeout: int = 600, arm: str | None = None, bundle_id: str = ""
+) -> tuple[int, dict]:
     """Run the canary. Returns ``(exit_code, report)``.
 
     With *arm*, the REAL bundle for that arm is loaded and its workspace
@@ -106,11 +107,13 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600,
             RX.ARM_BUNDLE[arm] = bundle_id
         bundle = RX._load_bundle(arm)
         assembled = R.assemble_copy_workspace(bundle, ws)
-        bundle_info.update({
-            "allowed": len(bundle.get("allowed") or []),
-            "denied": len(bundle.get("denied") or []),
-            "assembled": {k: v for k, v in (assembled or {}).items() if k != "files"},
-        })
+        bundle_info.update(
+            {
+                "allowed": len(bundle.get("allowed") or []),
+                "denied": len(bundle.get("denied") or []),
+                "assembled": {k: v for k, v in (assembled or {}).items() if k != "files"},
+            }
+        )
     else:
         bundle = {"allowed": [], "denied": []}
 
@@ -118,7 +121,8 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600,
     corpus = golden.parent.parent.parent  # the capsule corpus root
     (ws / "TASK.md").write_text(
         "This is an isolation canary, not a build task. Run the shell script in probe.sh "
-        "exactly as given, then reply with the contents of canary_report.txt and nothing else.\n")
+        "exactly as given, then reply with the contents of canary_report.txt and nothing else.\n"
+    )
     probe = _PROBE_SCRIPT.format(golden=shlex.quote(str(golden)), corpus=shlex.quote(str(corpus)))
     (ws / "probe.sh").write_text(probe)
 
@@ -136,59 +140,93 @@ def run_canary(sandbox: str = "bwrap", timeout: int = 600,
 
     # --- Run one real Codex round through the driver under test ---
     os.environ.setdefault("CODEX_CANARY", "1")
-    rc, tpath = CA.run_round(ws, run_dir, os.environ.get("CANARY_MODEL", "gpt-5.6-sol"),
-                             bundle, None, sandbox, 0, timeout, effort="low",
-                             prompt="Run `bash probe.sh` in your working directory exactly as written, "
-                                    "then reply with the contents of canary_report.txt and nothing else. "
-                                    "Do not modify probe.sh. This is an isolation check, not a build task.")
+    rc, tpath = CA.run_round(
+        ws,
+        run_dir,
+        os.environ.get("CANARY_MODEL", "gpt-5.6-sol"),
+        bundle,
+        None,
+        sandbox,
+        0,
+        timeout,
+        effort="low",
+        prompt="Run `bash probe.sh` in your working directory exactly as written, "
+        "then reply with the contents of canary_report.txt and nothing else. "
+        "Do not modify probe.sh. This is an isolation check, not a build task.",
+    )
     records = [json.loads(l) for l in tpath.read_text().splitlines() if l.strip()]
     summary = next((r for r in records if r.get("type") == "codex_summary"), {})
     report_path = ws / "canary_report.txt"
     agent_report = report_path.read_text() if report_path.is_file() else ""
 
     # --- Check 1+2: the binary ran and a turn completed (⇒ auth worked) ---
-    checks.append(_check(
-        "codex_reachable_and_authenticated",
-        rc == 0 and summary.get("turns_usage_reported", 0) >= 1,
-        f"rc={rc} turns_started={summary.get('turns_started')} "
-        f"usage_reported={summary.get('turns_usage_reported')} "
-        f"errors={summary.get('errors')}"))
+    checks.append(
+        _check(
+            "codex_reachable_and_authenticated",
+            rc == 0 and summary.get("turns_usage_reported", 0) >= 1,
+            f"rc={rc} turns_started={summary.get('turns_started')} "
+            f"usage_reported={summary.get('turns_usage_reported')} "
+            f"errors={summary.get('errors')}",
+        )
+    )
 
     # --- Check: the workspace was writable from inside ---
-    checks.append(_check("workspace_writable", (ws / "canary_write.txt").is_file(),
-                         f"canary_write.txt present={ (ws / 'canary_write.txt').is_file() }"))
+    checks.append(
+        _check(
+            "workspace_writable",
+            (ws / "canary_write.txt").is_file(),
+            f"canary_write.txt present={(ws / 'canary_write.txt').is_file()}",
+        )
+    )
 
     # --- Check 3: no prior Codex session reachable inside the sandbox ---
     entries = _field(agent_report, "DOTCODEX_ENTRIES")
     sessions = _field(agent_report, "SESSIONS_VISIBLE")
     leaked = [e for e in entries.split(",") if e and e not in ("packages",)]
-    checks.append(_check(
-        "no_prior_codex_sessions_visible",
-        bool(agent_report) and not sessions.strip(",") and not leaked,
-        f"~/.codex entries={entries!r} sessions={sessions!r}"))
+    checks.append(
+        _check(
+            "no_prior_codex_sessions_visible",
+            bool(agent_report) and not sessions.strip(",") and not leaked,
+            f"~/.codex entries={entries!r} sessions={sessions!r}",
+        )
+    )
 
     # --- Check 4b: the agent could not read an answer (corroboration only) ---
     golden_size = _field(agent_report, "GOLDEN_SIZE")
     readable = _field(agent_report, "READABLE_GOLDENS")
-    checks.append(_check(
-        "agent_saw_no_golden_content",
-        bool(agent_report) and golden_size in ("0", "missing") and not readable.strip(","),
-        f"golden_size={golden_size!r} readable_goldens={readable!r}"))
+    checks.append(
+        _check(
+            "agent_saw_no_golden_content",
+            bool(agent_report) and golden_size in ("0", "missing") and not readable.strip(","),
+            f"golden_size={golden_size!r} readable_goldens={readable!r}",
+        )
+    )
 
     # --- Check: the JSONL tee survived the boundary ---
     raw = Path(summary.get("artifacts", {}).get("raw", ""))
-    checks.append(_check("jsonl_tee_survived_the_boundary",
-                         raw.is_file() and raw.stat().st_size > 0,
-                         f"raw={raw} bytes={raw.stat().st_size if raw.is_file() else 0}"))
+    checks.append(
+        _check(
+            "jsonl_tee_survived_the_boundary",
+            raw.is_file() and raw.stat().st_size > 0,
+            f"raw={raw} bytes={raw.stat().st_size if raw.is_file() else 0}",
+        )
+    )
 
     # --- Check: no credential was written into the tree ---
     home_info = summary.get("codex_home") or {}
     home = Path(home_info.get("codex_home", "")) if home_info else None
-    stray = sorted(str(p) for p in home.rglob("auth.json")
-                   if home and p.is_file() and p.stat().st_size > 0) if home and home.is_dir() else []
-    checks.append(_check("no_credential_written_to_the_tree",
-                         home_info.get("auth_copied") is False and not stray,
-                         f"auth_copied={home_info.get('auth_copied')} stray={stray}"))
+    stray = (
+        sorted(str(p) for p in home.rglob("auth.json") if home and p.is_file() and p.stat().st_size > 0)
+        if home and home.is_dir()
+        else []
+    )
+    checks.append(
+        _check(
+            "no_credential_written_to_the_tree",
+            home_info.get("auth_copied") is False and not stray,
+            f"auth_copied={home_info.get('auth_copied')} stray={stray}",
+        )
+    )
 
     ok = all(c["ok"] for c in checks)
     report = {
@@ -217,12 +255,19 @@ def _field(text: str, key: str) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
-                    help="bwrap (the boundary the isolation claim rests on) or none (diagnostic only)")
+    ap.add_argument(
+        "--sandbox",
+        choices=["bwrap", "none"],
+        default="bwrap",
+        help="bwrap (the boundary the isolation claim rests on) or none (diagnostic only)",
+    )
     ap.add_argument("--timeout", type=int, default=600)
-    ap.add_argument("--arm", default=None,
-                    help="load a REAL arm bundle (raw_baseline|merlin_assisted|cpp_merlininfra) so "
-                         "masking is checked against what a graded cell actually binds")
+    ap.add_argument(
+        "--arm",
+        default=None,
+        help="load a REAL arm bundle (raw_baseline|merlin_assisted|cpp_merlininfra) so "
+        "masking is checked against what a graded cell actually binds",
+    )
     ap.add_argument("--bundle", default="", help="explicit bundle id for --arm (per-target ids differ)")
     a = ap.parse_args(argv)
 

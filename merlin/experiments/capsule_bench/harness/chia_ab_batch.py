@@ -13,6 +13,7 @@ Run under the isolated chia venv::
 The task PLAN (which commands fan out) is a pure function (:func:`plan_tasks`), unit-testable without
 chia; only the fan-out itself needs the chia venv + the sim.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,6 +25,7 @@ import launch_ab_batch as LB  # reuse ARMS / _arm_cmd / _run_id / _run_preflight
 
 try:  # the decorator needs chia (chia venv); a no-op shim lets the module import for planning/tests
     from chia.base.ChiaFunction import ChiaFunction
+
     _HAVE_CHIA = True
 except Exception:  # noqa: BLE001
     _HAVE_CHIA = False
@@ -31,6 +33,7 @@ except Exception:  # noqa: BLE001
     def ChiaFunction(**_kw):  # type: ignore[no-redef]
         def deco(fn):
             return fn
+
         return deco
 
 
@@ -43,8 +46,7 @@ def plan_tasks(arms: list[str], repeats: int, tag: str, a, cond: str = "kernels"
             raise KeyError(f"unknown arm {arm!r} (have {sorted(LB.ARMS)})")
         for r in range(repeats):
             rid = LB._run_id(arm, f"{tag}_r{r}" if repeats > 1 else tag)
-            tasks.append({"arm": arm, "repeat": r, "run_id": rid,
-                          "cmd": LB._arm_cmd(arm, rid, a, cond)})
+            tasks.append({"arm": arm, "repeat": r, "run_id": rid, "cmd": LB._arm_cmd(arm, rid, a, cond)})
     return tasks
 
 
@@ -57,6 +59,7 @@ def run_arm(cmd: list[str], cwd: str, run_id: str) -> dict:
     interpreter at the MAIN ``.venv`` (``driver_python()``, the same choice ``chia_repeatability`` makes)
     so the driver + its agent subprocess never see chia's env. Keeps Claude Code + xDSL out of chia's tree."""
     from merlin.benchharness.chia_bridge import driver_python
+
     if cmd and cmd[0] != driver_python():
         cmd = [driver_python()] + cmd[1:]
     proc = subprocess.run(cmd, cwd=cwd)
@@ -71,15 +74,27 @@ def main(argv: list[str] | None = None) -> int:
     # AGENT DRIVER. LB._arm_cmd already forwards --driver to each arm script when it
     # is not "auto", so the fan-out only has to expose it — and gate the provider's
     # concurrency, which is a different scarce resource from the simulator's.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
-                    default="auto", help="agent driver for every arm (codex = Codex CLI)")
-    ap.add_argument("--codex-slots", type=int, default=1,
-                    help="how many arm-repeats may hold the logical 'codex_slots' resource at once. A "
-                         "provider quota is not a simulator slot: two arms can share a Verilator host and "
-                         "still contend on one account, so it is gated separately (1 == one Codex call "
-                         "in flight)")
-    ap.add_argument("--verilator-slots", type=int, default=1,
-                    help="how many arm-repeats may hold the logical 'verilator' resource at once (1 == sequential)")
+    ap.add_argument(
+        "--driver",
+        choices=["auto", "converse", "claudecode", "opencode", "codex"],
+        default="auto",
+        help="agent driver for every arm (codex = Codex CLI)",
+    )
+    ap.add_argument(
+        "--codex-slots",
+        type=int,
+        default=1,
+        help="how many arm-repeats may hold the logical 'codex_slots' resource at once. A "
+        "provider quota is not a simulator slot: two arms can share a Verilator host and "
+        "still contend on one account, so it is gated separately (1 == one Codex call "
+        "in flight)",
+    )
+    ap.add_argument(
+        "--verilator-slots",
+        type=int,
+        default=1,
+        help="how many arm-repeats may hold the logical 'verilator' resource at once (1 == sequential)",
+    )
     ap.add_argument("--model", default="claude-opus-4-8")
     ap.add_argument("--effort", default="high")
     # provider toggle (experiments-only) — threaded verbatim into each arm's driver cmd by LB._arm_cmd
@@ -88,10 +103,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--aws-profile", default="")
     # Schedule passthrough — _arm_cmd (reused from launch_ab_batch) forwards these to each arm's driver.
     ap.add_argument("--schedule", choices=("rounds", "continuous"), default="rounds")
-    ap.add_argument("--plateau-rounds", type=int, default=None,
-                    help="continuous only: forwarded to each arm's loop — stop when the best "
-                         "score has not improved across this many rounds (0 disables). "
-                         "Unset leaves the loop default, so a batch that omits it is unchanged.")
+    ap.add_argument(
+        "--plateau-rounds",
+        type=int,
+        default=None,
+        help="continuous only: forwarded to each arm's loop — stop when the best "
+        "score has not improved across this many rounds (0 disables). "
+        "Unset leaves the loop default, so a batch that omits it is unchanged.",
+    )
     ap.add_argument("--max-wall-s", type=int, default=0)
     ap.add_argument("--max-rounds", type=int, default=40)
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
@@ -105,14 +124,17 @@ def main(argv: list[str] | None = None) -> int:
 
     arms = [s.strip() for s in a.arms.split(",") if s.strip()]
     tasks = plan_tasks(arms, a.repeats, a.tag, a, a.cond)
-    print(f"=== chia_ab_batch: {len(tasks)} tasks ({len(arms)} arms x {a.repeats} repeats), "
-          f"verilator_slots={a.verilator_slots} ===")
+    print(
+        f"=== chia_ab_batch: {len(tasks)} tasks ({len(arms)} arms x {a.repeats} repeats), "
+        f"verilator_slots={a.verilator_slots} ==="
+    )
     for t in tasks:
         print(f"  {t['arm']:16s} r{t['repeat']} {t['run_id']}")
     if a.dry_run:
         return 0
 
     from merlin.benchharness.chia_bridge import chia_get, chia_run, require_chia
+
     require_chia()
     if a.verilator_slots < 1:
         print("--verilator-slots must be >= 1", file=sys.stderr)
@@ -134,11 +156,21 @@ def main(argv: list[str] | None = None) -> int:
             print("--codex-slots must be >= 1", file=sys.stderr)
             return 2
         cluster_resources["codex_slots"] = a.codex_slots
-    with chia_run(suite="capsule-bench", method="chia_ab_batch", target=LB.C.TARGET,
-                  extra={"arms": arms, "repeats": a.repeats, "verilator_slots": a.verilator_slots,
-                         "codex_slots": a.codex_slots if a.driver == "codex" else None,
-                         "driver": a.driver, "model": a.model, "provider": a.provider},
-                  ray_resources=cluster_resources) as run:
+    with chia_run(
+        suite="capsule-bench",
+        method="chia_ab_batch",
+        target=LB.C.TARGET,
+        extra={
+            "arms": arms,
+            "repeats": a.repeats,
+            "verilator_slots": a.verilator_slots,
+            "codex_slots": a.codex_slots if a.driver == "codex" else None,
+            "driver": a.driver,
+            "model": a.model,
+            "provider": a.provider,
+        },
+        ray_resources=cluster_resources,
+    ) as run:
         # A Codex arm consumes provider quota, so it holds a `codex_slots` unit for
         # its duration in addition to the verilator unit. Requested at call time
         # because the resource set depends on the chosen driver; if the installed
@@ -150,8 +182,10 @@ def main(argv: list[str] | None = None) -> int:
             if callable(opts):
                 launcher = opts(resources={"verilator": 1, "codex_slots": 1})
             else:
-                print("WARNING: this chia build cannot re-option resources; the Codex fan-out is NOT "
-                      "gated on codex_slots — run with --verilator-slots to bound concurrency instead.")
+                print(
+                    "WARNING: this chia build cannot re-option resources; the Codex fan-out is NOT "
+                    "gated on codex_slots — run with --verilator-slots to bound concurrency instead."
+                )
         refs = [launcher.chia_remote(t["cmd"], str(LB.C.REPO), t["run_id"]) for t in tasks]
         # Collect per arm. Gathering the whole list in one call makes the FIRST failure discard every
         # other arm's work, including arms that had already finished. On a shared host that is not a
@@ -164,10 +198,11 @@ def main(argv: list[str] | None = None) -> int:
         for task, ref in zip(tasks, refs, strict=True):
             try:
                 results.append(chia_get(ref))
-            except Exception as exc:                      # noqa: BLE001 — report ANY arm death, run on
+            except Exception as exc:  # noqa: BLE001 — report ANY arm death, run on
                 print(f"  ARM FAILED {task['run_id']}: {type(exc).__name__}: {exc}"[:500], flush=True)
-                results.append({"run_id": task["run_id"], "returncode": 1,
-                                "error": f"{type(exc).__name__}: {exc}"[:500]})
+                results.append(
+                    {"run_id": task["run_id"], "returncode": 1, "error": f"{type(exc).__name__}: {exc}"[:500]}
+                )
     fails = [r for r in results if r.get("returncode")]
     print(f"=== done: {len(results) - len(fails)}/{len(results)} ok ===")
     return 1 if fails else 0

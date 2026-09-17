@@ -20,6 +20,7 @@ declared measured cycle bucket is present, and the buckets sum exactly to ``Tota
 queue's atomic ``kill -> infrasetup -> runworkload -> kill`` operation is mandatory; this driver
 never invokes FireSim directly.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,19 +36,20 @@ import time
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-
 _HERE = Path(__file__).resolve()
 _root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
 if not _root:
     _root = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], cwd=_HERE.parent,
-        capture_output=True, text=True, check=False,
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=_HERE.parent,
+        capture_output=True,
+        text=True,
+        check=False,
     ).stdout.strip()
 REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
 from merlin.common.paths import ext_path  # noqa: E402
-
 
 ARM_ARGS: dict[str, tuple[str, str]] = {
     f"{dataflow}_{lowering}": (dataflow, lowering)
@@ -62,7 +64,10 @@ BOOTBINARY = "merlin-perfbench.elf"
 QUEUE_CWD_LAUNCHER = _HERE.with_name("firesim_queue_cwd_launcher") / "firesim"
 FIRESIM_MAKE_LAUNCHER = QUEUE_CWD_LAUNCHER.with_name("make")
 FIRESIM_LIFECYCLE = (
-    "firesim kill", "firesim infrasetup", "firesim runworkload", "firesim kill",
+    "firesim kill",
+    "firesim infrasetup",
+    "firesim runworkload",
+    "firesim kill",
 )
 _WARM_BEGIN = "MERLIN_PROFILE warmup begin"
 _WARM_END = "MERLIN_PROFILE warmup end rc=0"
@@ -81,8 +86,7 @@ _CYCLE_FIELDS = {
     "other": "Other cycles",
 }
 _CYCLE_RES = {
-    key: re.compile(rf"^{re.escape(label)}:\s*(\d+)\s*\(", re.MULTILINE)
-    for key, label in _CYCLE_FIELDS.items()
+    key: re.compile(rf"^{re.escape(label)}:\s*(\d+)\s*\(", re.MULTILINE) for key, label in _CYCLE_FIELDS.items()
 }
 _COMPONENTS = tuple(key for key in _CYCLE_FIELDS if key != "total")
 
@@ -149,16 +153,13 @@ def parse_uart(text: str) -> dict[str, Any]:
         cycles[key] = int(match.group(1))
     component_sum = sum(cycles[key] for key in _COMPONENTS)
     if component_sum != cycles["total"]:
-        raise BaselineError(
-            f"cycle buckets sum to {component_sum}, not Total cycles {cycles['total']}")
+        raise BaselineError(f"cycle buckets sum to {component_sum}, not Total cycles {cycles['total']}")
     return {
-        "profile": {"warmup_runs": 1, "measured_runs": 1,
-                    "recorded_scope": "post-warm-up compute-cycle decomposition"},
+        "profile": {"warmup_runs": 1, "measured_runs": 1, "recorded_scope": "post-warm-up compute-cycle decomposition"},
         "cycles": cycles,
         "component_sum": component_sum,
         "component_percent": {
-            key: (100.0 * cycles[key] / cycles["total"] if cycles["total"] else 0.0)
-            for key in _COMPONENTS
+            key: (100.0 * cycles[key] / cycles["total"] if cycles["total"] else 0.0) for key in _COMPONENTS
         },
     }
 
@@ -225,8 +226,7 @@ def _source_paths(source_root: Path) -> list[Path]:
 
 def _git_provenance(path: Path) -> dict[str, Any]:
     def git(*args: str) -> subprocess.CompletedProcess[str]:
-        return subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True,
-                              check=False)
+        return subprocess.run(["git", "-C", str(path), *args], capture_output=True, text=True, check=False)
 
     head = git("rev-parse", "HEAD")
     if head.returncode:
@@ -260,14 +260,12 @@ def snapshot_sources(source_root: Path, destination: Path) -> dict[str, Any]:
         snapshot_hash = _sha256(target)
         if snapshot_hash != source_hash:
             raise BaselineError(f"source snapshot drift for {relative}")
-        manifest.append({"path": relative.as_posix(), "sha256": snapshot_hash,
-                         "bytes": target.stat().st_size})
+        manifest.append({"path": relative.as_posix(), "sha256": snapshot_hash, "bytes": target.stat().st_size})
     receipt = {
         "external_root": str(source_root),
         "external_git": _git_provenance(source_root),
         "files": manifest,
-        "aggregate_sha256": _sha256_bytes(
-            "".join(f"{row['path']}\0{row['sha256']}\n" for row in manifest).encode()),
+        "aggregate_sha256": _sha256_bytes("".join(f"{row['path']}\0{row['sha256']}\n" for row in manifest).encode()),
     }
     _write_json(destination.parent / "source_manifest.json", receipt)
     return receipt
@@ -287,21 +285,42 @@ def resolve_compiler(source_root: Path, requested: str | None) -> Path:
     for candidate in candidates:
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return candidate.resolve()
-    raise BaselineError(
-        "riscv64-unknown-elf-gcc not found; pass --compiler or set MERLIN_RISCV_GCC")
+    raise BaselineError("riscv64-unknown-elf-gcc not found; pass --compiler or set MERLIN_RISCV_GCC")
 
 
 def build_command(compiler: Path, snapshot: Path, wrapper: Path, elf: Path) -> list[str]:
     common = snapshot / "riscv-tests/benchmarks/common"
     return [
         str(compiler),
-        "-DPREALLOCATE=1", "-DMULTITHREAD=1", "-mcmodel=medany", "-std=gnu99", "-O2",
-        "-ffast-math", "-fno-common", "-fno-builtin-printf",
-        "-fno-tree-loop-distribute-patterns", "-march=rv64gc", "-Wa,-march=rv64gc",
-        "-lm", "-lgcc", f"-I{snapshot / 'riscv-tests'}", f"-I{snapshot / 'riscv-tests/env'}",
-        f"-I{snapshot}", f"-I{common}", "-DID_STRING=", "-Wno-incompatible-pointer-types",
-        "-nostdlib", "-nostartfiles", "-static", "-T", str(common / "test.ld"),
-        "-DBAREMETAL=1", str(wrapper), "-o", str(elf), str(common / "syscalls.c"),
+        "-DPREALLOCATE=1",
+        "-DMULTITHREAD=1",
+        "-mcmodel=medany",
+        "-std=gnu99",
+        "-O2",
+        "-ffast-math",
+        "-fno-common",
+        "-fno-builtin-printf",
+        "-fno-tree-loop-distribute-patterns",
+        "-march=rv64gc",
+        "-Wa,-march=rv64gc",
+        "-lm",
+        "-lgcc",
+        f"-I{snapshot / 'riscv-tests'}",
+        f"-I{snapshot / 'riscv-tests/env'}",
+        f"-I{snapshot}",
+        f"-I{common}",
+        "-DID_STRING=",
+        "-Wno-incompatible-pointer-types",
+        "-nostdlib",
+        "-nostartfiles",
+        "-static",
+        "-T",
+        str(common / "test.ld"),
+        "-DBAREMETAL=1",
+        str(wrapper),
+        "-o",
+        str(elf),
+        str(common / "syscalls.c"),
         str(common / "crt.S"),
     ]
 
@@ -335,8 +354,9 @@ def build_arm(arm: str, run_dir: Path, compiler: Path, source_manifest: Mapping[
         raise BaselineError(f"build failed for {arm}; see {build_log}")
     if elf.read_bytes()[:4] != b"\x7fELF":
         raise BaselineError(f"compiler did not produce an ELF for {arm}")
-    version = subprocess.run([str(compiler), "--version"], capture_output=True, text=True,
-                             check=False).stdout.splitlines()
+    version = subprocess.run(
+        [str(compiler), "--version"], capture_output=True, text=True, check=False
+    ).stdout.splitlines()
     receipt = {
         "arm": arm,
         "argv": list(ARM_ARGS[arm]),
@@ -359,14 +379,26 @@ def build_arm(arm: str, run_dir: Path, compiler: Path, source_manifest: Mapping[
     return receipt
 
 
-def queue_command(*, queue: Path, chipyard: Path, elf: Path, hw_config: str,
-                  timeout: int, priority: int) -> list[str]:
+def queue_command(*, queue: Path, chipyard: Path, elf: Path, hw_config: str, timeout: int, priority: int) -> list[str]:
     return [
-        str(queue), "runworkload-full", "--chipyard", str(chipyard),
-        "--workload", WORKLOAD, "--bootbinary", BOOTBINARY,
-        "--stage-from", str(elf), "--hw-config", hw_config,
-        "--priority", str(priority), "--project", "merlin-resnet50-baseline",
-        "--timeout", str(timeout),
+        str(queue),
+        "runworkload-full",
+        "--chipyard",
+        str(chipyard),
+        "--workload",
+        WORKLOAD,
+        "--bootbinary",
+        BOOTBINARY,
+        "--stage-from",
+        str(elf),
+        "--hw-config",
+        hw_config,
+        "--priority",
+        str(priority),
+        "--project",
+        "merlin-resnet50-baseline",
+        "--timeout",
+        str(timeout),
     ]
 
 
@@ -380,8 +412,7 @@ def queue_client_environment() -> dict[str, str]:
     """
     for launcher in (QUEUE_CWD_LAUNCHER, FIRESIM_MAKE_LAUNCHER):
         if launcher.is_symlink() or not launcher.is_file() or not os.access(launcher, os.X_OK):
-            raise BaselineError(
-                f"FireSim queue launcher is missing, symlinked, or not executable: {launcher}")
+            raise BaselineError(f"FireSim queue launcher is missing, symlinked, or not executable: {launcher}")
     env = dict(os.environ)
     for name in ("HOME", "USER", "LOGNAME"):
         env.pop(name, None)
@@ -392,8 +423,7 @@ def queue_client_environment() -> dict[str, str]:
     # pinned launcher first in PATH so `firesim` means `./firesim`, preserving
     # the daemon-selected cwd for logs, workload staging, and results.
     inherited_path = env.get("PATH", "")
-    env["PATH"] = str(QUEUE_CWD_LAUNCHER.parent) + (
-        os.pathsep + inherited_path if inherited_path else "")
+    env["PATH"] = str(QUEUE_CWD_LAUNCHER.parent) + (os.pathsep + inherited_path if inherited_path else "")
     return env
 
 
@@ -402,10 +432,12 @@ def validate_queue_help(text: str) -> dict[str, Any]:
     compact = " ".join(text.split())
     required = "kill -> infrasetup -> runworkload -> kill sequence"
     if required not in compact:
-        raise BaselineError(
-            "FireSim queue runworkload-full help does not declare the required " + required)
-    return {"queue_operation": "runworkload-full", "firesim_lifecycle": list(FIRESIM_LIFECYCLE),
-            "contract_help_sha256": _sha256_bytes(text.encode("utf-8"))}
+        raise BaselineError("FireSim queue runworkload-full help does not declare the required " + required)
+    return {
+        "queue_operation": "runworkload-full",
+        "firesim_lifecycle": list(FIRESIM_LIFECYCLE),
+        "contract_help_sha256": _sha256_bytes(text.encode("utf-8")),
+    }
 
 
 def inspect_queue_contract(queue: Path) -> dict[str, Any]:
@@ -413,14 +445,11 @@ def inspect_queue_contract(queue: Path) -> dict[str, Any]:
     # while the subcommand help contains its concrete arguments.  Preserve and
     # validate both: the former proves lifecycle ownership; the latter proves
     # that this installed queue accepts the atomic operation we will submit.
-    top_level = subprocess.run(
-        [str(queue), "--help"], capture_output=True, text=True, check=False)
-    operation = subprocess.run(
-        [str(queue), "runworkload-full", "--help"], capture_output=True, text=True, check=False)
+    top_level = subprocess.run([str(queue), "--help"], capture_output=True, text=True, check=False)
+    operation = subprocess.run([str(queue), "runworkload-full", "--help"], capture_output=True, text=True, check=False)
     if top_level.returncode or operation.returncode:
         raise BaselineError("FireSim queue could not describe runworkload-full")
-    return validate_queue_help(
-        top_level.stdout + top_level.stderr + operation.stdout + operation.stderr)
+    return validate_queue_help(top_level.stdout + top_level.stderr + operation.stdout + operation.stderr)
 
 
 def _queue_job_log(queue: Path, job_id: int) -> Path:
@@ -462,17 +491,34 @@ def _find_uart(queue: Path, chipyard: Path, job_id: int) -> Path:
     raise BaselineError(f"no per-job UART found for FireSim queue job {job_id}")
 
 
-def run_arm(arm: str, repetition: int, run_dir: Path, build: Mapping[str, Any], *, queue: Path,
-            chipyard: Path, hw_config: str, timeout: int, priority: int) -> dict[str, Any]:
+def run_arm(
+    arm: str,
+    repetition: int,
+    run_dir: Path,
+    build: Mapping[str, Any],
+    *,
+    queue: Path,
+    chipyard: Path,
+    hw_config: str,
+    timeout: int,
+    priority: int,
+) -> dict[str, Any]:
     elf = Path(str(build["elf"]))
     if _sha256(elf) != build["elf_sha256"]:
         raise BaselineError(f"ELF drift before run for {arm}")
-    command = queue_command(queue=queue, chipyard=chipyard, elf=elf, hw_config=hw_config,
-                            timeout=timeout, priority=priority)
+    command = queue_command(
+        queue=queue, chipyard=chipyard, elf=elf, hw_config=hw_config, timeout=timeout, priority=priority
+    )
     started = time.time()
     completed = subprocess.run(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, timeout=timeout + 600, check=False, env=queue_client_environment())
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout + 600,
+        check=False,
+        env=queue_client_environment(),
+    )
     queue_log = run_dir / "queue_logs" / f"{arm}.rep-{repetition:02d}.log"
     queue_log.parent.mkdir(parents=True, exist_ok=True)
     queue_log.write_text(completed.stdout, encoding="utf-8")
@@ -501,8 +547,7 @@ def run_arm(arm: str, repetition: int, run_dir: Path, build: Mapping[str, Any], 
         if line.lstrip().startswith("default_simulation_dir:")
     ]
     if simulation_fields != [expected_simulation_dir]:
-        raise BaselineError(
-            f"queue job {job_id} did not isolate its simulation directory: {simulation_fields}")
+        raise BaselineError(f"queue job {job_id} did not isolate its simulation directory: {simulation_fields}")
     result = {
         "status": "pass",
         "arm": arm,
@@ -534,12 +579,12 @@ def aggregate_arm(repetitions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Select the median-total repetition, retaining its internally exact cycle decomposition."""
     if not repetitions or any(row.get("status") != "pass" for row in repetitions):
         raise BaselineError("cannot aggregate an absent or failed repetition")
-    ranked = sorted(repetitions, key=lambda row: (
-        int(row["cycles"]["total"]), int(row["repetition"])))
+    ranked = sorted(repetitions, key=lambda row: (int(row["cycles"]["total"]), int(row["repetition"])))
     representative = ranked[(len(ranked) - 1) // 2]
     totals = [int(row["cycles"]["total"]) for row in repetitions]
     return {
-        "status": "pass", "arm": representative["arm"],
+        "status": "pass",
+        "arm": representative["arm"],
         "repetition_count": len(repetitions),
         "representative_repetition": representative["repetition"],
         "selection": "median total compute cycles; decomposition from that exact repetition",
@@ -547,16 +592,27 @@ def aggregate_arm(repetitions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "component_sum": representative["component_sum"],
         "component_percent": dict(representative["component_percent"]),
         "total_cycle_distribution": {
-            "values": totals, "min": min(totals), "max": max(totals),
+            "values": totals,
+            "min": min(totals),
+            "max": max(totals),
             "median": statistics.median(totals),
         },
         "repetitions": list(repetitions),
     }
 
 
-def load_repetition_receipt(arm: str, repetition: int, run_dir: Path,
-                            build: Mapping[str, Any], *, queue: Path, chipyard: Path,
-                            hw_config: str, timeout: int, priority: int) -> dict[str, Any] | None:
+def load_repetition_receipt(
+    arm: str,
+    repetition: int,
+    run_dir: Path,
+    build: Mapping[str, Any],
+    *,
+    queue: Path,
+    chipyard: Path,
+    hw_config: str,
+    timeout: int,
+    priority: int,
+) -> dict[str, Any] | None:
     """Adopt a completed repetition only after revalidating every mutable input and result."""
     path = run_dir / "run_receipts" / f"{arm}.rep-{repetition:02d}.json"
     if not path.exists():
@@ -569,33 +625,35 @@ def load_repetition_receipt(arm: str, repetition: int, run_dir: Path,
         raise BaselineError(f"resume receipt is unreadable: {path}") from exc
     elf = Path(str(build["elf"]))
     expected_command = queue_command(
-        queue=queue, chipyard=chipyard, elf=elf, hw_config=hw_config,
-        timeout=timeout, priority=priority)
-    if (row.get("status"), row.get("arm"), row.get("repetition")) != (
-            "pass", arm, repetition):
+        queue=queue, chipyard=chipyard, elf=elf, hw_config=hw_config, timeout=timeout, priority=priority
+    )
+    if (row.get("status"), row.get("arm"), row.get("repetition")) != ("pass", arm, repetition):
         raise BaselineError(f"resume receipt identity/status drifted: {path}")
-    if (row.get("elf_sha256") != build["elf_sha256"]
-            or _sha256(elf) != build["elf_sha256"]
-            or row.get("hw_config") != hw_config
-            or row.get("queue_command") != expected_command
-            or row.get("firesim_lifecycle") != list(FIRESIM_LIFECYCLE)):
+    if (
+        row.get("elf_sha256") != build["elf_sha256"]
+        or _sha256(elf) != build["elf_sha256"]
+        or row.get("hw_config") != hw_config
+        or row.get("queue_command") != expected_command
+        or row.get("firesim_lifecycle") != list(FIRESIM_LIFECYCLE)
+    ):
         raise BaselineError(f"resume receipt inputs drifted: {path}")
     uart = Path(str(row.get("uart") or ""))
     daemon_log = Path(str(row.get("queue_daemon_log") or ""))
     runtime_config = Path(str(row.get("queue_runtime_config") or ""))
-    if (uart.is_symlink() or not uart.is_file() or _sha256(uart) != row.get("uart_sha256")):
+    if uart.is_symlink() or not uart.is_file() or _sha256(uart) != row.get("uart_sha256"):
         raise BaselineError(f"resume UART drifted: {path}")
-    if (daemon_log.is_symlink() or not daemon_log.is_file()
-            or _sha256(daemon_log) != row.get("queue_daemon_log_sha256")):
+    if daemon_log.is_symlink() or not daemon_log.is_file() or _sha256(daemon_log) != row.get("queue_daemon_log_sha256"):
         raise BaselineError(f"resume queue daemon log drifted: {path}")
-    if (runtime_config.is_symlink() or not runtime_config.is_file()
-            or _sha256(runtime_config) != row.get("queue_runtime_config_sha256")):
+    if (
+        runtime_config.is_symlink()
+        or not runtime_config.is_file()
+        or _sha256(runtime_config) != row.get("queue_runtime_config_sha256")
+    ):
         raise BaselineError(f"resume queue runtime config drifted: {path}")
     parsed = parse_uart(uart.read_text(encoding="utf-8", errors="replace"))
-    if (parsed.get("cycles") != row.get("cycles")
-            or validate_queue_phases(
-                daemon_log.read_text(encoding="utf-8", errors="replace"))
-            != row.get("queue_phases")):
+    if parsed.get("cycles") != row.get("cycles") or validate_queue_phases(
+        daemon_log.read_text(encoding="utf-8", errors="replace")
+    ) != row.get("queue_phases"):
         raise BaselineError(f"resume measurement does not reproduce: {path}")
     return row
 
@@ -634,8 +692,9 @@ def _default_out() -> Path:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gemmini-rocc-tests", required=True, type=Path,
-                        help="external gemmini-rocc-tests checkout to snapshot")
+    parser.add_argument(
+        "--gemmini-rocc-tests", required=True, type=Path, help="external gemmini-rocc-tests checkout to snapshot"
+    )
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--arms", default=",".join(DEFAULT_ARMS))
     parser.add_argument("--compiler", default=None)
@@ -687,33 +746,56 @@ def main(argv: Sequence[str] | None = None) -> int:
     queue_contract = inspect_queue_contract(queue)
     runs: dict[str, dict[str, Any]] = {}
     root_receipt.update(
-        chipyard=_git_provenance(chipyard), queue=str(queue), queue_sha256=_sha256(queue),
+        chipyard=_git_provenance(chipyard),
+        queue=str(queue),
+        queue_sha256=_sha256(queue),
         queue_cwd_launcher=str(QUEUE_CWD_LAUNCHER),
         queue_cwd_launcher_sha256=_sha256(QUEUE_CWD_LAUNCHER),
         firesim_make_launcher=str(FIRESIM_MAKE_LAUNCHER),
         firesim_make_launcher_sha256=_sha256(FIRESIM_MAKE_LAUNCHER),
-        queue_contract=queue_contract, hw_config=args.hw_config, runs=runs,
+        queue_contract=queue_contract,
+        hw_config=args.hw_config,
+        runs=runs,
     )
     measured: dict[str, list[dict[str, Any]]] = {arm: [] for arm in arms}
     for repetition in range(1, args.repetitions + 1):
         for arm in arms:
             try:
                 row = load_repetition_receipt(
-                    arm, repetition, run_dir, builds[arm], queue=queue, chipyard=chipyard,
-                    hw_config=args.hw_config, timeout=args.timeout, priority=args.priority)
+                    arm,
+                    repetition,
+                    run_dir,
+                    builds[arm],
+                    queue=queue,
+                    chipyard=chipyard,
+                    hw_config=args.hw_config,
+                    timeout=args.timeout,
+                    priority=args.priority,
+                )
                 if row is None:
                     row = run_arm(
-                        arm, repetition, run_dir, builds[arm], queue=queue, chipyard=chipyard,
-                        hw_config=args.hw_config, timeout=args.timeout, priority=args.priority)
+                        arm,
+                        repetition,
+                        run_dir,
+                        builds[arm],
+                        queue=queue,
+                        chipyard=chipyard,
+                        hw_config=args.hw_config,
+                        timeout=args.timeout,
+                        priority=args.priority,
+                    )
                 measured[arm].append(row)
-                print(f"[{arm} rep {repetition}] measured Total cycles: "
-                      f"{row['cycles']['total']:,}", flush=True)
+                print(f"[{arm} rep {repetition}] measured Total cycles: {row['cycles']['total']:,}", flush=True)
             except Exception as exc:  # noqa: BLE001 - persist completed repetitions before failing.
-                runs[arm] = {"status": "error", "completed_repetitions": measured[arm],
-                             "error": f"{type(exc).__name__}: {exc}"}
+                runs[arm] = {
+                    "status": "error",
+                    "completed_repetitions": measured[arm],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
                 root_receipt["status"] = "error"
                 root_receipt["comparison"] = comparison(
-                    {key: row for key, row in runs.items() if row.get("status") == "pass"})
+                    {key: row for key, row in runs.items() if row.get("status") == "pass"}
+                )
                 _write_json(run_dir / "results.json", root_receipt)
                 raise
             runs.update({name: aggregate_arm(rows) for name, rows in measured.items() if rows})

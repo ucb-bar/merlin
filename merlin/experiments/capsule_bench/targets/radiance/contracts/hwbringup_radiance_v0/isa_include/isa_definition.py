@@ -41,6 +41,7 @@ compilation currently LOWERS to, not about the encoding's existence:
     VX.td:34-37 vs an InstAlias to a CUSTOM2 ``nu.invoke`` in NU.td:114); the header emits the native
     CUSTOM0/funct3=4 form (vx_intrinsics.h:154), which is what we model as VX_BARRIER below.
 """
+
 from __future__ import annotations
 
 from isa_patterns import (
@@ -88,6 +89,7 @@ class VX_RAST(WarpRaster, RType, opcode=CUSTOM0, funct3=0, funct7=1):
 class _IsaSpec:
     """The assembler-mnemonic → op-class map isa_introspect discovers (an object exposing ``operations``),
     so a kernel written in Vortex mnemonics maps back to semantic classes. Mnemonics per vx_intrinsics.h."""
+
     operations = {
         "vx_tmc": VX_TMC,
         "vx_wspawn": VX_WSPAWN,

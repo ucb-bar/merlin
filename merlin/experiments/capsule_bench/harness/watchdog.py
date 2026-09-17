@@ -22,6 +22,7 @@ Usage (target comes from the env, exactly like the launcher):
     python watchdog.py --tag atlas_arm4 --arms merlin_rtlchecks
   # ...same knobs as launch_ab_batch (--model/--effort/--max-rounds/--round-timeout/--sandbox/...)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,8 +36,8 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-import _common as C            # noqa: E402  (honors MERLIN_TARGET_EXPERIMENT)
-import launch_ab_batch as LB   # noqa: E402  (ARMS + _run_id/_run_dir/_arm_cmd — the single source of truth)
+import _common as C  # noqa: E402  (honors MERLIN_TARGET_EXPERIMENT)
+import launch_ab_batch as LB  # noqa: E402  (ARMS + _run_id/_run_dir/_arm_cmd — the single source of truth)
 
 
 def _converged(run_dir: Path) -> bool:
@@ -51,17 +52,22 @@ def _converged(run_dir: Path) -> bool:
 
 
 def _alive(run_id: str) -> bool:
-    return subprocess.run(["pgrep", "-f", f"run-id {run_id}"],
-                          capture_output=True).returncode == 0
+    return subprocess.run(["pgrep", "-f", f"run-id {run_id}"], capture_output=True).returncode == 0
 
 
 def _sleeping(run_id: str, run_dir: Path) -> bool:
     """Alive AND its most recent log line is a rate-limit sleep (so a login-kick can move it)."""
     if not _alive(run_id):
         return False
-    logs = sorted((p for p in (run_dir.parent.glob(f"{run_id}.resume.log"),
-                               run_dir.parent.glob(f"{run_id}.launch.log")) for p in p),
-                  key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True)
+    logs = sorted(
+        (
+            p
+            for p in (run_dir.parent.glob(f"{run_id}.resume.log"), run_dir.parent.glob(f"{run_id}.launch.log"))
+            for p in p
+        ),
+        key=lambda p: p.stat().st_mtime if p.exists() else 0,
+        reverse=True,
+    )
     for lg in logs:
         try:
             tail = lg.read_text().splitlines()[-3:]
@@ -84,23 +90,25 @@ def _resume(arm: str, run_id: str, a, env: dict) -> None:
 
 def _probe_headroom(model: str) -> bool:
     try:
-        r = subprocess.run(["claude", "--print", "--model", model, "Reply: OK"],
-                           capture_output=True, text=True, timeout=70)
+        r = subprocess.run(
+            ["claude", "--print", "--model", model, "Reply: OK"], capture_output=True, text=True, timeout=70
+        )
         return '"status":"allowed"' in (r.stdout + r.stderr)
     except (subprocess.SubprocessError, FileNotFoundError):
         return False
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--tag", required=True, help="batch tag (same one passed to launch_ab_batch)")
-    ap.add_argument("--arms", default=",".join(LB.ARMS),
-                    help="comma-separated arms to guard (default: all)")
+    ap.add_argument("--arms", default=",".join(LB.ARMS), help="comma-separated arms to guard (default: all)")
     ap.add_argument("--poll", type=int, default=120, help="seconds between checks")
     ap.add_argument("--once", action="store_true", help="report status once and exit (no resume)")
-    ap.add_argument("--login-kick", action="store_true",
-                    help="on a new /login with headroom, restart arms sleeping on a rate-limit wait")
+    ap.add_argument(
+        "--login-kick",
+        action="store_true",
+        help="on a new /login with headroom, restart arms sleeping on a rate-limit wait",
+    )
     # mirror launch_ab_batch's run knobs so the resume command matches the original launch exactly
     # Defaults track launch_ab_batch, not this file's history. They had drifted -- model was
     # claude-opus-4-8 while the launcher defaults to gpt-5.6-sol -- so a watchdog invoked without flags
@@ -120,17 +128,20 @@ def main() -> int:
     # experiment's shape, and a resume that changes them is a different experiment wearing the same
     # run id. Defined here with launch_ab_batch's own defaults so a resume is byte-identical.
     ap.add_argument("--schedule", choices=["rounds", "continuous"], default="continuous")
-    ap.add_argument("--max-wall-s", type=int, default=0,
-                    help="per-arm ACTIVE wall budget forwarded on resume (0 = none). Pass the REMAINDER "
-                         "of the original budget: a run killed before its first checkpoint restarts "
-                         "active_wall_s at zero, so an unqualified resume grants a second full budget.")
+    ap.add_argument(
+        "--max-wall-s",
+        type=int,
+        default=0,
+        help="per-arm ACTIVE wall budget forwarded on resume (0 = none). Pass the REMAINDER "
+        "of the original budget: a run killed before its first checkpoint restarts "
+        "active_wall_s at zero, so an unqualified resume grants a second full budget.",
+    )
     ap.add_argument("--qa-timeout", type=int, default=None)
     ap.add_argument("--sim-max-jobs", type=int, default=None)
     ap.add_argument("--model-budget-s", type=int, default=None)
     ap.add_argument("--plateau-rounds", type=int, default=None)
     ap.add_argument("--min-rounds", type=int, default=0)
-    ap.add_argument("--condition", choices=["kernels", "no-kernels", "kernel-library"],
-                    default="kernels")
+    ap.add_argument("--condition", choices=["kernels", "no-kernels", "kernel-library"], default="kernels")
     # Agent driver + provider — mirrored so _arm_cmd builds the SAME command on the initial launch AND on
     # every --resume (else a resume would silently drop to driver=auto / a different provider than the run
     # was started with). Names + defaults match launch_ab_batch exactly.
@@ -139,11 +150,14 @@ def main() -> int:
     # driver=auto the resume passes no --driver at all, and auto can never resolve to codex -- it routes
     # a non-Anthropic model id to the Bedrock Converse loop, i.e. a different agent on a metered
     # account. A guarded codex batch would have come back as something else entirely.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
-                    default="codex",
-                    help="agent driver for the guarded arm(s). Default codex (the subscription seat "
-                         "these experiments run on), matching launch_ab_batch; `auto` can NEVER "
-                         "resolve to codex.")
+    ap.add_argument(
+        "--driver",
+        choices=["auto", "converse", "claudecode", "opencode", "codex"],
+        default="codex",
+        help="agent driver for the guarded arm(s). Default codex (the subscription seat "
+        "these experiments run on), matching launch_ab_batch; `auto` can NEVER "
+        "resolve to codex.",
+    )
     ap.add_argument("--subagent-model", default="")
     ap.add_argument("--background-model", default="")
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
@@ -160,8 +174,7 @@ def main() -> int:
     env["MERLIN_TARGET_EXPERIMENT"] = str(C.EXP / "target_experiment.yaml")
     ids = {arm: LB._run_id(arm, a.tag) for arm in arms}
 
-    print(f"[wd {time.strftime('%H:%M:%S')}] target={C.TARGET} tag={a.tag} "
-          f"arms={arms} runs={C.RUNS}", flush=True)
+    print(f"[wd {time.strftime('%H:%M:%S')}] target={C.TARGET} tag={a.tag} arms={arms} runs={C.RUNS}", flush=True)
 
     if a.once:
         for arm in arms:
@@ -197,8 +210,9 @@ def main() -> int:
                         rid, rd = ids[arm], LB._run_dir(arm, ids[arm])
                         if not _converged(rd) and _sleeping(rid, rd):
                             print(f"[wd] {rid} sleeping + fresh headroom -> kick", flush=True)
-                            subprocess.run(["pkill", "-9", "-f", f"run-id {rid}"],
-                                           capture_output=True)  # scoped to THIS run-id only
+                            subprocess.run(
+                                ["pkill", "-9", "-f", f"run-id {rid}"], capture_output=True
+                            )  # scoped to THIS run-id only
                             time.sleep(3)
                             _resume(arm, rid, a, env)
                             time.sleep(10)
@@ -210,8 +224,9 @@ def main() -> int:
         st = rd / "qa_loop_state.yaml"
         line = ""
         if st.exists():
-            line = " ".join(l.strip() for l in st.read_text().splitlines()
-                            if l.strip().startswith(("converged:", "next_round:")))
+            line = " ".join(
+                l.strip() for l in st.read_text().splitlines() if l.strip().startswith(("converged:", "next_round:"))
+            )
         print(f"  {ids[arm]}: {line}", flush=True)
     return 0
 

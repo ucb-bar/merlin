@@ -7,6 +7,7 @@ centralizes detecting that condition and reading the `resetsAt` epoch, so:
   - reclassify_repeatability.py / gen_reports.py classify such runs as blocked (not failed), and
   - run_baseline_qa_loop.py can sleep until `resetsAt` and retry the round instead of burning it.
 """
+
 from __future__ import annotations
 
 import json
@@ -62,8 +63,9 @@ def daily_limit_hit(transcript_path: str | Path) -> bool:
                 elif b.get("type") == "tool_use":
                     tool_uses += 1
             low = txt.lower()
-            if ("per day" in low or "daily" in low) and \
-                    ("429" in low or "too many" in low or "quota" in low or "limit" in low):
+            if ("per day" in low or "daily" in low) and (
+                "429" in low or "too many" in low or "quota" in low or "limit" in low
+            ):
                 hit = True
     return hit and tool_uses == 0
 
@@ -116,9 +118,9 @@ def rounds_rate_limited(run_dir: str | Path) -> tuple[int, int]:
 #: refusal, and matched only alongside "no tool work" so a real turn that merely mentions one of these
 #: words is never mistaken for a dead one.
 _TERMINAL_MARKERS = (
-    "usage limit",             # ChatGPT/codex seat credits exhausted (carries a retry DATE, not a window)
+    "usage limit",  # ChatGPT/codex seat credits exhausted (carries a retry DATE, not a window)
     "purchase more credits",
-    "issue with the selected model",   # a model the CLI cannot serve (e.g. a Bedrock id under a seat)
+    "issue with the selected model",  # a model the CLI cannot serve (e.g. a Bedrock id under a seat)
     "may not exist or you may not have access",
     "authentication",
     "invalid api key",
@@ -163,7 +165,7 @@ def agent_turn_dead(transcript_path: str | Path) -> tuple[bool, str]:
                 reasons.append("the driver reported the turn itself as failed")
         txt = str(e.get("result", "")) if t == "result" else ""
         if isinstance(msg, dict):
-            for b in (msg.get("content") or []):
+            for b in msg.get("content") or []:
                 if not isinstance(b, dict):
                     continue
                 if b.get("type") == "tool_use":
@@ -176,7 +178,7 @@ def agent_turn_dead(transcript_path: str | Path) -> tuple[bool, str]:
                 reasons.append(f"the driver reported {m!r}")
                 break
     if tool_uses:
-        return False, ""                     # the agent did work; whatever else happened, it ran
+        return False, ""  # the agent did work; whatever else happened, it ran
     if saw_assistant and synthetic_only:
         reasons.append("every reply came from the CLI itself (model '<synthetic>'), so no model ran")
     if not saw_assistant:

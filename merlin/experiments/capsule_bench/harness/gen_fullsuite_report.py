@@ -14,18 +14,21 @@ Outputs (reports/):
   - cycles_by_capsule.md      per-capsule status + L2(spike)/L3(verilator) cycles, per run + a
                               cross-run L3-cycle matrix
 """
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
+import _common as C
 import yaml
 
-import _common as C
-
 ORDER = (  # canonical capsule order for the matrix
-    [f"A{i}" for i in range(8)] + [f"B{i}" for i in range(5)] + [f"C{i}" for i in range(7)]
-    + [f"H{i}" for i in range(5)])
+    [f"A{i}" for i in range(8)]
+    + [f"B{i}" for i in range(5)]
+    + [f"C{i}" for i in range(7)]
+    + [f"H{i}" for i in range(5)]
+)
 
 
 def _passed_frac(s: str | None) -> tuple[int, int]:
@@ -88,19 +91,22 @@ def main() -> int:
         ef = rd / "environment.yaml"
         if ef.exists():
             env = yaml.safe_load(ef.read_text()) or {}
-        runs.append({"dir": rd, "m": m, "ql": ql, "side": side, "env": env,
-                     "caps": _capsule_results(rd)})
+        runs.append({"dir": rd, "m": m, "ql": ql, "side": side, "env": env, "caps": _capsule_results(rd)})
 
     # ---------------- fullsuite_comparison.md ----------------
-    L = [f"# Full-suite comparison ({C.TARGET} capsule-bench)", "",
-         "Per-arm pass over **all** capsules (dynamic n/n, not a hardcoded pilot count). "
-         "Time split (cumulative across quota-resumes): `active` = doing work (agent+oracle, from the "
-         "driver), `quota_wait` = slept waiting on the 5h limit; within active, `agent`/`sim` = agent "
-         "subprocess vs oracle (spike+verilator) wall. Cert tier = highest REQUIRED tier reached "
-         "(L3 = real cycle-accurate RTL). Cycles are diagnostic-only and never gate.", "",
-         "| arm | run_id | suite | public | hidden | pass | tier | integrity | rounds | tokens | "
-         "cost$ | active(s) | quota_wait(s) | agent(s) | sim(s) | wall(s) |",
-         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    L = [
+        f"# Full-suite comparison ({C.TARGET} capsule-bench)",
+        "",
+        "Per-arm pass over **all** capsules (dynamic n/n, not a hardcoded pilot count). "
+        "Time split (cumulative across quota-resumes): `active` = doing work (agent+oracle, from the "
+        "driver), `quota_wait` = slept waiting on the 5h limit; within active, `agent`/`sim` = agent "
+        "subprocess vs oracle (spike+verilator) wall. Cert tier = highest REQUIRED tier reached "
+        "(L3 = real cycle-accurate RTL). Cycles are diagnostic-only and never gate.",
+        "",
+        "| arm | run_id | suite | public | hidden | pass | tier | integrity | rounds | tokens | "
+        "cost$ | active(s) | quota_wait(s) | agent(s) | sim(s) | wall(s) |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
     for r in runs:
         m, ql, env, side = r["m"], r["ql"], r["env"], r["side"]
         pub = (m.get("public_dev") or {}).get("passed")
@@ -117,22 +123,33 @@ def main() -> int:
             f"{'PASS' if _is_pass(pub, hid) else 'no'} | {(m.get('public_dev') or {}).get('highest_tier')} | "
             f"{m.get('integrity_status')} | {ql.get('n_rounds', m.get('iterations'))} | "
             f"{proc.get('tokens_total')} | {proc.get('estimated_cost_usd')} | {active} | {qwait} | "
-            f"{agent_s} | {sim_s} | {proc.get('wall_time_seconds')} |")
-    L += ["", "_`active`+`quota_wait` = `wall` (cumulative across resume invocations). `agent`+`sim` "
-          "split `active` (the rest of active is harness/finalize overhead). `—` = a run predating "
-          "this instrumentation (e.g. pilot runs launched before run_fullsuite.py)._"]
+            f"{agent_s} | {sim_s} | {proc.get('wall_time_seconds')} |"
+        )
+    L += [
+        "",
+        "_`active`+`quota_wait` = `wall` (cumulative across resume invocations). `agent`+`sim` "
+        "split `active` (the rest of active is harness/finalize overhead). `—` = a run predating "
+        "this instrumentation (e.g. pilot runs launched before run_fullsuite.py)._",
+    ]
     (C.REPORTS / "fullsuite_comparison.md").write_text("\n".join(L) + "\n")
 
     # ---------------- cycles_by_capsule.md ----------------
     full_runs = [r for r in runs if r["caps"]]
-    M = [f"# Cycles by capsule ({C.TARGET} capsule-bench)", "",
-         "Per-capsule status + **L2 spike** / **L3 verilator (cycle-accurate RTL)** cycle counts, from "
-         "each run's `capsule_result.json`. L5 FireSim columns are added once the FPGA backfill runs.", ""]
+    M = [
+        f"# Cycles by capsule ({C.TARGET} capsule-bench)",
+        "",
+        "Per-capsule status + **L2 spike** / **L3 verilator (cycle-accurate RTL)** cycle counts, from "
+        "each run's `capsule_result.json`. L5 FireSim columns are added once the FPGA backfill runs.",
+        "",
+    ]
     # cross-run L3-cycle matrix (capsule rows x run columns)
-    cols = [f"{r['m'].get('arm','?')[:6]}/{r['m'].get('run_id')}" for r in full_runs]
-    M += ["## L3 (verilator) cycle matrix", "",
-          "| capsule | " + " | ".join(cols) + " |",
-          "|---|" + "|".join(["---"] * len(cols)) + "|"]
+    cols = [f"{r['m'].get('arm', '?')[:6]}/{r['m'].get('run_id')}" for r in full_runs]
+    M += [
+        "## L3 (verilator) cycle matrix",
+        "",
+        "| capsule | " + " | ".join(cols) + " |",
+        "|---|" + "|".join(["---"] * len(cols)) + "|",
+    ]
     seen = {}
     for r in full_runs:
         for name, d in r["caps"].items():
@@ -153,15 +170,22 @@ def main() -> int:
     # per-run detail (L2 + L3)
     for r in full_runs:
         m = r["m"]
-        M += ["", f"## {m.get('arm')}/{m.get('run_id')} — per-capsule L2/L3", "",
-              "| capsule | phase | status | L2 spike | L3 verilator |", "|---|---|---|---|---|"]
+        M += [
+            "",
+            f"## {m.get('arm')}/{m.get('run_id')} — per-capsule L2/L3",
+            "",
+            "| capsule | phase | status | L2 spike | L3 verilator |",
+            "|---|---|---|---|---|",
+        ]
         for name in sorted(r["caps"], key=lambda n: (ORDER.index(_short(n)) if _short(n) in ORDER else 99, n)):
             d = r["caps"][name]
             M.append(f"| {name} | {d['phase']} | {d['status']} | {d['L2']} | {d['L3']} |")
     (C.REPORTS / "cycles_by_capsule.md").write_text("\n".join(M) + "\n")
 
-    print(f"wrote fullsuite_comparison.md + cycles_by_capsule.md ({len(runs)} runs, "
-          f"{len(full_runs)} with per-capsule cycles)")
+    print(
+        f"wrote fullsuite_comparison.md + cycles_by_capsule.md ({len(runs)} runs, "
+        f"{len(full_runs)} with per-capsule cycles)"
+    )
     return 0
 
 

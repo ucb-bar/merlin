@@ -23,6 +23,7 @@ WHAT "BEST" MEANS HERE, and what it deliberately refuses to do:
   dropped and never quietly compared.
 * A tie is reported as a tie. Two candidates at the same total are not ordered by recency.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -36,7 +37,7 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.benchharness import hash_tree                              # noqa: E402
+from merlin.benchharness import hash_tree  # noqa: E402
 
 #: Where a measurement's own copy of the candidate is kept, relative to its call directory.
 SNAPSHOT_DIR = "_measured_candidate"
@@ -54,13 +55,16 @@ def _measured_cells(document: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     them; reading false as measured would count a cell nobody ran. Both are checked for explicitly.
     """
     out = []
-    for c in (document.get("cells") or []):
+    for c in document.get("cells") or []:
         if not isinstance(c, Mapping):
             continue
         if "measured" in c and not c["measured"]:
             continue
-        if (c.get("comparable") and isinstance(c.get("candidate_gsim_cycles"), int)
-                and isinstance(c.get("baseline_gsim_cycles"), int)):
+        if (
+            c.get("comparable")
+            and isinstance(c.get("candidate_gsim_cycles"), int)
+            and isinstance(c.get("baseline_gsim_cycles"), int)
+        ):
             out.append(c)
     return out
 
@@ -84,27 +88,33 @@ def read_measurements(stage_dir: Path) -> list[dict[str, Any]]:
         round_index = document.get("round")
         snapshot = None
         if isinstance(call, int) and isinstance(round_index, int):
-            candidate = (stage_dir / "_development_feedback" / f"round_{round_index:02d}"
-                         / f"call_{call:03d}" / SNAPSHOT_DIR)
+            candidate = (
+                stage_dir / "_development_feedback" / f"round_{round_index:02d}" / f"call_{call:03d}" / SNAPSHOT_DIR
+            )
             snapshot = candidate if candidate.is_dir() else None
-        out.append({
-            "document": str(path),
-            "round": round_index, "call": call,
-            "candidate_sha256": document.get("candidate_sha256"),
-            "members": _member_key(cells),
-            "n_members": len(cells),
-            "baseline_total_cycles": sum(int(c["baseline_gsim_cycles"]) for c in cells),
-            "candidate_total_cycles": sum(int(c["candidate_gsim_cycles"]) for c in cells),
-            "snapshot": str(snapshot) if snapshot else None,
-        })
+        out.append(
+            {
+                "document": str(path),
+                "round": round_index,
+                "call": call,
+                "candidate_sha256": document.get("candidate_sha256"),
+                "members": _member_key(cells),
+                "n_members": len(cells),
+                "baseline_total_cycles": sum(int(c["baseline_gsim_cycles"]) for c in cells),
+                "candidate_total_cycles": sum(int(c["candidate_gsim_cycles"]) for c in cells),
+                "snapshot": str(snapshot) if snapshot else None,
+            }
+        )
     return out
 
 
 def choose_best(measurements: "Sequence[Mapping[str, Any]]") -> dict[str, Any]:
     """The lowest total among measurements that covered the SAME members, with the rest reported."""
     if not measurements:
-        return {"status": "no_measurement",
-                "reason": "the trial recorded no measurement with a comparable certified cell"}
+        return {
+            "status": "no_measurement",
+            "reason": "the trial recorded no measurement with a comparable certified cell",
+        }
     by_members: dict[tuple[str, ...], list[Mapping[str, Any]]] = {}
     for row in measurements:
         by_members.setdefault(row["members"], []).append(row)
@@ -113,10 +123,16 @@ def choose_best(measurements: "Sequence[Mapping[str, Any]]") -> dict[str, Any]:
     cohort_key = max(by_members, key=lambda k: (len(k), len(by_members[k])))
     cohort = by_members[cohort_key]
     excluded = [
-        {"call": r["call"], "n_members": r["n_members"],
-         "candidate_total_cycles": r["candidate_total_cycles"],
-         "why": ("covered a different member set, so its total is not comparable with the cohort's")}
-        for k, rows in by_members.items() if k != cohort_key for r in rows]
+        {
+            "call": r["call"],
+            "n_members": r["n_members"],
+            "candidate_total_cycles": r["candidate_total_cycles"],
+            "why": ("covered a different member set, so its total is not comparable with the cohort's"),
+        }
+        for k, rows in by_members.items()
+        if k != cohort_key
+        for r in rows
+    ]
 
     lowest = min(r["candidate_total_cycles"] for r in cohort)
     winners = [r for r in cohort if r["candidate_total_cycles"] == lowest]
@@ -130,18 +146,26 @@ def choose_best(measurements: "Sequence[Mapping[str, Any]]") -> dict[str, Any]:
         "speedup_vs_baseline": (baseline / lowest) if lowest else None,
         "winners": [dict(r, members=list(r["members"])) for r in winners],
         "excluded_from_comparison": excluded,
-        "all": [{"call": r["call"], "candidate_total_cycles": r["candidate_total_cycles"],
-                 "n_members": r["n_members"], "candidate_sha256": r["candidate_sha256"]}
-                for r in cohort],
+        "all": [
+            {
+                "call": r["call"],
+                "candidate_total_cycles": r["candidate_total_cycles"],
+                "n_members": r["n_members"],
+                "candidate_sha256": r["candidate_sha256"],
+            }
+            for r in cohort
+        ],
     }
 
 
 def main(argv: "Sequence[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--stage-dir", required=True, type=Path,
-                    help="a trial stage directory (…/agent_stages/<experiment>__trial_NN)")
-    ap.add_argument("--out", type=Path, default=None,
-                    help="directory to copy the winning tree into; omit to only report")
+    ap.add_argument(
+        "--stage-dir", required=True, type=Path, help="a trial stage directory (…/agent_stages/<experiment>__trial_NN)"
+    )
+    ap.add_argument(
+        "--out", type=Path, default=None, help="directory to copy the winning tree into; omit to only report"
+    )
     ap.add_argument("--json", type=Path, default=None, help="write the full report here")
     args = ap.parse_args(argv)
 
@@ -159,60 +183,76 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     if verdict["status"] == "no_measurement":
         print(f"  {verdict['reason']}")
         return 1
-    print(f"comparison cohort                            : {verdict['cohort_size']} measurement(s) "
-          f"over {len(verdict['cohort_members'])} member(s)")
+    print(
+        f"comparison cohort                            : {verdict['cohort_size']} measurement(s) "
+        f"over {len(verdict['cohort_members'])} member(s)"
+    )
     for row in verdict["all"]:
         mark = "  <- best" if row["candidate_total_cycles"] == verdict["best_total_cycles"] else ""
         print(f"  call {row['call']:>3}  {row['candidate_total_cycles']:>9} cycles{mark}")
     if verdict["excluded_from_comparison"]:
-        print(f"  ({len(verdict['excluded_from_comparison'])} measurement(s) covered a different "
-              f"member set and are not comparable)")
+        print(
+            f"  ({len(verdict['excluded_from_comparison'])} measurement(s) covered a different "
+            f"member set and are not comparable)"
+        )
     print(f"baseline total                               : {verdict['baseline_total_cycles']}")
-    print(f"best total                                   : {verdict['best_total_cycles']} "
-          f"({verdict['speedup_vs_baseline']:.4f}x)" if verdict["speedup_vs_baseline"] else "")
+    print(
+        f"best total                                   : {verdict['best_total_cycles']} "
+        f"({verdict['speedup_vs_baseline']:.4f}x)"
+        if verdict["speedup_vs_baseline"]
+        else ""
+    )
 
     winner = verdict["winners"][0]
     if verdict["status"] == "tie":
-        print(f"NOTE: {len(verdict['winners'])} candidates tie at the best total; reporting the "
-              f"first and NOT ordering them by recency")
+        print(
+            f"NOTE: {len(verdict['winners'])} candidates tie at the best total; reporting the "
+            f"first and NOT ordering them by recency"
+        )
 
     # DOES THE SEALED TREE ACTUALLY CARRY THE BEST RESULT? This is the question this script exists
     # for, and it is answered by comparing digests rather than by trusting the prompt's request that
     # the agent keep its best.
     if verdict["sealed_sha256"]:
-        sealed_rows = [r for r in measurements
-                       if r.get("candidate_sha256") == verdict["sealed_sha256"]]
+        sealed_rows = [r for r in measurements if r.get("candidate_sha256") == verdict["sealed_sha256"]]
         verdict["sealed_was_measured"] = bool(sealed_rows)
-        verdict["sealed_total_cycles"] = (
-            min(r["candidate_total_cycles"] for r in sealed_rows) if sealed_rows else None)
+        verdict["sealed_total_cycles"] = min(r["candidate_total_cycles"] for r in sealed_rows) if sealed_rows else None
         # ANY winner, not the first one. With a tie the sealed tree may be a different winner than
         # the one reported above, and comparing only against that one says "NO" beside a 0.00% gap.
         same = verdict["sealed_sha256"] in {w.get("candidate_sha256") for w in verdict["winners"]}
         verdict["sealed_is_best"] = same
-        print(f"sealed tree was measured at all               : "
-              f"{'YES' if sealed_rows else 'NO -- its speed is unknown'}")
+        print(
+            f"sealed tree was measured at all               : {'YES' if sealed_rows else 'NO -- its speed is unknown'}"
+        )
         print(f"sealed tree is the best-measured one          : {'YES' if same else 'NO'}")
         if sealed_rows and not same:
             gap = verdict["sealed_total_cycles"] - verdict["best_total_cycles"]
             verdict["sealed_cycles_behind_best"] = gap
-            print(f"  the sealed tree measured {verdict['sealed_total_cycles']} cycles, "
-                  f"{gap} more than the best ({100.0 * gap / verdict['best_total_cycles']:.2f}% "
-                  f"slower); shipping it discards that much of the search")
+            print(
+                f"  the sealed tree measured {verdict['sealed_total_cycles']} cycles, "
+                f"{gap} more than the best ({100.0 * gap / verdict['best_total_cycles']:.2f}% "
+                f"slower); shipping it discards that much of the search"
+            )
         elif not sealed_rows:
-            print("  the sealed tree is an edit made AFTER the last measurement, so nothing "
-                  "measured it; ship the verified snapshot instead")
+            print(
+                "  the sealed tree is an edit made AFTER the last measurement, so nothing "
+                "measured it; ship the verified snapshot instead"
+            )
     if winner.get("snapshot"):
         actual = str(hash_tree(Path(winner["snapshot"]))["sha256"])
         verdict["winner_snapshot_sha256"] = actual
         verdict["winner_snapshot_verified"] = actual == winner.get("candidate_sha256")
         print(f"winning snapshot                             : {winner['snapshot']}")
-        print(f"  digest matches the measured candidate       : "
-              f"{'YES' if verdict['winner_snapshot_verified'] else 'NO'}")
+        print(
+            f"  digest matches the measured candidate       : {'YES' if verdict['winner_snapshot_verified'] else 'NO'}"
+        )
     else:
         verdict["winner_snapshot_sha256"] = None
         verdict["winner_snapshot_verified"] = False
-        print("winning snapshot                             : NOT ON DISK -- this trial predates "
-              "per-measurement snapshots, so the winning bytes cannot be recovered exactly")
+        print(
+            "winning snapshot                             : NOT ON DISK -- this trial predates "
+            "per-measurement snapshots, so the winning bytes cannot be recovered exactly"
+        )
 
     if args.out is not None:
         source = winner.get("snapshot")
@@ -226,7 +266,8 @@ def main(argv: "Sequence[str] | None" = None) -> int:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, destination)
         (destination.parent / f"{destination.name}.provenance.json").write_text(
-            json.dumps({"extracted_from": str(stage_dir), **verdict}, indent=1), encoding="utf-8")
+            json.dumps({"extracted_from": str(stage_dir), **verdict}, indent=1), encoding="utf-8"
+        )
         print(f"exported the best-measured compiler to        : {destination}")
 
     if args.json is not None:

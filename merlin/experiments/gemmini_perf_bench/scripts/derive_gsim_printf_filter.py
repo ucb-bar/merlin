@@ -8,6 +8,7 @@ format conversion and the following static separator.  The emitted record is
 intended to be pinned alongside the filter shim and compile argv in the GSIM
 build receipt.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -15,7 +16,6 @@ import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
-
 
 SCHEMA = "merlin.gsim-printf-filter-derivation.v1"
 _DISASSEMBLY_MARKER = "DASM("
@@ -51,8 +51,7 @@ def _decode_firrtl_string(text: str, quote: int) -> tuple[str, int]:
             raise DerivationError("unterminated escape in FIRRTL printf format")
         escaped = text[index]
         if escaped not in escapes:
-            raise DerivationError(
-                f"unsupported FIRRTL printf escape \\{escaped}; refusing to guess")
+            raise DerivationError(f"unsupported FIRRTL printf escape \\{escaped}; refusing to guess")
         chars.append(escapes[escaped])
         index += 1
     raise DerivationError("unterminated FIRRTL printf format")
@@ -107,8 +106,7 @@ def _parse_printf(line: str, line_number: int) -> FirrtlPrintf | None:
         if depth < 0:
             break
     if not closed or in_string or depth != 0:
-        raise DerivationError(
-            f"line {line_number}: printf is not one complete FIRRTL statement")
+        raise DerivationError(f"line {line_number}: printf is not one complete FIRRTL statement")
 
     locator: str | None = None
     _, marker, tail = statement.rpartition("@[")
@@ -144,15 +142,12 @@ def derive(firrtl: Path) -> dict[str, object]:
                 printfs.append(parsed)
     candidates = [row for row in printfs if _DISASSEMBLY_MARKER in row.format]
     if len(candidates) != 1:
-        raise DerivationError(
-            "expected exactly one FIRRTL disassembly printf, found "
-            f"{len(candidates)}")
+        raise DerivationError(f"expected exactly one FIRRTL disassembly printf, found {len(candidates)}")
     selected = candidates[0]
     prefix = _derived_prefix(selected.format)
     collisions = [row for row in printfs if row.format.startswith(prefix)]
     if collisions != [selected]:
-        raise DerivationError(
-            "derived printf prefix is not unique within the elaborated FIRRTL")
+        raise DerivationError("derived printf prefix is not unique within the elaborated FIRRTL")
 
     raw = firrtl.read_bytes()
     return {

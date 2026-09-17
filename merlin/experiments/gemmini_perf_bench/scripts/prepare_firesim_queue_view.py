@@ -12,11 +12,11 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import stat
 import tarfile
 import tempfile
+from pathlib import Path
 
 
 def _sha256(path: Path) -> str:

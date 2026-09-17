@@ -21,6 +21,7 @@ Runs under the CHIA venv:
 Output lands in an aet-managed run dir (``runs/<target>/capsule-bench/<run-id>/``) alongside the
 CHIA profiler JSONL, which ``chia viz-profile`` renders.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -57,8 +58,7 @@ def run_repeat(cmd: list[str], cwd: str, run_id: str) -> dict:
     """
     t0 = time.monotonic()
     proc = subprocess.run(cmd, cwd=cwd)
-    return {"run_id": run_id, "returncode": proc.returncode,
-            "wall_s": round(time.monotonic() - t0, 1)}
+    return {"run_id": run_id, "returncode": proc.returncode, "wall_s": round(time.monotonic() - t0, 1)}
 
 
 def _repeat_cmd(a, run_id: str, run_dir: Path) -> list[str]:
@@ -68,10 +68,28 @@ def _repeat_cmd(a, run_id: str, run_dir: Path) -> list[str]:
         # tokens and no driver involvement. NOT a test of the QA loop itself.
         return [driver_python(), "-c", f"import time; time.sleep({a.stub_seconds})"]
 
-    cmd = [driver_python(), str(RR.DRIVER), "--run-id", run_id, "--arm", a.arm,
-           "--model", a.model, "--effort", a.effort, "--max-rounds", str(a.max_rounds),
-           "--round-timeout", str(a.round_timeout), "--qa-timeout", str(a.qa_timeout),
-           "--sandbox", a.sandbox, "--max-rate-limit-waits", str(a.max_rate_limit_waits)]
+    cmd = [
+        driver_python(),
+        str(RR.DRIVER),
+        "--run-id",
+        run_id,
+        "--arm",
+        a.arm,
+        "--model",
+        a.model,
+        "--effort",
+        a.effort,
+        "--max-rounds",
+        str(a.max_rounds),
+        "--round-timeout",
+        str(a.round_timeout),
+        "--qa-timeout",
+        str(a.qa_timeout),
+        "--sandbox",
+        a.sandbox,
+        "--max-rate-limit-waits",
+        str(a.max_rate_limit_waits),
+    ]
     if a.account_config_dir:
         cmd += ["--account-config-dir", a.account_config_dir]
     if a.resume or run_dir.exists():
@@ -94,12 +112,20 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-rate-limit-waits", type=int, default=6)
     ap.add_argument("--resume", action="store_true")
     ap.add_argument("--account-config-dir", default="")
-    ap.add_argument("--verilator-slots", type=int, default=1,
-                    help="how many repeats may hold the logical 'verilator' resource at once. "
-                         "1 == the sequential behaviour of run_repeatability.py")
-    ap.add_argument("--stub-seconds", type=float, default=0.0,
-                    help="replace the driver with a sleep of N seconds: exercises the CHIA "
-                         "orchestration layer token-free. Does NOT run the QA loop.")
+    ap.add_argument(
+        "--verilator-slots",
+        type=int,
+        default=1,
+        help="how many repeats may hold the logical 'verilator' resource at once. "
+        "1 == the sequential behaviour of run_repeatability.py",
+    )
+    ap.add_argument(
+        "--stub-seconds",
+        type=float,
+        default=0.0,
+        help="replace the driver with a sleep of N seconds: exercises the CHIA "
+        "orchestration layer token-free. Does NOT run the QA loop.",
+    )
     ap.add_argument("--dry-run", action="store_true", help="print the commands, launch nothing")
     a = ap.parse_args(argv)
 
@@ -117,8 +143,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         planned.append((run_id, run_dir, _repeat_cmd(a, run_id, run_dir)))
 
-    print(f"=== chia repeatability: arm={a.arm} n={len(planned)} "
-          f"verilator_slots={a.verilator_slots}{' [STUB]' if a.stub_seconds else ''} ===")
+    print(
+        f"=== chia repeatability: arm={a.arm} n={len(planned)} "
+        f"verilator_slots={a.verilator_slots}{' [STUB]' if a.stub_seconds else ''} ==="
+    )
     for run_id, run_dir, cmd in planned:
         print(f"  {run_id} -> {run_dir}\n     $ {' '.join(cmd)}")
     if a.dry_run:
@@ -129,10 +157,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     t0 = time.monotonic()
-    with chia_run(suite="capsule-bench", method=f"chia_repeat_{a.arm}", target=C.TARGET,
-                  extra={"arm": a.arm, "model": a.model, "n": len(planned),
-                         "verilator_slots": a.verilator_slots, "stub": bool(a.stub_seconds)},
-                  ray_resources={"verilator": a.verilator_slots}) as run:
+    with chia_run(
+        suite="capsule-bench",
+        method=f"chia_repeat_{a.arm}",
+        target=C.TARGET,
+        extra={
+            "arm": a.arm,
+            "model": a.model,
+            "n": len(planned),
+            "verilator_slots": a.verilator_slots,
+            "stub": bool(a.stub_seconds),
+        },
+        ray_resources={"verilator": a.verilator_slots},
+    ) as run:
         refs = [run_repeat.chia_remote(cmd, scripts_cwd, rid) for rid, _, cmd in planned]
         results = chia_get(refs)  # not chia's get(): it does not unwrap a *list* while profiling
 
@@ -143,13 +180,14 @@ def main(argv: list[str] | None = None) -> int:
         run.metrics.log_scalar("sweep/wall_s", wall_total, 0)
 
         # Real telemetry comes from each driver's own run dir, exactly as run_repeatability reads it.
-        loaded = [] if a.stub_seconds else [
-            m for m in (RR._load(rd) for _, rd, _ in planned) if m
-        ]
+        loaded = [] if a.stub_seconds else [m for m in (RR._load(rd) for _, rd, _ in planned) if m]
         n_full = sum(1 for m in loaded if m["public"] == "4/4" and m["hidden"] == "3/3")
         run.summary = {
-            "arm": a.arm, "model": a.model, "n_launched": len(planned),
-            "n_graded": len(loaded), "stub": bool(a.stub_seconds),
+            "arm": a.arm,
+            "model": a.model,
+            "n_launched": len(planned),
+            "n_graded": len(loaded),
+            "stub": bool(a.stub_seconds),
             "verilator_slots": a.verilator_slots,
             "sweep_wall_s": wall_total,
             "fanout_wall_s": RR._agg([r["wall_s"] for r in results]),
@@ -158,11 +196,9 @@ def main(argv: list[str] | None = None) -> int:
             "rounds_to_converge": RR._agg([m["n_rounds"] for m in loaded]) if loaded else {},
             "cost_usd": RR._agg([m["cost_usd"] for m in loaded]) if loaded else {},
         }
-        (run.run_dir / "chia" / "repeats.json").write_text(
-            json.dumps({"results": results, "graded": loaded}, indent=2))
+        (run.run_dir / "chia" / "repeats.json").write_text(json.dumps({"results": results, "graded": loaded}, indent=2))
 
-        print(f"\nsweep wall {wall_total}s over {len(planned)} repeats "
-              f"({a.verilator_slots} verilator slot(s))")
+        print(f"\nsweep wall {wall_total}s over {len(planned)} repeats ({a.verilator_slots} verilator slot(s))")
         print(f"run dir: {run.run_dir}")
         print(f"profile: chia viz-profile {run.profile_path} --format table")
     return 0

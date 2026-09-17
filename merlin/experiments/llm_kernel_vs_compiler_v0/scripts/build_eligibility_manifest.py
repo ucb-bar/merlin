@@ -43,8 +43,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True)
     ap.add_argument("--evidence", type=Path, default=EXP / "eligibility" / "family_evidence.yaml")
-    ap.add_argument("--provenance", type=Path,
-                    default=EXP / "eligibility" / "provenance" / "kernel_provenance.yaml")
+    ap.add_argument("--provenance", type=Path, default=EXP / "eligibility" / "provenance" / "kernel_provenance.yaml")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args(argv)
 
@@ -89,17 +88,14 @@ def main(argv: list[str] | None = None) -> int:
             "providers": [list(p) for p in providers.get(fam, ())],
             "in_denominator": bool(good) or derived_ok,
             "denominator_basis": (
-                "independent_hand_kernel" if good
-                else "target_contract_declaration" if derived_ok
-                else "excluded"
+                "independent_hand_kernel" if good else "target_contract_declaration" if derived_ok else "excluded"
             ),
             "note": spec.get("note", "").strip(),
         }
 
     in_denom = sorted(f for f, v in families.items() if v["in_denominator"])
     only_independent = sorted(
-        f for f, v in families.items()
-        if v["independently_evidenced"] and v["merlin_derivation_undetermined"]
+        f for f, v in families.items() if v["independently_evidenced"] and v["merlin_derivation_undetermined"]
     )
 
     doc = {
@@ -141,8 +137,10 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {a.out}")
     print(f"  denominator families ({len(in_denom)}): {', '.join(in_denom)}")
     print(f"  excluded: {doc['families_excluded'] or 'none'}")
-    print(f"  independently evidenced but UNDETERMINED in merlin's own derivation: "
-          f"{', '.join(only_independent) or 'none'}")
+    print(
+        f"  independently evidenced but UNDETERMINED in merlin's own derivation: "
+        f"{', '.join(only_independent) or 'none'}"
+    )
     if unciteable:
         print("  ⚠️ dropped citations (kernel is not provenance-`hand`):")
         for fam, ks in sorted(unciteable.items()):

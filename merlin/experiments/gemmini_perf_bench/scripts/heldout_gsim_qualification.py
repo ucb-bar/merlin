@@ -6,6 +6,7 @@ only after all candidate trees have been sealed and the committed holdout has be
 manifest-declared capsule is lowered by the immutable functional baseline, compiled once, and that
 same ELF is checked on the pinned Verilator and GSIM engines before the tuning certificate is extended.
 """
+
 from __future__ import annotations
 
 import contextlib
@@ -19,13 +20,12 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import yaml
-
+import perf_campaign as CAMPAIGN
 import perf_gsim_gate as GATE
 import produce_gsim_certificate as PRODUCER
-import perf_campaign as CAMPAIGN
-from merlin.benchharness import hash_tree
+import yaml
 
+from merlin.benchharness import hash_tree
 
 SCHEMA = "merlin.heldout-gsim-qualification.v1"
 
@@ -46,8 +46,9 @@ class RevealedMember:
 
 
 def _canonical(value: object) -> bytes:
-    return (json.dumps(value, sort_keys=True, separators=(",", ":"),
-                       ensure_ascii=True, allow_nan=False) + "\n").encode("utf-8")
+    return (json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False) + "\n").encode(
+        "utf-8"
+    )
 
 
 def _sha_bytes(payload: bytes) -> str:
@@ -84,15 +85,20 @@ def _tree_without_manifest(root: Path, manifest: Path) -> dict[str, Any]:
         if path.is_symlink():
             raise QualificationError(f"revealed corpus contains a symlink: {path}")
         if path.is_file() and path != manifest:
-            rows.append({"path": path.relative_to(root).as_posix(), "bytes": path.stat().st_size,
-                         "sha256": _sha_file(path)})
+            rows.append(
+                {"path": path.relative_to(root).as_posix(), "bytes": path.stat().st_size, "sha256": _sha_file(path)}
+            )
     return {"files": rows, "sha256": _sha_bytes(_canonical(rows))}
 
 
 def load_revealed_members(
-        manifest_path: str | Path, *, expected_manifest_sha256: str | None = None,
-        expected_corpus_sha256: str | None = None, expected_target: str | None = None,
-        require_frozen: bool = True) -> tuple[RevealedMember, ...]:
+    manifest_path: str | Path,
+    *,
+    expected_manifest_sha256: str | None = None,
+    expected_corpus_sha256: str | None = None,
+    expected_target: str | None = None,
+    require_frozen: bool = True,
+) -> tuple[RevealedMember, ...]:
     """Validate a v2 reveal and resolve only its explicitly declared member paths."""
     manifest = _plain_file(Path(manifest_path), label="revealed holdout manifest")
     if expected_manifest_sha256 is not None and _sha_file(manifest) != expected_manifest_sha256:
@@ -106,8 +112,11 @@ def load_revealed_members(
         document = json.loads(manifest.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise QualificationError("revealed holdout manifest is not valid JSON") from exc
-    if (not isinstance(document, Mapping) or document.get("schema_version") != 2
-            or document.get("kind") != "generated_performance_holdout_reveal"):
+    if (
+        not isinstance(document, Mapping)
+        or document.get("schema_version") != 2
+        or document.get("kind") != "generated_performance_holdout_reveal"
+    ):
         raise QualificationError("revealed holdout is not the required v2 commit/reveal manifest")
     target = (document.get("domain") or {}).get("target")
     if expected_target is not None and target != expected_target:
@@ -132,9 +141,15 @@ def load_revealed_members(
         if not isinstance(row, Mapping):
             raise QualificationError(f"revealed member {index} is malformed")
         name, family, cohort = row.get("name"), row.get("family"), row.get("cohort")
-        if (not isinstance(name, str) or Path(name).name != name or name in ("", ".", "..")
-                or not isinstance(family, str) or not family
-                or not isinstance(cohort, str) or cohort not in cohorts):
+        if (
+            not isinstance(name, str)
+            or Path(name).name != name
+            or name in ("", ".", "..")
+            or not isinstance(family, str)
+            or not family
+            or not isinstance(cohort, str)
+            or cohort not in cohorts
+        ):
             raise QualificationError(f"revealed member {index} has an invalid identity")
         declaration = cohorts[cohort]
         if not isinstance(declaration, Mapping) or declaration.get("family") != family:
@@ -167,8 +182,7 @@ def load_revealed_members(
         seen_paths.add(rel_text)
         seen_workloads.add(identity)
         cohort_counts[cohort] = cohort_counts.get(cohort, 0) + 1
-        members.append(RevealedMember(name, family, cohort, source, capsule_manifest,
-                                      workload, identity))
+        members.append(RevealedMember(name, family, cohort, source, capsule_manifest, workload, identity))
     for cohort, declaration in cohorts.items():
         count = declaration.get("member_count") if isinstance(declaration, Mapping) else None
         if cohort_counts.get(str(cohort), 0) != count:
@@ -187,7 +201,8 @@ def _assert_readonly_tree(root: Path, *, expected_sha256: str) -> None:
 
 
 def lower_with_functional_baseline(
-        functional_base: Path, member: RevealedMember, artifact_dir: Path, timeout: int) -> Path:
+    functional_base: Path, member: RevealedMember, artifact_dir: Path, timeout: int
+) -> Path:
     """Run the immutable package ABI through K2-K6 and emit only into ``artifact_dir``."""
     from merlin.targetgen import capsule_common as COMMON
     from merlin.targetgen import oot_runner as OOT
@@ -197,7 +212,8 @@ def lower_with_functional_baseline(
     build = package.manifest.get("build") or {}
     if any(build.get(key) for key in ("configure", "command")):
         raise QualificationError(
-            "frozen functional baseline still requires an in-tree build; qualification cannot write it")
+            "frozen functional baseline still requires an in-tree build; qualification cannot write it"
+        )
     if not package.tool.is_file():
         raise QualificationError("frozen functional baseline tool is absent")
     artifact_dir.mkdir(parents=True, exist_ok=False)
@@ -205,12 +221,19 @@ def lower_with_functional_baseline(
     paths = SimpleNamespace(generated=artifact_dir)
     try:
         COMMON.run_entrypoints(
-            package, functional_base, capsule, paths, contract=None, timeout=timeout,
-            fourth_output_name="lowered.llvm.mlir")
+            package,
+            functional_base,
+            capsule,
+            paths,
+            contract=None,
+            timeout=timeout,
+            fourth_output_name="lowered.llvm.mlir",
+        )
     except Exception as exc:  # the qualification boundary turns every lowering issue into refusal
         raise QualificationError(
             f"functional baseline could not lower revealed capsule {member.name}: "
-            f"{type(exc).__name__}: {str(exc)[-600:]}") from exc
+            f"{type(exc).__name__}: {str(exc)[-600:]}"
+        ) from exc
     for required in (artifact_dir / "command_buffer.json", artifact_dir / "lowered.llvm.mlir"):
         _plain_file(required, label=f"{member.name} lowering artifact")
     return artifact_dir
@@ -236,6 +259,7 @@ def _pinned_runtime(certificate: GATE.CertificateRecord, *, gsim_max_cycles: int
         os.environ[cycles_key] = str(gsim_max_cycles)
     try:
         from merlin.runtime.backends import base as backends
+
         backend = backends.get_backend(certificate.target)
         for engine in ("gsim", "verilator"):
             resolver = getattr(backend, f"{engine}_path", None)
@@ -273,18 +297,30 @@ def _exclusive_json(root: Path, stem: str, document: object) -> tuple[Path, str]
 
 
 def _artifact_paths(certificate: GATE.CertificateRecord) -> PRODUCER.ArtifactPaths:
-    return PRODUCER.ArtifactPaths(*(Path(certificate.pins[name]["path"])
-                                    for name in ("gsim_firrtl", "verilator_firrtl", "gsim_model",
-                                                 "gsim_binary", "verilator_binary")))
+    return PRODUCER.ArtifactPaths(
+        *(
+            Path(certificate.pins[name]["path"])
+            for name in ("gsim_firrtl", "verilator_firrtl", "gsim_model", "gsim_binary", "verilator_binary")
+        )
+    )
 
 
 def qualify_revealed_holdout(
-        reveal_manifest: Path, qualification_root: Path, tuning: GATE.CertificateRecord, *,
-        functional_base: Path, functional_base_sha256: str, reveal_manifest_sha256: str,
-        reveal_corpus_sha256: str, timeout: int, gsim_max_cycles: int | None,
-        lowerer: Callable[[Path, RevealedMember, Path, int], Path] = lower_with_functional_baseline,
-        capturer: Callable[..., Mapping[str, Any]] = PRODUCER.capture_case,
-        backend: Any | None = None, target_experiment: Any | None = None) -> tuple[Path, str]:
+    reveal_manifest: Path,
+    qualification_root: Path,
+    tuning: GATE.CertificateRecord,
+    *,
+    functional_base: Path,
+    functional_base_sha256: str,
+    reveal_manifest_sha256: str,
+    reveal_corpus_sha256: str,
+    timeout: int,
+    gsim_max_cycles: int | None,
+    lowerer: Callable[[Path, RevealedMember, Path, int], Path] = lower_with_functional_baseline,
+    capturer: Callable[..., Mapping[str, Any]] = PRODUCER.capture_case,
+    backend: Any | None = None,
+    target_experiment: Any | None = None,
+) -> tuple[Path, str]:
     """Produce an exact tuning+reveal certificate inside a fresh host-only root."""
     if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
         raise QualificationError("qualification timeout must be a positive integer")
@@ -295,8 +331,11 @@ def qualify_revealed_holdout(
     if root.parent.is_symlink() or not root.parent.is_dir():
         raise QualificationError("qualification root parent is absent or linked")
     members = load_revealed_members(
-        reveal_manifest, expected_manifest_sha256=reveal_manifest_sha256,
-        expected_corpus_sha256=reveal_corpus_sha256, expected_target=tuning.target)
+        reveal_manifest,
+        expected_manifest_sha256=reveal_manifest_sha256,
+        expected_corpus_sha256=reveal_corpus_sha256,
+        expected_target=tuning.target,
+    )
     _assert_readonly_tree(Path(functional_base), expected_sha256=functional_base_sha256)
     tuning_members = set(tuning.members)
     revealed_identities = {member.workload_sha256 for member in members}
@@ -311,8 +350,11 @@ def qualify_revealed_holdout(
     artifacts = _artifact_paths(tuning)
     captures: list[Mapping[str, Any]] = []
     capture_evidence: list[dict[str, Any]] = []
-    runtime_context = (contextlib.nullcontext(backend) if backend is not None
-                       else _pinned_runtime(tuning, gsim_max_cycles=gsim_max_cycles))
+    runtime_context = (
+        contextlib.nullcontext(backend)
+        if backend is not None
+        else _pinned_runtime(tuning, gsim_max_cycles=gsim_max_cycles)
+    )
     try:
         with runtime_context as selected_backend:
             for index, member in enumerate(members):
@@ -322,32 +364,44 @@ def qualify_revealed_holdout(
                 if lowerer is lower_with_functional_baseline:
                     if target_experiment is None:
                         raise QualificationError(
-                            "default baseline lowering requires the target experiment sandbox policy")
-                    policy = CAMPAIGN.package_sandbox_policy(
-                        target_experiment, member_workspace, Path(functional_base))
+                            "default baseline lowering requires the target experiment sandbox policy"
+                        )
+                    policy = CAMPAIGN.package_sandbox_policy(target_experiment, member_workspace, Path(functional_base))
                     lower_context = CAMPAIGN.boxed_entrypoints(policy)
                 with lower_context:
                     lowered = lowerer(
-                        Path(functional_base), member,
-                        artifacts_dir / f"m{index:03d}_{member.name}", timeout)
+                        Path(functional_base), member, artifacts_dir / f"m{index:03d}_{member.name}", timeout
+                    )
                 _assert_readonly_tree(Path(functional_base), expected_sha256=functional_base_sha256)
-                capture = dict(capturer(
-                    target=tuning.target, capsule_manifest=member.manifest,
-                    artifact_dir=lowered, workdir=member_workspace / "elf",
-                    artifacts=artifacts, timeout=timeout, backend=selected_backend))
-                if (capture.get("workload") != member.workload
-                        or capture.get("workload_sha256") != member.workload_sha256):
+                capture = dict(
+                    capturer(
+                        target=tuning.target,
+                        capsule_manifest=member.manifest,
+                        artifact_dir=lowered,
+                        workdir=member_workspace / "elf",
+                        artifacts=artifacts,
+                        timeout=timeout,
+                        backend=selected_backend,
+                    )
+                )
+                if (
+                    capture.get("workload") != member.workload
+                    or capture.get("workload_sha256") != member.workload_sha256
+                ):
                     raise QualificationError(f"capture workload differs from reveal: {member.name}")
-                capture_path, capture_sha = _exclusive_json(
-                    captures_dir, f"capture.{index:03d}.{member.name}", capture)
-                PRODUCER.validate_capture(
-                    capture_path, target=tuning.target, pins=tuning.pins)
+                capture_path, capture_sha = _exclusive_json(captures_dir, f"capture.{index:03d}.{member.name}", capture)
+                PRODUCER.validate_capture(capture_path, target=tuning.target, pins=tuning.pins)
                 captures.append(capture)
-                capture_evidence.append({"name": member.name, "family": member.family,
-                                         "cohort": member.cohort,
-                                         "workload_sha256": member.workload_sha256,
-                                         "path": str(capture_path.resolve()),
-                                         "sha256": capture_sha})
+                capture_evidence.append(
+                    {
+                        "name": member.name,
+                        "family": member.family,
+                        "cohort": member.cohort,
+                        "workload_sha256": member.workload_sha256,
+                        "path": str(capture_path.resolve()),
+                        "sha256": capture_sha,
+                    }
+                )
         extension = dict(tuning.document)
         original_rows = tuning.document.get("members")
         if not isinstance(original_rows, list) or len(original_rows) != len(tuning.members):
@@ -370,34 +424,41 @@ def qualify_revealed_holdout(
             raise QualificationError("tuning build receipt changed before envelope extension")
         binding["path"] = str(binding_path)
         extension["build_binding"] = binding
-        extension["members"] = sorted(
-            [*original_rows, *captures], key=lambda row: str(row["workload_sha256"]))
+        extension["members"] = sorted([*original_rows, *captures], key=lambda row: str(row["workload_sha256"]))
         extension["unresolved"] = []
         certificate_path, certificate_sha = _exclusive_json(root, "certificate", extension)
         extended = GATE.load_certificate(certificate_path, expected_sha256=certificate_sha)
         expected = tuning_members | revealed_identities
         if set(extended.members) != expected:
             raise QualificationError("extension certificate is not the exact tuning+reveal envelope")
-        if any(extended.pins[name]["sha256"] != tuning.pins[name]["sha256"]
-               for name in GATE.REQUIRED_PINS):
+        if any(extended.pins[name]["sha256"] != tuning.pins[name]["sha256"] for name in GATE.REQUIRED_PINS):
             raise QualificationError("extension certificate changed a tuning artifact pin")
         qualification = {
-            "schema": SCHEMA, "status": "complete", "target": tuning.target,
-            "reveal_manifest": {"path": str(Path(reveal_manifest).resolve()),
-                                "sha256": reveal_manifest_sha256,
-                                "corpus_sha256": reveal_corpus_sha256},
-            "functional_baseline": {"path": str(Path(functional_base).resolve()),
-                                    "sha256": functional_base_sha256},
-            "tuning_certificate": {"path": str(tuning.path.resolve()),
-                                   "sha256": tuning.sha256,
-                                   "workload_sha256": sorted(tuning_members)},
+            "schema": SCHEMA,
+            "status": "complete",
+            "target": tuning.target,
+            "reveal_manifest": {
+                "path": str(Path(reveal_manifest).resolve()),
+                "sha256": reveal_manifest_sha256,
+                "corpus_sha256": reveal_corpus_sha256,
+            },
+            "functional_baseline": {"path": str(Path(functional_base).resolve()), "sha256": functional_base_sha256},
+            "tuning_certificate": {
+                "path": str(tuning.path.resolve()),
+                "sha256": tuning.sha256,
+                "workload_sha256": sorted(tuning_members),
+            },
             "captures": capture_evidence,
-            "extension_certificate": {"path": str(certificate_path.resolve()),
-                                      "sha256": certificate_sha,
-                                      "workload_sha256": sorted(expected)},
-            "execution": {"timeout_seconds": timeout,
-                          "gsim_max_cycles": gsim_max_cycles,
-                          "same_elf_engines": ["verilator", "gsim"]},
+            "extension_certificate": {
+                "path": str(certificate_path.resolve()),
+                "sha256": certificate_sha,
+                "workload_sha256": sorted(expected),
+            },
+            "execution": {
+                "timeout_seconds": timeout,
+                "gsim_max_cycles": gsim_max_cycles,
+                "same_elf_engines": ["verilator", "gsim"],
+            },
             "ordering": "all_candidates_sealed_then_reveal_then_host_qualification",
             "agent_visibility": "none",
         }
@@ -413,9 +474,14 @@ def qualify_revealed_holdout(
 
 
 def load_completed_qualification(
-        qualification_root: Path, *, tuning: GATE.CertificateRecord,
-        reveal_manifest_sha256: str, reveal_corpus_sha256: str,
-        functional_base_sha256: str, gsim_max_cycles: int | None) -> tuple[Path, str]:
+    qualification_root: Path,
+    *,
+    tuning: GATE.CertificateRecord,
+    reveal_manifest_sha256: str,
+    reveal_corpus_sha256: str,
+    functional_base_sha256: str,
+    gsim_max_cycles: int | None,
+) -> tuple[Path, str]:
     """Adopt a completed uncheckpointed qualification after validating every content address."""
     _validate_gsim_max_cycles(gsim_max_cycles)
     root = Path(qualification_root)
@@ -430,14 +496,16 @@ def load_completed_qualification(
         raise QualificationError("qualification receipt filename is not content-addressed")
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     execution = receipt.get("execution") or {}
-    if (receipt.get("schema") != SCHEMA or receipt.get("status") != "complete"
-            or (receipt.get("tuning_certificate") or {}).get("sha256") != tuning.sha256
-            or (receipt.get("reveal_manifest") or {}).get("sha256") != reveal_manifest_sha256
-            or (receipt.get("reveal_manifest") or {}).get("corpus_sha256") != reveal_corpus_sha256
-            or (receipt.get("functional_baseline") or {}).get("sha256")
-            != functional_base_sha256
-            or execution.get("gsim_max_cycles") != gsim_max_cycles
-            or execution.get("same_elf_engines") != ["verilator", "gsim"]):
+    if (
+        receipt.get("schema") != SCHEMA
+        or receipt.get("status") != "complete"
+        or (receipt.get("tuning_certificate") or {}).get("sha256") != tuning.sha256
+        or (receipt.get("reveal_manifest") or {}).get("sha256") != reveal_manifest_sha256
+        or (receipt.get("reveal_manifest") or {}).get("corpus_sha256") != reveal_corpus_sha256
+        or (receipt.get("functional_baseline") or {}).get("sha256") != functional_base_sha256
+        or execution.get("gsim_max_cycles") != gsim_max_cycles
+        or execution.get("same_elf_engines") != ["verilator", "gsim"]
+    ):
         raise QualificationError("qualification completion receipt differs from this experiment")
     for capture in receipt.get("captures") or []:
         path = _plain_file(Path(str(capture.get("path") or "")), label="qualification capture")
@@ -449,8 +517,7 @@ def load_completed_qualification(
             raise QualificationError("qualification capture changed after completion")
         PRODUCER.validate_capture(path, target=tuning.target, pins=tuning.pins)
     extension = receipt.get("extension_certificate") or {}
-    certificate_path = _plain_file(
-        Path(str(extension.get("path") or "")), label="extension certificate")
+    certificate_path = _plain_file(Path(str(extension.get("path") or "")), label="extension certificate")
     try:
         certificate_path.relative_to(root.resolve())
     except ValueError as exc:
@@ -463,6 +530,10 @@ def load_completed_qualification(
 
 
 __all__ = [
-    "QualificationError", "RevealedMember", "load_completed_qualification",
-    "load_revealed_members", "lower_with_functional_baseline", "qualify_revealed_holdout",
+    "QualificationError",
+    "RevealedMember",
+    "load_completed_qualification",
+    "load_revealed_members",
+    "lower_with_functional_baseline",
+    "qualify_revealed_holdout",
 ]

@@ -6,10 +6,10 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-from harness.tracking.types import TrackingConfig, TRACKING_MODES
 from harness.tracking.local_backend import LocalBackend
 from harness.tracking.mlflow_backend import MLflowBackend
 from harness.tracking.otel_backend import OtelBackend
+from harness.tracking.types import TRACKING_MODES, TrackingConfig
 
 
 class TargetGenRunLogger:
@@ -27,12 +27,8 @@ class TargetGenRunLogger:
     def __init__(self, config: TrackingConfig) -> None:
         self._config = config
         self._local = LocalBackend(config)
-        self._mlflow: MLflowBackend | None = (
-            MLflowBackend(config, self._local) if config.mode != "local" else None
-        )
-        self._otel: OtelBackend | None = (
-            OtelBackend(config, self._local) if config.mode in ("full", "debug") else None
-        )
+        self._mlflow: MLflowBackend | None = MLflowBackend(config, self._local) if config.mode != "local" else None
+        self._otel: OtelBackend | None = OtelBackend(config, self._local) if config.mode in ("full", "debug") else None
 
     # ------------------------------------------------------------------
     @classmethod
@@ -156,7 +152,6 @@ class TargetGenRunLogger:
         mlf_status = "enabled" if (self._mlflow and self._mlflow._enabled) else "disabled"
         otel_status = "enabled" if (self._otel and self._otel._enabled) else "disabled"
         print(f"  tracking mode:  {self._config.mode}")
-        print(f"  MLflow:         {mlf_status}" +
-              (f" (run_id: {self.mlflow_run_id})" if self.mlflow_run_id else ""))
+        print(f"  MLflow:         {mlf_status}" + (f" (run_id: {self.mlflow_run_id})" if self.mlflow_run_id else ""))
         print(f"  OTel:           {otel_status}")
         print(f"  local logs:     {self.logs_dir}")

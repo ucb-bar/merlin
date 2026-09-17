@@ -58,12 +58,8 @@ def compare(root: Path, target: str, output_dir: Path) -> int:
         print(f"No validated runs found for target {target}", file=sys.stderr)
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "metrics.csv").write_text(",".join(_ALL_COLUMNS) + "\n")
-        (output_dir / "ablation_table.md").write_text(
-            f"# Ablation Table: {target}\n\n*No validated runs.*\n"
-        )
-        (output_dir / "summary.md").write_text(
-            f"# {target} — no validated runs yet\n"
-        )
+        (output_dir / "ablation_table.md").write_text(f"# Ablation Table: {target}\n\n*No validated runs.*\n")
+        (output_dir / "summary.md").write_text(f"# {target} — no validated runs yet\n")
         return 0
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -85,10 +81,7 @@ def compare(root: Path, target: str, output_dir: Path) -> int:
     non_smoke = [r for r in rows if not r.get("is_smoke_test", True)]
     methods = sorted({r["method"] for r in non_smoke})
 
-    numeric_cols = [
-        c for c in _ALL_COLUMNS
-        if c not in _STRING_COLUMNS and c not in ("is_smoke_test", "seed")
-    ]
+    numeric_cols = [c for c in _ALL_COLUMNS if c not in _STRING_COLUMNS and c not in ("is_smoke_test", "seed")]
 
     table_lines = [
         f"# Ablation Table: {target}\n",
@@ -103,10 +96,7 @@ def compare(root: Path, target: str, output_dir: Path) -> int:
             vals = [r.get(col) for r in method_rows]
             mean, std = _mean_std(vals)
             cells.append(_fmt(mean, std))
-        table_lines.append(
-            f"| {method} | {','.join(str(s) for s in seeds)} | "
-            + " | ".join(cells) + " |"
-        )
+        table_lines.append(f"| {method} | {','.join(str(s) for s in seeds)} | " + " | ".join(cells) + " |")
 
     if not methods:
         table_lines.append("| *(no real baseline runs yet)* | — |" + "|".join("NA" for _ in numeric_cols) + "|")

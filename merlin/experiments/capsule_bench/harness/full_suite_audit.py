@@ -16,6 +16,7 @@ Usage:
                       [--timeout 900]
 Writes reports/full_suite_audit.{md,json}.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,14 +26,14 @@ import sys
 import time
 from pathlib import Path
 
+import _common as C
 import yaml
 
 from merlin.common.artifacts import cache_dir  # noqa: E402 — purgeable work trees
-import _common as C
 
 sys.path.insert(0, str(C.REPO / "merlin" / "python"))
-from merlin.targetgen import capsule_grade as CG          # noqa: E402
-from merlin.targetgen import capsule_runner as CR          # noqa: E402
+from merlin.targetgen import capsule_grade as CG  # noqa: E402
+from merlin.targetgen import capsule_runner as CR  # noqa: E402
 
 CORPUS = C.REPO / "merlin/contract" / "capsules"
 CONTRACT = C.REPO / "merlin/contract"
@@ -40,7 +41,7 @@ CONTRACT = C.REPO / "merlin/contract"
 
 def _capsule_class(cap_dir: Path) -> str:
     """Primary workload class for coverage rollup (derived from the interface MLIR + capsule.yaml)."""
-    iface = (cap_dir / "capsule.interface.mlir")
+    iface = cap_dir / "capsule.interface.mlir"
     txt = iface.read_text() if iface.is_file() else ""
     y = {}
     cy = cap_dir / "capsule.yaml"
@@ -49,14 +50,17 @@ def _capsule_class(cap_dir: Path) -> str:
             y = yaml.safe_load(cy.read_text()) or {}
         except Exception:
             y = {}
-    name = (y.get("name") or cap_dir.name)
+    name = y.get("name") or cap_dir.name
     if "merlin_iface.conv" in txt:
         return "conv"
     if "merlin_iface.movement" in txt and "merlin_iface.matmul" not in txt:
         return "movement"
     if y.get("kind") == "model_slice" or name[:1] == "C":
-        return "attention" if "attention" in str(y.get("source_reference", "")).lower() \
-            or name[:2] in ("C2", "C3", "C4", "C5", "C6") else "mlp"
+        return (
+            "attention"
+            if "attention" in str(y.get("source_reference", "")).lower() or name[:2] in ("C2", "C3", "C4", "C5", "C6")
+            else "mlp"
+        )
     # modes live under expected.modes (booleans); check the VALUE, not key presence
     modes = (y.get("expected", {}) or {}).get("modes", {}) or y.get("modes", {}) or {}
     if modes.get("relu"):
@@ -71,6 +75,7 @@ def _sim_via() -> str | None:
     resolves atlas/arc targets' oracle tiers from their contract instead of the gemmini spike/verilator."""
     try:
         from merlin.targetgen.target_experiment import load_target_experiment
+
         return load_target_experiment(C.EXP / "target_experiment.yaml").sim_via
     except Exception:  # noqa: BLE001
         return "chipyard"
@@ -86,7 +91,7 @@ def _adapters_for(tiers: list[str]) -> dict:
     """
     full = CR.oracle_adapters(C.TARGET, _sim_via())
     sel = {t: a for t, a in full.items() if t in tiers}
-    return sel or full          # fall back to the target's real tier(s) if none of `tiers` apply
+    return sel or full  # fall back to the target's real tier(s) if none of `tiers` apply
 
 
 def audit_backend(run_id: str, *, workers: int, tiers: list[str], timeout: int) -> dict | None:
@@ -100,9 +105,17 @@ def audit_backend(run_id: str, *, workers: int, tiers: list[str], timeout: int) 
     runs_root.mkdir(parents=True, exist_ok=True)
     adapters = _adapters_for(tiers)
     t0 = time.perf_counter()
-    score = CG.grade(sub, capsules_root=CORPUS, runs_root=runs_root,
-                     labels={"public", "dev", "hidden"}, contract=CONTRACT,
-                     oracle_adapters=adapters, timeout=timeout, max_workers=workers, target=C.TARGET)
+    score = CG.grade(
+        sub,
+        capsules_root=CORPUS,
+        runs_root=runs_root,
+        labels={"public", "dev", "hidden"},
+        contract=CONTRACT,
+        oracle_adapters=adapters,
+        timeout=timeout,
+        max_workers=workers,
+        target=C.TARGET,
+    )
     score["_audit_wall_s"] = round(time.perf_counter() - t0, 1)
     score["_lang"] = yaml.safe_load((sub / "manifest.yaml").read_text()).get("language", "?")
     (runs_root / "score_full.json").write_text(json.dumps(score, indent=2))
@@ -130,25 +143,38 @@ def main(argv: list[str] | None = None) -> int:
         s = audit_backend(run_id, workers=a.workers, tiers=tiers, timeout=a.timeout)
         if s is not None:
             scores[run_id] = s
-            print(f"   {run_id}: {s.get('headline')} wall={s['_audit_wall_s']}s "
-                  f"speedup={s.get('timing_rollup', {}).get('parallel_speedup')}")
+            print(
+                f"   {run_id}: {s.get('headline')} wall={s['_audit_wall_s']}s "
+                f"speedup={s.get('timing_rollup', {}).get('parallel_speedup')}"
+            )
 
     # per-capsule status/cycles per backend
     pc = {rid: {p["capsule"]: p for p in s.get("per_capsule", [])} for rid, s in scores.items()}
     cyc = {rid: s.get("cycles_diagnostic", {}) for rid, s in scores.items()}
 
     required_engine = os.environ.get("MERLIN_REQUIRED_RTL_ENGINE", "").strip() or None
-    out = {"corpus": str(CORPUS), "n_capsules": len(cap_names), "tiers": tiers,
-           "required_rtl_engine": required_engine,
-           "oracle_adapter_source": "merlin.targetgen.capsule_runner.oracle_adapters",
-           "workers": a.workers, "backends": {}, "matrix": [], "class_coverage": {}}
+    out = {
+        "corpus": str(CORPUS),
+        "n_capsules": len(cap_names),
+        "tiers": tiers,
+        "required_rtl_engine": required_engine,
+        "oracle_adapter_source": "merlin.targetgen.capsule_runner.oracle_adapters",
+        "workers": a.workers,
+        "backends": {},
+        "matrix": [],
+        "class_coverage": {},
+    }
     for rid, s in scores.items():
         out["backends"][rid] = {
-            "language": s.get("_lang"), "passed": f"{s['n_passed']}/{s['n_capsules']}",
-            "public_passed": s.get("public_passed"), "hidden_passed": s.get("hidden_passed"),
+            "language": s.get("_lang"),
+            "passed": f"{s['n_passed']}/{s['n_capsules']}",
+            "public_passed": s.get("public_passed"),
+            "hidden_passed": s.get("hidden_passed"),
             # the qualified form, so a reader of this artifact cannot quote the fraction alone
-            "headline": s.get("headline"), "pass_evidence": s.get("pass_evidence"),
-            "highest_tier": s.get("highest_tier"), "audit_wall_s": s.get("_audit_wall_s"),
+            "headline": s.get("headline"),
+            "pass_evidence": s.get("pass_evidence"),
+            "highest_tier": s.get("highest_tier"),
+            "audit_wall_s": s.get("_audit_wall_s"),
             "timing_rollup": s.get("timing_rollup"),
             "first_failure_planes": s.get("first_failure_planes"),
         }
@@ -159,8 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     for cls, names in sorted(classes.items()):
         out["class_coverage"][cls] = {
             "n": len(names),
-            **{rid: sum(1 for n in names if pc.get(rid, {}).get(n, {}).get("status") == "pass")
-               for rid in scores},
+            **{rid: sum(1 for n in names if pc.get(rid, {}).get(n, {}).get("status") == "pass") for rid in scores},
         }
     for n in cap_names:
         row = {"capsule": n, "label": cap_label[n], "class": cap_class[n]}
@@ -181,37 +206,55 @@ def main(argv: list[str] | None = None) -> int:
 def _write_md(out: dict, scores: dict) -> None:
     rids = list(scores)
     engine = out.get("required_rtl_engine")
-    engine_note = (f"experiment-required engine `{engine}`" if engine else
-                   "engine selected by the central RTL-engine policy")
-    md = ["# Full-suite audit (capsule_bench_v0) — all 25 capsules, RTL oracle", "",
-          f"Corpus: `{out['corpus']}` · {out['n_capsules']} capsules · tiers {out['tiers']} · "
-          f"{out['workers']} parallel workers. Cycle counts are labelled by tier and come from the "
-          f"{engine_note}; a tier name is not a simulator name. "
-          "Backends were built against the 4-capsule pilot only — failures on unimplemented classes "
-          "(conv, attention) are expected and reported honestly, not hidden.", ""]
+    engine_note = (
+        f"experiment-required engine `{engine}`" if engine else "engine selected by the central RTL-engine policy"
+    )
+    md = [
+        "# Full-suite audit (capsule_bench_v0) — all 25 capsules, RTL oracle",
+        "",
+        f"Corpus: `{out['corpus']}` · {out['n_capsules']} capsules · tiers {out['tiers']} · "
+        f"{out['workers']} parallel workers. Cycle counts are labelled by tier and come from the "
+        f"{engine_note}; a tier name is not a simulator name. "
+        "Backends were built against the 4-capsule pilot only — failures on unimplemented classes "
+        "(conv, attention) are expected and reported honestly, not hidden.",
+        "",
+    ]
     # `rtl-backed` sits beside the counts on purpose: a table with `public` and `tier` in separate
     # columns still lets the eye read "20/20" and stop, and the tier column reports the tier EVERY
     # capsule cleared -- which says nothing about how many cleared the RTL one above it.
-    md += ["## Headline", "", "| backend | lang | passed (all) | public | hidden | tier | rtl-backed | "
-           "audit wall(s) | sim_active(s) | oracle_wait(s) | speedup |",
-           "|---|---|---|---|---|---|---|---|---|---|---|"]
+    md += [
+        "## Headline",
+        "",
+        "| backend | lang | passed (all) | public | hidden | tier | rtl-backed | "
+        "audit wall(s) | sim_active(s) | oracle_wait(s) | speedup |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
     for rid in rids:
         b = out["backends"][rid]
         tr = b.get("timing_rollup") or {}
         _ev = b.get("pass_evidence") or {}
-        _rtl = ("n/a" if _ev.get("rtl_backed") is None
-                else f"{_ev['rtl_backed']}/{_ev.get('n_passed', '?')}")
-        md.append(f"| {rid} | {b['language']} | {b['passed']} | {b['public_passed']} | "
-                  f"{b['hidden_passed']} | {b['highest_tier']} | {_rtl} | {b['audit_wall_s']} | "
-                  f"{tr.get('sim_active_s')} | {tr.get('oracle_wait_s')} | {tr.get('parallel_speedup')} |")
-    md += ["", "## Coverage by workload class", "",
-           "| class | n | " + " | ".join(rids) + " |",
-           "|---|---|" + "|".join(["---"] * len(rids)) + "|"]
+        _rtl = "n/a" if _ev.get("rtl_backed") is None else f"{_ev['rtl_backed']}/{_ev.get('n_passed', '?')}"
+        md.append(
+            f"| {rid} | {b['language']} | {b['passed']} | {b['public_passed']} | "
+            f"{b['hidden_passed']} | {b['highest_tier']} | {_rtl} | {b['audit_wall_s']} | "
+            f"{tr.get('sim_active_s')} | {tr.get('oracle_wait_s')} | {tr.get('parallel_speedup')} |"
+        )
+    md += [
+        "",
+        "## Coverage by workload class",
+        "",
+        "| class | n | " + " | ".join(rids) + " |",
+        "|---|---|" + "|".join(["---"] * len(rids)) + "|",
+    ]
     for cls, cc in out["class_coverage"].items():
-        md.append(f"| {cls} | {cc['n']} | " + " | ".join(f"{cc.get(r,0)}/{cc['n']}" for r in rids) + " |")
-    md += ["", "## Per-capsule matrix (status · cycles per tier)", "",
-           "| capsule | label | class | " + " | ".join(rids) + " |",
-           "|---|---|---|" + "|".join(["---"] * len(rids)) + "|"]
+        md.append(f"| {cls} | {cc['n']} | " + " | ".join(f"{cc.get(r, 0)}/{cc['n']}" for r in rids) + " |")
+    md += [
+        "",
+        "## Per-capsule matrix (status · cycles per tier)",
+        "",
+        "| capsule | label | class | " + " | ".join(rids) + " |",
+        "|---|---|---|" + "|".join(["---"] * len(rids)) + "|",
+    ]
     for row in out["matrix"]:
         cells = []
         for rid in rids:
@@ -219,10 +262,13 @@ def _write_md(out: dict, scores: dict) -> None:
             cy = row.get(f"{rid}__cycles") or {}
             cells.append(f"{st}" + ("".join(f" · {t} {c}cyc" for t, c in cy.items())))
         md.append(f"| {row['capsule']} | {row['label']} | {row['class']} | " + " | ".join(cells) + " |")
-    md += ["", "_Legend: cycles are labelled with the TIER that reported them; a capsule can carry a "
-           "count at one tier and not another, so the tier travels with the number. oracle_wait(s) is time "
-           "blocked on an oracle queue/resource slot (normally ≈0 for a local engine). "
-           "speedup = sum(active_sim)/wall under parallel workers._"]
+    md += [
+        "",
+        "_Legend: cycles are labelled with the TIER that reported them; a capsule can carry a "
+        "count at one tier and not another, so the tier travels with the number. oracle_wait(s) is time "
+        "blocked on an oracle queue/resource slot (normally ≈0 for a local engine). "
+        "speedup = sum(active_sim)/wall under parallel workers._",
+    ]
     (C.REPORTS / "full_suite_audit.md").write_text("\n".join(md) + "\n")
 
 

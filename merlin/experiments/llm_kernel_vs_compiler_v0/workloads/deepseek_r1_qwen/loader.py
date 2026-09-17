@@ -42,7 +42,7 @@ def get_model_and_inputs() -> tuple[nn.Module, tuple[torch.Tensor, ...]]:
         cfg = AutoConfig.from_pretrained(_MODEL_ID)
         cfg.num_hidden_layers = int(n_layers)
         cfg.use_cache = False
-        cfg.tie_word_embeddings = False   # avoid a tied-weight swap during quantize_
+        cfg.tie_word_embeddings = False  # avoid a tied-weight swap during quantize_
         model = AutoModelForCausalLM.from_config(cfg, dtype=torch.float32)
     else:
         model = AutoModelForCausalLM.from_pretrained(

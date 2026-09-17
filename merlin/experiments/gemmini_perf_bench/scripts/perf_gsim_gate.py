@@ -10,6 +10,7 @@ turns six observed shapes into an inferred numeric range.  Work outside the set 
 with a recorded reason, while an eligible development evaluation is required to use GSIM and may not
 silently fall back.  A deterministic, predeclared Verilator subset corroborates GSIM in the final run.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -18,7 +19,6 @@ import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
-
 
 SCHEMA_VERSION = "merlin.gsim-equivalence.v1"
 FIDELITY = "elaborated_rtl_cycle_accurate"
@@ -37,8 +37,7 @@ ADOPTED_FIRRTL_WARNING = (
 CERTIFICATE_NAMES = ("gsim_equivalence_certificate.json",)
 RAW_REPORT_NAMES = ("xval_bytes.json", "xval_gm.json", "xval_gm_bytes.json")
 PHASES = frozenset(("development_correctness", "final_correctness", "final_performance"))
-REQUIRED_PINS = frozenset((
-    "gsim_firrtl", "verilator_firrtl", "gsim_model", "gsim_binary", "verilator_binary"))
+REQUIRED_PINS = frozenset(("gsim_firrtl", "verilator_firrtl", "gsim_model", "gsim_binary", "verilator_binary"))
 
 
 class GsimGateError(RuntimeError):
@@ -141,8 +140,9 @@ class CertificateRecord:
         }
 
 
-def _validate_pin(name: str, raw: Any, *, certificate_path: Path,
-                  artifact_paths: Mapping[str, str | Path] | None) -> dict[str, str]:
+def _validate_pin(
+    name: str, raw: Any, *, certificate_path: Path, artifact_paths: Mapping[str, str | Path] | None
+) -> dict[str, str]:
     if not isinstance(raw, Mapping):
         raise GsimGateError(f"pins.{name} must be a mapping")
     claimed = raw.get("sha256")
@@ -156,8 +156,7 @@ def _validate_pin(name: str, raw: Any, *, certificate_path: Path,
         raise GsimGateError(f"pinned {name} artifact is absent: {path}")
     actual = _digest_file(path)
     if actual != claimed:
-        raise GsimGateError(
-            f"pinned {name} digest mismatch: certificate={claimed}, actual={actual}, path={path}")
+        raise GsimGateError(f"pinned {name} digest mismatch: certificate={claimed}, actual={actual}, path={path}")
     return {"path": str(path.resolve()), "sha256": actual}
 
 
@@ -177,8 +176,7 @@ def _validate_member(raw: Any, *, pins: Mapping[str, Mapping[str, str]], index: 
     if raw.get("bytes_match") is not True:
         raise GsimGateError(f"{where}.bytes_match must be true")
 
-    expected = (("reference", REFERENCE_ENGINE, "verilator_binary"),
-                ("candidate", GSIM_ENGINE, "gsim_binary"))
+    expected = (("reference", REFERENCE_ENGINE, "verilator_binary"), ("candidate", GSIM_ENGINE, "gsim_binary"))
     for side, engine, binary_pin in expected:
         run = raw.get(side)
         if not isinstance(run, Mapping):
@@ -186,8 +184,7 @@ def _validate_member(raw: Any, *, pins: Mapping[str, Mapping[str, str]], index: 
         if run.get("engine") != engine or run.get("ran") is not True or run.get("verdict") != "pass":
             raise GsimGateError(f"{where}.{side} is not a passing {engine} run")
         if run.get("elf_sha256") != elf:
-            raise GsimGateError(
-                f"{where} did not run the same ELF on {REFERENCE_ENGINE} and {GSIM_ENGINE}")
+            raise GsimGateError(f"{where} did not run the same ELF on {REFERENCE_ENGINE} and {GSIM_ENGINE}")
         if run.get("binary_sha256") != pins[binary_pin]["sha256"]:
             raise GsimGateError(f"{where}.{side} does not name the pinned {binary_pin}")
         firrtl_pin = "gsim_firrtl" if engine == GSIM_ENGINE else "verilator_firrtl"
@@ -199,8 +196,11 @@ def _validate_member(raw: Any, *, pins: Mapping[str, Mapping[str, str]], index: 
             raise GsimGateError(f"{where}.{side} is not cycle-accurate elaborated RTL")
         if not _is_sha256(run.get("output_sha256")):
             raise GsimGateError(f"{where}.{side} has no output-byte SHA-256")
-        if run.get("output_encoding") != OUTPUT_ENCODING or not isinstance(
-                run.get("output_tensors"), list) or not run["output_tensors"]:
+        if (
+            run.get("output_encoding") != OUTPUT_ENCODING
+            or not isinstance(run.get("output_tensors"), list)
+            or not run["output_tensors"]
+        ):
             raise GsimGateError(f"{where}.{side} has no declared-tensor byte encoding")
     if raw["reference"]["output_sha256"] != raw["candidate"]["output_sha256"]:
         raise GsimGateError(f"{where} output-byte SHA-256 differs between engines")
@@ -209,8 +209,9 @@ def _validate_member(raw: Any, *, pins: Mapping[str, Mapping[str, str]], index: 
     return identity, {**dict(raw), "workload": workload}
 
 
-def _validate_build_binding(raw: Any, *, certificate_path: Path,
-                            pins: Mapping[str, Mapping[str, str]]) -> dict[str, str]:
+def _validate_build_binding(
+    raw: Any, *, certificate_path: Path, pins: Mapping[str, Mapping[str, str]]
+) -> dict[str, str]:
     if not isinstance(raw, Mapping):
         raise GsimGateError("certificate lacks the GSIM build binding")
     path = _resolve_pin_path(certificate_path, raw.get("path"))
@@ -221,9 +222,11 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
         receipt = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise GsimGateError(f"cannot read pinned GSIM build receipt: {exc}") from exc
-    if not isinstance(receipt, Mapping) \
-            or receipt.get("schema_version") not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA} \
-            or receipt.get("status") != "complete":
+    if (
+        not isinstance(receipt, Mapping)
+        or receipt.get("schema_version") not in {BUILD_RECEIPT_SCHEMA_V2, BUILD_RECEIPT_SCHEMA}
+        or receipt.get("status") != "complete"
+    ):
         raise GsimGateError("pinned GSIM build receipt is incomplete or has the wrong schema")
     expected = {
         "firrtl_sha256": pins["gsim_firrtl"]["sha256"],
@@ -234,9 +237,13 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
         if receipt.get(key) != value:
             raise GsimGateError(f"pinned GSIM build receipt does not bind {key}")
     artifacts, tools, inputs = receipt.get("artifacts"), receipt.get("tools"), receipt.get("inputs")
-    if not isinstance(artifacts, Mapping) or not isinstance(tools, Mapping) \
-            or set(tools) != {"gsim_emitter", "cxx_wrapper", "cxx_compiler"} \
-            or not isinstance(inputs, list) or not inputs:
+    if (
+        not isinstance(artifacts, Mapping)
+        or not isinstance(tools, Mapping)
+        or set(tools) != {"gsim_emitter", "cxx_wrapper", "cxx_compiler"}
+        or not isinstance(inputs, list)
+        or not inputs
+    ):
         raise GsimGateError("pinned GSIM build receipt lacks complete artifact/tool/input pins")
     input_digest = _digest_bytes(canonical_json(inputs).encode("utf-8"))
     if receipt.get("inputs_sha256") != input_digest:
@@ -246,8 +253,7 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
             if not isinstance(item, Mapping) or not _is_sha256(item.get("sha256")):
                 raise GsimGateError("pinned GSIM build receipt contains a malformed artifact pin")
             item_path = Path(str(item.get("path") or ""))
-            if item_path.is_symlink() or not item_path.is_file() \
-                    or _digest_file(item_path) != item["sha256"]:
+            if item_path.is_symlink() or not item_path.is_file() or _digest_file(item_path) != item["sha256"]:
                 raise GsimGateError(f"pinned GSIM build input is absent or changed: {item_path}")
     commands = receipt.get("commands")
     if not isinstance(commands, list) or not commands:
@@ -257,9 +263,14 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
         if not isinstance(command, Mapping):
             raise GsimGateError(f"pinned GSIM build command {index} is malformed")
         stage, cwd, argv = command.get("stage"), command.get("cwd"), command.get("argv")
-        if not isinstance(stage, str) or not isinstance(cwd, str) or not Path(cwd).is_absolute() \
-                or not isinstance(argv, list) or not argv \
-                or not all(isinstance(arg, str) for arg in argv):
+        if (
+            not isinstance(stage, str)
+            or not isinstance(cwd, str)
+            or not Path(cwd).is_absolute()
+            or not isinstance(argv, list)
+            or not argv
+            or not all(isinstance(arg, str) for arg in argv)
+        ):
             raise GsimGateError(f"pinned GSIM build command {index} lacks stage/cwd/exact argv")
         stages.append(stage)
     if "emit" not in stages or "compile" not in stages or stages[-1] != "link":
@@ -276,9 +287,11 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
             if provenance.get("elaboration_performed") is not True or "elaborate" not in stages:
                 raise GsimGateError("pinned GSIM build provenance contradicts its transcript")
         elif boundary == FIRRTL_BOUNDARY_ADOPTED:
-            if provenance.get("elaboration_performed") is not False \
-                    or provenance.get("warning") != ADOPTED_FIRRTL_WARNING \
-                    or "elaborate" in stages:
+            if (
+                provenance.get("elaboration_performed") is not False
+                or provenance.get("warning") != ADOPTED_FIRRTL_WARNING
+                or "elaborate" in stages
+            ):
                 raise GsimGateError("pinned GSIM adopted-FIRRTL provenance contradicts its transcript")
         else:
             raise GsimGateError("pinned GSIM v3 build receipt has an unknown FIRRTL boundary")
@@ -293,13 +306,12 @@ def _validate_build_binding(raw: Any, *, certificate_path: Path,
     command_digest = _digest_bytes(canonical_json(commands).encode("utf-8"))
     if receipt.get("commands_sha256") != command_digest or raw.get("commands_sha256") != command_digest:
         raise GsimGateError("pinned GSIM build command commitment is invalid")
-    return {"path": str(path.resolve()), "sha256": claimed,
-            "commands_sha256": command_digest}
+    return {"path": str(path.resolve()), "sha256": claimed, "commands_sha256": command_digest}
 
 
-def load_certificate(path: str | Path, *,
-                     artifact_paths: Mapping[str, str | Path] | None = None,
-                     expected_sha256: str | None = None) -> CertificateRecord:
+def load_certificate(
+    path: str | Path, *, artifact_paths: Mapping[str, str | Path] | None = None, expected_sha256: str | None = None
+) -> CertificateRecord:
     """Load, content-address, and validate one certificate and all pinned artifacts.
 
     ``artifact_paths`` lets a sealed experiment resolve logical pin names without trusting paths embedded
@@ -313,13 +325,13 @@ def load_certificate(path: str | Path, *,
         raise GsimGateError(f"cannot read GSIM certificate {certificate_path}: {exc}") from exc
     digest = _digest_bytes(raw_bytes)
     if expected_sha256 is not None and digest != expected_sha256:
-        raise GsimGateError(
-            f"GSIM certificate digest mismatch: expected={expected_sha256}, actual={digest}")
+        raise GsimGateError(f"GSIM certificate digest mismatch: expected={expected_sha256}, actual={digest}")
     if not isinstance(doc, Mapping):
         raise GsimGateError("GSIM certificate root must be a mapping")
     if doc.get("schema_version") != SCHEMA_VERSION:
         raise GsimGateError(
-            f"unsupported GSIM certificate schema {doc.get('schema_version')!r}; expected {SCHEMA_VERSION}")
+            f"unsupported GSIM certificate schema {doc.get('schema_version')!r}; expected {SCHEMA_VERSION}"
+        )
     if doc.get("status") != "certified":
         raise GsimGateError(f"GSIM certificate status is {doc.get('status')!r}, not 'certified'")
     target = doc.get("target")
@@ -333,9 +345,10 @@ def load_certificate(path: str | Path, *,
     raw_pins = doc.get("pins")
     if not isinstance(raw_pins, Mapping) or set(raw_pins) != REQUIRED_PINS:
         raise GsimGateError(f"certificate pins must be exactly {sorted(REQUIRED_PINS)}")
-    pins = {name: _validate_pin(name, raw_pins[name], certificate_path=certificate_path,
-                                artifact_paths=artifact_paths)
-            for name in sorted(REQUIRED_PINS)}
+    pins = {
+        name: _validate_pin(name, raw_pins[name], certificate_path=certificate_path, artifact_paths=artifact_paths)
+        for name in sorted(REQUIRED_PINS)
+    }
     _validate_build_binding(doc.get("build_binding"), certificate_path=certificate_path, pins=pins)
 
     raw_members = doc.get("members")
@@ -366,9 +379,13 @@ def load_certificate(path: str | Path, *,
     return CertificateRecord(certificate_path.resolve(), digest, target, pins, members, unresolved, doc)
 
 
-def discover_certificate(roots: Iterable[str | Path], *, target: str | None = None,
-                         artifact_paths: Mapping[str, str | Path] | None = None,
-                         expected_sha256: str | None = None) -> CertificateRecord:
+def discover_certificate(
+    roots: Iterable[str | Path],
+    *,
+    target: str | None = None,
+    artifact_paths: Mapping[str, str | Path] | None = None,
+    expected_sha256: str | None = None,
+) -> CertificateRecord:
     """Discover a unique valid certificate under declared roots.
 
     Distinct certificates are never ordered by timestamp: choosing the newest after seeing results is
@@ -385,15 +402,13 @@ def discover_certificate(roots: Iterable[str | Path], *, target: str | None = No
                 paths.extend(root.rglob(name))
     paths = sorted(set(path.resolve() for path in paths), key=str)
     if not paths:
-        raise GsimGateError(
-            f"no GSIM certificate named one of {list(CERTIFICATE_NAMES)} under declared roots")
+        raise GsimGateError(f"no GSIM certificate named one of {list(CERTIFICATE_NAMES)} under declared roots")
 
     by_digest: dict[str, CertificateRecord] = {}
     failures: list[str] = []
     for path in paths:
         try:
-            record = load_certificate(path, artifact_paths=artifact_paths,
-                                      expected_sha256=expected_sha256)
+            record = load_certificate(path, artifact_paths=artifact_paths, expected_sha256=expected_sha256)
         except GsimGateError as exc:
             failures.append(f"{path}: {exc}")
             continue
@@ -406,7 +421,8 @@ def discover_certificate(roots: Iterable[str | Path], *, target: str | None = No
     if len(by_digest) != 1:
         raise GsimGateError(
             "multiple distinct valid GSIM certificates discovered; precommit one SHA-256: "
-            + ", ".join(sorted(by_digest)))
+            + ", ".join(sorted(by_digest))
+        )
     return next(iter(by_digest.values()))
 
 
@@ -477,8 +493,12 @@ def inspect_cross_validation_report(path: str | Path) -> CrossValidationInventor
                 raise GsimGateError(f"{capsule} claims AGREE without exact output-byte evidence")
             for side, engine in (("reference", REFERENCE_ENGINE), ("candidate", GSIM_ENGINE)):
                 run = row.get(side)
-                if (not isinstance(run, Mapping) or run.get("engine") != engine
-                        or run.get("ran") is not True or run.get("verdict") != "pass"):
+                if (
+                    not isinstance(run, Mapping)
+                    or run.get("engine") != engine
+                    or run.get("ran") is not True
+                    or run.get("verdict") != "pass"
+                ):
                     raise GsimGateError(f"{capsule} has no passing {engine} run")
             agreeing.append(capsule)
         else:
@@ -493,13 +513,20 @@ def inspect_cross_validation_report(path: str | Path) -> CrossValidationInventor
     ]
     if not agreeing:
         missing_items.insert(0, "no byte-level agreeing capsule")
-    return CrossValidationInventory(report_path.resolve(), _digest_bytes(raw), target,
-                                    tuple(sorted(agreeing)), tuple(sorted(unresolved)), False,
-                                    tuple(missing_items))
+    return CrossValidationInventory(
+        report_path.resolve(),
+        _digest_bytes(raw),
+        target,
+        tuple(sorted(agreeing)),
+        tuple(sorted(unresolved)),
+        False,
+        tuple(missing_items),
+    )
 
 
-def discover_cross_validation_reports(roots: Iterable[str | Path], *,
-                                      target: str | None = None) -> tuple[CrossValidationInventory, ...]:
+def discover_cross_validation_reports(
+    roots: Iterable[str | Path], *, target: str | None = None
+) -> tuple[CrossValidationInventory, ...]:
     """Discover and content-address all current-format byte-agreement reports."""
     paths: set[Path] = set()
     for raw_root in roots:
@@ -550,8 +577,14 @@ class EvaluationDecision:
         }
 
 
-def plan_evaluation(certificate: CertificateRecord, workload: Mapping[str, Any], *, phase: str,
-                    gsim_available: bool, fallback_engine: str = REFERENCE_ENGINE) -> EvaluationDecision:
+def plan_evaluation(
+    certificate: CertificateRecord,
+    workload: Mapping[str, Any],
+    *,
+    phase: str,
+    gsim_available: bool,
+    fallback_engine: str = REFERENCE_ENGINE,
+) -> EvaluationDecision:
     """Require GSIM for final timing; permit Verilator fallback only during development.
 
     Verilator remains useful as an independent correctness oracle, but an out-of-envelope workload is
@@ -564,13 +597,27 @@ def plan_evaluation(certificate: CertificateRecord, workload: Mapping[str, Any],
     identity = workload_sha256(canonical)
     eligible = identity in certificate.members
     if eligible and not gsim_available:
-        reason = ("workload is inside the certified GSIM envelope, but the pinned GSIM engine is "
-                  "unavailable; fallback is forbidden for eligible work")
-        return EvaluationDecision(canonical, identity, phase, True, False, None, False, None, reason,
-                                  certificate.sha256, False)
+        reason = (
+            "workload is inside the certified GSIM envelope, but the pinned GSIM engine is "
+            "unavailable; fallback is forbidden for eligible work"
+        )
+        return EvaluationDecision(
+            canonical, identity, phase, True, False, None, False, None, reason, certificate.sha256, False
+        )
     if eligible:
-        return EvaluationDecision(canonical, identity, phase, True, True, GSIM_ENGINE, True, None, None,
-                                  certificate.sha256, phase == "final_performance")
+        return EvaluationDecision(
+            canonical,
+            identity,
+            phase,
+            True,
+            True,
+            GSIM_ENGINE,
+            True,
+            None,
+            None,
+            certificate.sha256,
+            phase == "final_performance",
+        )
     if fallback_engine != REFERENCE_ENGINE:
         raise GsimGateError("the only qualified out-of-envelope fallback is Verilator")
     if identity in certificate.unresolved:
@@ -579,14 +626,17 @@ def plan_evaluation(certificate: CertificateRecord, workload: Mapping[str, Any],
         reason = "workload is outside the certificate's exact operation/shape/semantic envelope"
     if phase == "final_performance":
         refusal = reason + "; final timing requires a GSIM certificate covering this exact workload"
-        return EvaluationDecision(canonical, identity, phase, False, False, None, False, None,
-                                  refusal, certificate.sha256, False)
-    return EvaluationDecision(canonical, identity, phase, False, True, fallback_engine, False, reason,
-                              None, certificate.sha256, False)
+        return EvaluationDecision(
+            canonical, identity, phase, False, False, None, False, None, refusal, certificate.sha256, False
+        )
+    return EvaluationDecision(
+        canonical, identity, phase, False, True, fallback_engine, False, reason, None, certificate.sha256, False
+    )
 
 
-def validate_execution(certificate: CertificateRecord, decision: EvaluationDecision,
-                       execution: Mapping[str, Any]) -> dict[str, Any]:
+def validate_execution(
+    certificate: CertificateRecord, decision: EvaluationDecision, execution: Mapping[str, Any]
+) -> dict[str, Any]:
     """Validate one result against its predeclared engine decision and return an audit record."""
     if decision.certificate_sha256 != certificate.sha256:
         raise GsimGateError("evaluation decision names a different GSIM certificate")
@@ -595,8 +645,7 @@ def validate_execution(certificate: CertificateRecord, decision: EvaluationDecis
     engine = execution.get("engine")
     if engine != decision.selected_engine:
         if decision.eligible:
-            raise GsimGateError(
-                f"eligible {decision.phase} evaluation must use GSIM, not {engine!r}")
+            raise GsimGateError(f"eligible {decision.phase} evaluation must use GSIM, not {engine!r}")
         raise GsimGateError(f"out-of-envelope evaluation must use the recorded Verilator fallback")
     if execution.get("status") != "pass":
         raise GsimGateError(f"{engine} execution status is not pass")
@@ -623,11 +672,10 @@ def validate_execution(certificate: CertificateRecord, decision: EvaluationDecis
     observed = execution.get("observed_engine_binaries")
     if isinstance(observed, Mapping) and observed.get("status") == "observed":
         digests = observed.get("digests")
-        if not isinstance(digests, (list, tuple)) or \
-                certificate.pins[expected_pin]["sha256"] not in digests:
+        if not isinstance(digests, (list, tuple)) or certificate.pins[expected_pin]["sha256"] not in digests:
             raise GsimGateError(
-                f"the engine build that produced this measurement does not contain the pinned "
-                f"{expected_pin}")
+                f"the engine build that produced this measurement does not contain the pinned {expected_pin}"
+            )
 
     elf = execution.get("elf_sha256")
     if not _is_sha256(elf):
@@ -636,8 +684,7 @@ def validate_execution(certificate: CertificateRecord, decision: EvaluationDecis
     if decision.phase == "final_performance":
         if isinstance(cycles, bool) or not isinstance(cycles, int) or cycles <= 0:
             raise GsimGateError("final performance execution lacks a positive integer cycle count")
-    cycle_claim_authority = (
-        FIDELITY if decision.phase == "final_performance" and engine == GSIM_ENGINE else None)
+    cycle_claim_authority = FIDELITY if decision.phase == "final_performance" and engine == GSIM_ENGINE else None
     return {
         "decision": decision.to_dict(),
         "execution": dict(execution),
@@ -646,9 +693,12 @@ def validate_execution(certificate: CertificateRecord, decision: EvaluationDecis
     }
 
 
-def validate_corroboration(certificate: CertificateRecord, predeclared: Mapping[str, Any],
-                           primary: Mapping[str, Any],
-                           corroborating: Mapping[str, Any]) -> dict[str, Any]:
+def validate_corroboration(
+    certificate: CertificateRecord,
+    predeclared: Mapping[str, Any],
+    primary: Mapping[str, Any],
+    corroborating: Mapping[str, Any],
+) -> dict[str, Any]:
     """Validate one predeclared GSIM/Verilator same-ELF output-byte corroboration.
 
     Wall time and cycle counts may differ between simulator implementations.  Correctness bytes may not.
@@ -657,15 +707,18 @@ def validate_corroboration(certificate: CertificateRecord, predeclared: Mapping[
     identity = predeclared.get("workload_sha256")
     if identity not in certificate.members:
         raise GsimGateError("corroboration workload is not in the certified GSIM envelope")
-    if (predeclared.get("primary_engine") != GSIM_ENGINE
-            or predeclared.get("corroborating_engine") != REFERENCE_ENGINE
-            or predeclared.get("require_same_elf") is not True
-            or predeclared.get("require_output_bytes_match") is not True):
+    if (
+        predeclared.get("primary_engine") != GSIM_ENGINE
+        or predeclared.get("corroborating_engine") != REFERENCE_ENGINE
+        or predeclared.get("require_same_elf") is not True
+        or predeclared.get("require_output_bytes_match") is not True
+    ):
         raise GsimGateError("corroboration was not predeclared with the required strong checks")
 
     for label, run, engine, pin in (
-            ("primary", primary, GSIM_ENGINE, "gsim_binary"),
-            ("corroborating", corroborating, REFERENCE_ENGINE, "verilator_binary")):
+        ("primary", primary, GSIM_ENGINE, "gsim_binary"),
+        ("corroborating", corroborating, REFERENCE_ENGINE, "verilator_binary"),
+    ):
         if run.get("engine") != engine or run.get("status") != "pass":
             raise GsimGateError(f"{label} corroboration is not a passing {engine} run")
         if run.get("derived_from_rtl") is not True or run.get("cycle_accurate") is not True:
@@ -694,10 +747,13 @@ def validate_corroboration(certificate: CertificateRecord, predeclared: Mapping[
     }
 
 
-def predeclare_campaign(certificate: CertificateRecord,
-                        workloads: Sequence[Mapping[str, Any]], *,
-                        gsim_available: bool,
-                        corroboration_count: int) -> dict[str, Any]:
+def predeclare_campaign(
+    certificate: CertificateRecord,
+    workloads: Sequence[Mapping[str, Any]],
+    *,
+    gsim_available: bool,
+    corroboration_count: int,
+) -> dict[str, Any]:
     """Predeclare GSIM use and a deterministic Verilator corroboration subset.
 
     The subset is selected by hashes of the already-sealed certificate and workload identities, not by
@@ -715,23 +771,26 @@ def predeclare_campaign(certificate: CertificateRecord,
     if not canonical_by_id:
         raise GsimGateError("campaign must contain at least one workload")
 
-    development = [plan_evaluation(certificate, canonical_by_id[identity],
-                                   phase="development_correctness",
-                                   gsim_available=gsim_available).to_dict()
-                   for identity in sorted(canonical_by_id)]
-    final = [plan_evaluation(certificate, canonical_by_id[identity],
-                             phase="final_performance",
-                             gsim_available=gsim_available).to_dict()
-             for identity in sorted(canonical_by_id)]
-    eligible = [identity for identity in sorted(canonical_by_id)
-                if identity in certificate.members]
+    development = [
+        plan_evaluation(
+            certificate, canonical_by_id[identity], phase="development_correctness", gsim_available=gsim_available
+        ).to_dict()
+        for identity in sorted(canonical_by_id)
+    ]
+    final = [
+        plan_evaluation(
+            certificate, canonical_by_id[identity], phase="final_performance", gsim_available=gsim_available
+        ).to_dict()
+        for identity in sorted(canonical_by_id)
+    ]
+    eligible = [identity for identity in sorted(canonical_by_id) if identity in certificate.members]
     if eligible and corroboration_count == 0:
         raise GsimGateError("at least one Verilator corroboration point is required when GSIM is used")
     if corroboration_count > len(eligible):
         raise GsimGateError(
-            f"corroboration_count {corroboration_count} exceeds {len(eligible)} GSIM-eligible workloads")
-    ranked = sorted(eligible, key=lambda identity: _digest_bytes(
-        f"{certificate.sha256}:{identity}".encode("ascii")))
+            f"corroboration_count {corroboration_count} exceeds {len(eligible)} GSIM-eligible workloads"
+        )
+    ranked = sorted(eligible, key=lambda identity: _digest_bytes(f"{certificate.sha256}:{identity}".encode("ascii")))
     corroboration = [
         {
             "workload_sha256": identity,

@@ -14,6 +14,7 @@ Usage:
   merlin_similarity_audit.py --run-id pilot_merlin_0001 [--arm merlin_assisted]
   merlin_similarity_audit.py --submission <dir> --run-id <id>   # audit an explicit dir (smoke test)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,6 +23,7 @@ import hashlib
 from pathlib import Path
 
 import _common as C
+
 from merlin.targetgen.target_experiment import load_target_experiment
 
 # Forbidden prior backends the merlin agent must not have copied (operator-visible only). The set is the
@@ -32,9 +34,8 @@ PRIOR_BACKENDS = [C.REPO / "out/artifacts/targets" / C.TARGET / b for b in _TE.p
 PRIOR_REPORTS = C.REPORTS
 
 _SKIP = {"build", "__pycache__", ".git", "CANARY_FORBIDDEN.txt"}
-_SRC_EXT = {".py", ".td", ".cpp", ".h", ".hpp", ".cc", ".mlir", ".yaml", ".yml", ".json", ".txt",
-            ".cmake", ".md"}
-HIGH_SIM = 0.85   # difflib ratio >= this on normalized source -> flag as high-similarity
+_SRC_EXT = {".py", ".td", ".cpp", ".h", ".hpp", ".cc", ".mlir", ".yaml", ".yml", ".json", ".txt", ".cmake", ".md"}
+HIGH_SIM = 0.85  # difflib ratio >= this on normalized source -> flag as high-similarity
 MANIFEST_SIM = 0.80
 
 
@@ -50,7 +51,7 @@ def _norm(text: str) -> str:
         s = ln.strip()
         if not s:
             continue
-        s = " ".join(s.split())          # collapse internal whitespace (structured, no regex)
+        s = " ".join(s.split())  # collapse internal whitespace (structured, no regex)
         out.append(s)
     return "\n".join(out)
 
@@ -76,8 +77,16 @@ def _shared_long_lines(a: str, b: str, minlen: int = 24, k: int = 5) -> list[str
     # drop boilerplate that is legitimately shared (the contract vocabulary)
     # ``.insn r`` alone is the boilerplate signal -- the opcode that follows is the TARGET's, so
     # pinning one here made every other target's inline-asm lines read as "distinctive copying".
-    boiler = ("artifact_type", "mlir_oot_target_backend", "integrity_exempt", f"{C.TARGET}_kernel",
-              ".insn r ", "merlin_iface", "command_buffer", "from __future__ import")
+    boiler = (
+        "artifact_type",
+        "mlir_oot_target_backend",
+        "integrity_exempt",
+        f"{C.TARGET}_kernel",
+        ".insn r ",
+        "merlin_iface",
+        "command_buffer",
+        "from __future__ import",
+    )
     distinctive = [c for c in common if not any(b_ in c for b_ in boiler)]
     return distinctive[:k]
 
@@ -99,8 +108,7 @@ def audit(submission: Path) -> dict:
             h = sub_hashes[rel]
             # exact content match anywhere in this prior backend (same or different relpath)
             if h in prior_by_hash:
-                exact.append({"submission_file": rel, "backend": backend.name,
-                              "matches": prior_by_hash[h]})
+                exact.append({"submission_file": rel, "backend": backend.name, "matches": prior_by_hash[h]})
                 continue
             na = _norm(p.read_text(errors="ignore"))
             # compare against the same-relpath prior file if present, else best ratio across the backend
@@ -111,11 +119,16 @@ def audit(submission: Path) -> dict:
                 if r > best_ratio:
                     best_ratio, best_rel = r, cp.relative_to(backend).as_posix()
             if best_ratio >= HIGH_SIM:
-                sl = _shared_long_lines(p.read_text(errors="ignore"),
-                                        (backend / best_rel).read_text(errors="ignore"))
-                high.append({"submission_file": rel, "backend": backend.name,
-                             "prior_file": best_rel, "ratio": round(best_ratio, 3),
-                             "shared_distinctive_lines": sl})
+                sl = _shared_long_lines(p.read_text(errors="ignore"), (backend / best_rel).read_text(errors="ignore"))
+                high.append(
+                    {
+                        "submission_file": rel,
+                        "backend": backend.name,
+                        "prior_file": best_rel,
+                        "ratio": round(best_ratio, 3),
+                        "shared_distinctive_lines": sl,
+                    }
+                )
 
     # manifest-structure copy: compare submission/manifest.yaml key-shape to each prior manifest
     manifest_findings = []
@@ -129,33 +142,50 @@ def audit(submission: Path) -> dict:
                 if r >= MANIFEST_SIM:
                     manifest_findings.append({"backend": backend.name, "ratio": round(r, 3)})
 
-    return {"n_submission_files": len(sub), "exact_matches": exact,
-            "high_similarity": high, "manifest_structure": manifest_findings}
+    return {
+        "n_submission_files": len(sub),
+        "exact_matches": exact,
+        "high_similarity": high,
+        "manifest_structure": manifest_findings,
+    }
 
 
 def _verdict(res: dict) -> tuple[str, str]:
     if res["exact_matches"]:
-        return ("COPY_DETECTED",
-                "Exact file-content matches with a prior backend — comparability COMPROMISED; "
-                "investigate before reporting this run.")
+        return (
+            "COPY_DETECTED",
+            "Exact file-content matches with a prior backend — comparability COMPROMISED; "
+            "investigate before reporting this run.",
+        )
     if res["high_similarity"] or res["manifest_structure"]:
-        return ("REVIEW",
-                "High-similarity files and/or manifest-structure overlap — operator review required "
-                "to decide if it is convergent design (acceptable) or copying (not).")
+        return (
+            "REVIEW",
+            "High-similarity files and/or manifest-structure overlap — operator review required "
+            "to decide if it is convergent design (acceptable) or copying (not).",
+        )
     return ("CLEAN", "No exact matches, no high-similarity files, no manifest-structure copy.")
 
 
 def _write_report(res: dict, run_id: str, submission: Path, out: Path) -> None:
     verdict, why = _verdict(res)
-    L = [f"# merlin similarity / leakage audit — {run_id}", "",
-         "Operator-side, post-freeze. Compares the generated artifact against the forbidden prior "
-         "backends (which the agent never saw). Inputs are NOT exposed to the agent.", "",
-         f"- submission: `{submission}`",
-         f"- prior backends compared: {', '.join(b.name for b in PRIOR_BACKENDS if b.exists())}",
-         f"- source files in submission: {res['n_submission_files']}",
-         f"- high-similarity threshold: {HIGH_SIM} (normalized difflib ratio)", "",
-         f"## Verdict: {verdict}", "", why, "",
-         "## Exact content matches", ""]
+    L = [
+        f"# merlin similarity / leakage audit — {run_id}",
+        "",
+        "Operator-side, post-freeze. Compares the generated artifact against the forbidden prior "
+        "backends (which the agent never saw). Inputs are NOT exposed to the agent.",
+        "",
+        f"- submission: `{submission}`",
+        f"- prior backends compared: {', '.join(b.name for b in PRIOR_BACKENDS if b.exists())}",
+        f"- source files in submission: {res['n_submission_files']}",
+        f"- high-similarity threshold: {HIGH_SIM} (normalized difflib ratio)",
+        "",
+        f"## Verdict: {verdict}",
+        "",
+        why,
+        "",
+        "## Exact content matches",
+        "",
+    ]
     if res["exact_matches"]:
         for e in res["exact_matches"]:
             L.append(f"- `{e['submission_file']}` == `{e['backend']}`: {e['matches']}")
@@ -167,8 +197,7 @@ def _write_report(res: dict, run_id: str, submission: Path, out: Path) -> None:
         L.append("|---|---|---|---|---|")
         for h in res["high_similarity"]:
             sl = " ⏎ ".join(s[:60] for s in h["shared_distinctive_lines"]) or "—"
-            L.append(f"| `{h['submission_file']}` | {h['backend']} | `{h['prior_file']}` | "
-                     f"{h['ratio']} | {sl} |")
+            L.append(f"| `{h['submission_file']}` | {h['backend']} | `{h['prior_file']}` | {h['ratio']} | {sl} |")
     else:
         L.append("_none_")
     L += ["", "## Manifest-structure overlap", ""]
@@ -177,13 +206,19 @@ def _write_report(res: dict, run_id: str, submission: Path, out: Path) -> None:
             L.append(f"- {m['backend']}: ratio {m['ratio']}")
     else:
         L.append("_none above threshold_")
-    L += ["", "## Comparability impact", "",
-          {"COPY_DETECTED": "This run is NOT comparable as-is — a prior backend was reproduced "
-                            "verbatim. Do not report it as an independent merlin_assisted result.",
-           "REVIEW": "Comparability is plausible but requires operator sign-off on the flagged files "
-                     "(convergent design vs copying).",
-           "CLEAN": "No leakage signal; the artifact appears independently authored. Comparable."}[verdict],
-          ""]
+    L += [
+        "",
+        "## Comparability impact",
+        "",
+        {
+            "COPY_DETECTED": "This run is NOT comparable as-is — a prior backend was reproduced "
+            "verbatim. Do not report it as an independent merlin_assisted result.",
+            "REVIEW": "Comparability is plausible but requires operator sign-off on the flagged files "
+            "(convergent design vs copying).",
+            "CLEAN": "No leakage signal; the artifact appears independently authored. Comparable.",
+        }[verdict],
+        "",
+    ]
     out.write_text("\n".join(L) + "\n")
 
 
@@ -191,8 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--arm", default="merlin_assisted")
-    ap.add_argument("--submission", default=None,
-                    help="explicit submission dir (default runs/<arm>/<run-id>/submission)")
+    ap.add_argument(
+        "--submission", default=None, help="explicit submission dir (default runs/<arm>/<run-id>/submission)"
+    )
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
 
@@ -205,9 +241,11 @@ def main(argv: list[str] | None = None) -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     _write_report(res, a.run_id, submission, out)
     verdict, _ = _verdict(res)
-    print(f"[similarity_audit] {a.run_id}: {verdict}  "
-          f"(exact={len(res['exact_matches'])} high_sim={len(res['high_similarity'])} "
-          f"manifest={len(res['manifest_structure'])}) -> {out}")
+    print(
+        f"[similarity_audit] {a.run_id}: {verdict}  "
+        f"(exact={len(res['exact_matches'])} high_sim={len(res['high_similarity'])} "
+        f"manifest={len(res['manifest_structure'])}) -> {out}"
+    )
     return 0
 
 

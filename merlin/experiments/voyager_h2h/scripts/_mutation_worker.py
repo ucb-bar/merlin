@@ -22,6 +22,7 @@ Mutations are located structurally from the emitted IR (which copy reads the inp
 bias; which copy stores; which tile index both operands share -- the reduction index), never by node
 name, so the same catalogue applies to every fixture or reports why it does not.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,40 +54,57 @@ class NotApplicable(Exception):
 # Building the program exactly as the fixture was built
 # ------------------------------------------------------------------------------------------------
 
+
 class Program:
     """One freshly compiled Voyager program plus what Voyager's own check compares it against."""
 
     def __init__(self, manifest: dict, out: Path):
-        from voyager_compiler import (compile, convert_pt2e, export_model,
-                                      extract_input_preprocessor, fuse_operator,
-                                      get_default_quantizer, prepare_pt2e, transform)
-        from voyager_compiler.hardware_config import AcceleratorConfig
         import test_codegen
+        from voyager_compiler import (
+            compile,
+            convert_pt2e,
+            export_model,
+            extract_input_preprocessor,
+            fuse_operator,
+            get_default_quantizer,
+            prepare_pt2e,
+            transform,
+        )
+        from voyager_compiler.hardware_config import AcceleratorConfig
 
         torch.manual_seed(manifest["seed"])
         torch.set_grad_enabled(False)
         fields = dict(manifest["config"])
         fields["pe_array_size"] = tuple(fields["pe_array_size"])
         config = AcceleratorConfig(**fields)
-        dtype = torch.bfloat16 if manifest.get("model_dtype", "torch.bfloat16").endswith("bfloat16") \
-            else torch.float32
+        dtype = torch.bfloat16 if manifest.get("model_dtype", "torch.bfloat16").endswith("bfloat16") else torch.float32
         module, example = voyager_export.build_workload(manifest["workload"], dtype)
         scheme = voyager_export.QUANT_SCHEMES[manifest["quant_scheme"]]
-        quantizer = get_default_quantizer(output_activation=None, force_scale_power_of_two=False,
-                                          **{k: v for k, v in scheme.items() if k != "bias"},
-                                          bias=scheme["bias"])
+        quantizer = get_default_quantizer(
+            output_activation=None,
+            force_scale_power_of_two=False,
+            **{k: v for k, v in scheme.items() if k != "bias"},
+            bias=scheme["bias"],
+        )
         gm = export_model(module, (example,))
         if manifest.get("conv2d_im2col"):
             from voyager_compiler import replace_conv2d_with_im2col
+
             replace_conv2d_with_im2col(gm)
         gm = prepare_pt2e(gm, quantizer)
         for _ in range(manifest["calibration_steps"]):
             gm(torch.randn_like(example))
         convert_pt2e(gm, scheme["bias"])
-        self.old_output = gm(example)          # test_codegen's `old_output`: before transform()
+        self.old_output = gm(example)  # test_codegen's `old_output`: before transform()
         patterns = test_codegen.VECTOR_PIPELINE
-        transform(gm, (example,), patterns=patterns, config=config, skip_op_fusion=True,
-                  layout_policy=manifest.get("layout_policy", "systolic"))
+        transform(
+            gm,
+            (example,),
+            patterns=patterns,
+            config=config,
+            skip_op_fusion=True,
+            layout_policy=manifest.get("layout_policy", "systolic"),
+        )
         gm, preprocess = extract_input_preprocessor(gm)
         self.lowered_input = preprocess(example)
         fuse_operator(gm, patterns)
@@ -95,9 +113,14 @@ class Program:
         # likewise after transform()).
         self.pre_tiling_output = gm(self.lowered_input)
         out.mkdir(parents=True, exist_ok=True)
-        self.params = compile(gm, (self.lowered_input,), config=config, output_dir=str(out),
-                              output_file=manifest["workload"].get("name", "model"),
-                              dump_tensors=False)
+        self.params = compile(
+            gm,
+            (self.lowered_input,),
+            config=config,
+            output_dir=str(out),
+            output_file=manifest["workload"].get("name", "model"),
+            dump_tensors=False,
+        )
         self.gm = gm
         self.config = config
         self.model_txt = (out / "model.txt").read_text()
@@ -106,9 +129,9 @@ class Program:
 
 def _emit(gm, lowered_input):
     from voyager_compiler.codegen.transform.bufferize import gen_code_bufferized
+
     params = gen_code_bufferized(gm, (lowered_input,), None)
-    return (text_format.MessageToString(params),
-            json_format.MessageToDict(params, preserving_proto_field_name=True))
+    return (text_format.MessageToString(params), json_format.MessageToDict(params, preserving_proto_field_name=True))
 
 
 def plan_invariants(gm, config) -> list[str]:
@@ -117,6 +140,7 @@ def plan_invariants(gm, config) -> list[str]:
     stands. ``plan_memory`` runs it once, at planning time, and only logs a ``[MEM_OVERLAP]``
     WARNING; a plan changed afterwards is judged here by the same code."""
     import logging
+
     from voyager_compiler.codegen.transform.bufferize import memory_planning as mp
 
     records: list[str] = []
@@ -148,9 +172,11 @@ def _run_eager(gm, lowered_input):
 # Voyager's own criterion, verbatim from test/test_codegen.py (constants imported, not copied)
 # ------------------------------------------------------------------------------------------------
 
+
 def voyager_criterion(old_output, new_output) -> dict:
     import test_codegen
     from torch.testing import assert_close
+
     rtol, atol = test_codegen.OUTPUT_RTOL, test_codegen.OUTPUT_ATOL
     old_flat, _ = tree_flatten(old_output)
     new_flat, _ = tree_flatten(new_output)
@@ -165,11 +191,11 @@ def voyager_criterion(old_output, new_output) -> dict:
             deviation = (new - old).abs().to(torch.float32) / (old.abs().to(torch.float32) + atol)
             worst = max(worst, deviation.max().item())
             assert_close(new, old, rtol=rtol, atol=atol)
-        verdict.update(result="match", log_line=f"Results match (max deviation {worst:.2e})",
-                       max_deviation=worst)
+        verdict.update(result="match", log_line=f"Results match (max deviation {worst:.2e})", max_deviation=worst)
     except Exception as exc:  # test_codegen catches everything here and only prints a WARNING
-        verdict.update(result="warning", log_line=f"WARNING: output verification failed: "
-                       f"{str(exc).splitlines()[0][:300]}")
+        verdict.update(
+            result="warning", log_line=f"WARNING: output verification failed: {str(exc).splitlines()[0][:300]}"
+        )
     return verdict
 
 
@@ -195,13 +221,13 @@ def error_metrics(reference, candidate, rtol: float, atol: float) -> dict:
 # Locating constructs in the bufferized FX graph
 # ------------------------------------------------------------------------------------------------
 
+
 def _modules(gm) -> dict:
     return {name: mod for name, mod in gm.named_modules() if isinstance(mod, torch.fx.GraphModule)}
 
 
 def _find(gm, name: str):
-    hits = [(mname, mod, node) for mname, mod in _modules(gm).items() for node in mod.graph.nodes
-            if node.name == name]
+    hits = [(mname, mod, node) for mname, mod in _modules(gm).items() for node in mod.graph.nodes if node.name == name]
     if len(hits) != 1:
         raise RuntimeError(f"node {name!r} occurs {len(hits)} times in the bufferized graph")
     return hits[0]
@@ -272,8 +298,9 @@ class Roles:
         w_idx = [a for a in self.weight[2].args[2] if isinstance(a, torch.fx.Node)]
         shared = [a for a in lhs_idx if a in w_idx]
         if len(shared) != 1:
-            raise NotApplicable(f"the operand copies share {len(shared)} tile indices; no single "
-                                "reduction split to perturb")
+            raise NotApplicable(
+                f"the operand copies share {len(shared)} tile indices; no single reduction split to perturb"
+            )
         return shared[0]
 
     def copy_box(self, copy_name: str, which: str) -> dict:
@@ -311,10 +338,14 @@ def _step_counterpart(index_node, offset: int):
     iv = source.args[0]
     want_op = operator.sub if offset < 0 else operator.add
     for cand in graph.nodes:
-        if (cand.op == "call_function" and cand.target is source.target
-                and isinstance(cand.args[0], torch.fx.Node)
-                and cand.args[0].target is want_op and cand.args[0].args == (iv, abs(offset))
-                and list(cand.args[1]) == list(source.args[1])):
+        if (
+            cand.op == "call_function"
+            and cand.target is source.target
+            and isinstance(cand.args[0], torch.fx.Node)
+            and cand.args[0].target is want_op
+            and cand.args[0].args == (iv, abs(offset))
+            and list(cand.args[1]) == list(source.args[1])
+        ):
             for user in cand.users:
                 if user.target is operator.getitem and user.args[1] == pos:
                     return user
@@ -335,8 +366,12 @@ def _current_counterpart(prev_index_node):
     iv = step.args[0]
     graph = prev_index_node.graph
     for cand in graph.nodes:
-        if (cand.op == "call_function" and cand.target is source.target and cand.args[0] is iv
-                and list(cand.args[1]) == list(source.args[1])):
+        if (
+            cand.op == "call_function"
+            and cand.target is source.target
+            and cand.args[0] is iv
+            and list(cand.args[1]) == list(source.args[1])
+        ):
             for user in cand.users:
                 if user.target is operator.getitem and user.args[1] == pos:
                     return user
@@ -378,8 +413,7 @@ def _scratch_allocs(gm):
 def _slot_intervals(seg, stride, slots):
     span = int(seg.end) - int(seg.start)
     slot_bytes = span - (slots - 1) * stride if slots > 1 else span
-    return [(int(seg.start) + s * stride, int(seg.start) + s * stride + slot_bytes)
-            for s in range(slots)], slot_bytes
+    return [(int(seg.start) + s * stride, int(seg.start) + s * stride + slot_bytes) for s in range(slots)], slot_bytes
 
 
 def _alloc_of(located):
@@ -431,6 +465,7 @@ def mutation(mid: str, cls: str, title: str):
     def register(fn):
         CATALOGUE[mid] = {"id": mid, "class": cls, "title": title, "apply": fn}
         return fn
+
     return register
 
 
@@ -439,18 +474,23 @@ def _identity(gm, roles, config):
     return "nothing changed"
 
 
-@mutation("N1_reorder_loads", "negative", "issue the weight-tile copy before the input-tile copy "
-          "(independent buffers)")
+@mutation("N1_reorder_loads", "negative", "issue the weight-tile copy before the input-tile copy (independent buffers)")
 def _reorder_loads(gm, roles, config):
     mname_l, mod_l, lhs = roles.lhs
     mname_w, mod_w, weight = roles.weight
     if mod_l is not mod_w:
         raise NotApplicable("input and weight copies live in different regions")
-    moved = [a for a in weight.args if isinstance(a, torch.fx.Node)
-             and a.op == "call_function" and a.target is torch.ops.voyager.subview.default]
+    moved = [
+        a
+        for a in weight.args
+        if isinstance(a, torch.fx.Node) and a.op == "call_function" and a.target is torch.ops.voyager.subview.default
+    ]
     order = {n: i for i, n in enumerate(mod_l.graph.nodes)}
-    anchor_candidates = [a for a in lhs.args if isinstance(a, torch.fx.Node) and a.op == "call_function"
-                         and a.target is torch.ops.voyager.subview.default] + [lhs]
+    anchor_candidates = [
+        a
+        for a in lhs.args
+        if isinstance(a, torch.fx.Node) and a.op == "call_function" and a.target is torch.ops.voyager.subview.default
+    ] + [lhs]
     anchor = min(anchor_candidates, key=order.get)
     if order[weight] < order[anchor]:
         raise NotApplicable("the weight copy already precedes the input copy")
@@ -484,8 +524,7 @@ def _free_start(gm, config, moving, stride, slots, slot_bytes):
     raise NotApplicable("no free scratchpad region holds the weight buffer")
 
 
-@mutation("N2_relocate_weight", "negative", "re-plan the weight buffer into a free, non-overlapping "
-          "scratchpad region")
+@mutation("N2_relocate_weight", "negative", "re-plan the weight buffer into a free, non-overlapping scratchpad region")
 def _relocate(gm, roles, config):
     box = roles.copy_box(roles.weight[2].name, "dst")
     alloc = _root_alloc_for_box(gm, box["node"])
@@ -499,8 +538,11 @@ def _relocate(gm, roles, config):
     return f"{alloc.name}: scratchpad {int(seg.start)} -> {start} ({n} nodes), slot stride {stride}"
 
 
-@mutation("N3_permute_reduction", "negative", "visit the reduction tiles in rotated order "
-          "(k -> (k+1) mod nK) in both operand copies")
+@mutation(
+    "N3_permute_reduction",
+    "negative",
+    "visit the reduction tiles in rotated order (k -> (k+1) mod nK) in both operand copies",
+)
 def _permute_reduction(gm, roles, config):
     k = roles.reduction_index()
     nk = _extent(k)
@@ -512,8 +554,9 @@ def _permute_reduction(gm, roles, config):
     return f"reduction index {k.name} -> ({k.name} + 1) % {nk} in the input and weight copies"
 
 
-@mutation("F1_prev_step_index", "schedule", "input copy uses the previous loop step's row-tile "
-          "index (pipeline off-by-one)")
+@mutation(
+    "F1_prev_step_index", "schedule", "input copy uses the previous loop step's row-tile index (pipeline off-by-one)"
+)
 def _prev_step_index(gm, roles, config):
     _, _, copy = roles.lhs
     k = roles.reduction_index() if _shares_reduction(roles) else None
@@ -532,8 +575,7 @@ def _prev_step_index(gm, roles, config):
         operands = list(cond.args[3])
         operands[position] = prev
         _replace_arg(cond, 3, tuple(operands))
-        return (f"input copy index {target.name} (= {outer.name}) -> {prev.name} "
-                "(same component, loop step - 1)")
+        return f"input copy index {target.name} (= {outer.name}) -> {prev.name} (same component, loop step - 1)"
     prev = _step_counterpart(target, -1)
     _replace_arg(copy, 2, [prev if a is target else a for a in copy.args[2]])
     return f"input copy index {target.name} -> {prev.name} (same component, loop step - 1)"
@@ -547,9 +589,12 @@ def _region_operand(gm, region_graph, placeholder):
         for node in mod.graph.nodes:
             if node.op == "call_function" and "cond" in str(node.target):
                 for branch in node.args[1:3]:
-                    if isinstance(branch, torch.fx.Node) and branch.op == "get_attr" \
-                            and getattr(mod, branch.target, None) is not None \
-                            and getattr(mod, branch.target).graph is region_graph:
+                    if (
+                        isinstance(branch, torch.fx.Node)
+                        and branch.op == "get_attr"
+                        and getattr(mod, branch.target, None) is not None
+                        and getattr(mod, branch.target).graph is region_graph
+                    ):
                         return node, position
     raise NotApplicable("the copy's region is not a conditional")
 
@@ -588,8 +633,7 @@ def _halo_pad(gm, roles, config):
     return f"input copy pad {list(pad)} -> {new}"
 
 
-@mutation("F3_pad_value", "schedule", "halo filled with 1 instead of the zero point 0 "
-          "(zero-point off by one)")
+@mutation("F3_pad_value", "schedule", "halo filled with 1 instead of the zero point 0 (zero-point off by one)")
 def _pad_value(gm, roles, config):
     _, _, copy = roles.lhs
     pad = _copy_kw(copy, "pad", 8)
@@ -600,8 +644,11 @@ def _pad_value(gm, roles, config):
     return f"input copy pad_value {old} -> 1.0"
 
 
-@mutation("F4_duplicate_partial", "schedule", "reduction index clamped one short: tile nK-2 "
-          "accumulated twice, tile nK-1 never")
+@mutation(
+    "F4_duplicate_partial",
+    "schedule",
+    "reduction index clamped one short: tile nK-2 accumulated twice, tile nK-1 never",
+)
 def _duplicate_partial(gm, roles, config):
     k = roles.reduction_index()
     nk = _extent(k)
@@ -612,19 +659,21 @@ def _duplicate_partial(gm, roles, config):
         last = _scalar_op(copy, operator.ge, k, nk - 1)
         clamped = _scalar_op(copy, torch.sym_ite, last, nk - 2, k)
         _replace_arg(copy, 2, [clamped if a is k else a for a in copy.args[2]])
-    return (f"reduction index {k.name} -> sym_ite({k.name} >= {nk - 1}, {nk - 2}, {k.name}) "
-            "in both operand copies")
+    return f"reduction index {k.name} -> sym_ite({k.name} >= {nk - 1}, {nk - 2}, {k.name}) in both operand copies"
 
 
-@mutation("F5_drop_partial", "schedule", "a split-reduction combine overwrites the partial "
-          "instead of adding to it")
+@mutation("F5_drop_partial", "schedule", "a split-reduction combine overwrites the partial instead of adding to it")
 def _drop_partial(gm, roles, config):
     candidates = []
     for mname, mod in _modules(gm).items():
         for node in mod.graph.nodes:
-            if node.op == "call_function" and node.target is torch.ops.aten.add.Tensor \
-                    and len(node.args) == 2 and isinstance(node.args[1], torch.fx.Node) \
-                    and node.args[1].op == "placeholder":
+            if (
+                node.op == "call_function"
+                and node.target is torch.ops.aten.add.Tensor
+                and len(node.args) == 2
+                and isinstance(node.args[1], torch.fx.Node)
+                and node.args[1].op == "placeholder"
+            ):
                 has_relu = any("relu" in str(n.target) for n in mod.graph.nodes)
                 candidates.append((has_relu, mname, mod, node))
     if not candidates:
@@ -636,8 +685,11 @@ def _drop_partial(gm, roles, config):
     return f"removed {add.name} in {mname or '<root>'}: the partial it read is dropped"
 
 
-@mutation("F6_stale_slot", "schedule", "input copy lands in the other pipeline slot, so each "
-          "compute reads the previous step's tile")
+@mutation(
+    "F6_stale_slot",
+    "schedule",
+    "input copy lands in the other pipeline slot, so each compute reads the previous step's tile",
+)
 def _stale_slot(gm, roles, config):
     _, mod, copy = roles.lhs
     dst = copy.args[1]
@@ -650,15 +702,20 @@ def _stale_slot(gm, roles, config):
     offsets = list(dst.args[1])
     other = _scalar_op(copy, operator.mod, _scalar_op(copy, operator.add, offsets[0], 1), slots)
     with mod.graph.inserting_before(copy):
-        new_dst = mod.graph.call_function(dst.target, (dst.args[0], [other] + offsets[1:],
-                                                       *dst.args[2:]), dict(dst.kwargs))
+        new_dst = mod.graph.call_function(
+            dst.target, (dst.args[0], [other] + offsets[1:], *dst.args[2:]), dict(dst.kwargs)
+        )
     new_dst.meta = dict(dst.meta)
     _replace_arg(copy, 1, new_dst)
     return f"input copy destination slot {getattr(offsets[0], 'name', offsets[0])} -> (slot + 1) % {slots}"
 
 
-@mutation("F7_overlap_live", "memory_plan", "weight buffer planned on top of the input buffer, so "
-          "the weight copy overwrites the input tile the same step's compute reads")
+@mutation(
+    "F7_overlap_live",
+    "memory_plan",
+    "weight buffer planned on top of the input buffer, so "
+    "the weight copy overwrites the input tile the same step's compute reads",
+)
 def _overlap(gm, roles, config):
     wbox = roles.copy_box(roles.weight[2].name, "dst")
     lbox = roles.copy_box(roles.lhs[2].name, "dst")
@@ -667,15 +724,19 @@ def _overlap(gm, roles, config):
     wseg, lseg = walloc.meta["scratchpad"], lalloc.meta["scratchpad"]
     span = int(wseg.end) - int(wseg.start)
     start = int(lseg.start)
-    n = _rebind_segment(gm, wseg, new_seg=(start, start + span),
-                        new_stride=int(lalloc.meta.get("slot_stride", 0) or 0))
+    n = _rebind_segment(gm, wseg, new_seg=(start, start + span), new_stride=int(lalloc.meta.get("slot_stride", 0) or 0))
     return f"{walloc.name}: scratchpad {int(wseg.start)} -> {start} (= {lalloc.name}), {n} nodes"
 
 
-@mutation("F7b_overlap_across_groups", "memory_plan", "a buffer of one bank group planned on top of "
-          "a simultaneously-live buffer of another group (the case Voyager's plan check covers)")
+@mutation(
+    "F7b_overlap_across_groups",
+    "memory_plan",
+    "a buffer of one bank group planned on top of "
+    "a simultaneously-live buffer of another group (the case Voyager's plan check covers)",
+)
 def _overlap_across_groups(gm, roles, config):
     from voyager_compiler.codegen.transform.bufferize import memory_planning as mp
+
     bufs = mp._buffer_lifetimes(gm, mp._buffer_identity(gm), mp._timestamps(gm), roles.accel_config)
     rows = []
     for root, bf in bufs.items():
@@ -683,20 +744,25 @@ def _overlap_across_groups(gm, roles, config):
         if seg is not None:
             rows.append((root, bf, seg, mp._bank_group_key(bf)))
     for i, (r1, b1, s1, g1) in enumerate(rows):
-        for r2, b2, s2, g2 in rows[i + 1:]:
+        for r2, b2, s2, g2 in rows[i + 1 :]:
             if g1 is not None and g1 == g2:
-                continue            # _check_overlaps exempts one bank group's members
+                continue  # _check_overlaps exempts one bank group's members
             if b1.def_t <= b2.last_t and b2.def_t <= b1.last_t:
                 span = int(s2.end) - int(s2.start)
                 n = _rebind_segment(gm, s2, new_seg=(int(s1.start), int(s1.start) + span))
-                return (f"{r2.name} (bank group {g2[1] if g2 else None}): scratchpad "
-                        f"{int(s2.start)} -> {int(s1.start)} (= {r1.name}, group "
-                        f"{g1[1] if g1 else None}), {n} nodes")
+                return (
+                    f"{r2.name} (bank group {g2[1] if g2 else None}): scratchpad "
+                    f"{int(s2.start)} -> {int(s1.start)} (= {r1.name}, group "
+                    f"{g1[1] if g1 else None}), {n} nodes"
+                )
     raise NotApplicable("every simultaneously-live scratchpad buffer is in one bank group")
 
 
-@mutation("F8_stale_bias", "schedule", "bias copy index never advances: every output-channel tile "
-          "reuses the first tile's bias")
+@mutation(
+    "F8_stale_bias",
+    "schedule",
+    "bias copy index never advances: every output-channel tile reuses the first tile's bias",
+)
 def _stale_bias(gm, roles, config):
     if roles.bias is None:
         raise NotApplicable("no bias copy")
@@ -706,8 +772,11 @@ def _stale_bias(gm, roles, config):
     return f"bias copy indices {[getattr(a, 'name', a) for a in old]} -> {[0] * len(old)}"
 
 
-@mutation("F9_store_current_index", "schedule", "the in-loop drain stores the finished tile at the "
-          "CURRENT step's tile offset instead of its own")
+@mutation(
+    "F9_store_current_index",
+    "schedule",
+    "the in-loop drain stores the finished tile at the CURRENT step's tile offset instead of its own",
+)
 def _store_current(gm, roles, config):
     for mname, mod, store in roles.loop_stores:
         # The store sits in a conditional region; its tile indices come in through the region's
@@ -715,9 +784,15 @@ def _store_current(gm, roles, config):
         region_owner = None
         for pname, pmod in _modules(gm).items():
             for node in pmod.graph.nodes:
-                if node.op == "call_function" and "cond" in str(node.target) \
-                        and any(getattr(pmod, a.target, None) is mod for a in node.args[1:3]
-                                if isinstance(a, torch.fx.Node) and a.op == "get_attr"):
+                if (
+                    node.op == "call_function"
+                    and "cond" in str(node.target)
+                    and any(
+                        getattr(pmod, a.target, None) is mod
+                        for a in node.args[1:3]
+                        if isinstance(a, torch.fx.Node) and a.op == "get_attr"
+                    )
+                ):
                     region_owner = (pname, pmod, node)
         if region_owner is None:
             continue
@@ -736,8 +811,7 @@ def _store_current(gm, roles, config):
     raise NotApplicable("no in-loop store fed by the previous step's tile index")
 
 
-@mutation("F10_drain_offset", "schedule", "the epilogue drain of the LAST tile writes one tile "
-          "short (edge tile)")
+@mutation("F10_drain_offset", "schedule", "the epilogue drain of the LAST tile writes one tile short (edge tile)")
 def _drain_offset(gm, roles, config):
     for _, _, store in roles.epilogue_stores:
         idx = list(store.args[2])
@@ -750,8 +824,11 @@ def _drain_offset(gm, roles, config):
     raise NotApplicable("no epilogue store with literal tile indices")
 
 
-@mutation("H1_drop_wait", "hazard", "one semaphore wait removed from the loop (a producer/consumer "
-          "order the hardware relies on)")
+@mutation(
+    "H1_drop_wait",
+    "hazard",
+    "one semaphore wait removed from the loop (a producer/consumer order the hardware relies on)",
+)
 def _drop_wait(gm, roles, config):
     for mname, mod in _modules(gm).items():
         if mname == "":
@@ -763,8 +840,11 @@ def _drop_wait(gm, roles, config):
     raise NotApplicable("no semaphore wait inside the loop")
 
 
-@mutation("H2_alias_slots", "hazard", "input buffer's two pipeline slots planned at one address "
-          "(the next load may overwrite the tile still being read)")
+@mutation(
+    "H2_alias_slots",
+    "hazard",
+    "input buffer's two pipeline slots planned at one address (the next load may overwrite the tile still being read)",
+)
 def _alias_slots(gm, roles, config):
     box = roles.copy_box(roles.lhs[2].name, "dst")
     if int(box.get("bank_count", 1) or 1) < 2:
@@ -778,7 +858,7 @@ def _alias_slots(gm, roles, config):
 
 def _fetch_attr(gm, target: str):
     value = gm
-    for part in str(target).split("."):   # a get_attr target is a dotted path
+    for part in str(target).split("."):  # a get_attr target is a dotted path
         value = getattr(value, part, None)
     return value
 
@@ -797,9 +877,12 @@ def _scale_nodes(gm):
         if node.op != "get_attr":
             continue
         value = _fetch_attr(gm, node.target)
-        if isinstance(value, torch.Tensor) and value.numel() == 1 and value.is_floating_point() \
-                and any("dequantize" in str(u.target) or u.op in ("call_function", "call_module")
-                        for u in node.users):
+        if (
+            isinstance(value, torch.Tensor)
+            and value.numel() == 1
+            and value.is_floating_point()
+            and any("dequantize" in str(u.target) or u.op in ("call_function", "call_module") for u in node.users)
+        ):
             out.append((node, value))
     return out
 
@@ -812,8 +895,7 @@ def _scale_fault(gm, factor: float) -> str:
     for node, value in found:
         new = (value.to(torch.float32) * factor).to(value.dtype)
         _set_attr(gm, node.target, new)
-        notes.append(f"{node.target}: {value.item():.6g} -> {new.item():.6g} "
-                     f"(x{new.item() / value.item():.4f})")
+        notes.append(f"{node.target}: {value.item():.6g} -> {new.item():.6g} (x{new.item() / value.item():.4f})")
     return "; ".join(notes)
 
 
@@ -831,6 +913,7 @@ def _scale10(gm, roles, config):
 # Driver
 # ------------------------------------------------------------------------------------------------
 
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -839,8 +922,9 @@ def _operands(program: Program) -> dict:
     """The DRAM tensors the schedule reads, as exact integers, named as in the IR."""
     gm = program.gm
     out = {}
-    names = [b["node"] for b in program.model_dict.get("inputs", ())] + \
-            [b["node"] for b in program.model_dict.get("parameters", ())]
+    names = [b["node"] for b in program.model_dict.get("inputs", ())] + [
+        b["node"] for b in program.model_dict.get("parameters", ())
+    ]
     for name in names:
         if name in {b["node"] for b in program.model_dict.get("inputs", ())}:
             value = program.lowered_input
@@ -876,25 +960,34 @@ def main(argv=None) -> int:
     operands = _operands(base)
     np.savez(args.out / "operands.npz", **{k: v["array"] for k, v in operands.items()})
     (args.out / "baseline" / "model.json").write_text(
-        json.dumps(base.model_dict, sort_keys=True, separators=(",", ":")))
+        json.dumps(base.model_dict, sort_keys=True, separators=(",", ":"))
+    )
     # Voyager's own quantized reference (float), so the merlin side can check that its exact integer
     # reference and these operands describe the same computation.
     old_flat, _ = tree_flatten(base.old_output)
     np.save(args.out / "voyager_reference.npy", old_flat[0].to(torch.float32).numpy())
     scales = {str(node.target): float(value.item()) for node, value in _scale_nodes(base.gm)}
-    torch.save({"old_output": base.old_output, "pre_tiling_output": base.pre_tiling_output,
-                "lowered_output": base_lowered}, args.out / "baseline" / "outputs.pt")
+    torch.save(
+        {"old_output": base.old_output, "pre_tiling_output": base.pre_tiling_output, "lowered_output": base_lowered},
+        args.out / "baseline" / "outputs.pt",
+    )
     summary = {
-        "fixture": str(args.fixture), "workload": manifest["workload"], "config": manifest["config"],
-        "fixture_ir_identical": identical, "baseline_model_txt_sha256": _sha(base.model_txt),
+        "fixture": str(args.fixture),
+        "workload": manifest["workload"],
+        "config": manifest["config"],
+        "fixture_ir_identical": identical,
+        "baseline_model_txt_sha256": _sha(base.model_txt),
         "operand_containers": {k: v["container_dtype"] for k, v in operands.items()},
         "dequantize_scales": scales,
         "reference_shape": list(old_flat[0].shape),
-        "pre_tiling_check": pre, "post_bufferization_check_unmutated": post,
+        "pre_tiling_check": pre,
+        "post_bufferization_check_unmutated": post,
         "plan_invariant_warnings_unmutated": plan_invariants(base.gm, base.config),
-        "baseline_seconds": round(time.time() - t0, 2), "mutations": [],
+        "baseline_seconds": round(time.time() - t0, 2),
+        "mutations": [],
     }
     import test_codegen
+
     rtol, atol = test_codegen.OUTPUT_RTOL, test_codegen.OUTPUT_ATOL
 
     wanted = args.only or list(CATALOGUE)
@@ -916,8 +1009,9 @@ def main(argv=None) -> int:
                 continue
             _recompile(program.gm)
         except Exception as exc:
-            row.update(status="harness_error", error=f"{type(exc).__name__}: {exc}",
-                       trace=traceback.format_exc()[-2000:])
+            row.update(
+                status="harness_error", error=f"{type(exc).__name__}: {exc}", trace=traceback.format_exc()[-2000:]
+            )
             summary["mutations"].append(row)
             continue
         row["status"] = "applied"
@@ -936,15 +1030,25 @@ def main(argv=None) -> int:
         try:
             txt, as_dict = _emit(program.gm, program.lowered_input)
             (mdir / "model.txt").write_text(txt)
-            (mdir / "model.json").write_text(json.dumps(as_dict, sort_keys=True,
-                                                        separators=(",", ":")))
-            row["emit"] = {"ok": True, "model_txt_sha256": _sha(txt),
-                           "model_txt_differs_from_baseline": txt != base.model_txt}
+            (mdir / "model.json").write_text(json.dumps(as_dict, sort_keys=True, separators=(",", ":")))
+            row["emit"] = {
+                "ok": True,
+                "model_txt_sha256": _sha(txt),
+                "model_txt_differs_from_baseline": txt != base.model_txt,
+            }
             if txt != base.model_txt:
                 import difflib
-                diff = list(difflib.unified_diff(base.model_txt.splitlines(), txt.splitlines(),
-                                                 "baseline/model.txt", f"{mid}/model.txt",
-                                                 lineterm="", n=2))
+
+                diff = list(
+                    difflib.unified_diff(
+                        base.model_txt.splitlines(),
+                        txt.splitlines(),
+                        "baseline/model.txt",
+                        f"{mid}/model.txt",
+                        lineterm="",
+                        n=2,
+                    )
+                )
                 row["emit"]["diff_lines"] = len(diff)
                 (mdir / "model.txt.diff").write_text("\n".join(diff[:400]) + "\n")
         except Exception as exc:
@@ -957,10 +1061,17 @@ def main(argv=None) -> int:
             row["plan_invariant_error"] = f"{type(exc).__name__}: {str(exc)[:300]}"
         row["seconds"] = round(time.time() - t1, 2)
         summary["mutations"].append(row)
-        print(json.dumps({"id": mid, "status": row["status"],
-                          "post": row.get("post_bufferization_check", {}).get("result"),
-                          "txt_changed": row.get("emit", {}).get("model_txt_differs_from_baseline")}),
-              flush=True)
+        print(
+            json.dumps(
+                {
+                    "id": mid,
+                    "status": row["status"],
+                    "post": row.get("post_bufferization_check", {}).get("result"),
+                    "txt_changed": row.get("emit", {}).get("model_txt_differs_from_baseline"),
+                }
+            ),
+            flush=True,
+        )
     (args.out / "voyager_side.json").write_text(json.dumps(summary, indent=1, default=str))
     return 0
 

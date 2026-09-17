@@ -17,6 +17,7 @@ post-freeze. Usage mirrors the loop driver:
   run_fullsuite.py --arm merlin_assisted --run-id merlin_full_01 --model claude-opus-4-8 --effort high \
       --max-rounds 14 --round-timeout 2700 --qa-timeout 1800 --sandbox none
 """
+
 from __future__ import annotations
 
 import argparse
@@ -27,11 +28,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import yaml
-
 import _common as C
 import run_agent_experiment as RX
 import run_baseline_qa_loop as L
+import yaml
 
 FULL_CAPSULES = C.REPO / "merlin/contract" / "capsules"
 TASK_FULL = C.EXP / "task" / "TASK_full.md"
@@ -64,6 +64,7 @@ def _timed(orig, key: str):
             return orig(*a, **k)
         finally:
             _walls[key].append(round(time.time() - t, 3))
+
     return w
 
 
@@ -77,9 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     run_dir = C.RUNS / known.arm / known.run_id
 
     # --- override the shared loop's capsule set + task + timing, WITHOUT editing it ---
-    L.PILOT_SUBSET = FULL_CAPSULES          # qa_grade() + the final grade_agent_run --capsules use this
-    L.CAPSULES_ROOT = FULL_CAPSULES         # harmless if the shared file later adds this global
-    L._build_task = _full_build             # launch_agent calls _build_task as a module global
+    L.PILOT_SUBSET = FULL_CAPSULES  # qa_grade() + the final grade_agent_run --capsules use this
+    L.CAPSULES_ROOT = FULL_CAPSULES  # harmless if the shared file later adds this global
+    L._build_task = _full_build  # launch_agent calls _build_task as a module global
     L.launch_agent = _timed(L.launch_agent, "agent")
     L.qa_grade = _timed(L.qa_grade, "qa")
 
@@ -96,17 +97,26 @@ def main(argv: list[str] | None = None) -> int:
     side = run_dir / "fullsuite_agent_sim_timing.yaml"
     prev = yaml.safe_load(side.read_text()) if side.exists() else {}
     prev = prev or {}
-    side.write_text(yaml.safe_dump({
-        "agent_active_s": round(prev.get("agent_active_s", 0.0) + sum(_walls["agent"]), 3),
-        "sim_wait_s": round(prev.get("sim_wait_s", 0.0) + sum(_walls["qa"]), 3),
-        "invocations": int(prev.get("invocations", 0)) + 1,
-        "note": ("agent_active_s = agent subprocess wall (summed rounds, cumulative across resumes); "
-                 "sim_wait_s = oracle grading wall (spike+verilator). These split the driver's "
-                 "active_wall_s; the driver's rate_limit_wait_s (quota sleeps) is separate."),
-    }, sort_keys=False))
+    side.write_text(
+        yaml.safe_dump(
+            {
+                "agent_active_s": round(prev.get("agent_active_s", 0.0) + sum(_walls["agent"]), 3),
+                "sim_wait_s": round(prev.get("sim_wait_s", 0.0) + sum(_walls["qa"]), 3),
+                "invocations": int(prev.get("invocations", 0)) + 1,
+                "note": (
+                    "agent_active_s = agent subprocess wall (summed rounds, cumulative across resumes); "
+                    "sim_wait_s = oracle grading wall (spike+verilator). These split the driver's "
+                    "active_wall_s; the driver's rate_limit_wait_s (quota sleeps) is separate."
+                ),
+            },
+            sort_keys=False,
+        )
+    )
     try:
-        pub = sorted(c.get("capsule") or c.get("name") or Path(c.get("dir", "")).name
-                     for c in L.CR.discover_capsules(FULL_CAPSULES, labels={"public", "dev"}))
+        pub = sorted(
+            c.get("capsule") or c.get("name") or Path(c.get("dir", "")).name
+            for c in L.CR.discover_capsules(FULL_CAPSULES, labels={"public", "dev"})
+        )
     except Exception:
         pub = []
     ef = run_dir / "environment.yaml"
@@ -118,9 +128,11 @@ def main(argv: list[str] | None = None) -> int:
         if pub:
             e["public_dev_capsules"] = pub  # corrects the inherited pilot label
         ef.write_text(yaml.safe_dump(e, sort_keys=False))
-    print(f"[fullsuite] {known.arm}/{known.run_id} rc={rc} "
-          f"this-invocation agent={round(sum(_walls['agent']),1)}s sim={round(sum(_walls['qa']),1)}s "
-          f"(cumulative in {side.name})")
+    print(
+        f"[fullsuite] {known.arm}/{known.run_id} rc={rc} "
+        f"this-invocation agent={round(sum(_walls['agent']), 1)}s sim={round(sum(_walls['qa']), 1)}s "
+        f"(cumulative in {side.name})"
+    )
     return rc
 
 

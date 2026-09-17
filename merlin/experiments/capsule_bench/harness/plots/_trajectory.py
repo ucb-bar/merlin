@@ -14,6 +14,7 @@ Per run it surfaces, round by round:
     tokens when usage is present, else event ordinal) — this is what the reference-styled trajectory
     plot sweeps along its x-axis.
 """
+
 from __future__ import annotations
 
 import json
@@ -28,7 +29,7 @@ KIND_READ = "tool:Read"
 KIND_EDIT = "tool:Edit"
 KIND_BASH = "tool:Bash"
 KIND_TOOL_OTHER = "tool:Other"
-KIND_RESULT = "tool_result"      # environment hands a tool result back (a "user" turn)
+KIND_RESULT = "tool_result"  # environment hands a tool result back (a "user" turn)
 KIND_RATELIMIT = "rate_limit"
 
 _TOOL_KIND = {"Read": KIND_READ, "Edit": KIND_EDIT, "Write": KIND_EDIT, "Bash": KIND_BASH}
@@ -74,8 +75,14 @@ def parse_transcript_timeline(path: Path) -> list[dict]:
         t = o.get("type")
         if t == "rate_limit_event":
             ordinal += 1
-            events.append({"kind": KIND_RATELIMIT, "ordinal": ordinal, "cum_out": cum_out,
-                           "rejected": (o.get("rate_limit_info", {}) or {}).get("status") == "rejected"})
+            events.append(
+                {
+                    "kind": KIND_RATELIMIT,
+                    "ordinal": ordinal,
+                    "cum_out": cum_out,
+                    "rejected": (o.get("rate_limit_info", {}) or {}).get("status") == "rejected",
+                }
+            )
             continue
         if t == "assistant":
             msg = o.get("message", {}) or {}
@@ -93,15 +100,27 @@ def parse_transcript_timeline(path: Path) -> list[dict]:
                 else:
                     continue
                 # spread this message's output tokens evenly across its blocks for a monotone x
-                events.append({"kind": kind, "ordinal": ordinal, "cum_out": cum_out,
-                               "tool": blk.get("name") if bt == "tool_use" else None})
+                events.append(
+                    {
+                        "kind": kind,
+                        "ordinal": ordinal,
+                        "cum_out": cum_out,
+                        "tool": blk.get("name") if bt == "tool_use" else None,
+                    }
+                )
             cum_out += out_tok
         elif t == "user":
             # tool results coming back from the environment
             msg = o.get("message", {}) or {}
             content = msg.get("content", [])
-            n_res = sum(1 for b in (content if isinstance(content, list) else [])
-                        if isinstance(b, dict) and b.get("type") == "tool_result") or 1
+            n_res = (
+                sum(
+                    1
+                    for b in (content if isinstance(content, list) else [])
+                    if isinstance(b, dict) and b.get("type") == "tool_result"
+                )
+                or 1
+            )
             for _ in range(n_res):
                 ordinal += 1
                 events.append({"kind": KIND_RESULT, "ordinal": ordinal, "cum_out": cum_out})
@@ -125,18 +144,19 @@ def _round_capsule_snapshot(run_dir: Path, rnd: int) -> dict:
         tiers = d.get("tiers", {}) or {}
         l3 = tiers.get("L3", {}) or {}
         plane = (d.get("failure") or {}).get("plane")
-        snap[name] = {"status": d.get("status"),
-                      "l3_cycles": l3.get("cycles"),
-                      "plane": plane,
-                      "class": _capsule_class(name)}
+        snap[name] = {
+            "status": d.get("status"),
+            "l3_cycles": l3.get("cycles"),
+            "plane": plane,
+            "class": _capsule_class(name),
+        }
     return snap
 
 
 def extract_run(run_dir: Path) -> dict:
     """Tidy, plot-ready dict for one run (works on partial/live runs)."""
     run_dir = Path(run_dir)
-    out: dict = {"run_id": run_dir.name, "arm": run_dir.parent.name,
-                 "rounds": [], "capsule_rounds": {}, "timeline": []}
+    out: dict = {"run_id": run_dir.name, "arm": run_dir.parent.name, "rounds": [], "capsule_rounds": {}, "timeline": []}
 
     state = run_dir / "qa_loop_state.yaml"
     rounds_meta = []
@@ -165,18 +185,20 @@ def extract_run(run_dir: Path) -> dict:
             out["capsule_rounds"][cap]["cycles"].append(info["l3_cycles"])
             if info["status"] != "pass" and info["plane"]:
                 planes[info["plane"]] = planes.get(info["plane"], 0) + 1
-        out["rounds"].append({
-            "round": r,
-            "n_passed": meta.get("n_passed", sum(1 for s in snap.values() if s["status"] == "pass") or None),
-            "n_capsules": meta.get("n_capsules", len(snap) or None),
-            "tool_calls": meta.get("tool_calls"),
-            "tokens_total": meta.get("tokens_total"),
-            "tokens_output": meta.get("tokens_output"),
-            "tokens_cached": meta.get("tokens_cached"),
-            "estimated_cost_usd": meta.get("estimated_cost_usd"),
-            "thinking_blocks": meta.get("thinking_blocks"),
-            "failure_planes": planes,
-        })
+        out["rounds"].append(
+            {
+                "round": r,
+                "n_passed": meta.get("n_passed", sum(1 for s in snap.values() if s["status"] == "pass") or None),
+                "n_capsules": meta.get("n_capsules", len(snap) or None),
+                "tool_calls": meta.get("tool_calls"),
+                "tokens_total": meta.get("tokens_total"),
+                "tokens_output": meta.get("tokens_output"),
+                "tokens_cached": meta.get("tokens_cached"),
+                "estimated_cost_usd": meta.get("estimated_cost_usd"),
+                "thinking_blocks": meta.get("thinking_blocks"),
+                "failure_planes": planes,
+            }
+        )
         # transcript timeline for this round (tagged with the round index so the plotter can band them)
         tl = parse_transcript_timeline(rdir / f"round_{r:02d}.transcript.jsonl") if rdir.exists() else []
         for e in tl:
@@ -194,6 +216,7 @@ def load_full_suite(reports_dir: Path) -> dict:
 
 if __name__ == "__main__":
     import argparse
+
     ap = argparse.ArgumentParser()
     ap.add_argument("run_dir")
     a = ap.parse_args()

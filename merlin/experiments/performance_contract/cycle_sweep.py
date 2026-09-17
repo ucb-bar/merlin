@@ -40,6 +40,7 @@ Usage::
     cycle_sweep.py run     --target T [--engine both|vsim|gsim] [--capsule C ...]
     cycle_sweep.py report  --target T
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,8 +54,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                                          # noqa: E402
-from merlin.perf.observations import (                                            # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.perf.observations import (  # noqa: E402
     ALIAS_COLLISIONS_KEY,
     BUSY_PREFIX,
     IDLE_QUANTITY,
@@ -66,7 +67,7 @@ from merlin.perf.observations import (                                          
     TIMING_OBSERVATIONS_KEY,
     UNMEASURED_UNITS_KEY,
 )
-from merlin.perf.occupancy import (                                               # noqa: E402
+from merlin.perf.occupancy import (  # noqa: E402
     calibrate_state_idle,
     joint_counts,
     merge_engines,
@@ -127,8 +128,7 @@ def run_vsim(spec: Path, trace: Path | None = None, *, timeout: int = 900) -> tu
 
 def run_gsim(spec: Path, trace: Path | None, *, timeout: int = 900) -> tuple[dict, float]:
     """Run one spec on GSIM, optionally dumping a per-cycle trace. Returns (result, wall_s)."""
-    return _run(gsim_dir() / "atlas_gsim_sim",
-                [str(spec)] + ([str(trace)] if trace else []), timeout)
+    return _run(gsim_dir() / "atlas_gsim_sim", [str(spec)] + ([str(trace)] if trace else []), timeout)
 
 
 def read_trace(path: Path) -> dict[str, list[str]]:
@@ -143,8 +143,7 @@ def read_trace(path: Path) -> dict[str, list[str]]:
 def unit_columns(trace: dict[str, list[str]]) -> tuple[list[str], list[str]]:
     """``(port_columns, state_columns)`` -- occupancy bits and state encodings."""
     cols = [c for c in trace if c not in _NON_UNIT_COLUMNS]
-    return ([c for c in cols if not c.endswith(_STATE_SUFFIX)],
-            [c for c in cols if c.endswith(_STATE_SUFFIX)])
+    return ([c for c in cols if not c.endswith(_STATE_SUFFIX)], [c for c in cols if c.endswith(_STATE_SUFFIX)])
 
 
 def occupancy_of(trace: dict[str, list[str]], calibration: dict | None) -> tuple[dict, list[str]]:
@@ -172,7 +171,7 @@ def kind_map(vsim_result: dict) -> dict[str, str]:
     for e in vsim_result.get(TIMING_OBSERVATIONS_KEY) or []:
         q, kind = e.get("quantity", ""), e.get("kind")
         if kind and q.startswith(BUSY_PREFIX) and q.endswith(IN_PROGRAM_SUFFIX):
-            out[q[len(BUSY_PREFIX):-len(IN_PROGRAM_SUFFIX)]] = kind
+            out[q[len(BUSY_PREFIX) : -len(IN_PROGRAM_SUFFIX)]] = kind
     return out
 
 
@@ -189,9 +188,14 @@ def column_kinds(columns: list[str], declared: dict[str, str]) -> dict[str, str]
 
 def _summarise_vsim(result: dict) -> dict:
     """The joint counts the Verilator block carries, refusing to default any of them."""
-    out: dict[str, object] = {"idle_cycles": None, "overlap_any": None,
-                              "overlap_across_kinds": None, "sampled_cycles": None,
-                              "partitioned": None, "busy": {}}
+    out: dict[str, object] = {
+        "idle_cycles": None,
+        "overlap_any": None,
+        "overlap_across_kinds": None,
+        "sampled_cycles": None,
+        "partitioned": None,
+        "busy": {},
+    }
     for e in result.get(TIMING_OBSERVATIONS_KEY) or []:
         q, v = e.get("quantity", ""), e.get("value")
         if v is None:
@@ -205,62 +209,81 @@ def _summarise_vsim(result: dict) -> dict:
         elif q == SAMPLED_QUANTITY:
             out["sampled_cycles"] = int(v)
         elif q.startswith(BUSY_PREFIX) and q.endswith(IN_PROGRAM_SUFFIX):
-            out["busy"][q[len(BUSY_PREFIX):-len(IN_PROGRAM_SUFFIX)]] = int(v)
+            out["busy"][q[len(BUSY_PREFIX) : -len(IN_PROGRAM_SUFFIX)]] = int(v)
         if PARTITIONED_KEY in e:
             out["partitioned"] = e[PARTITIONED_KEY]
     return out
 
 
-def sweep(target: str, engines: tuple[str, ...], capsules: list[str] | None,
-          trace_dir: Path) -> tuple[list[dict], dict | None]:
+def sweep(
+    target: str, engines: tuple[str, ...], capsules: list[str] | None, trace_dir: Path
+) -> tuple[list[dict], dict | None]:
     """Run every spec on every engine SERIALLY, then merge their traces into one joint vector."""
-    specs = sorted(p for p in gsim_dir().glob("spec_*.json")
-                   if "_pad" not in p.name and "_nohalt" not in p.name)
+    specs = sorted(p for p in gsim_dir().glob("spec_*.json") if "_pad" not in p.name and "_nohalt" not in p.name)
     if capsules:
         want = set(capsules)
-        specs = [p for p in specs if p.stem[len("spec_"):] in want]
+        specs = [p for p in specs if p.stem[len("spec_") :] in want]
     trace_dir.mkdir(parents=True, exist_ok=True)
 
     rows: list[dict] = []
     for sp in specs:
-        name = sp.stem[len("spec_"):]
-        row: dict = {"capsule": name, "target": target, "concurrency": 1,
-                     "words": len(json.loads(sp.read_text())["words"])}
+        name = sp.stem[len("spec_") :]
+        row: dict = {
+            "capsule": name,
+            "target": target,
+            "concurrency": 1,
+            "words": len(json.loads(sp.read_text())["words"]),
+        }
         for engine, runner in (("vsim", run_vsim), ("gsim", run_gsim)):
             if engine not in engines:
                 continue
             tr = trace_dir / (f"{name}.vsim.csv" if engine == "vsim" else f"{name}.csv")
             try:
                 res, wall = runner(sp, tr)
-                row[engine] = {"cycles": res.get("cycles"), "halted": res.get("halted"),
-                               "reads": res.get("reads"), "writes": res.get("writes"),
-                               "wall_s": round(wall, 4), "trace": str(tr),
-                               "alias_collisions": res.get(ALIAS_COLLISIONS_KEY)}
+                row[engine] = {
+                    "cycles": res.get("cycles"),
+                    "halted": res.get("halted"),
+                    "reads": res.get("reads"),
+                    "writes": res.get("writes"),
+                    "wall_s": round(wall, 4),
+                    "trace": str(tr),
+                    "alias_collisions": res.get(ALIAS_COLLISIONS_KEY),
+                }
                 if engine == "vsim":
                     row[engine]["summary"] = _summarise_vsim(res)
                     row[engine]["declared_kinds"] = kind_map(res)
                     row[engine]["unmeasured_units"] = res.get(UNMEASURED_UNITS_KEY)
-            except Exception as exc:                       # an engine failure is data, not a crash
+            except Exception as exc:  # an engine failure is data, not a crash
                 row[engine] = {"error": str(exc)[:300]}
         a, b = row.get("vsim", {}).get("cycles"), row.get("gsim", {}).get("cycles")
         row["cycles_match"] = (a == b) if (a is not None and b is not None) else None
         rows.append(row)
-        print(json.dumps({"capsule": name, "words": row["words"],
-                          "vsim_cycles": a, "gsim_cycles": b,
-                          "cycles_match": row["cycles_match"]}), flush=True)
+        print(
+            json.dumps(
+                {
+                    "capsule": name,
+                    "words": row["words"],
+                    "vsim_cycles": a,
+                    "gsim_cycles": b,
+                    "cycles_match": row["cycles_match"],
+                }
+            ),
+            flush=True,
+        )
 
     # The FSM idle encoding is a property of the DESIGN, so it is calibrated over the whole corpus
     # and only then applied. Per-trace calibration let a program that never exercised the paired
     # unit withdraw a calibration the rest of the corpus had established.
-    traces = {r["capsule"]: read_trace(Path(r["gsim"]["trace"]))
-              for r in rows if "trace" in r.get("gsim", {})}
+    traces = {r["capsule"]: read_trace(Path(r["gsim"]["trace"])) for r in rows if "trace" in r.get("gsim", {})}
     calib = None
     if traces:
         any_tr = next(iter(traces.values()))
         ports, states = unit_columns(any_tr)
         calib = calibrate_state_idle(list(traces.values()), states, ports)
-        print(f"\nFSM idle calibration: value={calib['idle_value']!r} "
-              f"paired_with={calib['paired_with']} over {calib['checked_traces']} traces")
+        print(
+            f"\nFSM idle calibration: value={calib['idle_value']!r} "
+            f"paired_with={calib['paired_with']} over {calib['checked_traces']} traces"
+        )
 
     for r in rows:
         gtr = traces.get(r["capsule"])
@@ -269,14 +292,17 @@ def sweep(target: str, engines: tuple[str, ...], capsules: list[str] | None,
         ghot, gunmeasured = occupancy_of(gtr, calib)
         declared = r.get("vsim", {}).get("declared_kinds", {})
         r["gsim"]["analysis"] = joint_counts(ghot, column_kinds(list(ghot), declared)) | {
-            "unmeasured_columns": gunmeasured}
+            "unmeasured_columns": gunmeasured
+        }
         vpath = r.get("vsim", {}).get("trace")
         if not vpath:
             continue
         vhot, vunmeasured = occupancy_of(read_trace(Path(vpath)), calib)
         merged, prov = merge_engines(vhot, ghot)
         r["union"] = joint_counts(merged, column_kinds(list(merged), declared)) | {
-            "merge": prov, "unmeasured_columns": sorted(set(vunmeasured) & set(gunmeasured))}
+            "merge": prov,
+            "unmeasured_columns": sorted(set(vunmeasured) & set(gunmeasured)),
+        }
     return rows, calib
 
 
@@ -299,14 +325,22 @@ def report(target: str) -> int:
     for r in rows:
         u = r["union"]
         kinds = r["vsim"]["declared_kinds"]
-        res = tuple(Resource(name=c, kind=ResourceKind(kinds[c]), busy_cycles=int(u["busy"][c]))
-                    for c in u["joint_columns"] if c in kinds)
+        res = tuple(
+            Resource(name=c, kind=ResourceKind(kinds[c]), busy_cycles=int(u["busy"][c]))
+            for c in u["joint_columns"]
+            if c in kinds
+        )
         if not res:
             continue
-        sources.append(ActivitySource(
-            workload=r["capsule"], total_cycles=int(r["vsim"]["cycles"]), resources=res,
-            partitioned=False,
-            provenance="joint per-cycle occupancy, union of two elaborated-RTL engines"))
+        sources.append(
+            ActivitySource(
+                workload=r["capsule"],
+                total_cycles=int(r["vsim"]["cycles"]),
+                resources=res,
+                partitioned=False,
+                provenance="joint per-cycle occupancy, union of two elaborated-RTL engines",
+            )
+        )
         observed[r["capsule"]] = int(u["overlap_any"])
 
     total = sum(s.total_cycles for s in sources)
@@ -341,11 +375,22 @@ def main() -> int:
     trace_dir = Path(args.trace_dir) if args.trace_dir else A.cache_dir(f"occupancy/{args.target}")
     rows, calib = sweep(args.target, engines, args.capsule, trace_dir)
 
-    pd = A.new_product("perf-ledger", version=2, target=args.target,
-                       notes="cycle-accurate corpus sweep on both elaborated-RTL engines")
-    (pd.path / "cycle_sweep.json").write_text(json.dumps(
-        {"target": args.target, "engines": list(engines), "concurrency": 1,
-         "trace_dir": str(trace_dir), "state_idle_calibration": calib, "rows": rows}, indent=1))
+    pd = A.new_product(
+        "perf-ledger", version=2, target=args.target, notes="cycle-accurate corpus sweep on both elaborated-RTL engines"
+    )
+    (pd.path / "cycle_sweep.json").write_text(
+        json.dumps(
+            {
+                "target": args.target,
+                "engines": list(engines),
+                "concurrency": 1,
+                "trace_dir": str(trace_dir),
+                "state_idle_calibration": calib,
+                "rows": rows,
+            },
+            indent=1,
+        )
+    )
     print(f"\nwrote {pd.path / 'cycle_sweep.json'}  ({len(rows)} capsules)")
     return 0
 

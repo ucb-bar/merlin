@@ -7,6 +7,7 @@ FireSim the larger ones that exceed verilator's wall-clock budget.
 
 Usage: merge_firesim_arm.py [--run-id perf_full_0001]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -23,7 +24,8 @@ def main(argv=None):
     pr = run / "perf_results.json"
     fs = run / "firesim_arm_results.json"
     if not pr.is_file() or not fs.is_file():
-        print(f"missing {pr if not pr.is_file() else fs}"); return 2
+        print(f"missing {pr if not pr.is_file() else fs}")
+        return 2
     rows = json.loads(pr.read_text())
     fsd = json.loads(fs.read_text())
     merged = 0
@@ -36,8 +38,10 @@ def main(argv=None):
                 continue
             ap_ = r["approaches"].setdefault(arm, {"approach": arm, "per_sim": {}})
             ap_.setdefault("per_sim", {})["firesim"] = {
-                "cycles": v["cycles"], "correct": v.get("correct"),
-                "util_pct": v.get("util_pct")}
+                "cycles": v["cycles"],
+                "correct": v.get("correct"),
+                "util_pct": v.get("util_pct"),
+            }
             merged += 1
     pr.write_text(json.dumps(rows, indent=2))
     print(f"merged {merged} FireSim L5 cells into {pr}")

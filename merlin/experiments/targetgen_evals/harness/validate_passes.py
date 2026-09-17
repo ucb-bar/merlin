@@ -17,6 +17,7 @@ Two populations, kept separate on purpose:
 RUN lines are parsed structurally (``split``/``partition``), never by pattern matching — the repo's
 no-regex rule exists because a too-narrow pattern silently drops valid input.
 """
+
 from __future__ import annotations
 
 import subprocess
@@ -27,6 +28,7 @@ def _registered_passes() -> set[str]:
     """Pass names ``merlin-opt`` can actually run. Empty set if the driver is unavailable."""
     try:
         from merlin.xdsl_dialects.opt import merlin_passes
+
         ok, _ = merlin_passes()
         return set(ok)
     except Exception:
@@ -52,14 +54,18 @@ def _classify_specimens(tests_dir: Path, registered: set[str]) -> list[dict]:
     for path in sorted(tests_dir.rglob("*.mlir")):
         wanted = _passes_named_by(path)
         missing = [p for p in wanted if p not in registered]
-        out.append({
-            "file": path.name,
-            "passes_named": wanted,
-            "executable": bool(wanted) and not missing,
-            "reason": ("" if not missing else
-                       "names pass(es) that are not registered: " + ", ".join(sorted(missing)))
-            if wanted else "no -p pass named in any RUN line",
-        })
+        out.append(
+            {
+                "file": path.name,
+                "passes_named": wanted,
+                "executable": bool(wanted) and not missing,
+                "reason": (
+                    "" if not missing else "names pass(es) that are not registered: " + ", ".join(sorted(missing))
+                )
+                if wanted
+                else "no -p pass named in any RUN line",
+            }
+        )
     return out
 
 
@@ -70,16 +76,18 @@ def _run_lit_suite() -> dict:
     lit, fc = tools.find_lit(), tools.find_filecheck()
     suite = merlin_dir() / "tests" / "data" / "lit"
     if not (lit and fc and suite.is_dir()):
-        return {"status": "unavailable",
-                "reason": f"llvm-lit/FileCheck not found ({tools.availability()})"}
+        return {"status": "unavailable", "reason": f"llvm-lit/FileCheck not found ({tools.availability()})"}
     r = subprocess.run([lit, "-s", str(suite)], capture_output=True, text=True, timeout=600)
     out = r.stdout + r.stderr
     discovered = 0
     if "Total Discovered Tests:" in out:
         discovered = int(out.split("Total Discovered Tests:")[1].split()[0])
-    return {"status": "ok" if r.returncode == 0 else "failed",
-            "discovered": discovered, "returncode": r.returncode,
-            "output_tail": out[-2000:]}
+    return {
+        "status": "ok" if r.returncode == 0 else "failed",
+        "discovered": discovered,
+        "returncode": r.returncode,
+        "output_tail": out[-2000:],
+    }
 
 
 def run(run_dir: Path, manifest: dict) -> dict:
@@ -109,5 +117,6 @@ def run(run_dir: Path, manifest: dict) -> dict:
     if metrics["specimens_unexecutable"]:
         metrics["errors"].append(
             f"{metrics['specimens_unexecutable']} specimen(s) cannot execute; see 'specimens' for "
-            "the per-file reason. These are NOT counted as tests.")
+            "the per-file reason. These are NOT counted as tests."
+        )
     return metrics

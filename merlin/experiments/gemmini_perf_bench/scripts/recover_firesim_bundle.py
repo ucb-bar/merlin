@@ -9,6 +9,7 @@ and rebuilds firesim_arm_results.json. Same parse/golden/util logic — no re-ru
 
 Usage: recover_firesim_bundle.py [--run-id perf_full_0001] [--outdirs _firesim_full,_firesim_test]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,10 +18,9 @@ import re
 import sys
 from pathlib import Path
 
+import _pbcommon as PB
 import numpy as np
 import yaml
-
-import _pbcommon as PB
 
 sys.path.insert(0, str(PB.REPO / "merlin" / "python"))
 from merlin.targetgen import capsule_golden as CG  # noqa: E402
@@ -32,8 +32,11 @@ _OUT_RE = re.compile(r"^OUT (\S+) (\d+) (\d+) (.*)$", re.M)
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run-id", default="perf_full_0001")
-    ap.add_argument("--outdirs", default="_firesim_full,_firesim_test",
-                    help="comma-separated bundle outdirs under the run (later dirs win on duplicate)")
+    ap.add_argument(
+        "--outdirs",
+        default="_firesim_full,_firesim_test",
+        help="comma-separated bundle outdirs under the run (later dirs win on duplicate)",
+    )
     a = ap.parse_args(argv)
     run = PB.RUNS / a.run_id
     doc = yaml.safe_load((PB.KERNELS / "kernel_corpus.yaml").read_text())
@@ -48,7 +51,8 @@ def main(argv: list[str] | None = None) -> int:
         outdir = run / od_name
         man = outdir / "manifest.tsv"
         if not man.is_file():
-            print(f"  (skip {od_name}: no manifest)"); continue
+            print(f"  (skip {od_name}: no manifest)")
+            continue
         for line in man.read_text().splitlines():
             if not line.strip():
                 continue
@@ -79,16 +83,16 @@ def main(argv: list[str] | None = None) -> int:
                     results[kid][arm] = {"error": "no METRIC cycles (run failed/hung — re-batch)"}
                 failed += 1
             else:
-                results[kid][arm] = {"cycles": cyc,
-                                     "correct": bool(gold is not None and got == gold),
-                                     "util_pct": PB.utilization_pct(k["macs"], cyc)}
+                results[kid][arm] = {
+                    "cycles": cyc,
+                    "correct": bool(gold is not None and got == gold),
+                    "util_pct": PB.utilization_pct(k["macs"], cyc),
+                }
                 recovered += 1
 
     res_path.write_text(json.dumps(results, indent=2))
-    ok = sum(1 for kid in results for arm in results[kid]
-             if results[kid][arm].get("cycles") is not None)
-    print(f"recovered {recovered} cells with cycles ({failed} without); "
-          f"{ok} total cells in {res_path}")
+    ok = sum(1 for kid in results for arm in results[kid] if results[kid][arm].get("cycles") is not None)
+    print(f"recovered {recovered} cells with cycles ({failed} without); {ok} total cells in {res_path}")
     return 0
 
 

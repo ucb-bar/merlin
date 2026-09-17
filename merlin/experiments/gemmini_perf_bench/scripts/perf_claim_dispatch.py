@@ -19,6 +19,7 @@ instead of after every L3 cell has been paid for.  :func:`analyze` is what a REP
 already-measured rows.  Both read the same frozen field, so the procedure that admitted a run is the
 procedure that decides it.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -63,42 +64,43 @@ def resolve(descriptors: Sequence[Mapping[str, Any]]) -> ResolvedAnalyzer:
         raise DispatchError("no capsule descriptors were supplied")
     identities: dict[str, Any] = {}
     for descriptor in descriptors:
-        performance = (descriptor.get("performance") if isinstance(descriptor, Mapping) else None)
+        performance = descriptor.get("performance") if isinstance(descriptor, Mapping) else None
         name = (descriptor.get("name") if isinstance(descriptor, Mapping) else None) or "<unnamed>"
         try:
-            identity = claim_reach.analyzer_identity(
-                performance if isinstance(performance, Mapping) else {})
+            identity = claim_reach.analyzer_identity(performance if isinstance(performance, Mapping) else {})
         except ValueError as exc:
-            raise DispatchError(
-                f"frozen capsule {str(name)!r} names an unusable claim analyzer: {exc}") from exc
+            raise DispatchError(f"frozen capsule {str(name)!r} names an unusable claim analyzer: {exc}") from exc
         if identity is None:
             raise DispatchError(
                 f"frozen capsule {str(name)!r} declares no acceptance.analyzer, so no procedure "
-                "decides its family's claim")
+                "decides its family's claim"
+            )
         identities[identity.declared] = identity
     if len(identities) != 1:
         raise DispatchError(
             f"the cohort declares {len(identities)} claim analyzers {sorted(identities)}; one "
-            "campaign seals one claim, so a mixed cohort is refused rather than split")
+            "campaign seals one claim, so a mixed cohort is refused rather than split"
+        )
     identity = next(iter(identities.values()))
     try:
         module = importlib.import_module(identity.module)
-    except Exception as exc:                                        # noqa: BLE001
-        raise DispatchError(
-            f"the declared claim analyzer {identity.declared!r} is unavailable: {exc}") from exc
-    entries = sorted(name for name in dir(module)
-                     if name.startswith(PREFLIGHT_PREFIX) and callable(getattr(module, name, None)))
+    except Exception as exc:  # noqa: BLE001
+        raise DispatchError(f"the declared claim analyzer {identity.declared!r} is unavailable: {exc}") from exc
+    entries = sorted(
+        name for name in dir(module) if name.startswith(PREFLIGHT_PREFIX) and callable(getattr(module, name, None))
+    )
     if len(entries) != 1:
         raise DispatchError(
             f"analyzer module {identity.module!r} publishes {len(entries)} preflight entry points; "
-            "exactly one is required")
+            "exactly one is required"
+        )
     decide = getattr(module, identity.function, None)
     if not callable(decide):
         raise DispatchError(
             f"the declared claim analyzer {identity.declared!r} is unavailable: module "
-            f"{identity.module!r} publishes no {identity.function!r}")
-    return ResolvedAnalyzer(identity=identity, module=module,
-                            preflight=getattr(module, entries[0]), analyze=decide)
+            f"{identity.module!r} publishes no {identity.function!r}"
+        )
+    return ResolvedAnalyzer(identity=identity, module=module, preflight=getattr(module, entries[0]), analyze=decide)
 
 
 def _registry() -> dict[str, Callable[..., dict]]:
@@ -106,16 +108,19 @@ def _registry() -> dict[str, Callable[..., dict]]:
     table: dict[str, Callable[..., dict]] = {}
     try:
         import perf_pk_claim as PK
+
         table[PK._ACCEPTANCE_BASE["analyzer"]] = PK.analyze_pk_claim
     except Exception:  # noqa: BLE001 - an absent analyzer is reported at dispatch, not at import
         pass
     try:
         import perf_affine_claim as AF
+
         table[AF.ANALYZER] = AF.analyze_affine_claim
     except Exception:  # noqa: BLE001
         pass
     try:
         import perf_paired_claim as PD
+
         table[PD.ANALYZER] = PD.analyze_paired_claim
     except Exception:  # noqa: BLE001
         pass
@@ -124,6 +129,7 @@ def _registry() -> dict[str, Callable[..., dict]]:
         # capsule. The analyzer lives in the shared perf package and is target-neutral; dispatch still
         # keys only on the frozen analyzer identity.
         from merlin.perf import comparison_group_claim as CG
+
         table[CG.ANALYZER] = CG.analyze_comparison_group_claim
     except Exception:  # noqa: BLE001
         pass
@@ -132,8 +138,8 @@ def _registry() -> dict[str, Callable[..., dict]]:
         # constant, so it is read from there -- never re-spelled here, which would let the registry
         # and the contract drift apart silently.
         import perf_pr_claim as PR
-        for attr in ("_ACCEPTANCE_BASE", "ACCEPTANCE_BASE", "_ACCEPTANCE",
-                     "_PROPOSED_ACCEPTANCE"):
+
+        for attr in ("_ACCEPTANCE_BASE", "ACCEPTANCE_BASE", "_ACCEPTANCE", "_PROPOSED_ACCEPTANCE"):
             base = getattr(PR, attr, None)
             if isinstance(base, dict) and isinstance(base.get("analyzer"), str):
                 table[base["analyzer"]] = PR.analyze_pr_claim
@@ -149,8 +155,9 @@ def declared_analyzer(descriptors: Sequence[Mapping[str, Any]]) -> str | None:
     for d in descriptors:
         if not isinstance(d, Mapping):
             return None
-        acceptance = ((d.get("performance") or {}) if isinstance(d.get("performance"), Mapping)
-                      else {}).get("acceptance")
+        acceptance = ((d.get("performance") or {}) if isinstance(d.get("performance"), Mapping) else {}).get(
+            "acceptance"
+        )
         if not isinstance(acceptance, Mapping):
             return None
         seen.add(str(acceptance.get("analyzer")))
@@ -163,18 +170,30 @@ def analyze(descriptors: object, results: object) -> dict[str, Any]:
         return {"verdict": REFUSED, "reason": "no capsule descriptors were supplied"}
     identity = declared_analyzer(descriptors)
     if identity is None:
-        return {"verdict": REFUSED,
-                "reason": ("the cohort does not agree on one frozen analyzer identity, so there is "
-                           "no single procedure that decides it")}
+        return {
+            "verdict": REFUSED,
+            "reason": (
+                "the cohort does not agree on one frozen analyzer identity, so there is "
+                "no single procedure that decides it"
+            ),
+        }
     table = _registry()
     if identity not in table:
-        return {"verdict": REFUSED, "declared_analyzer": identity,
-                "reason": (f"no analyzer registered for {identity!r}; the contract names a "
-                           f"procedure this build cannot run, so the claim is undecided rather "
-                           f"than assumed"),
-                "registered": sorted(table)}
+        return {
+            "verdict": REFUSED,
+            "declared_analyzer": identity,
+            "reason": (
+                f"no analyzer registered for {identity!r}; the contract names a "
+                f"procedure this build cannot run, so the claim is undecided rather "
+                f"than assumed"
+            ),
+            "registered": sorted(table),
+        }
     verdict = table[identity](descriptors, results)
     if isinstance(verdict, Mapping):
         return {**verdict, "declared_analyzer": identity}
-    return {"verdict": REFUSED, "declared_analyzer": identity,
-            "reason": "the analyzer returned something other than a verdict mapping"}
+    return {
+        "verdict": REFUSED,
+        "declared_analyzer": identity,
+        "reason": "the analyzer returned something other than a verdict mapping",
+    }

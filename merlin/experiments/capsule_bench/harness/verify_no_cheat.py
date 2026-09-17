@@ -20,7 +20,9 @@ arm contrast is honest. The checks:
 
 Exit 0 = safe to launch. Non-zero = DO NOT launch.  Usage: verify_no_cheat.py
 """
+
 from __future__ import annotations
+
 import ast
 import re
 import sys
@@ -31,7 +33,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
 
-EXP = C.EXP                    # the active target's experiment dir (descriptor-driven, no target literal)
+EXP = C.EXP  # the active target's experiment dir (descriptor-driven, no target literal)
 REPO = C.REPO
 KIT_DIR = REPO / "merlin/python/merlin/targetgen/oot_starterkit"
 RTL_DIR = REPO / "merlin/python/merlin/targetgen/rtl"
@@ -52,10 +54,12 @@ CONDITIONS = C.experiment_conditions()
 
 # ---- check 1: forbidden answer-content patterns in shipped source/prompts -------------------------
 ANSWER_PATTERNS = {
-    "reference_outputs":  re.compile(r"reference_outputs"),
-    "merlin_runtime_import": re.compile(r"from\s+merlin\.runtime\s+import|import\s+merlin\.runtime\.(reference|simulator)"),
+    "reference_outputs": re.compile(r"reference_outputs"),
+    "merlin_runtime_import": re.compile(
+        r"from\s+merlin\.runtime\s+import|import\s+merlin\.runtime\.(reference|simulator)"
+    ),
     "hidden_capsule_ref": re.compile(r"capsules/hidden|CANARY_HIDDEN|hidden_\w+_golden"),
-    "golden_yaml_ref":    re.compile(r"golden\.yaml|expected_output|expected_cb"),
+    "golden_yaml_ref": re.compile(r"golden\.yaml|expected_output|expected_cb"),
 }
 # files that are ALLOWED to mention these tokens because they are *checkers/auditors* describing them,
 # not leaking them. (Scanning a cheat-detector for the word "reference_outputs" is a false positive.)
@@ -96,8 +100,9 @@ def check_answer_content() -> tuple[bool, list[str]]:
     bad = _scan_for_patterns(_shipped_files(), ANSWER_PATTERNS)
     # The granted tree is everything the agent can open. Only the store-naming pattern applies here --
     # see _GRANTED_SCAN_PATTERNS for why the other three would be noise rather than signal.
-    bad += _scan_for_patterns(_granted_readable_files(),
-                              {k: v for k, v in ANSWER_PATTERNS.items() if k in _GRANTED_SCAN_PATTERNS})
+    bad += _scan_for_patterns(
+        _granted_readable_files(), {k: v for k, v in ANSWER_PATTERNS.items() if k in _GRANTED_SCAN_PATTERNS}
+    )
     return (not bad), bad
 
 
@@ -111,10 +116,10 @@ def _scan_for_patterns(files, patterns) -> list[str]:
             for m in rx.finditer(txt):
                 # a generator's _TMPL or a prompt may legitimately say "never import merlin.runtime";
                 # only flag if it's NOT in a negation/instruction context.
-                ctx = txt[max(0, m.start() - 40):m.start()].lower()
+                ctx = txt[max(0, m.start() - 40) : m.start()].lower()
                 if any(w in ctx for w in ("not ", "never", "no ", "deny", "forbid", "without", "cheat")):
                     continue
-                bad.append(f"{f.relative_to(REPO)} :: {name} :: …{txt[m.start():m.start()+50]!r}")
+                bad.append(f"{f.relative_to(REPO)} :: {name} :: …{txt[m.start() : m.start() + 50]!r}")
     return bad
 
 
@@ -181,7 +186,7 @@ def check_kit_parity() -> tuple[bool, list[str]]:
     for cond in CONDITIONS:
         for arm in MERLIN_ARMS:
             if not _ships(arm, cond):
-                continue                       # arm not part of this target's experiment (see _ships)
+                continue  # arm not part of this target's experiment (see _ships)
             if not _has(_allowed(_manifest(arm, cond)), "oot_starterkit"):
                 probs.append(f"{arm}_{cond}: starter kit (oot_starterkit) not in allowed — prompt references it")
     return (not probs), probs
@@ -201,11 +206,12 @@ def check_grant_consistency() -> tuple[bool, list[str]]:
     for arm in MERLIN_ARMS:
         for cond in CONDITIONS:
             if not _ships(arm, cond):
-                continue                       # arm not part of this target's experiment (see _ships)
+                continue  # arm not part of this target's experiment (see _ships)
             bdir = BUNDLES / f"{arm}_{cond}"
-            prompt = (bdir / "STARTER_PROMPT.md")
+            prompt = bdir / "STARTER_PROMPT.md"
             if not prompt.is_file():
-                probs.append(f"{arm}_{cond}: missing STARTER_PROMPT.md"); continue
+                probs.append(f"{arm}_{cond}: missing STARTER_PROMPT.md")
+                continue
             ptxt = prompt.read_text()
             allowed = _allowed(_manifest(arm, cond))
             for tok, grant in PROMPT_TOOL_GRANTS.items():
@@ -216,14 +222,17 @@ def check_grant_consistency() -> tuple[bool, list[str]]:
 
 # ---- check 5: audit regression on existing clean runs ---------------------------------------------
 def check_audit_regression() -> tuple[bool, list[str]]:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))   # the harness dir (sibling module)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))  # the harness dir (sibling module)
     try:
         import transcript_tooling_audit as TTA
     except Exception as e:
         return False, [f"cannot import transcript_tooling_audit: {e}"]
     probs = []
-    for sub, rid in [("raw_baseline", "rb_abc4"), ("merlin_assisted", "merlin_abc4"),
-                     ("merlin_assisted", "merlincirct_abc4")]:
+    for sub, rid in [
+        ("raw_baseline", "rb_abc4"),
+        ("merlin_assisted", "merlin_abc4"),
+        ("merlin_assisted", "merlincirct_abc4"),
+    ]:
         d = C.RUNS / sub / rid
         if not d.is_dir():
             continue  # abc4 may have been archived; skip silently
@@ -240,10 +249,27 @@ def check_audit_regression() -> tuple[bool, list[str]]:
 # (AST), never the former: only EQUALITY / membership of a shape identifier against a real-dimension
 # literal, or a name identifier against a string literal, is a hit. `>=`/`<`/`*` and small structural
 # guards (== 0/1/2/...) are legal and pass.
-_SHAPE_IDENTS = {"m", "n", "k", "rows", "cols", "seq", "seqlen", "seq_len", "batch", "bsz",
-                 "dim", "hidden", "hidden_size", "heads", "n_heads", "d_model", "shape"}
+_SHAPE_IDENTS = {
+    "m",
+    "n",
+    "k",
+    "rows",
+    "cols",
+    "seq",
+    "seqlen",
+    "seq_len",
+    "batch",
+    "bsz",
+    "dim",
+    "hidden",
+    "hidden_size",
+    "heads",
+    "n_heads",
+    "d_model",
+    "shape",
+}
 _NAME_IDENTS = {"model_name", "model", "workload", "capsule", "capsule_name", "arch", "net", "task"}
-_LEGAL_SMALL_INTS = {0, 1, 2, 3, 4, 8}   # structural guards, not a hardcoded tensor dimension
+_LEGAL_SMALL_INTS = {0, 1, 2, 3, 4, 8}  # structural guards, not a hardcoded tensor dimension
 
 
 def _ident_of(node: ast.AST) -> str | None:
@@ -280,24 +306,35 @@ def scan_workload_constants(root: Path) -> list[str]:
             # shape identifier == / != a real-dimension integer literal → hardcoded shape dispatch
             if isinstance(op, (ast.Eq, ast.NotEq)) and idents & _SHAPE_IDENTS:
                 for o in operands:
-                    if isinstance(o, ast.Constant) and isinstance(o.value, int) \
-                            and o.value not in _LEGAL_SMALL_INTS:
-                        hits.append(f"{rel}:{node.lineno} — shape identifier compared to literal "
-                                    f"{o.value} (hardcoded-shape dispatch)")
+                    if isinstance(o, ast.Constant) and isinstance(o.value, int) and o.value not in _LEGAL_SMALL_INTS:
+                        hits.append(
+                            f"{rel}:{node.lineno} — shape identifier compared to literal "
+                            f"{o.value} (hardcoded-shape dispatch)"
+                        )
             # shape identifier IN a tuple/list of dimension literals → same, spelled as membership
-            if isinstance(op, ast.In) and _ident_of(node.left) in _SHAPE_IDENTS \
-                    and isinstance(node.comparators[0], (ast.Tuple, ast.List, ast.Set)):
-                lits = [e.value for e in node.comparators[0].elts
-                        if isinstance(e, ast.Constant) and isinstance(e.value, int)]
+            if (
+                isinstance(op, ast.In)
+                and _ident_of(node.left) in _SHAPE_IDENTS
+                and isinstance(node.comparators[0], (ast.Tuple, ast.List, ast.Set))
+            ):
+                lits = [
+                    e.value
+                    for e in node.comparators[0].elts
+                    if isinstance(e, ast.Constant) and isinstance(e.value, int)
+                ]
                 if any(v not in _LEGAL_SMALL_INTS for v in lits):
-                    hits.append(f"{rel}:{node.lineno} — shape identifier tested against a set of "
-                                f"dimension literals {lits} (hardcoded-shape dispatch)")
+                    hits.append(
+                        f"{rel}:{node.lineno} — shape identifier tested against a set of "
+                        f"dimension literals {lits} (hardcoded-shape dispatch)"
+                    )
             # name/workload identifier == a string literal → model/workload branch
             if isinstance(op, (ast.Eq, ast.NotEq)) and idents & _NAME_IDENTS:
                 for o in operands:
                     if isinstance(o, ast.Constant) and isinstance(o.value, str):
-                        hits.append(f"{rel}:{node.lineno} — workload/model name compared to "
-                                    f"{o.value!r} (workload-specific branch)")
+                        hits.append(
+                            f"{rel}:{node.lineno} — workload/model name compared to "
+                            f"{o.value!r} (workload-specific branch)"
+                        )
     return hits
 
 
@@ -328,19 +365,20 @@ def check_workload_constants() -> tuple[bool, list[str]]:
     """
     probs: list[str] = []
     notes: list[str] = []
-    runs = C.RUNS          # out/runs/<target>/capsule-bench — the retired <experiment>/runs never
-    if runs.is_dir():      # existed here, so this scan silently covered nothing and always "passed"
+    runs = C.RUNS  # out/runs/<target>/capsule-bench — the retired <experiment>/runs never
+    if runs.is_dir():  # existed here, so this scan silently covered nothing and always "passed"
         for sub in sorted(runs.glob("*/*/submission")):
             reason = _superseded_reason(sub)
             hits = scan_workload_constants(sub)
             if reason is not None:
-                if hits:   # still reported, just not blocking -- the record keeps the finding visible
-                    notes.append(f"{sub.parent.name}: SUPERSEDED ({reason}) — {len(hits)} finding(s) "
-                                 f"retained for the record, not blocking")
+                if hits:  # still reported, just not blocking -- the record keeps the finding visible
+                    notes.append(
+                        f"{sub.parent.name}: SUPERSEDED ({reason}) — {len(hits)} finding(s) "
+                        f"retained for the record, not blocking"
+                    )
                 continue
             probs.extend(f"{sub.parent.name}: {h}" for h in hits)
     return (not probs), probs + notes
-
 
 
 # ---- check 7: the held-out set is not SPECIFIED anywhere the agent can read ----------------------
@@ -424,7 +462,7 @@ def _granted_readable_files() -> list[Path]:
 
 def _scan_root(root: Path, seen: set) -> list[Path]:
     out = []
-    for f in ([root] if root.is_file() else root.rglob("*")):
+    for f in [root] if root.is_file() else root.rglob("*"):
         if not f.is_file() or "__pycache__" in f.parts or f in seen:
             continue
         try:
@@ -432,9 +470,9 @@ def _scan_root(root: Path, seen: set) -> list[Path]:
         except ValueError:
             continue
         if any(part in _HOLDOUT_STORE_PARTS for part in rel.parts):
-            continue                       # the holdout dir itself — masked
+            continue  # the holdout dir itself — masked
         if f.name.endswith(".hidden.yaml"):
-            continue                       # the holdout spec sidecar — masked, and untracked
+            continue  # the holdout spec sidecar — masked, and untracked
         if f.suffix in (".yaml", ".yml", ".json", ".md", ".py", ".mlir", ".txt", ".h", ".c", ".cpp"):
             seen.add(f)
             out.append(f)
@@ -448,10 +486,12 @@ def check_holdout_not_specified() -> tuple[bool, list[str]]:
     # hard failure so a stale permission state cannot resurrect the vacuous pass.
     blind = _unreadable_holdout_stores()
     if blind:
-        return False, [f"holdout store {d.relative_to(REPO)} exists but could not be read "
-                       f"({'permission' if d.exists() else 'missing'}) — this check cannot see the "
-                       f"names it exists to look for, so it reports FAIL rather than a vacuous pass"
-                       for d in blind]
+        return False, [
+            f"holdout store {d.relative_to(REPO)} exists but could not be read "
+            f"({'permission' if d.exists() else 'missing'}) — this check cannot see the "
+            f"names it exists to look for, so it reports FAIL rather than a vacuous pass"
+            for d in blind
+        ]
     names = _holdout_names()
     if not names:
         return True, ["(no holdout capsules on disk — nothing to check)"]
@@ -467,8 +507,10 @@ def check_holdout_not_specified() -> tuple[bool, list[str]]:
         return False, bad
     # A silent pass is not evidence of coverage: "found nothing" and "looked at nothing" print the same.
     # Say what was actually examined, so a scan that quietly stopped granting files is visible.
-    return True, [f"scanned {n_scanned} granted file(s) for {len(names)} holdout capsule name(s) "
-                  f"across {len(_holdout_stores())} store(s); none appear"]
+    return True, [
+        f"scanned {n_scanned} granted file(s) for {len(names)} holdout capsule name(s) "
+        f"across {len(_holdout_stores())} store(s); none appear"
+    ]
 
 
 CHECKS = [
@@ -499,10 +541,15 @@ def main() -> int:
         for p in probs[:_MAX_DETAIL]:
             print(f"        - {p}")
         if len(probs) > _MAX_DETAIL:
-            print(f"        - … and {len(probs) - _MAX_DETAIL} more (listed detail is truncated, "
-                  f"not exhaustive)")
-    print("\n" + ("✅ VERIFY_NO_CHEAT: PASS — tooling is answer-free and the arm contrast is honest."
-                  if all_ok else "❌ VERIFY_NO_CHEAT: FAIL — DO NOT launch until the above are resolved."))
+            print(f"        - … and {len(probs) - _MAX_DETAIL} more (listed detail is truncated, not exhaustive)")
+    print(
+        "\n"
+        + (
+            "✅ VERIFY_NO_CHEAT: PASS — tooling is answer-free and the arm contrast is honest."
+            if all_ok
+            else "❌ VERIFY_NO_CHEAT: FAIL — DO NOT launch until the above are resolved."
+        )
+    )
     return 0 if all_ok else 1
 
 

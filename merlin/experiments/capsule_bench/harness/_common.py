@@ -5,6 +5,7 @@ harness scripts BEFORE they add merlin/python to sys.path, so it bootstraps the 
 (git first, parents[] fallback), puts merlin/python on the path, then re-exports the shared helpers.
 Public symbols (REPO/HARNESS/EXP/RUNS/REPORTS/BUNDLES/sh/hash_tree/repo_sha) are preserved for callers.
 """
+
 from __future__ import annotations
 
 import os
@@ -16,12 +17,13 @@ from pathlib import Path
 _HERE = Path(__file__).resolve()
 _root = os.environ.get("MERLIN_REPO_ROOT", "").strip()
 if not _root:
-    _root = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent),
-                           capture_output=True, text=True).stdout.strip()
+    _root = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"], cwd=str(_HERE.parent), capture_output=True, text=True
+    ).stdout.strip()
 REPO = Path(_root).expanduser().resolve() if _root else _HERE.parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.benchharness import sh, hash_tree, repo_sha, runs_root, reports_root  # noqa: E402
+from merlin.benchharness import hash_tree, repo_sha, reports_root, runs_root, sh  # noqa: E402
 
 # The harness lives in its own TARGET-NEUTRAL home (experiments/capsule_bench/harness); HARNESS is that
 # home. EXP is the SELECTED TARGET's data dir (descriptor + task + input_bundles), under
@@ -64,7 +66,7 @@ def _source_experiment_env(exp_dir: Path) -> list[str]:
         k, _, v = line.partition("=")
         k = k.strip()
         v = v.strip().strip('"').strip("'")
-        if k and k not in os.environ:      # process env WINS — never override an exported var
+        if k and k not in os.environ:  # process env WINS — never override an exported var
             os.environ[k] = v
             set_keys.append(k)
     return set_keys
@@ -76,15 +78,16 @@ SOURCED_EXPERIMENT_ENV = _source_experiment_env(EXP)
 
 try:
     import yaml as _yaml
+
     TARGET = (_yaml.safe_load(_desc.read_text()) or {}).get("target") if _desc.is_file() else None
 except Exception:  # noqa: BLE001
     TARGET = None
-TARGET = TARGET or EXP.name.split("_")[0]              # fallback: the dir-name stem before _capsule_bench
+TARGET = TARGET or EXP.name.split("_")[0]  # fallback: the dir-name stem before _capsule_bench
 #: The SELECTED target's descriptor file itself. Exported so a harness script can load the descriptor
 #: (answer surfaces, oracle routing) instead of re-deriving its path from EXP and guessing the filename.
 DESCRIPTOR = _desc
-RUNS = runs_root(TARGET, "capsule-bench")              # runs/<target>/capsule-bench
-REPORTS = reports_root("capsule-bench", TARGET)        # artifacts/capsule-bench/<target>
+RUNS = runs_root(TARGET, "capsule-bench")  # runs/<target>/capsule-bench
+REPORTS = reports_root("capsule-bench", TARGET)  # artifacts/capsule-bench/<target>
 BUNDLES = EXP / "input_bundles"
 
 
@@ -99,7 +102,8 @@ def require_scaffolding() -> None:
             f"experiment dir {EXP} (target={TARGET}) is missing run scaffolding: {', '.join(missing)}.\n"
             f"  • input_bundles/: generate with `merlin.targetgen.generate_bundles` for this descriptor\n"
             f"  • task/: author the per-target task prompts (TASK_full.md / TASK_realistic.md)\n"
-            f"Only descriptor-driven steps (bundle generation, governance checks) work without them.")
+            f"Only descriptor-driven steps (bundle generation, governance checks) work without them."
+        )
 
 
 def experiment_conditions() -> list[str]:
@@ -119,5 +123,18 @@ def experiment_conditions() -> list[str]:
     return sorted(conds) or ["hwbringup_v0"]
 
 
-__all__ = ["REPO", "EXP", "HARNESS", "TARGET", "RUNS", "REPORTS", "BUNDLES", "sh", "hash_tree",
-           "repo_sha", "require_scaffolding", "experiment_conditions", "SOURCED_EXPERIMENT_ENV"]
+__all__ = [
+    "REPO",
+    "EXP",
+    "HARNESS",
+    "TARGET",
+    "RUNS",
+    "REPORTS",
+    "BUNDLES",
+    "sh",
+    "hash_tree",
+    "repo_sha",
+    "require_scaffolding",
+    "experiment_conditions",
+    "SOURCED_EXPERIMENT_ENV",
+]

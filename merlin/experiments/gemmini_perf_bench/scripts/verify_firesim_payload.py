@@ -5,14 +5,16 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import re
+from pathlib import Path
 
 
 def grade(text: str, *, expected_logits: int, expected_top1: int) -> dict[str, object]:
     result_matches = re.findall(
         r"MERLIN_RESULT logits_checked=(\d+) bad=(\d+) nonfinite=(\d+) "
-        r"top1=(\d+) expected_top1=(\d+)", text)
+        r"top1=(\d+) expected_top1=(\d+)",
+        text,
+    )
     profile_matches = re.findall(r"MERLIN_PROFILE measured end rc=(\d+)", text)
     cycle_matches = re.findall(r"MERLIN_METRIC cycles=(\d+)", text)
     reasons: list[str] = []
@@ -33,8 +35,7 @@ def grade(text: str, *, expected_logits: int, expected_top1: int) -> dict[str, o
         if bad != 0 or nonfinite != 0:
             reasons.append(f"numeric mismatch: bad={bad} nonfinite={nonfinite}")
         if top1 != expected_top1 or declared_top1 != expected_top1:
-            reasons.append(
-                f"top1 mismatch: got={top1} declared_expected={declared_top1} expected={expected_top1}")
+            reasons.append(f"top1 mismatch: got={top1} declared_expected={declared_top1} expected={expected_top1}")
     if profile_matches != ["0"]:
         reasons.append(f"measured profile did not end once with rc=0: {profile_matches}")
     if len(cycle_matches) != 1 or int(cycle_matches[0]) <= 0:

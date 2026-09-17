@@ -26,6 +26,7 @@ THREE HONESTY RULES BAKED IN, each from a measured failure in this tree:
   MEASURED to disagree with stock ``GemminiRocketConfig`` under Verilator (302 vs 303, 604 vs 610), so
   every evaluate result carries the engine and config and may not be quoted as Verilator-equivalent.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -50,9 +51,10 @@ REPO = _repo_root()
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from merlin.common.artifacts import cache_dir            # noqa: E402
-import _track as T                                       # noqa: E402
-from merlin.common.paths import artifacts_dir            # noqa: E402
+import _track as T  # noqa: E402
+
+from merlin.common.artifacts import cache_dir  # noqa: E402
+from merlin.common.paths import artifacts_dir  # noqa: E402
 
 FORK = artifacts_dir() / "targets/gemmini/gemmini_xdsl_recipe_v0"
 PKG = FORK / "mlir_oot"
@@ -64,6 +66,8 @@ STORE = cache_dir("recipe_select_candidates")
 #: (it is the same variable these scripts export to the runner).
 _GSIM_BUILD = "gsim_cert_serialclk_v1"
 _GSIM_EMU_NAME = "emu_gemmini_gsim_serialclk_v1_filtered_final"
+
+
 def _gsim_emu() -> Path:
     env = os.environ.get("MERLIN_GEMMINI_GSIM_EMU")
     if env:
@@ -73,14 +77,17 @@ def _gsim_emu() -> Path:
 
 GSIM_EMU = str(_gsim_emu())
 GSIM_CONFIG = "chipyard.harness.TestHarness.GemminiGsimSerialClkConfig"
-ENGINE_NOTE = ("cycles describe " + GSIM_CONFIG + "; measured to disagree with stock "
-               "GemminiRocketConfig under Verilator (302 vs 303, 604 vs 610), so they are NOT "
-               "quotable as Verilator-equivalent")
+ENGINE_NOTE = (
+    "cycles describe " + GSIM_CONFIG + "; measured to disagree with stock "
+    "GemminiRocketConfig under Verilator (302 vs 303, 604 vs 610), so they are NOT "
+    "quotable as Verilator-equivalent"
+)
 
 
 def _recipe_mod():
     sys.path.insert(0, str(PKG / "lowering"))
-    import recipe                                                     # noqa: PLC0415
+    import recipe  # noqa: PLC0415
+
     return recipe
 
 
@@ -99,11 +106,11 @@ def machine(target: str = "gemmini") -> dict:
 
     spad_b, acc_b = cap("scratchpad"), cap("accumulator")
     if not spad_b or not acc_b:
-        raise SystemExit("operand/accumulator capacity is not derivable from the RTL facts; "
-                         "refusing to assume one")
+        raise SystemExit("operand/accumulator capacity is not derivable from the RTL facts; refusing to assume one")
     dim = geom.rows
     return {
-        "dim": dim, "mesh": [geom.rows, geom.cols],
+        "dim": dim,
+        "mesh": [geom.rows, geom.cols],
         "operand_store_rows": spad_b // dim,
         "accumulator_rows": acc_b // (dim * 4),
         "facts_source": (body.get("facts") or body).get("source"),
@@ -118,20 +125,23 @@ def shape_of(mlir: Path) -> dict:
     that produced it. Keying on ``"A0"``/``"W"`` would work only for workloads that happen to spell
     them that way.
     """
-    r = subprocess.run([sys.executable, "gemmini_opt.py", "--emit-command-buffer=/dev/stdout",
-                        str(mlir)], cwd=str(PKG), capture_output=True, text=True, timeout=600)
+    r = subprocess.run(
+        [sys.executable, "gemmini_opt.py", "--emit-command-buffer=/dev/stdout", str(mlir)],
+        cwd=str(PKG),
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
     if r.returncode != 0:
         raise SystemExit(f"the compiler could not parse {mlir}: {r.stderr[-800:]}")
     cb = json.loads(r.stdout)
     tensors = cb.get("tensors") or {}
     cmds = cb.get("commands") or []
 
-    resident_src = {c["operands"]["dst"]: c["operands"]["src"]
-                    for c in cmds if c.get("opcode") == "RES_PACK"}
+    resident_src = {c["operands"]["dst"]: c["operands"]["src"] for c in cmds if c.get("opcode") == "RES_PACK"}
     mm = next((c for c in cmds if c.get("opcode") in ("MATMUL_RESIDENT", "ATTENTION_QK")), None)
     if mm is None:
-        raise SystemExit(json.dumps({"error": "no_contraction",
-                                     "detail": "this workload declares no matmul to tune"}))
+        raise SystemExit(json.dumps({"error": "no_contraction", "detail": "this workload declares no matmul to tune"}))
     ops = mm["operands"]
     lhs_name = ops.get("lhs") or ops.get("q")
     rhs_ref = ops.get("rhs") or ops.get("k")
@@ -140,11 +150,17 @@ def shape_of(mlir: Path) -> dict:
     m, k = lhs["shape"]
     kw, n = w["shape"]
     if kw != k:
-        raise SystemExit(json.dumps({"error": "contraction_mismatch",
-                                     "detail": f"lhs K={k} but weight K={kw}"}))
-    return {"M": m, "N": n, "K": k, "operand_dtype": lhs.get("dtype"),
-            "weight_dtype": w.get("dtype"), "lhs": lhs_name, "weight": w_name,
-            "transposed_rhs": mm.get("opcode") == "ATTENTION_QK"}
+        raise SystemExit(json.dumps({"error": "contraction_mismatch", "detail": f"lhs K={k} but weight K={kw}"}))
+    return {
+        "M": m,
+        "N": n,
+        "K": k,
+        "operand_dtype": lhs.get("dtype"),
+        "weight_dtype": w.get("dtype"),
+        "lhs": lhs_name,
+        "weight": w_name,
+        "transposed_rhs": mm.get("opcode") == "ATTENTION_QK",
+    }
 
 
 def emit(mlir: Path, recipe: dict | None) -> str:
@@ -152,9 +168,14 @@ def emit(mlir: Path, recipe: dict | None) -> str:
     env.pop("MERLIN_CODEGEN_RECIPE", None)
     if recipe is not None:
         env["MERLIN_CODEGEN_RECIPE"] = json.dumps(recipe)
-    r = subprocess.run([sys.executable, "gemmini_opt.py", "--convert-iface-to-gemmini",
-                        "--emit-target-artifact", str(mlir)],
-                       cwd=str(PKG), capture_output=True, text=True, env=env, timeout=600)
+    r = subprocess.run(
+        [sys.executable, "gemmini_opt.py", "--convert-iface-to-gemmini", "--emit-target-artifact", str(mlir)],
+        cwd=str(PKG),
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=600,
+    )
     if r.returncode != 0:
         raise SystemExit(json.dumps({"error": "emit_failed", "detail": r.stderr[-800:]}))
     return r.stdout
@@ -167,7 +188,8 @@ def classes(artifact: str) -> tuple[dict[str, int], list[str]]:
     reordering by counts reports a real change as an inert lever.
     """
     sys.path.insert(0, str(PKG))
-    from lowering.isa import FUNCT                                    # noqa: PLC0415
+    from lowering.isa import FUNCT  # noqa: PLC0415
+
     names: dict[int, str] = {}
     for nm, f in FUNCT.items():
         names.setdefault(f, nm)
@@ -193,23 +215,31 @@ def classes(artifact: str) -> tuple[dict[str, int], list[str]]:
 
 # --------------------------------------------------------------------------- verbs
 
+
 def v_inspect(mlir: Path) -> dict:
     sh = shape_of(mlir)
     mc = machine()
     d = mc["dim"]
     mt, nt, kt = -(-sh["M"] // d), -(-sh["N"] // d), -(-sh["K"] // d)
     return {
-        "workload": str(mlir), **sh, "tiles": {"Mt": mt, "Nt": nt, "Kt": kt},
-        "macs": sh["M"] * sh["N"] * sh["K"], "machine": mc,
-        "capacity_relation": (f"the activation grid (Mt*Kt={mt * kt} tiles) and the weight grid "
-                              f"(Kt*Nt={kt * nt} tiles) are staged together, so "
-                              f"Kt*(Mt+Nt)={kt * (mt + nt)} must not exceed "
-                              f"{mc['operand_store_rows'] // d}"),
+        "workload": str(mlir),
+        **sh,
+        "tiles": {"Mt": mt, "Nt": nt, "Kt": kt},
+        "macs": sh["M"] * sh["N"] * sh["K"],
+        "machine": mc,
+        "capacity_relation": (
+            f"the activation grid (Mt*Kt={mt * kt} tiles) and the weight grid "
+            f"(Kt*Nt={kt * nt} tiles) are staged together, so "
+            f"Kt*(Mt+Nt)={kt * (mt + nt)} must not exceed "
+            f"{mc['operand_store_rows'] // d}"
+        ),
         "reuse_available": {
             "activation_transfers_now": kt * nt * mt,
             "activation_transfers_if_resident": mt * kt,
-            "note": ("the saving a residency recipe can buy is Mt*Kt*(Nt-1) transfers, so it is zero "
-                     "when Nt==1 and grows with the N sweep"),
+            "note": (
+                "the saving a residency recipe can buy is Mt*Kt*(Nt-1) transfers, so it is zero "
+                "when Nt==1 and grows with the N sweep"
+            ),
         },
     }
 
@@ -218,11 +248,19 @@ def v_choices(mlir: Path) -> dict:
     R = _recipe_mod()
     sh = shape_of(mlir)
     mc = machine()
-    cat = R.catalog(m=sh["M"], n=sh["N"], k=sh["K"], dim=mc["dim"],
-                    spad_rows=mc["operand_store_rows"], acc_rows=mc["accumulator_rows"])
-    cat["authority"] = ("values come from the compiler's own catalog (what it can emit) intersected "
-                        "with the RTL-derived capacity (what the machine can hold); a value with "
-                        "legal=false carries the reason and must not be built")
+    cat = R.catalog(
+        m=sh["M"],
+        n=sh["N"],
+        k=sh["K"],
+        dim=mc["dim"],
+        spad_rows=mc["operand_store_rows"],
+        acc_rows=mc["accumulator_rows"],
+    )
+    cat["authority"] = (
+        "values come from the compiler's own catalog (what it can emit) intersected "
+        "with the RTL-derived capacity (what the machine can hold); a value with "
+        "legal=false carries the reason and must not be built"
+    )
     return cat
 
 
@@ -235,13 +273,26 @@ def v_build(mlir: Path, recipe_spec: str | None, dump: bool) -> dict:
     # fit both stores at once -- and for every ResNet-50 and TinyLlama shape the answer is no. Gating
     # on it here refused shapes the compiler can now emit by cutting them, which is a refusal the
     # agent cannot act on and a workload the arm would silently never cover.
-    plan = R.blocks(R.Recipe(**recipe), m=sh["M"], n=sh["N"], k=sh["K"], dim=mc["dim"],
-                    spad_rows=mc["operand_store_rows"], acc_rows=mc["accumulator_rows"])
+    plan = R.blocks(
+        R.Recipe(**recipe),
+        m=sh["M"],
+        n=sh["N"],
+        k=sh["K"],
+        dim=mc["dim"],
+        spad_rows=mc["operand_store_rows"],
+        acc_rows=mc["accumulator_rows"],
+    )
     if not plan.ok:
-        return {"built": False, "recipe": recipe, "failure": "illegal_for_this_shape",
-                "reason": plan.reason}
-    f = R.fit(R.Recipe(**recipe), m=sh["M"], n=sh["N"], k=sh["K"], dim=mc["dim"],
-              spad_rows=mc["operand_store_rows"], acc_rows=mc["accumulator_rows"])
+        return {"built": False, "recipe": recipe, "failure": "illegal_for_this_shape", "reason": plan.reason}
+    f = R.fit(
+        R.Recipe(**recipe),
+        m=sh["M"],
+        n=sh["N"],
+        k=sh["K"],
+        dim=mc["dim"],
+        spad_rows=mc["operand_store_rows"],
+        acc_rows=mc["accumulator_rows"],
+    )
 
     art = emit(mlir, None if recipe == R.DEFAULTS else recipe)
     base = emit(mlir, None)
@@ -253,22 +304,34 @@ def v_build(mlir: Path, recipe_spec: str | None, dump: bool) -> dict:
     slot = STORE / cid
     slot.mkdir(parents=True, exist_ok=True)
     (slot / "artifact.mlir").write_text(art, encoding="utf-8")
-    (slot / "candidate.json").write_text(json.dumps(
-        {"candidate_id": cid, "workload": str(mlir), "recipe": recipe,
-         "artifact_digest": digest}, indent=1), encoding="utf-8")
+    (slot / "candidate.json").write_text(
+        json.dumps({"candidate_id": cid, "workload": str(mlir), "recipe": recipe, "artifact_digest": digest}, indent=1),
+        encoding="utf-8",
+    )
 
-    delta = {k: counts.get(k, 0) - bcounts.get(k, 0)
-             for k in set(counts) | set(bcounts) if counts.get(k, 0) != bcounts.get(k, 0)}
+    delta = {
+        k: counts.get(k, 0) - bcounts.get(k, 0)
+        for k in set(counts) | set(bcounts)
+        if counts.get(k, 0) != bcounts.get(k, 0)
+    }
     out = {
-        "built": True, "candidate_id": cid, "recipe": recipe,
+        "built": True,
+        "candidate_id": cid,
+        "recipe": recipe,
         "is_default": recipe == R.DEFAULTS,
-        "artifact_digest": digest[:16], "n_instructions": sum(counts.values()),
+        "artifact_digest": digest[:16],
+        "n_instructions": sum(counts.values()),
         "instr_counts": counts,
         # The block plan is part of what was BUILT, not a detail of how: it decides how many times
         # each operand is re-fetched, and a candidate row that does not carry it cannot be joined
         # back to the schedule that produced its cycles.
-        "blocks": {"block_m": plan.bm, "block_n": plan.bn, "block_k": plan.bk,
-                   "n_blocks": plan.n_blocks, "derived": plan.derived},
+        "blocks": {
+            "block_m": plan.bm,
+            "block_n": plan.bn,
+            "block_k": plan.bk,
+            "n_blocks": plan.n_blocks,
+            "derived": plan.derived,
+        },
         "fits_without_cutting": f.ok,
         "why_cutting_is_needed": "" if f.ok else f.reason,
         "vs_default": {
@@ -277,9 +340,11 @@ def v_build(mlir: Path, recipe_spec: str | None, dump: bool) -> dict:
             "identical": digest == hashlib.sha256(base.encode()).hexdigest(),
         },
         "predicted_cycles": None,
-        "why_no_prediction": ("the calibrated cost model is falsified against measured cycles "
-                              "(-42% on A2, +83% on PK03_k128, -26% on w1_small; its own declared "
-                              "max_abs_pct is 34.9%), so no estimate is offered -- run evaluate"),
+        "why_no_prediction": (
+            "the calibrated cost model is falsified against measured cycles "
+            "(-42% on A2, +83% on PK03_k128, -26% on w1_small; its own declared "
+            "max_abs_pct is 34.9%), so no estimate is offered -- run evaluate"
+        ),
     }
     if dump:
         out["artifact"] = art
@@ -290,16 +355,16 @@ def v_evaluate(cid: str, engine: str, timeout: int) -> dict:
     slot = STORE / cid
     meta_p = slot / "candidate.json"
     if not meta_p.exists():
-        return {"candidate_id": cid, "correct": None, "cycles": None,
-                "failure": "unknown_candidate_id: build it first"}
+        return {"candidate_id": cid, "correct": None, "cycles": None, "failure": "unknown_candidate_id: build it first"}
     meta = json.loads(meta_p.read_text())
     cached = slot / f"result_{engine}.json"
     if cached.exists():
         r = json.loads(cached.read_text())
-        r["served_from_cache"] = True          # a re-evaluated digest is charged nothing
+        r["served_from_cache"] = True  # a re-evaluated digest is charged nothing
         return r
 
     from merlin.targetgen import oot_runner as OOT
+
     os.environ.setdefault("MERLIN_GEMMINI_GSIM_EMU", GSIM_EMU)
     os.environ.setdefault("MERLIN_GEMMINI_GSIM_MAXCYCLES", "100000000")
     prev = os.environ.get("MERLIN_CODEGEN_RECIPE")
@@ -310,9 +375,15 @@ def v_evaluate(cid: str, engine: str, timeout: int) -> dict:
         os.environ["MERLIN_CODEGEN_RECIPE"] = json.dumps(meta["recipe"])
     t0 = time.time()
     try:
-        res = OOT.certify(FORK, Path(meta["workload"]), runs_root=T.RUNS,
-                          run_id=f"ac_{cid}_{engine}", simulator=engine, target="gemmini",
-                          timeout=timeout)
+        res = OOT.certify(
+            FORK,
+            Path(meta["workload"]),
+            runs_root=T.RUNS,
+            run_id=f"ac_{cid}_{engine}",
+            simulator=engine,
+            target="gemmini",
+            timeout=timeout,
+        )
         failure = None
     except Exception as exc:
         res, failure = {}, f"{type(exc).__name__}: {exc}"
@@ -324,16 +395,18 @@ def v_evaluate(cid: str, engine: str, timeout: int) -> dict:
 
     oracle = (res or {}).get("oracle") or {}
     out = {
-        "candidate_id": cid, "recipe": meta["recipe"],
+        "candidate_id": cid,
+        "recipe": meta["recipe"],
         "correct": (res or {}).get("status") == "pass",
         "cycles": oracle.get("cycles"),
-        "engine": engine, "oracle_kind": oracle.get("kind"),
+        "engine": engine,
+        "oracle_kind": oracle.get("kind"),
         "derived_from_rtl": oracle.get("derived_from_rtl"),
         "config": GSIM_CONFIG if engine == "gsim" else "GemminiRocketConfig",
         "engine_note": ENGINE_NOTE if engine == "gsim" else None,
-        "eval_seconds": round(wall, 2), "concurrency_observed": 1,
-        "failure": failure or ((res or {}).get("status") if
-                               (res or {}).get("status") != "pass" else None),
+        "eval_seconds": round(wall, 2),
+        "concurrency_observed": 1,
+        "failure": failure or ((res or {}).get("status") if (res or {}).get("status") != "pass" else None),
         "served_from_cache": False,
     }
     cached.write_text(json.dumps(out, indent=1), encoding="utf-8")

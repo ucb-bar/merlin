@@ -9,6 +9,7 @@ measurement file all come from the environment-resolved external checkout, and t
 encodings, the size operand and the immediate forms are all read out of the target's own ISA source
 by structural parse (`ast`, never regex, never a hardcoded opcode).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,13 +22,21 @@ from merlin.common import artifacts as A
 from merlin.common.paths import ext_path
 from merlin.perf.dma_volume import Descriptor, compare_to_measured, kernel_volume
 
+
 #: RISC-V-shaped field extraction. Positions come from the ISA model's declared layout for the forms
 #: we decode; this mirrors that layout and is asserted against it by the caller.
 def _fields(word: int) -> dict[str, int]:
     imm = (word >> 20) & 0xFFF
-    return {"opcode": word & 0x7F, "rd": (word >> 7) & 0x1F, "funct3": (word >> 12) & 0x7,
-            "rs1": (word >> 15) & 0x1F, "rs2": (word >> 20) & 0x1F, "funct7": (word >> 25) & 0x7F,
-            "imm_i": imm - 4096 if imm >= 2048 else imm, "imm_u": word & 0xFFFFF000}
+    return {
+        "opcode": word & 0x7F,
+        "rd": (word >> 7) & 0x1F,
+        "funct3": (word >> 12) & 0x7,
+        "rs1": (word >> 15) & 0x1F,
+        "rs2": (word >> 20) & 0x1F,
+        "funct7": (word >> 25) & 0x7F,
+        "imm_i": imm - 4096 if imm >= 2048 else imm,
+        "imm_u": word & 0xFFFFF000,
+    }
 
 
 def isa_forms(isa_source: Path) -> tuple[dict[tuple, str], dict[str, str]]:
@@ -47,15 +56,20 @@ def isa_forms(isa_source: Path) -> tuple[dict[tuple, str], dict[str, str]]:
                 tgt = sub.targets[0]
                 if isinstance(tgt, ast.Name) and tgt.id == "length":
                     for inner in ast.walk(sub.value):
-                        if isinstance(inner, ast.Attribute) and isinstance(inner.value, ast.Name) \
-                                and inner.value.id == "self":
+                        if (
+                            isinstance(inner, ast.Attribute)
+                            and isinstance(inner.value, ast.Name)
+                            and inner.value.id == "self"
+                        ):
                             length_operand[name] = inner.attr
 
     for name, node in bodies.items():
         kw = {k.arg: k.value for k in node.keywords if k.arg}
+
         def const(key):
             v = kw.get(key)
             return v.value if isinstance(v, ast.Constant) else None
+
         opcode = const("opcode")
         if opcode is None:
             continue
@@ -70,7 +84,7 @@ def _size_operand(form: str, length_operand: dict[str, str], bases: dict[str, li
     """Which operand carries this form's size, inherited from the family body that defines it."""
     if form in length_operand:
         return length_operand[form]
-    for base in bases.get(form, ()):                      # families define exec once, on the base
+    for base in bases.get(form, ()):  # families define exec once, on the base
         if base in length_operand:
             return length_operand[base]
     return None
@@ -78,8 +92,9 @@ def _size_operand(form: str, length_operand: dict[str, str], bases: dict[str, li
 
 def _base_map(isa_source: Path) -> dict[str, list[str]]:
     tree = ast.parse(isa_source.read_text(encoding="utf-8"))
-    return {n.name: [b.id for b in n.bases if isinstance(b, ast.Name)]
-            for n in tree.body if isinstance(n, ast.ClassDef)}
+    return {
+        n.name: [b.id for b in n.bases if isinstance(b, ast.Name)] for n in tree.body if isinstance(n, ast.ClassDef)
+    }
 
 
 def predict_kernel(words: list[int], encodings, length_operand, bases) -> Any:
@@ -97,17 +112,24 @@ def predict_kernel(words: list[int], encodings, length_operand, bases) -> Any:
                 reason = "this form declares no size operand"
             elif size is None:
                 reason = f"the size register x{f[operand]} holds no value derivable from the program"
-            descriptors.append(Descriptor(
-                index=index, form=form, channel=f["funct3"],
-                direction="read" if "LOAD" in form else "write",
-                size_bytes=size, size_field=operand, unresolved_reason=reason))
-        elif f["opcode"] == 0b0010011 and f["funct3"] == 0:           # add-immediate
+            descriptors.append(
+                Descriptor(
+                    index=index,
+                    form=form,
+                    channel=f["funct3"],
+                    direction="read" if "LOAD" in form else "write",
+                    size_bytes=size,
+                    size_field=operand,
+                    unresolved_reason=reason,
+                )
+            )
+        elif f["opcode"] == 0b0010011 and f["funct3"] == 0:  # add-immediate
             base = 0 if f["rs1"] == 0 else state.get(f["rs1"])
             state[f["rd"]] = None if base is None else base + f["imm_i"]
-        elif f["opcode"] == 0b0110111:                                 # load-upper-immediate
+        elif f["opcode"] == 0b0110111:  # load-upper-immediate
             state[f["rd"]] = f["imm_u"]
         elif f["rd"]:
-            state[f["rd"]] = None                                      # opaque write kills the value
+            state[f["rd"]] = None  # opaque write kills the value
     return descriptors
 
 
@@ -137,11 +159,20 @@ def run(target: str, *, write_product: bool = True) -> dict:
         violations += out["verdict"] == "bound_violated"
         rows.append(out)
 
-    body = {"experiment": "movement_volume_validation", "target": target,
-            "beat_bytes": beat, "rows": rows,
-            "summary": {"kernels": len(rows), "exact": exact, "consistent_floors": floors,
-                        "bound_violations": violations,
-                        "descriptors": total_desc, "unresolved_descriptors": never_set}}
+    body = {
+        "experiment": "movement_volume_validation",
+        "target": target,
+        "beat_bytes": beat,
+        "rows": rows,
+        "summary": {
+            "kernels": len(rows),
+            "exact": exact,
+            "consistent_floors": floors,
+            "bound_violations": violations,
+            "descriptors": total_desc,
+            "unresolved_descriptors": never_set,
+        },
+    }
     if write_product:
         d = A.new_product("movement-volume", target=target, version=1)
         (Path(d.path) / "validation.json").write_text(json.dumps(body, indent=2) + "\n")
@@ -152,6 +183,7 @@ def run(target: str, *, write_product: bool = True) -> dict:
 
 def _suite_path() -> str:
     from merlin.targetgen.rtl import mlc_bridge
+
     return str(Path(mlc_bridge.mlc_dir()) / "mlc/validate/npu_model_suite.json")
 
 
@@ -166,8 +198,10 @@ def main(argv=None) -> int:
         if r.get("verdict") == "no_program_image":
             continue
         print(f"{r['kernel']:<28}{r['predicted']:>9}{r['measured']:>10}  {r['verdict']}")
-    print(f"\n{s['exact']} exact, {s['consistent_floors']} consistent floors, "
-          f"{s['bound_violations']} bound violations, of {s['kernels']} kernels")
+    print(
+        f"\n{s['exact']} exact, {s['consistent_floors']} consistent floors, "
+        f"{s['bound_violations']} bound violations, of {s['kernels']} kernels"
+    )
     print(f"{s['unresolved_descriptors']} of {s['descriptors']} descriptors unresolved")
     return 0
 

@@ -12,6 +12,7 @@ manifest, mlc facts, the target's own capsule corpus). No target literals, no st
 enforces the arm contract structurally: arm-4's tool grants ⊇ arm-3's (the delta is exactly the RTL
 surface). Run it for a target (``--target atlas``) or import ``readiness(target)``.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -41,6 +42,7 @@ def _is_mesh_target(target: str) -> bool:
     that cannot be built (no RTL facts) reads as non-mesh (the systolic checks then degrade to n/a)."""
     try:
         from merlin.targetgen import rtl_backend as RB
+
         return bool(RB.target_profile(target).has_mesh)
     except Exception:  # noqa: BLE001 — no profile -> treat as non-mesh (systolic checks become n/a)
         return False
@@ -48,43 +50,77 @@ def _is_mesh_target(target: str) -> bool:
 
 def _seam_menu_checks(target: str) -> list[dict]:
     """The CCA seam menu the assisted arms are told to call — must enumerate real modifiable sections."""
-    from merlin.kernels import cca_contract as CC, action_catalog as AC
+    from merlin.kernels import action_catalog as AC
+    from merlin.kernels import cca_contract as CC
+
     out = []
     lax = sorted(CC.leverable_axes(target))
     if _is_mesh_target(target):
         out.append(_ok("cca.leverable_axes non-empty", bool(lax), f"axes={lax}"))
     else:
-        out.append(_ok("cca.leverable_axes", True,
-                       f"n/a (SIMT/non-mesh target: no systolic dataflow axes by design); axes={lax}"))
+        out.append(
+            _ok(
+                "cca.leverable_axes",
+                True,
+                f"n/a (SIMT/non-mesh target: no systolic dataflow axes by design); axes={lax}",
+            )
+        )
     for ax in lax:
         lad = AC.escalation_ladder(ax, target)
-        out.append(_ok(f"cca.escalation_ladder[{ax}] non-empty", bool(lad),
-                       f"{len(lad)} rows: {[r['action_class'] for r in lad]}"))
+        out.append(
+            _ok(
+                f"cca.escalation_ladder[{ax}] non-empty",
+                bool(lad),
+                f"{len(lad)} rows: {[r['action_class'] for r in lad]}",
+            )
+        )
     b = CC.check_bijection(target)
-    out.append(_ok("cca.check_bijection clean", not (b.orphan_fields or b.orphan_routes or b.ladder_errors),
-                   f"orphan_fields={b.orphan_fields} orphan_routes={b.orphan_routes} errors={b.ladder_errors}"))
+    out.append(
+        _ok(
+            "cca.check_bijection clean",
+            not (b.orphan_fields or b.orphan_routes or b.ladder_errors),
+            f"orphan_fields={b.orphan_fields} orphan_routes={b.orphan_routes} errors={b.ladder_errors}",
+        )
+    )
     return out
 
 
 def _derived_lever_checks(target: str) -> list[dict]:
     from merlin.targetgen import rtl_backend as RB
+
     prof = RB.target_profile(target)
     lev = RB.derived_levers(prof)
-    if not prof.has_mesh:                                    # SIMT/non-mesh: no systolic dataflow levers
-        return [_ok("rtl_backend.derived_levers", True,
-                    f"n/a (non-mesh target: no systolic dataflow levers by design) dim={prof.dim} levers={lev}")]
-    return [_ok("rtl_backend.derived_levers non-empty", bool(lev),
-                f"dim={prof.dim} has_mesh={prof.has_mesh} has_accumulator={prof.has_accumulator} levers={lev}")]
+    if not prof.has_mesh:  # SIMT/non-mesh: no systolic dataflow levers
+        return [
+            _ok(
+                "rtl_backend.derived_levers",
+                True,
+                f"n/a (non-mesh target: no systolic dataflow levers by design) dim={prof.dim} levers={lev}",
+            )
+        ]
+    return [
+        _ok(
+            "rtl_backend.derived_levers non-empty",
+            bool(lev),
+            f"dim={prof.dim} has_mesh={prof.has_mesh} has_accumulator={prof.has_accumulator} levers={lev}",
+        )
+    ]
 
 
 def _rtl_fact_checks(target: str) -> list[dict]:
     from merlin.targetgen import rtl_check_runner as RUN
+
     f = RUN.load_facts(target)
     facts = (f or {}).get("facts", f) or {}
     n = len(facts.get("interfaces") or []) + len(facts.get("arrays") or [])
-    if not _is_mesh_target(target):                         # SIMT/non-mesh: no RoCC funct/mesh facts to derive
-        return [_ok("rtl facts derivable", True,
-                    f"n/a (non-mesh target: no RoCC funct/array facts by design) {n} interface/array facts")]
+    if not _is_mesh_target(target):  # SIMT/non-mesh: no RoCC funct/mesh facts to derive
+        return [
+            _ok(
+                "rtl facts derivable",
+                True,
+                f"n/a (non-mesh target: no RoCC funct/array facts by design) {n} interface/array facts",
+            )
+        ]
     return [_ok("rtl facts derivable", n > 0, f"{n} interface/array facts")]
 
 
@@ -92,8 +128,11 @@ def _rtl_check_checks(target: str) -> list[dict]:
     """The arm-4 RTL FileCheck surface: FileCheck present + endpoint-appropriate checks compile + (for a
     self-hosted target) the ISA-def decode signatures derive. Sample capsule from the target's OWN corpus."""
     import yaml
-    from merlin.targetgen import rtl_check_runner as RUN, rtl_check_compiler as CCk
+
+    from merlin.targetgen import rtl_check_compiler as CCk
+    from merlin.targetgen import rtl_check_runner as RUN
     from merlin.targetgen.target_experiment import load_target_experiment
+
     out = [_ok("FileCheck binary present", RUN.find_filecheck() is not None, str(RUN.find_filecheck()))]
     desc = C.EXP.parent / target / "target_experiment.yaml"
     corpus = load_target_experiment(desc).capsule_corpus if desc.is_file() else None
@@ -105,14 +144,19 @@ def _rtl_check_checks(target: str) -> list[dict]:
     facts = RUN.load_facts(target)
     checks = CCk.compile_checks(facts, cap, target)
     endpoint_check = checks.get("kernel") or checks.get("trace")
-    out.append(_ok("rtl checks compile (endpoint-appropriate)", bool(endpoint_check),
-                   f"kernel={bool(checks.get('kernel'))} trace={bool(checks.get('trace'))} "
-                   f"(capsule={cap_p.parent.name})"))
+    out.append(
+        _ok(
+            "rtl checks compile (endpoint-appropriate)",
+            bool(endpoint_check),
+            f"kernel={bool(checks.get('kernel'))} trace={bool(checks.get('trace'))} (capsule={cap_p.parent.name})",
+        )
+    )
     return out
 
 
 def _oracle_checks(target: str) -> list[dict]:
     from merlin.targetgen import capsule_runner as CR
+
     ad = CR.oracle_adapters(target)
     kinds = {k: getattr(v, "__qualname__", str(v)).split(".")[0] for k, v in ad.items()}
     return [_ok("oracle adapters resolve to the target's endpoint oracle", bool(ad), f"{kinds}")]
@@ -121,16 +165,24 @@ def _oracle_checks(target: str) -> list[dict]:
 def _arm_superset_check(target: str) -> list[dict]:
     """Structural arm contract: arm-4's granted tools ⊇ arm-3's (the delta is exactly the RTL surface)."""
     import yaml
+
     b = C.EXP.parent / target / "input_bundles"
+
     def allow(arm):
         p = b / arm / "input_bundle_manifest.yaml"
         return {a["path"] for a in (yaml.safe_load(p.read_text()).get("allowed") or [])} if p.is_file() else None
+
     a3, a4 = allow("merlin_assisted_hwbringup_v0"), allow("merlin_assisted_rtlchecks_hwbringup_v0")
     if a3 is None or a4 is None:
         return [_ok("arm-4 ⊇ arm-3 tool grants", False, "a bundle manifest is absent")]
     missing = a3 - a4
-    return [_ok("arm-4 ⊇ arm-3 tool grants", not missing,
-                f"arm4 adds {sorted(a4 - a3)}; arm4 missing-from-arm3 {sorted(missing)}")]
+    return [
+        _ok(
+            "arm-4 ⊇ arm-3 tool grants",
+            not missing,
+            f"arm4 adds {sorted(a4 - a3)}; arm4 missing-from-arm3 {sorted(missing)}",
+        )
+    ]
 
 
 def _registry_arm(arm: str) -> str:
@@ -144,6 +196,7 @@ def _registry_arm(arm: str) -> str:
 
 def _target_experiment(target: str):
     from merlin.targetgen.target_experiment import load_target_experiment
+
     descriptor = C.DESCRIPTOR if target == C.TARGET else C.EXP.parent / target / "target_experiment.yaml"
     if not descriptor.is_file():
         raise FileNotFoundError(f"target descriptor is absent: {descriptor}")
@@ -153,6 +206,7 @@ def _target_experiment(target: str):
 def _public_bundle(te, arm: str) -> tuple[Path, dict]:
     """Return the one public bundle that an actual functional launch serves for this arm."""
     import yaml
+
     registry_arm = _registry_arm(arm)
     candidates: list[tuple[Path, dict]] = []
     for path in sorted((te.path.parent / "input_bundles").glob("*/input_bundle_manifest.yaml")):
@@ -162,13 +216,15 @@ def _public_bundle(te, arm: str) -> tuple[Path, dict]:
     if len(candidates) != 1:
         raise RuntimeError(
             f"expected exactly one {registry_arm} public bundle, found "
-            f"{[str(path.parent.name) for path, _ in candidates]}")
+            f"{[str(path.parent.name) for path, _ in candidates]}"
+        )
     return candidates[0]
 
 
 def _promised_paths(te, arm: str) -> tuple[list[str], tuple]:
     """Exact file grants and brokers promised by one registry arm."""
     from merlin.targetgen import tool_registry as registry
+
     tools = registry.arm_tools(_registry_arm(arm))
     paths: list[str] = []
     for name in tools:
@@ -187,12 +243,14 @@ def _tool_only_bundle(te, arm: str, bundle: dict) -> dict:
     force.  A stale manifest fails closed before bwrap starts.
     """
     promised, _ = _promised_paths(te, arm)
-    by_path = {str(entry.get("path")): entry for entry in bundle.get("allowed", [])
-               if isinstance(entry, dict) and entry.get("path")}
+    by_path = {
+        str(entry.get("path")): entry
+        for entry in bundle.get("allowed", [])
+        if isinstance(entry, dict) and entry.get("path")
+    }
     missing = sorted(set(promised) - set(by_path))
     if missing:
-        raise RuntimeError(
-            "public bundle is missing promised authoring grant(s): " + ", ".join(missing))
+        raise RuntimeError("public bundle is missing promised authoring grant(s): " + ", ".join(missing))
     return {
         "bundle_id": f"{bundle.get('bundle_id', 'bundle')}__tooling_readiness",
         "arm": bundle.get("arm"),
@@ -225,10 +283,13 @@ def _asm_probe_mnemonic(target: str) -> str:
     """
     try:
         import isa_tools_broker as _IB
+
         from merlin.targetgen import capsule_runner as _CR
+
         if _IB.is_rocc_endpoint(_CR._endpoint_of(target)[0]):
             return _ASM_PROBE_FALLBACK
         from merlin.targetgen.isa_model import isa_model_for_target
+
         model = isa_model_for_target(target)
     except Exception:  # noqa: BLE001 -- unresolvable endpoint/model: the broker reports it, not this helper
         return _ASM_PROBE_FALLBACK
@@ -386,35 +447,49 @@ def sandbox_authoring_readiness(target: str, arm: str = "merlin_assisted_rtlchec
                 shutil.copy2(C.HARNESS / shim, ws / staged_as)
             log = (channel / spec.log).open("w", encoding="utf-8")
             logs.append(log)
-            processes.append(subprocess.Popen(
-                [sys.executable, str(C.HARNESS / spec.module), "--ws", str(ws)],
-                cwd=str(C.REPO), env=broker_env, stdout=log, stderr=subprocess.STDOUT))
+            processes.append(
+                subprocess.Popen(
+                    [sys.executable, str(C.HARNESS / spec.module), "--ws", str(ws)],
+                    cwd=str(C.REPO),
+                    env=broker_env,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                )
+            )
 
         # The shims themselves poll for replies, so an ordinary scheduling race is safe.  Still wait a
         # short bounded interval and reject a broker that dies during import/startup before entering bwrap.
         time.sleep(0.5)
-        dead = [f"{spec.module}:rc={process.poll()}"
-                for spec, process in zip(broker_specs, processes, strict=True)
-                if process.poll() is not None]
+        dead = [
+            f"{spec.module}:rc={process.poll()}"
+            for spec, process in zip(broker_specs, processes, strict=True)
+            if process.poll() is not None
+        ]
         if dead:
             raise RuntimeError("promised broker failed during startup: " + ", ".join(dead))
 
         probe = _authoring_probe(target)
-        argv = [*BW.full_argv(te, ws, tool_bundle), "bash", "-c",
-                TC.sandbox_env(te, ws) + f"python3 -c {shlex.quote(probe)}"]
+        argv = [
+            *BW.full_argv(te, ws, tool_bundle),
+            "bash",
+            "-c",
+            TC.sandbox_env(te, ws) + f"python3 -c {shlex.quote(probe)}",
+        ]
         run = subprocess.run(argv, cwd=str(C.REPO), capture_output=True, text=True, timeout=180)
         evidence = (run.stdout + "\n" + run.stderr).strip()
-        ok = (run.returncode == 0
-              and "AUTHORING_IMPORTS_AND_OUTPUTS_OK" in run.stdout
-              and "BROKER_ROUNDTRIPS_OK" in run.stdout)
+        ok = (
+            run.returncode == 0
+            and "AUTHORING_IMPORTS_AND_OUTPUTS_OK" in run.stdout
+            and "BROKER_ROUNDTRIPS_OK" in run.stdout
+        )
         detail = (
             f"bundle={manifest_path.parent.name}; snapshot={snapshot['content_sha256']} "
             f"({snapshot['n_files']} files/{snapshot['n_bytes']} bytes); rc={run.returncode}; "
-            f"output={evidence[-1200:]}")
+            f"output={evidence[-1200:]}"
+        )
         return _ok("assembled bwrap authoring tools", ok, detail)
     except Exception as exc:  # noqa: BLE001 -- prelaunch gate must report and fail closed
-        return _ok("assembled bwrap authoring tools", False,
-                   f"{type(exc).__name__}: {str(exc)[:1200]}")
+        return _ok("assembled bwrap authoring tools", False, f"{type(exc).__name__}: {str(exc)[:1200]}")
     finally:
         for spec in broker_specs:
             channel = (ws or Path("/nonexistent")) / spec.channel
@@ -437,8 +512,13 @@ def sandbox_authoring_readiness(target: str, arm: str = "merlin_assisted_rtlchec
 # arm -> the capability groups that arm advertises (arm-4 is arm-3 ∪ the RTL surface).
 _ARM3 = ("seam_menu", "derived_levers")
 _ARM4 = _ARM3 + ("rtl_facts", "rtl_checks", "oracle")
-_GROUPS = {"seam_menu": _seam_menu_checks, "derived_levers": _derived_lever_checks,
-           "rtl_facts": _rtl_fact_checks, "rtl_checks": _rtl_check_checks, "oracle": _oracle_checks}
+_GROUPS = {
+    "seam_menu": _seam_menu_checks,
+    "derived_levers": _derived_lever_checks,
+    "rtl_facts": _rtl_fact_checks,
+    "rtl_checks": _rtl_check_checks,
+    "oracle": _oracle_checks,
+}
 
 
 def readiness(target: str, arm: str = "merlin_assisted_rtlchecks") -> dict:
@@ -462,9 +542,11 @@ def submission_language_ok(submission_dir, arm: str) -> tuple[bool, str]:
     compiles a C++ tool (cmake / mlir-tblgen / a *-opt binary) is present. The C++ arms are exempt (that
     is their mandated method). Pure + target-agnostic — the grader/driver calls this to reject a
     non-compliant round with an actionable reason instead of grading a forbidden backend."""
-    import yaml
     from pathlib import Path
-    if "merlin_assisted" not in arm:               # only the merlin (xDSL) arms are constrained
+
+    import yaml
+
+    if "merlin_assisted" not in arm:  # only the merlin (xDSL) arms are constrained
         return True, "not a merlin arm (no xDSL mandate)"
     mpath = Path(submission_dir) / "mlir_oot" / "manifest.yaml"
     if not mpath.is_file():

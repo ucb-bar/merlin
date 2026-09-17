@@ -1,9 +1,17 @@
 """Capture arc middle-tier results into arc_results.json for plotting: per-capsule bit-exact + cycles,
 an A2 memory-latency sweep, and host-comm telemetry. Drives the existing replay harness per capsule."""
+
 from __future__ import annotations
-import json, re, subprocess, sys, os
+
+import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
+
 import _pbcommon as PB
+
 from merlin.targetgen.rtl.facts import rtl_cache_dir, rtl_facts_path
 
 REPO = PB.REPO
@@ -26,12 +34,28 @@ def cap_yaml(name):
 
 
 def build_and_run(cap, trace, env=None):
-    subprocess.run([PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(CACHE / "r.json")],
-                   cwd=REPO / "merlin/python", capture_output=True)
+    subprocess.run(
+        [PYBIN, "-m", GEN, str(cap), str(trace), "--out", str(CACHE / "r.json")],
+        cwd=REPO / "merlin/python",
+        capture_output=True,
+    )
     subprocess.run([PYBIN, H, str(CACHE / "r.json"), str(CACHE / "replay_active.h")], capture_output=True)
-    subprocess.run(["clang", "-O2", "-w", "-I", str(CACHE), "-I", str(PIN),
-                    str(PIN / "gemmini_arc_replay.c"), str(CACHE / "gemmini.o"),
-                    "-o", str(CACHE / "rbin")], capture_output=True)
+    subprocess.run(
+        [
+            "clang",
+            "-O2",
+            "-w",
+            "-I",
+            str(CACHE),
+            "-I",
+            str(PIN),
+            str(PIN / "gemmini_arc_replay.c"),
+            str(CACHE / "gemmini.o"),
+            "-o",
+            str(CACHE / "rbin"),
+        ],
+        capture_output=True,
+    )
     e = dict(os.environ, **(env or {}))
     out = subprocess.run([str(CACHE / "rbin")], capture_output=True, text=True, timeout=300, env=e).stdout
     return out
@@ -41,9 +65,9 @@ def parse(out):
     cyc = int(m.group(1)) if (m := re.search(r"cycles=(\d+)", out)) else None
     bit = "BIT-EXACT PASS" in out
     hc = {}
-    if (m := re.search(r"rocc_cmds=(\d+).*busy_cyc=(\d+) \((\d+)%\)", out)):
+    if m := re.search(r"rocc_cmds=(\d+).*busy_cyc=(\d+) \((\d+)%\)", out):
         hc = {"cmds": int(m.group(1)), "busy_pct": int(m.group(3))}
-    if (m := re.search(r"mvin: \d+ Get xacts, (\d+) B.*mvout: \d+ Put xacts, (\d+) B", out)):
+    if m := re.search(r"mvin: \d+ Get xacts, (\d+) B.*mvout: \d+ Put xacts, (\d+) B", out):
         hc["mvin_B"], hc["mvout_B"] = int(m.group(1)), int(m.group(2))
     return cyc, bit, hc
 
@@ -66,13 +90,15 @@ def main():
             res["hostcomm"][name] = hc
         print(f"  {name}: cycles={cyc} bitexact={bit}")
     # A2 latency sweep
-    a2c = cap_yaml("A2_single_tile_matmul"); a2t = RUNS / "A2_single_tile_matmul/generated/instruction_trace.json"
+    a2c = cap_yaml("A2_single_tile_matmul")
+    a2t = RUNS / "A2_single_tile_matmul/generated/instruction_trace.json"
     for L in [0, 4, 16, 32, 64, 128]:
         out = build_and_run(a2c, a2t, env={"ARC_MEM_LATENCY": str(L)})
         cyc, _, _ = parse(out)
         res["latency_sweep"].append({"latency": L, "cycles": cyc})
         print(f"  latency {L}: cycles={cyc}")
-    n = len(res["capsules"]); ok = sum(1 for c in res["capsules"] if c["bitexact"])
+    n = len(res["capsules"])
+    ok = sum(1 for c in res["capsules"] if c["bitexact"])
     res["summary"] = {"n": n, "bitexact": ok}
     (PIN / "arc_results.json").write_text(json.dumps(res, indent=2))
     print(f"\nwrote arc_results.json: {ok}/{n} bit-exact")

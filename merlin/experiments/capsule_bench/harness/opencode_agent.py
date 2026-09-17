@@ -19,6 +19,7 @@ bearer token in the inherited env). opencode is Bun-based, so — like the ``cla
 needs ``--sandbox none`` in this environment; at ``none`` the copied-workspace + post-run transcript audit
 provide isolation (the same path the claude driver uses today).
 """
+
 from __future__ import annotations
 
 import json
@@ -32,6 +33,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import model_tiers as _MT
+
 from merlin.common import arrival_stamp as _AS  # the one arrival-time convention
 
 # opencode's provider id for Amazon Bedrock (the @ai-sdk/amazon-bedrock provider). Overridable via env for a
@@ -203,7 +205,7 @@ def _tree_cpu_seconds(pgid: int) -> float:
         try:
             with open(f"/proc/{pid}/stat") as fh:
                 rest = fh.read().rpartition(")")[2].split()
-            if int(rest[2]) != pgid:          # field 5 (pgrp), 3rd after the comm split
+            if int(rest[2]) != pgid:  # field 5 (pgrp), 3rd after the comm split
                 continue
             total += (int(rest[11]) + int(rest[12])) / _CLK_TCK
         except (OSError, ValueError, IndexError):
@@ -222,9 +224,9 @@ class AgentStalled(subprocess.TimeoutExpired):
     """
 
 
-def _capture(cmd: list, env: dict, timeout: int, cwd: str,
-             stall_seconds: int = _STALL_SECONDS,
-             stamps: list | None = None) -> tuple[int, str, str]:
+def _capture(
+    cmd: list, env: dict, timeout: int, cwd: str, stall_seconds: int = _STALL_SECONDS, stamps: list | None = None
+) -> tuple[int, str, str]:
     """Run ``cmd`` capturing stdout to a FILE (opencode truncates a piped stream at 64 KiB and still exits 0,
     cutting the JSON mid-stream). stdin=DEVNULL because ``run`` blocks on an open stdin pipe.
 
@@ -244,7 +246,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
     tmp.close()
     errf = tempfile.NamedTemporaryFile(mode="w", suffix=".err", prefix="oc_err_", delete=False)
     errf.close()
-    _tailf = None                      # the arrival-stamp tail handle; closed in the outer finally
+    _tailf = None  # the arrival-stamp tail handle; closed in the outer finally
 
     def _reap(proc):
         """Kill the whole tree: bash -> bwrap -> opencode."""
@@ -259,8 +261,16 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
         # hung the post-timeout reap before, and a file also lets the poll loop below run without ever
         # risking a full-pipe deadlock.
         with open(tmp.name, "w") as out, open(errf.name, "w") as err:
-            p = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=out, stderr=err,
-                                 text=True, cwd=cwd, env=env, start_new_session=True)
+            p = subprocess.Popen(
+                cmd,
+                stdin=subprocess.DEVNULL,
+                stdout=out,
+                stderr=err,
+                text=True,
+                cwd=cwd,
+                env=env,
+                start_new_session=True,
+            )
             deadline = time.monotonic() + timeout
             pgid = os.getpgid(p.pid)
             last_size, last_change = -1, time.monotonic()
@@ -283,10 +293,11 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     if nl < 0:
                         break
                     stamps.append(arrived)
-                    del _pending[:nl + 1]
-                if final and _pending:              # a last line with no trailing newline
+                    del _pending[: nl + 1]
+                if final and _pending:  # a last line with no trailing newline
                     stamps.append(arrived)
                     _pending.clear()
+
             def _with_partial(exc):
                 """Attach whatever the run produced before it was killed.
 
@@ -296,7 +307,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                 round spent 40 minutes working and left a two-line transcript. The work is not
                 recoverable, but the record of it is."""
                 try:
-                    _drain(final=True)          # stamp what arrived before the kill, then salvage it
+                    _drain(final=True)  # stamp what arrived before the kill, then salvage it
                     exc.partial_stdout = Path(tmp.name).read_text(errors="replace")
                     exc.partial_stderr = Path(errf.name).read_text(errors="replace")
                 except OSError:
@@ -310,7 +321,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                     raise _with_partial(subprocess.TimeoutExpired(cmd, timeout))
                 try:
                     p.wait(timeout=min(_TAIL_POLL_SECONDS, remaining))
-                    break                                   # exited on its own
+                    break  # exited on its own
                 except subprocess.TimeoutExpired:
                     pass
                 _drain()
@@ -336,7 +347,7 @@ def _capture(cmd: list, env: dict, timeout: int, cwd: str,
                 cpu_rate = (cpu - last_cpu) / elapsed
                 busy = cpu - last_cpu >= _CPU_EPSILON_S
                 if busy and _tree_socket_count(pgid) == 0 and cpu_rate < _BUSY_CPU_FRACTION:
-                    busy = False              # alive, connected to nothing, and not doing local work
+                    busy = False  # alive, connected to nothing, and not doing local work
                 last_poll = now
                 if size != last_size or busy:
                     last_size, last_cpu, last_change = size, max(cpu, last_cpu), now
@@ -395,26 +406,47 @@ def _export_to_transcript(export: dict, mid: str, rnd: int, emit) -> None:
                 blocks.append({"type": "text", "text": p.get("text", "")})
             elif p.get("type") == "tool":
                 st = p.get("state") or {}
-                cid = p.get("callID") or p.get("id")            # same id links tool_use <-> tool_result
-                blocks.append({"type": "tool_use", "id": cid, "name": p.get("tool", "tool"),
-                               "input": st.get("input", {}) if isinstance(st, dict) else {}})
+                cid = p.get("callID") or p.get("id")  # same id links tool_use <-> tool_result
+                blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": cid,
+                        "name": p.get("tool", "tool"),
+                        "input": st.get("input", {}) if isinstance(st, dict) else {},
+                    }
+                )
                 out = st.get("output") if isinstance(st, dict) else None
                 if out is not None:
-                    tool_results.append({"type": "tool_result", "tool_use_id": cid,
-                                         "content": out if isinstance(out, str) else json.dumps(out)})
-        emit({"type": "assistant", "message": {
-            "id": f"opencode_{rnd}_{info.get('id', '')}",
-            "model": info.get("modelID") or mid,
-            "usage": {"input_tokens": tok.get("input", 0) or 0,
-                      "output_tokens": tok.get("output", 0) or 0,
-                      "cache_read_input_tokens": cache.get("read", 0) or 0,
-                      "cache_creation_input_tokens": cache.get("write", 0) or 0},
-            "content": blocks}, **({_AS.ARRIVED_AT: arrived} if arrived else {})})
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": cid,
+                            "content": out if isinstance(out, str) else json.dumps(out),
+                        }
+                    )
+        emit(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"opencode_{rnd}_{info.get('id', '')}",
+                    "model": info.get("modelID") or mid,
+                    "usage": {
+                        "input_tokens": tok.get("input", 0) or 0,
+                        "output_tokens": tok.get("output", 0) or 0,
+                        "cache_read_input_tokens": cache.get("read", 0) or 0,
+                        "cache_creation_input_tokens": cache.get("write", 0) or 0,
+                    },
+                    "content": blocks,
+                },
+                **({_AS.ARRIVED_AT: arrived} if arrived else {}),
+            }
+        )
         # claude-compatible tool_result events so the transcript is self-authoritative + the mask-leak
         # audit can correlate each read's result (parity with the claude-CLI path).
         if tool_results:
-            emit({"type": "user", "message": {"content": tool_results},
-                  **({_AS.ARRIVED_AT: arrived} if arrived else {})})
+            emit(
+                {"type": "user", "message": {"content": tool_results}, **({_AS.ARRIVED_AT: arrived} if arrived else {})}
+            )
 
 
 def _parse_run_stream(stdout: str, mid: str, rnd: int, emit, stamps: list | None = None) -> int:
@@ -437,7 +469,7 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit, stamps: list | None
 
     def _stamped(obj: dict, at: str | None) -> dict:
         if at:
-            obj[_AS.ARRIVED_AT] = at            # appended last: no existing field moves or changes
+            obj[_AS.ARRIVED_AT] = at  # appended last: no existing field moves or changes
         return obj
 
     for _i, line in enumerate(stdout.split("\n")):
@@ -452,21 +484,64 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit, stamps: list | None
         part = e.get("part") or {}
         pt = part.get("type")
         if pt == "text" and part.get("text"):
-            emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_{part.get('id','')}", "model": mid,
-                  "usage": {"input_tokens": 0, "output_tokens": 0}, "content": [{"type": "text", "text": part["text"]}]}}, arrived))
+            emit(
+                _stamped(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "id": f"opencode_{rnd}_{part.get('id', '')}",
+                            "model": mid,
+                            "usage": {"input_tokens": 0, "output_tokens": 0},
+                            "content": [{"type": "text", "text": part["text"]}],
+                        },
+                    },
+                    arrived,
+                )
+            )
         elif pt == "tool":
             st = part.get("state") or {}
             cid = part.get("callID") or part.get("id")
-            emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_{cid}", "model": mid,
-                  "usage": {"input_tokens": 0, "output_tokens": 0},
-                  "content": [{"type": "tool_use", "id": cid, "name": part.get("tool", "tool"),
-                               "input": st.get("input", {}) if isinstance(st, dict) else {}}]}}, arrived))
+            emit(
+                _stamped(
+                    {
+                        "type": "assistant",
+                        "message": {
+                            "id": f"opencode_{rnd}_{cid}",
+                            "model": mid,
+                            "usage": {"input_tokens": 0, "output_tokens": 0},
+                            "content": [
+                                {
+                                    "type": "tool_use",
+                                    "id": cid,
+                                    "name": part.get("tool", "tool"),
+                                    "input": st.get("input", {}) if isinstance(st, dict) else {},
+                                }
+                            ],
+                        },
+                    },
+                    arrived,
+                )
+            )
             n_tools += 1
             out = st.get("output") if isinstance(st, dict) else None
             if out is not None:
-                emit(_stamped({"type": "user", "message": {"content": [
-                    {"type": "tool_result", "tool_use_id": cid,
-                     "content": out if isinstance(out, str) else json.dumps(out)}]}}, arrived))
+                emit(
+                    _stamped(
+                        {
+                            "type": "user",
+                            "message": {
+                                "content": [
+                                    {
+                                        "type": "tool_result",
+                                        "tool_use_id": cid,
+                                        "content": out if isinstance(out, str) else json.dumps(out),
+                                    }
+                                ]
+                            },
+                        },
+                        arrived,
+                    )
+                )
         elif pt == "step-finish":
             t = part.get("tokens") or {}
             c = t.get("cache") or {}
@@ -481,10 +556,26 @@ def _parse_run_stream(stdout: str, mid: str, rnd: int, emit, stamps: list | None
             tok["reasoning"] += t.get("reasoning", 0) or 0
     # one usage-bearing assistant event so token/cost accounting sees the round's totals. Stamped with
     # the LAST line's arrival: it is a rollup of the stream just read, not an event that arrived later.
-    emit(_stamped({"type": "assistant", "message": {"id": f"opencode_{rnd}_usage", "model": mid, "content": [],
-          "usage": {"input_tokens": tok["input"], "output_tokens": tok["output"],
-                    "cache_read_input_tokens": tok["cread"], "cache_creation_input_tokens": tok["cwrite"],
-                    "reasoning_tokens": tok["reasoning"]}}}, stamps[-1] if stamps else None))
+    emit(
+        _stamped(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"opencode_{rnd}_usage",
+                    "model": mid,
+                    "content": [],
+                    "usage": {
+                        "input_tokens": tok["input"],
+                        "output_tokens": tok["output"],
+                        "cache_read_input_tokens": tok["cread"],
+                        "cache_creation_input_tokens": tok["cwrite"],
+                        "reasoning_tokens": tok["reasoning"],
+                    },
+                },
+            },
+            stamps[-1] if stamps else None,
+        )
+    )
     return n_tools
 
 
@@ -514,11 +605,9 @@ def opencode_runtime_binds(data_home: Path, config_path: Path | None = None) -> 
     read-only is what makes any of those settings real.
     """
     data_home.mkdir(parents=True, exist_ok=True)
-    binds = ["--bind", str(data_home), str(data_home),
-             "--setenv", "XDG_DATA_HOME", str(data_home)]
+    binds = ["--bind", str(data_home), str(data_home), "--setenv", "XDG_DATA_HOME", str(data_home)]
     if config_path is not None:
-        binds += ["--ro-bind", str(config_path), str(config_path),
-                  "--setenv", "OPENCODE_CONFIG", str(config_path)]
+        binds += ["--ro-bind", str(config_path), str(config_path), "--setenv", "OPENCODE_CONFIG", str(config_path)]
     return binds
 
 
@@ -544,8 +633,7 @@ def opencode_runtime_binds(data_home: Path, config_path: Path | None = None) -> 
 # use. ``OPENCODE_MAX_OUTPUT_TOKENS`` overrides the output ask for a one-off.
 import agent_bridge as _BR
 
-_DEFAULT_MAX_OUTPUT = int(os.environ.get("OPENCODE_MAX_OUTPUT_TOKENS",
-                                        str(_BR.DEFAULT_MAX_OUTPUT)))
+_DEFAULT_MAX_OUTPUT = int(os.environ.get("OPENCODE_MAX_OUTPUT_TOKENS", str(_BR.DEFAULT_MAX_OUTPUT)))
 
 
 def _window_config(mid: str) -> tuple[dict, dict]:
@@ -573,9 +661,22 @@ def _window_config(mid: str) -> tuple[dict, dict]:
 _CONTEXT_WINDOWS: dict[str, int] = _BR.CONTEXT_WINDOWS
 
 
-def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: str, rnd: int,
-              timeout: int, *, subagent_model: str = "", background_model: str = "",
-              effort: str = "", prompt: str | None = None, **_ignored) -> tuple[int, Path]:
+def run_round(
+    ws: Path,
+    run_dir: Path,
+    model: str,
+    bundle: dict,
+    te,
+    sandbox: str,
+    rnd: int,
+    timeout: int,
+    *,
+    subagent_model: str = "",
+    background_model: str = "",
+    effort: str = "",
+    prompt: str | None = None,
+    **_ignored,
+) -> tuple[int, Path]:
     """Drive ONE capsule-bench round via the opencode CLI. Returns (rc, transcript_path) — the same contract
     as ``launch_agent``'s claude path.
 
@@ -585,6 +686,7 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     provider default while the claude and codex arms of the SAME campaign ran at the declared effort —
     a comparison between models that was partly a comparison between reasoning budgets."""
     import run_baseline_qa_loop as _R  # bwrap_cmd — the same integrity wrapper the claude path uses
+
     opencode_bin = os.environ.get("OPENCODE_BIN", "opencode")
     mid = _provider_model(model)
     tpath = run_dir / "rounds" / f"round_{rnd:02d}.transcript.jsonl"
@@ -596,7 +698,8 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         # stream-derived events arrive here already carrying the arrival time of the line they came from,
         # and setdefault must not overwrite that. Same `arrived_at` field as every other driver.
         obj.setdefault(_AS.ARRIVED_AT, _AS.now_iso())
-        tf.write(json.dumps(obj) + "\n"); tf.flush()
+        tf.write(json.dumps(obj) + "\n")
+        tf.flush()
 
     sub = _MT.resolve(subagent_model) if subagent_model else ""
     _delegate = _provider_model(sub) if (sub and _provider_model(sub) != mid) else None
@@ -605,20 +708,33 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # executed at the provider default -- an artifact asserting something untrue about its own run. The
     # codex driver already writes a record of this shape; matching it makes an opencode run auditable from
     # its own transcript.
-    emit({"type": "system", "subtype": "init", "model": mid, "round": rnd, "driver": "opencode",
-          "effort_requested": effort or None,
-          "variant_passed": (effort or "").strip() or None,
-          "sandbox": sandbox,
-          "delegate_model": _delegate,
-          "context_window": _CONTEXT_WINDOWS.get(mid.partition("/")[2]),
-          "max_output_tokens": _window_config(mid)[0].get(mid.partition("/")[0], {})
-                               .get("models", {}).get(mid.partition("/")[2], {})
-                               .get("limit", {}).get("output"),
-          "compaction": _window_config(mid)[1],
-          "task_tool_offered": bool(sub),
-          "workspace_instruction_files": {n: (ws / n).stat().st_size
-                                          for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")
-                                          if (ws / n).is_file()}})
+    emit(
+        {
+            "type": "system",
+            "subtype": "init",
+            "model": mid,
+            "round": rnd,
+            "driver": "opencode",
+            "effort_requested": effort or None,
+            "variant_passed": (effort or "").strip() or None,
+            "sandbox": sandbox,
+            "delegate_model": _delegate,
+            "context_window": _CONTEXT_WINDOWS.get(mid.partition("/")[2]),
+            "max_output_tokens": _window_config(mid)[0]
+            .get(mid.partition("/")[0], {})
+            .get("models", {})
+            .get(mid.partition("/")[2], {})
+            .get("limit", {})
+            .get("output"),
+            "compaction": _window_config(mid)[1],
+            "task_tool_offered": bool(sub),
+            "workspace_instruction_files": {
+                n: (ws / n).stat().st_size
+                for n in ("TASK.md", "AGENTS.md", "CLAUDE.md", "AGENT.md")
+                if (ws / n).is_file()
+            },
+        }
+    )
 
     # opencode config: our system prompt as the primary agent + allow-all permissions (external_directory is
     # NOT covered by --auto, so it must be allowed here). Tier-within-agent: register a cheaper subagent when
@@ -658,9 +774,12 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # available to it (qwen-coder alongside glm5/nemotron) while the codex and claude arms had none. That
     # is a third variable in a two-variable comparison; the capability stays, the default does not.
     if sub and _provider_model(sub) != mid:
-        cfg["agent"]["delegate"] = {"mode": "subagent", "model": _provider_model(sub),
-                                    "prompt": "Focused sub-agent: do EXACTLY the delegated task, then reply "
-                                              "with a short result summary. Do not read golden/expected files."}
+        cfg["agent"]["delegate"] = {
+            "mode": "subagent",
+            "model": _provider_model(sub),
+            "prompt": "Focused sub-agent: do EXACTLY the delegated task, then reply "
+            "with a short result summary. Do not read golden/expected files.",
+        }
     cfgf = tempfile.NamedTemporaryFile(mode="w", suffix=".json", prefix="oc_cfg_", delete=False)
     json.dump(cfg, cfgf)
     cfgf.close()
@@ -669,25 +788,29 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     env["OPENCODE_CONFIG"] = cfgf.name
     env["OPENCODE_DISABLE_PROJECT_CONFIG"] = "1"  # a stray opencode.json in cwd must not shadow our config
 
-    msg = prompt if prompt is not None else (
-        "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
-        "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
-        "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
-        "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
-        "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
-        "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
-        "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
-        "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
-        "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
-        "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
-        "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
-        "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
-        "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
-        "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
-        "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
-        "Begin now.")
-    run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid,
-               "--dir", str(ws)]
+    msg = (
+        prompt
+        if prompt is not None
+        else (
+            "Read TASK.md and qa/verdict.json (if present) in your workspace, then build or repair the target "
+            "backend under submission/ per those instructions. During iteration, check the smallest affected capsule "
+            "or coherent comma-separated capsule cluster with `python3 agent_selfcheck.py --submission submission "
+            "--sim spike --capsules <names>`; do not repeatedly grade the whole corpus. Run `--capsules all` only "
+            "after the focused checks improve and the candidate is ready for a regression sweep. Do not edit "
+            "submission/ while a self-check is running, because that makes its result stale. Goldens are withheld; "
+            "iterate until the complete corpus passes. THE FIRST GRADE NEEDS YOUR SUBMISSION FIRST: the harness "
+            "grades submission/, so while submission/manifest.yaml does not exist there is NOTHING to grade and no "
+            "verdict can ever arrive -- an absent qa/verdict.json is not a queue you wait in, it means you have not "
+            "submitted yet. MEASURED: two runs each burned their whole first round blocked on await_verdict.py "
+            "reporting 'the waiter is healthy but has received nothing' while the harness logged 'no "
+            "submission/manifest.yaml to grade yet' every 30s -- a mutual wait that consumes the round timeout. "
+            "Build something minimal and write submission/manifest.yaml FIRST; only once a verdict exists does "
+            "waiting for the next one make sense (then use await_verdict.py rather than a poll loop, and do not "
+            "launch `--capsules all` merely to refresh it). Use exact capsule directory names for focused checks. "
+            "Begin now."
+        )
+    )
+    run_cmd = [opencode_bin, "run", "--format", "json", "--agent", agent_name, "-m", mid, "--dir", str(ws)]
     # opencode spells reasoning effort `--variant` (provider-specific: high / max / minimal). Passing it is
     # what makes an opencode arm comparable to the codex and claude arms of the same campaign.
     if (effort or "").strip():
@@ -699,12 +822,15 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     # sees any prior session; at none, isolation is the copied workspace + the post-run transcript audit.
     if sandbox == "bwrap":
         from merlin.common.artifacts import cache_dir
+
         data_home = cache_dir("opencode_home") / f"{run_dir.name}_r{rnd:02d}"
-        env["XDG_DATA_HOME"] = str(data_home)     # also for the outer process, so both agree
+        env["XDG_DATA_HOME"] = str(data_home)  # also for the outer process, so both agree
         inner = " ".join(shlex.quote(c) for c in run_cmd)
-        cmd = ["bash", "-c", _R.bwrap_cmd(inner, ws, bundle,
-                                          extra_binds=opencode_runtime_binds(data_home,
-                                                                             Path(cfgf.name)))]
+        cmd = [
+            "bash",
+            "-c",
+            _R.bwrap_cmd(inner, ws, bundle, extra_binds=opencode_runtime_binds(data_home, Path(cfgf.name))),
+        ]
     else:
         cmd = run_cmd
 
@@ -714,9 +840,11 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     try:
         code, stdout, stderr = _capture(cmd, env, timeout, str(ws), stamps=stamps)
     except subprocess.TimeoutExpired as _te:
-        _why = ("agent stalled: no output for "
-                f"{getattr(_te, 'timeout', '?')}s while the process stayed alive"
-                if isinstance(_te, AgentStalled) else "opencode run timed out")
+        _why = (
+            f"agent stalled: no output for {getattr(_te, 'timeout', '?')}s while the process stayed alive"
+            if isinstance(_te, AgentStalled)
+            else "opencode run timed out"
+        )
         # Salvage the round's record before reporting the kill. A timed-out round did real work and its
         # actions and token usage are in the stream captured so far; discarding them reported the round as
         # though the agent had done nothing, which is both false and unbudgetable -- the tokens were spent.
@@ -724,14 +852,13 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
         _recovered = _parse_run_stream(_partial, mid, rnd, emit, stamps=stamps) if _partial else 0
         if _recovered == 0 and _partial:
             _sid = _parse_session_id(_partial)
-            if _sid:                                    # the session store outlives the killed process
+            if _sid:  # the session store outlives the killed process
                 try:
                     _ec, _eo, _ = _capture([opencode_bin, "export", _sid], env, 120, str(ws))
                     _export_to_transcript(json.loads(_eo) if _ec == 0 else {}, mid, rnd, emit)
                 except Exception:  # noqa: BLE001 — salvage is best-effort; never mask the timeout
                     pass
-        emit({"type": "result", "subtype": "error", "is_error": True,
-              "result": _why, "recovered_actions": _recovered})
+        emit({"type": "result", "subtype": "error", "is_error": True, "result": _why, "recovered_actions": _recovered})
         tf.close()
         try:
             os.unlink(cfgf.name)
@@ -744,8 +871,14 @@ def run_round(ws: Path, run_dir: Path, model: str, bundle: dict, te, sandbox: st
     run_err = _parse_run_error(stdout)
     sid = _parse_session_id(stdout)
     if sid is None:
-        emit({"type": "result", "subtype": "error", "is_error": True,
-              "result": run_err or f"opencode: no session id (rc={code}); {stderr[:200]}"})
+        emit(
+            {
+                "type": "result",
+                "subtype": "error",
+                "is_error": True,
+                "result": run_err or f"opencode: no session id (rc={code}); {stderr[:200]}",
+            }
+        )
         tf.close()
         try:
             os.unlink(cfgf.name)

@@ -20,6 +20,7 @@ WHAT IT DOES NOT DO. It does not fit a signal and report the fitted number. Any 
 needs is fitted on one half of the workloads and every rate reported is measured on the other half,
 because a signal fitted and scored on the same programs is scored on what it memorised.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,9 +34,9 @@ from typing import Any
 REPO = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(REPO / "merlin" / "python"))
 
-from merlin.common import paths                                        # noqa: E402
+from merlin.common import paths  # noqa: E402
 from merlin.perf import barrier_arms, depgraph, rank_validation, schedule_pressure  # noqa: E402
-from merlin.perf.deps import rocc                                      # noqa: E402
+from merlin.perf.deps import rocc  # noqa: E402
 
 #: The console line the oracle writes its cycle count on: a metric keyword, a metric name, a value.
 METRIC_KEYWORD = "METRIC"
@@ -68,8 +69,10 @@ def _program_digest(trace: Mapping[str, Any]) -> str:
     A trace carries the path it came from, so a file digest makes one program measured many times
     look like many programs and multiplies every count below by the number of times it was re-run.
     """
-    body = [[row.get("class"), row.get("funct"), row.get("decoded"), row.get("rs1"), row.get("rs2")]
-            for row in (trace.get("instructions") or [])]
+    body = [
+        [row.get("class"), row.get("funct"), row.get("decoded"), row.get("rs1"), row.get("rs2")]
+        for row in (trace.get("instructions") or [])
+    ]
     return hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()
 
 
@@ -77,7 +80,7 @@ def _workload_of(run_dir: Path, prefix: str) -> str:
     """The capsule a run directory belongs to, from the run name the harness built it with."""
     name = run_dir.name
     if name.startswith(prefix):
-        name = name[len(prefix):]
+        name = name[len(prefix) :]
     for suffix in ("_baseline", "_candidate"):
         cut = name.find(suffix)
         if cut >= 0:
@@ -104,9 +107,16 @@ def harvest(roots: "Sequence[Path]", *, prefix: str) -> dict[str, dict[str, Any]
                 continue
             trace = json.loads(trace_path.read_text())
             digest = _program_digest(trace)
-            record = found.setdefault(digest, {
-                "digest": digest, "workload": _workload_of(run_dir, prefix),
-                "trace": str(trace_path), "measured": set(), "runs": 0})
+            record = found.setdefault(
+                digest,
+                {
+                    "digest": digest,
+                    "workload": _workload_of(run_dir, prefix),
+                    "trace": str(trace_path),
+                    "measured": set(),
+                    "runs": 0,
+                },
+            )
             record["measured"].add(cycles)
             record["runs"] += 1
     return found
@@ -123,28 +133,35 @@ def _family_of(workload: str) -> str:
 # ---------------------------------------------------------------------------------------------------
 def _graph(trace: Mapping[str, Any], *, masks, roles, issue_cycles: float, separation: float):
     program = rocc.program_from_trace(trace, flag_masks=masks, roles=roles)
-    issue = depgraph.IssueModel(issue_cycles=issue_cycles, stall_unit=issue_cycles,
-                                tier="fitted", provenance="fitted on the training half")
-    dag = depgraph.build_dag(program.instructions, program.effects, issue=issue, stall_mnemonic="",
-                             roles=program.roles,
-                             resolved_separations={"separation.accelerator": separation})
+    issue = depgraph.IssueModel(
+        issue_cycles=issue_cycles, stall_unit=issue_cycles, tier="fitted", provenance="fitted on the training half"
+    )
+    dag = depgraph.build_dag(
+        program.instructions,
+        program.effects,
+        issue=issue,
+        stall_mnemonic="",
+        roles=program.roles,
+        resolved_separations={"separation.accelerator": separation},
+    )
     return program, dag
 
 
-def score_signals(records: "Sequence[Mapping[str, Any]]", *, target: str,
-                  issue_cycles: float, separation: float) -> dict[str, dict[str, float]]:
+def score_signals(
+    records: "Sequence[Mapping[str, Any]]", *, target: str, issue_cycles: float, separation: float
+) -> dict[str, dict[str, float]]:
     """``{signal: {program digest: score}}`` for every signal, over every record it can read."""
     masks, roles = rocc.flag_masks_for(target), rocc.roles_for(target)
-    out: dict[str, dict[str, float]] = {name: {} for name in (
-        "command_count", "depgraph_makespan", "depgraph_critical_path", "tile_pressure",
-        "barrier_count")}
+    out: dict[str, dict[str, float]] = {
+        name: {}
+        for name in ("command_count", "depgraph_makespan", "depgraph_critical_path", "tile_pressure", "barrier_count")
+    }
     for record in records:
         trace = json.loads(Path(record["trace"]).read_text())
         digest = record["digest"]
         rows = trace.get("instructions") or []
         out["command_count"][digest] = float(len(rows))
-        program, dag = _graph(trace, masks=masks, roles=roles, issue_cycles=issue_cycles,
-                              separation=separation)
+        program, dag = _graph(trace, masks=masks, roles=roles, issue_cycles=issue_cycles, separation=separation)
         order = list(range(len(program.instructions)))
         if order:
             out["depgraph_makespan"][digest] = depgraph.makespan(dag, order)
@@ -152,16 +169,21 @@ def score_signals(records: "Sequence[Mapping[str, Any]]", *, target: str,
         pressure = schedule_pressure.peak_live_tiles(rows)
         if pressure.get("status") == "counted":
             out["tile_pressure"][digest] = float(pressure["peak_live_tiles"])
-        barriers = barrier_arms.count_barriers({"commands": [
-            {"opcode": str(r.get("class") or "")} for r in rows if isinstance(r, Mapping)]})
+        barriers = barrier_arms.count_barriers(
+            {"commands": [{"opcode": str(r.get("class") or "")} for r in rows if isinstance(r, Mapping)]}
+        )
         if isinstance(barriers.get("barriers"), int):
             out["barrier_count"][digest] = float(barriers["barriers"])
     return out
 
 
-def fit_graph_parameters(train: "Sequence[Mapping[str, Any]]", *, target: str,
-                         issue_grid: "Sequence[float]", separation_grid: "Sequence[float]"
-                         ) -> dict[str, Any]:
+def fit_graph_parameters(
+    train: "Sequence[Mapping[str, Any]]",
+    *,
+    target: str,
+    issue_grid: "Sequence[float]",
+    separation_grid: "Sequence[float]",
+) -> dict[str, Any]:
     """Pick the graph's two free parameters on the TRAINING workloads only.
 
     The sequencer's per-command cost and the one unpriced separation class are the graph's only free
@@ -169,38 +191,64 @@ def fit_graph_parameters(train: "Sequence[Mapping[str, Any]]", *, target: str,
     needs a per-cycle program counter, which nothing in this repo currently emits -- so they are
     FITTED, and fitting them is exactly why every rate this script reports comes from the other half.
     """
-    programs = [rank_validation.Program(workload=r["workload"], program=r["digest"],
-                                        measured=float(sorted(r["measured"])[0]),
-                                        group=_family_of(r["workload"])) for r in train]
+    programs = [
+        rank_validation.Program(
+            workload=r["workload"],
+            program=r["digest"],
+            measured=float(sorted(r["measured"])[0]),
+            group=_family_of(r["workload"]),
+        )
+        for r in train
+    ]
     pairs = rank_validation.ordered_pairs(programs)
     best: dict[str, Any] | None = None
     for issue_cycles in issue_grid:
         for separation in separation_grid:
-            scored = score_signals(train, target=target, issue_cycles=issue_cycles,
-                                   separation=separation)["depgraph_makespan"]
+            scored = score_signals(train, target=target, issue_cycles=issue_cycles, separation=separation)[
+                "depgraph_makespan"
+            ]
             got = rank_validation.agreement(pairs, scored)
             rate = got.rate
             if rate is None:
                 continue
             if best is None or rate > best["train_rate"]:
-                best = {"issue_cycles": issue_cycles, "separation": separation,
-                        "train_rate": rate, "train_decided": got.decided}
-    return best or {"issue_cycles": issue_grid[0], "separation": separation_grid[0],
-                    "train_rate": None, "train_decided": 0}
+                best = {
+                    "issue_cycles": issue_cycles,
+                    "separation": separation,
+                    "train_rate": rate,
+                    "train_decided": got.decided,
+                }
+    return best or {
+        "issue_cycles": issue_grid[0],
+        "separation": separation_grid[0],
+        "train_rate": None,
+        "train_decided": 0,
+    }
 
 
 def main(argv: "Sequence[str] | None" = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True, help="the target whose ISA facts the traces decode against")
-    ap.add_argument("--root", action="append", required=True, type=Path,
-                    help="a directory to harvest labelled runs from; repeatable")
+    ap.add_argument(
+        "--root",
+        action="append",
+        required=True,
+        type=Path,
+        help="a directory to harvest labelled runs from; repeatable",
+    )
     ap.add_argument("--run-prefix", default="", help="the prefix the harness names run directories with")
     ap.add_argument("--out", type=Path, default=None)
-    ap.add_argument("--margin", type=float, default=0.0,
-                    help="separation a signal must show before it is taken to have an opinion")
-    ap.add_argument("--margin-sweep", type=float, nargs="*", default=(0.0, 1.0, 2.0, 3.0),
-                    help="margins to report alongside the headline, so a rate that rose only "
-                         "because a contradicting slice went silent is visible")
+    ap.add_argument(
+        "--margin", type=float, default=0.0, help="separation a signal must show before it is taken to have an opinion"
+    )
+    ap.add_argument(
+        "--margin-sweep",
+        type=float,
+        nargs="*",
+        default=(0.0, 1.0, 2.0, 3.0),
+        help="margins to report alongside the headline, so a rate that rose only "
+        "because a contradicting slice went silent is visible",
+    )
     args = ap.parse_args(argv)
 
     found = harvest(args.root, prefix=args.run_prefix)
@@ -215,13 +263,24 @@ def main(argv: "Sequence[str] | None" = None) -> int:
     train = [r for r in records if r["workload"] in train_names]
     test = [r for r in records if r["workload"] not in train_names]
 
-    fitted = fit_graph_parameters(train, target=args.target, issue_grid=(1.0, 2.0, 4.0, 8.0),
-                                  separation_grid=(0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0))
-    scored = score_signals(test, target=args.target, issue_cycles=fitted["issue_cycles"],
-                           separation=fitted["separation"])
-    programs = [rank_validation.Program(workload=r["workload"], program=r["digest"],
-                                        measured=float(r["measured"][0]),
-                                        group=_family_of(r["workload"])) for r in test]
+    fitted = fit_graph_parameters(
+        train,
+        target=args.target,
+        issue_grid=(1.0, 2.0, 4.0, 8.0),
+        separation_grid=(0.0, 5.0, 10.0, 20.0, 40.0, 80.0, 160.0),
+    )
+    scored = score_signals(
+        test, target=args.target, issue_cycles=fitted["issue_cycles"], separation=fitted["separation"]
+    )
+    programs = [
+        rank_validation.Program(
+            workload=r["workload"],
+            program=r["digest"],
+            measured=float(r["measured"][0]),
+            group=_family_of(r["workload"]),
+        )
+        for r in test
+    ]
     pairs = rank_validation.ordered_pairs(programs)
 
     signals: dict[str, Any] = {}
@@ -231,8 +290,13 @@ def main(argv: "Sequence[str] | None" = None) -> int:
         by_family = rank_validation.held_out(programs, score, by="group", margin=args.margin)
         signals[name] = {
             "verdict": rank_validation.verdict(
-                overall, by_workload, minimum_rate=MINIMUM_RATE, minimum_decided=MINIMUM_DECIDED,
-                minimum_slice_decided=MINIMUM_SLICE_DECIDED, minimum_slices=MINIMUM_SLICES),
+                overall,
+                by_workload,
+                minimum_rate=MINIMUM_RATE,
+                minimum_decided=MINIMUM_DECIDED,
+                minimum_slice_decided=MINIMUM_SLICE_DECIDED,
+                minimum_slices=MINIMUM_SLICES,
+            ),
             "by_family": {n: a.to_dict() for n, a in by_family.items()},
             "scored_programs": len(score),
         }
@@ -250,12 +314,14 @@ def main(argv: "Sequence[str] | None" = None) -> int:
             got = rank_validation.agreement(pairs, score, margin=margin)
             per_slice = rank_validation.held_out(programs, score, by="workload", margin=margin)
             row[name] = {
-                "decided": got.decided, "rate": got.rate,
-                "qualifying_slices": sorted(n for n, a in per_slice.items()
-                                            if a.decided >= MINIMUM_SLICE_DECIDED),
+                "decided": got.decided,
+                "rate": got.rate,
+                "qualifying_slices": sorted(n for n, a in per_slice.items() if a.decided >= MINIMUM_SLICE_DECIDED),
                 "slices_below_chance": sorted(
-                    n for n, a in per_slice.items()
-                    if a.rate is not None and a.rate < rank_validation.CHANCE and a.decided),
+                    n
+                    for n, a in per_slice.items()
+                    if a.rate is not None and a.rate < rank_validation.CHANCE and a.decided
+                ),
             }
         sweep[f"{margin:g}"] = row
 
@@ -264,40 +330,52 @@ def main(argv: "Sequence[str] | None" = None) -> int:
         "target": args.target,
         "roots": [str(p) for p in args.root],
         "labelled": {
-            "programs": len(records), "workloads": len(workloads),
+            "programs": len(records),
+            "workloads": len(workloads),
             "families": sorted({_family_of(w) for w in workloads}),
             "runs_harvested": sum(r["runs"] for r in found.values()),
             "programs_measured_more_than_once": sum(1 for r in found.values() if r["runs"] > 1),
             "programs_with_disagreeing_labels": inconsistent,
         },
-        "split": {"train_workloads": sorted(train_names),
-                  "test_workloads": sorted(w for w in workloads if w not in train_names),
-                  "train_programs": len(train), "test_programs": len(test),
-                  "held_out_pairs": len(pairs)},
+        "split": {
+            "train_workloads": sorted(train_names),
+            "test_workloads": sorted(w for w in workloads if w not in train_names),
+            "train_programs": len(train),
+            "test_programs": len(test),
+            "held_out_pairs": len(pairs),
+        },
         "fitted_on_train_only": fitted,
-        "thresholds": {"minimum_rate": MINIMUM_RATE, "minimum_decided": MINIMUM_DECIDED,
-                       "minimum_slice_decided": MINIMUM_SLICE_DECIDED,
-                       "minimum_slices": MINIMUM_SLICES, "chance": rank_validation.CHANCE,
-                       "margin": args.margin},
+        "thresholds": {
+            "minimum_rate": MINIMUM_RATE,
+            "minimum_decided": MINIMUM_DECIDED,
+            "minimum_slice_decided": MINIMUM_SLICE_DECIDED,
+            "minimum_slices": MINIMUM_SLICES,
+            "chance": rank_validation.CHANCE,
+            "margin": args.margin,
+        },
         "signals": signals,
         "margin_sweep": sweep,
         "exposable": sorted(n for n, s in signals.items() if s["verdict"]["exposable"]),
     }
-    out = args.out or (paths.artifacts_dir() / "perf-bench" / args.target /
-                       "ordering_signal_validation.json")
+    out = args.out or (paths.artifacts_dir() / "perf-bench" / args.target / "ordering_signal_validation.json")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1), encoding="utf-8")
 
-    print(f"labelled {len(records)} distinct program(s) over {len(workloads)} workload(s) "
-          f"from {report['labelled']['runs_harvested']} run(s)")
-    print(f"held out {len(pairs)} within-workload ordered pair(s) on "
-          f"{len(report['split']['test_workloads'])} workload(s)")
+    print(
+        f"labelled {len(records)} distinct program(s) over {len(workloads)} workload(s) "
+        f"from {report['labelled']['runs_harvested']} run(s)"
+    )
+    print(
+        f"held out {len(pairs)} within-workload ordered pair(s) on {len(report['split']['test_workloads'])} workload(s)"
+    )
     for name, entry in sorted(signals.items()):
         overall = entry["verdict"]["overall"]
         rate = overall.get("rate")
-        print(f"  {name:24s} {overall['agreed']:5d}/{overall['decided']:5d} decided = "
-              f"{(f'{rate:.3f}' if rate is not None else '   n/a')}  "
-              f"{'EXPOSABLE' if entry['verdict']['exposable'] else 'refused'}")
+        print(
+            f"  {name:24s} {overall['agreed']:5d}/{overall['decided']:5d} decided = "
+            f"{(f'{rate:.3f}' if rate is not None else '   n/a')}  "
+            f"{'EXPOSABLE' if entry['verdict']['exposable'] else 'refused'}"
+        )
         if not entry["verdict"]["exposable"]:
             for reason in entry["verdict"]["reasons"]:
                 print(f"      - {reason}")

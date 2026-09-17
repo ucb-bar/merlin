@@ -15,10 +15,13 @@ Per run it surfaces BOTH dimensions:
 Everything is read from artifacts already on disk (no agent re-run). Honest about scale: each run is marked
 valid/invalid and N is recorded. -> reports/agentic_results.json
 """
+
 from __future__ import annotations
+
 import json
 import sys
 from pathlib import Path
+
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -86,14 +89,21 @@ def _completeness(run_id: str, audit: dict) -> dict | None:
     bk = (audit.get("backends") or {}).get(run_id)
     if not bk:
         return None
+
     def _frac(s):
         try:
-            n, t = str(s).split("/"); return {"passed": int(n), "total": int(t)}
+            n, t = str(s).split("/")
+            return {"passed": int(n), "total": int(t)}
         except Exception:
             return {"passed": None, "total": None}
-    return {"all": _frac(bk.get("passed")), "public": _frac(bk.get("public_passed")),
-            "hidden": _frac(bk.get("hidden_passed")),
-            "first_failure_planes": bk.get("first_failure_planes"), "language": bk.get("language")}
+
+    return {
+        "all": _frac(bk.get("passed")),
+        "public": _frac(bk.get("public_passed")),
+        "hidden": _frac(bk.get("hidden_passed")),
+        "first_failure_planes": bk.get("first_failure_planes"),
+        "language": bk.get("language"),
+    }
 
 
 #: Which tier certifies. The existing evidence counters above read the same key.
@@ -114,13 +124,13 @@ _CERT_NOT_RUN = ("pass", "skipped", "not_run", "unavailable", "", None)
 # abandonment wording, and the redaction-safe forms -- a verdict's `failure_detail` has its digits
 # replaced by `#`, so anything anchored on the number would miss every one of them.
 _BUDGET_MARKERS = (
-    "timed out",          # subprocess.TimeoutExpired: "Command '[...]' timed out after 900 seconds"
-    "timeout",            # the adjectival/status spelling ("state": "timeout")
-    "time budget",        # the broker's own wording: "<sim> exceeded its time budget"
+    "timed out",  # subprocess.TimeoutExpired: "Command '[...]' timed out after 900 seconds"
+    "timeout",  # the adjectival/status spelling ("state": "timeout")
+    "time budget",  # the broker's own wording: "<sim> exceeded its time budget"
     "wall clock",
     "budget exhausted",
     "out of budget",
-    "killed by",          # a supervisor-killed job is abandonment, not a wrong answer
+    "killed by",  # a supervisor-killed job is abandonment, not a wrong answer
 )
 
 
@@ -132,7 +142,7 @@ def _budget_abandoned(text) -> bool:
     defect out of the failure count, which is the more expensive mistake of the two.
     """
     if not isinstance(text, str) or not text.strip():
-        return False          # SILENCE IS NOT EVIDENCE OF UNAFFORDABILITY -- see the docstring
+        return False  # SILENCE IS NOT EVIDENCE OF UNAFFORDABILITY -- see the docstring
     low = text.lower()
     return any(m in low for m in _BUDGET_MARKERS)
 
@@ -209,10 +219,8 @@ def _l3_evidence(run_dir) -> dict:
     j, vname = latest_verdict(run_dir)
     if j is not None:
         pc = j.get("per_capsule") or []
-        clean = [c for c in pc if c.get("status") == "pass"
-                 and (c.get("tiers") or {}).get("L3") == "pass"]
-        l2only = [c for c in pc if c.get("status") == "pass"
-                  and (c.get("tiers") or {}).get("L3") not in ("pass", None)]
+        clean = [c for c in pc if c.get("status") == "pass" and (c.get("tiers") or {}).get("L3") == "pass"]
+        l2only = [c for c in pc if c.get("status") == "pass" and (c.get("tiers") or {}).get("L3") not in ("pass", None)]
         # Every capsule whose cert tier RAN and did not pass, split by whether it was abandoned or
         # rejected. Skipped/absent cert tiers are in neither: nothing ran, so there is nothing to
         # attribute (they are already visible as gate_passed minus rtl_clean).
@@ -225,16 +233,30 @@ def _l3_evidence(run_dir) -> dict:
         # here means a reader of one run's record can see the shrink, and `cohort_report` can
         # normalize a comparison without re-deriving anything.
         nm = not_measured(j)
-        return {"rtl_clean": len(clean), "l2_only": len(l2only),
-                "gate_passed": j.get("n_passed"), "n_capsules": j.get("n_capsules"),
-                "l3_source": vname,
-                "not_certified_budget": len(budget), "not_certified_failed": len(failed),
-                "n_not_measured": len(nm), "not_measured": not_measured_labels(j),
-                "not_measured_status": nm}
-    return {"rtl_clean": None, "l2_only": None, "gate_passed": None,
-            "n_capsules": None, "l3_source": None,
-            "not_certified_budget": None, "not_certified_failed": None,
-            "n_not_measured": None, "not_measured": None, "not_measured_status": None}
+        return {
+            "rtl_clean": len(clean),
+            "l2_only": len(l2only),
+            "gate_passed": j.get("n_passed"),
+            "n_capsules": j.get("n_capsules"),
+            "l3_source": vname,
+            "not_certified_budget": len(budget),
+            "not_certified_failed": len(failed),
+            "n_not_measured": len(nm),
+            "not_measured": not_measured_labels(j),
+            "not_measured_status": nm,
+        }
+    return {
+        "rtl_clean": None,
+        "l2_only": None,
+        "gate_passed": None,
+        "n_capsules": None,
+        "l3_source": None,
+        "not_certified_budget": None,
+        "not_certified_failed": None,
+        "n_not_measured": None,
+        "not_measured": None,
+        "not_measured_status": None,
+    }
 
 
 # ==================================================================================================
@@ -286,7 +308,7 @@ def latest_verdict(run_dir, *, skip_stages: tuple[str, ...] = ()) -> tuple[dict 
     for v in reversed(_verdict_files(run_dir)):
         try:
             j = json.loads(v.read_text())
-        except Exception:            # a half-written verdict is not a verdict
+        except Exception:  # a half-written verdict is not a verdict
             continue
         if not (j.get("per_capsule") or []) or not j.get("n_capsules"):
             continue
@@ -313,8 +335,7 @@ def measured_names(verdict) -> set[str]:
     `capsule_grade` uses to build `n_capsules`. A row absent from `per_capsule` altogether is not
     measured either, and is absent from this set for free.
     """
-    return {n for n, c in capsule_rows(verdict).items()
-            if c.get("status") not in NOT_MEASURED_STATUSES}
+    return {n for n, c in capsule_rows(verdict).items() if c.get("status") not in NOT_MEASURED_STATUSES}
 
 
 def not_measured(verdict) -> dict[str, str]:
@@ -328,8 +349,9 @@ def not_measured(verdict) -> dict[str, str]:
     supplied = v.get("not_measured_status")
     if isinstance(supplied, dict) and supplied:
         return {str(k): str(supplied[k]) for k in sorted(supplied)}
-    return {n: str(c.get("status")) for n, c in sorted(capsule_rows(v).items())
-            if c.get("status") in NOT_MEASURED_STATUSES}
+    return {
+        n: str(c.get("status")) for n, c in sorted(capsule_rows(v).items()) if c.get("status") in NOT_MEASURED_STATUSES
+    }
 
 
 def not_measured_labels(verdict) -> list[str]:
@@ -355,9 +377,13 @@ def cohort_scores(verdict, cohort) -> dict:
     rows = capsule_rows(verdict)
     passed = sorted(n for n in cohort if (rows.get(n) or {}).get("status") == "pass")
     l3 = sorted(n for n in passed if _cert_status(rows[n]) == "pass")
-    return {"passed": len(passed), "l3_clean": len(l3), "of": len(cohort),
-            "passed_ratio": f"{len(passed)}/{len(cohort)}",
-            "l3_clean_ratio": f"{len(l3)}/{len(cohort)}"}
+    return {
+        "passed": len(passed),
+        "l3_clean": len(l3),
+        "of": len(cohort),
+        "passed_ratio": f"{len(passed)}/{len(cohort)}",
+        "l3_clean_ratio": f"{len(l3)}/{len(cohort)}",
+    }
 
 
 def cohort_report(runs: dict[str, dict]) -> dict:
@@ -403,9 +429,11 @@ def cohort_report(runs: dict[str, dict]) -> dict:
     # 0/0 -- arithmetically right, and worthless. Fail LOUD rather than emit a table of zeros.
     reason = None
     if per_run and not cohort:
-        reason = (f"the {len(per_run)} selected run(s) share no measured capsule at all (union "
-                  f"{len(union)}), so every cohort ratio below is 0/0. Narrow the selection to runs "
-                  f"graded against the same capsule set.")
+        reason = (
+            f"the {len(per_run)} selected run(s) share no measured capsule at all (union "
+            f"{len(union)}), so every cohort ratio below is 0/0. Narrow the selection to runs "
+            f"graded against the same capsule set."
+        )
     return {
         "n_runs": len(per_run),
         "empty_cohort_reason": reason,
@@ -417,14 +445,18 @@ def cohort_report(runs: dict[str, dict]) -> dict:
         "own_ratios_comparable": comparable,
         "comparable_metric": "own" if comparable else "cohort",
         "runs": per_run,
-        "note": ("Compare runs on `cohort` (passed/l3_clean over the "
-                 f"{len(cohort)} capsule(s) every one of the {len(per_run)} run(s) measured). "
-                 + ("Every run measured exactly that cohort here, so each run's own "
-                    "n_passed/n_capsules asks the same question and is equally comparable."
-                    if comparable else
-                    "The `own_*` figures are PER-RUN ONLY and must NOT be placed side by side: a "
-                    "run's own denominator excludes what it never measured, which shrinks it exactly "
-                    "where that run did worst. See each run's `not_measured` for what it dropped.")),
+        "note": (
+            "Compare runs on `cohort` (passed/l3_clean over the "
+            f"{len(cohort)} capsule(s) every one of the {len(per_run)} run(s) measured). "
+            + (
+                "Every run measured exactly that cohort here, so each run's own "
+                "n_passed/n_capsules asks the same question and is equally comparable."
+                if comparable
+                else "The `own_*` figures are PER-RUN ONLY and must NOT be placed side by side: a "
+                "run's own denominator excludes what it never measured, which shrinks it exactly "
+                "where that run did worst. See each run's `not_measured` for what it dropped."
+            )
+        ),
     }
 
 
@@ -438,26 +470,31 @@ def format_cohort_table(report: dict) -> str:
     runs = report.get("runs") or {}
     n = report.get("common_cohort_size", 0)
     comparable = bool(report.get("own_ratios_comparable"))
-    lines = [f"common cohort: {n} capsule(s) measured by ALL {report.get('n_runs', 0)} run(s); "
-             f"union {report.get('union_measured_size', 0)}"]
+    lines = [
+        f"common cohort: {n} capsule(s) measured by ALL {report.get('n_runs', 0)} run(s); "
+        f"union {report.get('union_measured_size', 0)}"
+    ]
     # An empty cohort makes every ratio 0/0. That is the correct arithmetic and a useless table, so
     # say WHY out loud instead of printing a wall of zeros a reader might take for a result.
     if report.get("empty_cohort_reason"):
         lines.append(f"NO COMPARISON POSSIBLE: {report['empty_cohort_reason']}")
     if not comparable:
         dens = sorted({d for d in (report.get("own_denominators") or {}).values() if d is not None})
-        lines.append(f"NOT COMPARABLE side by side: own denominators/cohorts differ "
-                     f"({', '.join(str(d) for d in dens)}). Quote pass/cohort and L3/cohort; the "
-                     f"own column below is per-run only.")
+        lines.append(
+            f"NOT COMPARABLE side by side: own denominators/cohorts differ "
+            f"({', '.join(str(d) for d in dens)}). Quote pass/cohort and L3/cohort; the "
+            f"own column below is per-run only."
+        )
     own_hdr = "own" if comparable else "own (per-run ONLY)"
-    hdr = (f"{'run':46s} {'arm':16s} {'pass/cohort':>12s} {'L3/cohort':>11s} {own_hdr:>19s}  "
-           f"not measured")
+    hdr = f"{'run':46s} {'arm':16s} {'pass/cohort':>12s} {'L3/cohort':>11s} {own_hdr:>19s}  not measured"
     lines += [hdr, "-" * len(hdr)]
     for rid, r in sorted(runs.items(), key=lambda kv: (str(kv[1].get("arm")), kv[0])):
         co = r.get("cohort") or {}
         nm = ", ".join(r.get("not_measured") or []) or "-"
-        lines.append(f"{rid:46s} {str(r.get('arm')):16s} {co.get('passed_ratio', '?'):>12s} "
-                     f"{co.get('l3_clean_ratio', '?'):>11s} {r.get('own_ratio', '?'):>19s}  {nm}")
+        lines.append(
+            f"{rid:46s} {str(r.get('arm')):16s} {co.get('passed_ratio', '?'):>12s} "
+            f"{co.get('l3_clean_ratio', '?'):>11s} {r.get('own_ratio', '?'):>19s}  {nm}"
+        )
     lines.append("")
     lines.append(report.get("note", ""))
     return "\n".join(lines)
@@ -500,8 +537,15 @@ def load_run(d: Path, audit: dict) -> dict | None:
     c = yaml.safe_load(ct.read_text()) or {}
     qa = d / "qa_loop_summary.yaml"
     q = yaml.safe_load(qa.read_text()) if qa.is_file() else {}
-    rounds = [{"round": r.get("round"), "n_passed": r.get("n_passed"), "tool_calls": r.get("tool_calls"),
-               "all_pass": r.get("all_pass")} for r in (q.get("rounds") or [])]
+    rounds = [
+        {
+            "round": r.get("round"),
+            "n_passed": r.get("n_passed"),
+            "tool_calls": r.get("tool_calls"),
+            "all_pass": r.get("all_pass"),
+        }
+        for r in (q.get("rounds") or [])
+    ]
     man = {}
     mp = d / "run_manifest.yaml"
     if mp.is_file():
@@ -509,12 +553,19 @@ def load_run(d: Path, audit: dict) -> dict | None:
     converged = bool(q.get("converged"))
     valid = converged and c.get("available", True) and (c.get("wall_time_seconds", 0) > 60)
     return {
-        "run_id": d.name, "valid": valid, "converged": converged,
-        "wall_s": c.get("wall_time_seconds"), "cost_usd": c.get("estimated_cost_usd"),
-        "tokens_total": c.get("tokens_total"), "tokens_input": c.get("tokens_input"),
-        "tokens_cached": c.get("tokens_cached"), "tokens_output": c.get("tokens_output"),
-        "tool_calls": c.get("tool_calls"), "thinking_blocks": c.get("thinking_blocks"),
-        "n_rounds": q.get("n_rounds", len(rounds)), "rounds": rounds,
+        "run_id": d.name,
+        "valid": valid,
+        "converged": converged,
+        "wall_s": c.get("wall_time_seconds"),
+        "cost_usd": c.get("estimated_cost_usd"),
+        "tokens_total": c.get("tokens_total"),
+        "tokens_input": c.get("tokens_input"),
+        "tokens_cached": c.get("tokens_cached"),
+        "tokens_output": c.get("tokens_output"),
+        "tool_calls": c.get("tool_calls"),
+        "thinking_blocks": c.get("thinking_blocks"),
+        "n_rounds": q.get("n_rounds", len(rounds)),
+        "rounds": rounds,
         "public_pass": man.get("public_dev_pass") or man.get("pass_public"),
         "hidden_pass": man.get("hidden_pass") or man.get("pass_hidden"),
         "fullsuite": _completeness(d.name, audit),
@@ -539,8 +590,7 @@ def cohort_main(select: tuple[str, ...]) -> int:
         return 1
     report = cohort_report(runs)
     print(format_cohort_table(report))
-    matched_skips = {rid: why for rid, why in skipped.items()
-                     if not select or any(tok in rid for tok in select)}
+    matched_skips = {rid: why for rid, why in skipped.items() if not select or any(tok in rid for tok in select)}
     if matched_skips:
         print("\nnot in the comparison (nothing graded to compare):")
         for rid, why in sorted(matched_skips.items()):
@@ -563,7 +613,7 @@ def main(argv: list[str] | None = None):
     audit = json.loads(fa.read_text()) if fa.is_file() else {}
     out = {"arms": {a: [] for a in ARM_ORDER}, "n_valid": {}, "arm_order": ARM_ORDER}
     for sub in RUN_DIRS:
-        base = C.RUNS / sub        # out/runs/<target>/capsule-bench/<arm>
+        base = C.RUNS / sub  # out/runs/<target>/capsule-bench/<arm>
         if not base.is_dir():
             continue
         for d in sorted(base.iterdir()):
@@ -578,25 +628,31 @@ def main(argv: list[str] | None = None):
     for a in ARM_ORDER:
         out["n_valid"][a] = sum(1 for r in out["arms"][a] if r["valid"])
     if audit:
-        out["coverage"] = {"class_coverage": audit.get("class_coverage"),
-                           "n_capsules": audit.get("n_capsules"), "backends": list((audit.get("backends") or {}))}
-    out["caveat"] = ("3-arm A/B/C. valid converged runs: " +
-                     ", ".join(f"{a}={out['n_valid'][a]}" for a in ARM_ORDER) +
-                     ". full-suite completeness present where full_suite_audit has been run.")
+        out["coverage"] = {
+            "class_coverage": audit.get("class_coverage"),
+            "n_capsules": audit.get("n_capsules"),
+            "backends": list((audit.get("backends") or {})),
+        }
+    out["caveat"] = (
+        "3-arm A/B/C. valid converged runs: "
+        + ", ".join(f"{a}={out['n_valid'][a]}" for a in ARM_ORDER)
+        + ". full-suite completeness present where full_suite_audit has been run."
+    )
     # EVERY run in this file carries its own MEASURED denominator, and those denominators are not
     # all the same number. Say so here rather than leaving a plotter to divide by whichever one it
     # happens to read: a ratio whose denominator differs from its neighbour's is not comparable to
     # it. `--cohort` prints the normalized comparison.
-    _dens = sorted({r["n_capsules"] for a in ARM_ORDER for r in out["arms"][a]
-                    if r.get("n_capsules") is not None})
+    _dens = sorted({r["n_capsules"] for a in ARM_ORDER for r in out["arms"][a] if r.get("n_capsules") is not None})
     if len(_dens) > 1:
         out["denominator_warning"] = {
             "own_denominators": _dens,
-            "detail": ("These runs did NOT all measure the same number of capsules "
-                       f"(n_capsules in {_dens}): a run defers rows it could not reach (see each "
-                       "run's `not_measured`) and those rows leave its denominator. Do NOT compare "
-                       "n_passed/n_capsules across runs with different denominators -- run "
-                       "`agg_agentic_results.py --cohort <batch>` for the common-cohort figures."),
+            "detail": (
+                "These runs did NOT all measure the same number of capsules "
+                f"(n_capsules in {_dens}): a run defers rows it could not reach (see each "
+                "run's `not_measured`) and those rows leave its denominator. Do NOT compare "
+                "n_passed/n_capsules across runs with different denominators -- run "
+                "`agg_agentic_results.py --cohort <batch>` for the common-cohort figures."
+            ),
         }
     p = REPORTS / "agentic_results.json"
     p.write_text(json.dumps(out, indent=2))
@@ -604,9 +660,11 @@ def main(argv: list[str] | None = None):
     for a in ARM_ORDER:
         vs = [r for r in out["arms"][a] if r["valid"]]
         line = ", ".join(
-            f"{r['run_id']}(${(r['cost_usd'] or 0):.0f},{r['n_rounds']}rd,{r['tool_calls']}tc" +
-            (f",{r['fullsuite']['all']['passed']}/{r['fullsuite']['all']['total']}" if r.get('fullsuite') else "") + ")"
-            for r in vs)
+            f"{r['run_id']}(${(r['cost_usd'] or 0):.0f},{r['n_rounds']}rd,{r['tool_calls']}tc"
+            + (f",{r['fullsuite']['all']['passed']}/{r['fullsuite']['all']['total']}" if r.get("fullsuite") else "")
+            + ")"
+            for r in vs
+        )
         print(f"  {a}: {len(vs)} valid -> {line or '(none yet)'}")
     return 0
 

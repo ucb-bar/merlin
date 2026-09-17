@@ -18,7 +18,9 @@ CLI (convenience):
     python cca_contract.py check-bijection atlas
     python action_catalog.py escalation-ladder spatial.dataflow atlas
 """
+
 from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -31,7 +33,7 @@ _TIMEOUT = 120
 
 def _forward(req: dict, timeout: int = _TIMEOUT) -> dict:
     """Send one request to the driver-side cca_broker via <ws>/.cca_channel and return the parsed JSON."""
-    ws = Path(__file__).resolve().parent               # the shim lives at <ws>/{cca_contract,action_catalog}.py
+    ws = Path(__file__).resolve().parent  # the shim lives at <ws>/{cca_contract,action_catalog}.py
     ch = ws / ".cca_channel"
     ch.mkdir(parents=True, exist_ok=True)
     rid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"

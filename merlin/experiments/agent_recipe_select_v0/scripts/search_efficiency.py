@@ -17,6 +17,7 @@ is the mechanism (a compiler-constructed candidate cannot be broken), not the ch
 result and it is reported as such rather than hidden — the ablation is about where the value comes
 from, so finding it in the mechanism rather than the model is informative either way.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,18 +27,20 @@ from math import comb
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _track as T                                                    # noqa: E402
+import _track as T  # noqa: E402
 
-from merlin.common.artifacts import artifacts_dir, new_product        # noqa: E402
+from merlin.common.artifacts import artifacts_dir, new_product  # noqa: E402
 
 
 def space_for(workload: str) -> list[int] | None:
     """Every measured cycle count for the full recipe space of one workload, or None."""
     root = artifacts_dir() / "recipe-select" / T.TARGET
     for f in sorted(root.glob("v*/*/recipe_sweep.json"), key=lambda p: p.parent.name, reverse=True):
-        rows = [r for r in json.loads(f.read_text())["rows"]
-                if r["workload"] == workload and isinstance(r.get("cycles"), int)
-                and r.get("correct")]
+        rows = [
+            r
+            for r in json.loads(f.read_text())["rows"]
+            if r["workload"] == workload and isinstance(r.get("cycles"), int) and r.get("correct")
+        ]
         pts = {json.dumps(r["recipe"], sort_keys=True): r["cycles"] for r in rows}
         if len(pts) >= 15:
             return sorted(pts.values())
@@ -77,8 +80,9 @@ def main(argv: list[str] | None = None) -> int:
         wl = Path(d["workload"]).stem.replace(".interface", "")
         space = space_for(wl)
         if not space:
-            rows.append({"workload": wl, "verdict": "no exhaustive sweep for this workload — "
-                                                     "the control cannot be computed"})
+            rows.append(
+                {"workload": wl, "verdict": "no exhaustive sweep for this workload — the control cannot be computed"}
+            )
             continue
         opt = space[0]
         base = d["baseline_cycles"]
@@ -91,53 +95,84 @@ def main(argv: list[str] | None = None) -> int:
         for n in range(1, min(len(d["history"]), len(space)) + 1):
             exp, med, p90 = random_best_expectation(space, n)
             a_best = agent_curve[n - 1]
-            per_n.append({"n": n, "agent_best": a_best,
-                          "random_expected": round(exp, 1), "random_median": med,
-                          "random_p90": p90,
-                          "agent_beats_expectation": (a_best is not None and a_best < exp),
-                          "agent_beats_median": (a_best is not None and a_best < med)})
+            per_n.append(
+                {
+                    "n": n,
+                    "agent_best": a_best,
+                    "random_expected": round(exp, 1),
+                    "random_median": med,
+                    "random_p90": p90,
+                    "agent_beats_expectation": (a_best is not None and a_best < exp),
+                    "agent_beats_median": (a_best is not None and a_best < med),
+                }
+            )
         # The decisive number: how many random draws it takes IN EXPECTATION to match what the agent
         # had after n draws. If that is ~n, the agent is no better than chance on this space.
         n_first_opt = next((p["n"] for p in per_n if p["agent_best"] == opt), None)
         rnd_at_that_n = next((p for p in per_n if p["n"] == n_first_opt), None)
-        p_opt_in_n = (1 - comb(len(space) - 1, n_first_opt) / comb(len(space), n_first_opt)
-                      if n_first_opt and n_first_opt < len(space) else 1.0)
-        rows.append({
-            "workload": wl, "space_size": len(space), "optimum": opt, "baseline": base,
-            "agent_reached_optimum_at_n": n_first_opt,
-            "random_expected_best_at_that_n": rnd_at_that_n["random_expected"]
-            if rnd_at_that_n else None,
-            "prob_random_finds_optimum_in_that_many": round(p_opt_in_n, 4),
-            "per_n": per_n,
-            "verdict": ("the agent is INSIDE the random band — on this space its value is the "
-                        "mechanism (no broken candidates), not the choices"
-                        if not any(p["agent_beats_median"] for p in per_n[:max(1, (n_first_opt or 1))])
-                        else "the agent beats the median random draw before reaching the optimum"),
-        })
+        p_opt_in_n = (
+            1 - comb(len(space) - 1, n_first_opt) / comb(len(space), n_first_opt)
+            if n_first_opt and n_first_opt < len(space)
+            else 1.0
+        )
+        rows.append(
+            {
+                "workload": wl,
+                "space_size": len(space),
+                "optimum": opt,
+                "baseline": base,
+                "agent_reached_optimum_at_n": n_first_opt,
+                "random_expected_best_at_that_n": rnd_at_that_n["random_expected"] if rnd_at_that_n else None,
+                "prob_random_finds_optimum_in_that_many": round(p_opt_in_n, 4),
+                "per_n": per_n,
+                "verdict": (
+                    "the agent is INSIDE the random band — on this space its value is the "
+                    "mechanism (no broken candidates), not the choices"
+                    if not any(p["agent_beats_median"] for p in per_n[: max(1, (n_first_opt or 1))])
+                    else "the agent beats the median random draw before reaching the optimum"
+                ),
+            }
+        )
 
-    print(f"{'workload':<13}{'|space|':>8}{'opt':>7}{'agent@n':>9}{'rand E[best]@n':>16}"
-          f"{'P(rand hits opt)':>18}")
+    print(f"{'workload':<13}{'|space|':>8}{'opt':>7}{'agent@n':>9}{'rand E[best]@n':>16}{'P(rand hits opt)':>18}")
     for r in rows:
         if "space_size" not in r:
             print(f"{r['workload']:<13}  {r['verdict']}")
             continue
-        print(f"{r['workload']:<13}{r['space_size']:>8}{r['optimum']:>7}"
-              f"{str(r['agent_reached_optimum_at_n']):>9}"
-              f"{str(r['random_expected_best_at_that_n']):>16}"
-              f"{r['prob_random_finds_optimum_in_that_many']:>18}")
+        print(
+            f"{r['workload']:<13}{r['space_size']:>8}{r['optimum']:>7}"
+            f"{str(r['agent_reached_optimum_at_n']):>9}"
+            f"{str(r['random_expected_best_at_that_n']):>16}"
+            f"{r['prob_random_finds_optimum_in_that_many']:>18}"
+        )
     for r in rows:
         if "verdict" in r and "space_size" in r:
             print(f"\n  {r['workload']}: {r['verdict']}")
 
-    prod = new_product("recipe-select", version=args.version, target=T.TARGET,
-                       notes="search-efficiency control: agent vs EXACT random-search expectation")
+    prod = new_product(
+        "recipe-select",
+        version=args.version,
+        target=T.TARGET,
+        notes="search-efficiency control: agent vs EXACT random-search expectation",
+    )
     out = prod.add_artifact("search_efficiency.json")
-    out.write_text(json.dumps({
-        "method": ("exact combinatorics over the fully measured space; P(best of a random n-subset "
-                   "is at rank r) = C(N-r, n-1)/C(N, n). No sampling, no seed, no tokens."),
-        "why": ("with a 16-evaluation budget over a 20-point space the agent explores most of it, so "
-                "reaching the optimum is not by itself evidence of search skill"),
-        "rows": rows}, indent=1), encoding="utf-8")
+    out.write_text(
+        json.dumps(
+            {
+                "method": (
+                    "exact combinatorics over the fully measured space; P(best of a random n-subset "
+                    "is at rank r) = C(N-r, n-1)/C(N, n). No sampling, no seed, no tokens."
+                ),
+                "why": (
+                    "with a 16-evaluation budget over a 20-point space the agent explores most of it, so "
+                    "reaching the optimum is not by itself evidence of search skill"
+                ),
+                "rows": rows,
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
     prod.write_manifest()
     print(f"\nproduct: {prod.path}")
     return 0

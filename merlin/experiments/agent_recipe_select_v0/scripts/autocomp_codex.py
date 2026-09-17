@@ -29,6 +29,7 @@ checked, because a text-only shim cannot serve structured tool calls. It already
   list-price projection is kept in a separate field. Letting a projection enter AutoComp's cost
   ledger as real money would consume a budget ceiling nobody is being charged against.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,8 +55,16 @@ PREFIX = "codex/"
 SEAT_MODEL = "gpt-5.6-sol"
 PLAN_DEFAULT = "codex/gpt-5.6-sol:high"
 CODE_DEFAULT = "codex/gpt-5.3-codex-spark:low"
-KNOWN_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4",
-                "gpt-5.4-mini", "gpt-5.3-codex-spark")
+KNOWN_MODELS = (
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+    "gpt-5.4",
+    "gpt-5.4-mini",
+    "gpt-5.3-codex-spark",
+)
+
 
 #: A tier is named `codex/<model>[:<effort>]`. MEASURED on codex-cli 0.153.0 (2026-09-03), every one
 #: of these answers on this ChatGPT subscription -- the seat is NOT single-model:
@@ -75,17 +84,24 @@ KNOWN_MODELS = ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-
 #: latter cost this experiment its whole model-tiering axis. Ask the CLI for the list; do not infer it.
 def split_model(spec: str) -> "tuple[str, str | None]":
     """`codex/gpt-5.6-sol:low` -> (`gpt-5.6-sol`, `low`). No effort suffix -> (model, None)."""
-    name = spec[len(PREFIX):] if spec.startswith(PREFIX) else spec
+    name = spec[len(PREFIX) :] if spec.startswith(PREFIX) else spec
     if ":" in name:
         model, _, eff = name.partition(":")
         return model, (eff or None)
     return name, None
 
-_STATE: dict = {"calls": 0, "tokens": 0, "notional_usd": 0.0, "home": None, "log": None,
-                #: (model, effort) -> {calls, tokens, seconds}. The request AutoComp is built around
-                #: is "plan with one model, implement with another", and an arm that cannot say which
-                #: tier spent what has not measured the tiering -- it has only declared it.
-                "by_tier": {}}
+
+_STATE: dict = {
+    "calls": 0,
+    "tokens": 0,
+    "notional_usd": 0.0,
+    "home": None,
+    "log": None,
+    #: (model, effort) -> {calls, tokens, seconds}. The request AutoComp is built around
+    #: is "plan with one model, implement with another", and an arm that cannot say which
+    #: tier spent what has not measured the tiering -- it has only declared it.
+    "by_tier": {},
+}
 
 
 def _codex_home() -> Path:
@@ -106,22 +122,32 @@ def _one_sample(prompt: str, model: str, effort: str, timeout: int) -> tuple[str
     # ⚠️ `--model` was previously OMITTED, so every tier silently ran the seat default and the
     # plan/code split AutoComp is built around was cosmetic: two model strings were recorded and one
     # model answered both. Naming it here is what makes the tiering real and the record true.
-    argv = ["codex", "exec", "--json", "--skip-git-repo-check",
-            "-c", "approval_policy=never", "-c", f"model_reasoning_effort={effort}",
-            "--model", model,
-            "--sandbox", "read-only", "--cd", str(ws)]
+    argv = [
+        "codex",
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "-c",
+        "approval_policy=never",
+        "-c",
+        f"model_reasoning_effort={effort}",
+        "--model",
+        model,
+        "--sandbox",
+        "read-only",
+        "--cd",
+        str(ws),
+    ]
     t0 = time.time()
     try:
-        r = subprocess.run(argv, input=prompt, capture_output=True, text=True, env=env,
-                           timeout=timeout)
+        r = subprocess.run(argv, input=prompt, capture_output=True, text=True, env=env, timeout=timeout)
         raw = r.stdout or ""
     except subprocess.TimeoutExpired:
         raw = ""
     dur = time.time() - t0
 
     text_parts: list[str] = []
-    usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
-             "cache_write_tokens": 0}
+    usage = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0}
     for line in raw.splitlines():
         line = line.strip()
         if not line:
@@ -140,24 +166,39 @@ def _one_sample(prompt: str, model: str, effort: str, timeout: int) -> tuple[str
             # fresh input is a SUBTRACTION. Adding them overstated a measured round by 85%.
             cached = int(u.get("cached_input_tokens", 0) or 0)
             cw = int(u.get("cache_write_input_tokens", 0) or 0)
-            usage = {"input_tokens": max(int(u.get("input_tokens", 0) or 0) - cached - cw, 0),
-                     "output_tokens": int(u.get("output_tokens", 0) or 0),
-                     "cache_read_tokens": cached, "cache_write_tokens": cw}
-    usage.update({"model": model, "effort": effort, "duration_s": round(dur, 3),
-                  # A seat is not billed per token. Zero here is the TRUTH about money spent; the
-                  # projection lives beside it and is never summed into a real budget.
-                  "cost_usd": 0.0, "billing_mode": "subscription_notional"})
+            usage = {
+                "input_tokens": max(int(u.get("input_tokens", 0) or 0) - cached - cw, 0),
+                "output_tokens": int(u.get("output_tokens", 0) or 0),
+                "cache_read_tokens": cached,
+                "cache_write_tokens": cw,
+            }
+    usage.update(
+        {
+            "model": model,
+            "effort": effort,
+            "duration_s": round(dur, 3),
+            # A seat is not billed per token. Zero here is the TRUTH about money spent; the
+            # projection lives beside it and is never summed into a real budget.
+            "cost_usd": 0.0,
+            "billing_mode": "subscription_notional",
+        }
+    )
     return "\n".join(text_parts), usage
 
 
-def install(*, home: Path, log: Path | None = None, effort: str = "high",
-            timeout: int = 900, max_parallel: int = 4,
-            tier_names: "dict[str, str] | None" = None) -> None:
+def install(
+    *,
+    home: Path,
+    log: Path | None = None,
+    effort: str = "high",
+    timeout: int = 900,
+    max_parallel: int = 4,
+    tier_names: "dict[str, str] | None" = None,
+) -> None:
     """Teach AutoComp's ``LLMClient`` the ``codex`` provider. Idempotent."""
     from autocomp.common import llm_utils as LU
 
-    _STATE.update({"home": Path(home), "log": Path(log) if log else None,
-                   "tier_names": dict(tier_names or {})})
+    _STATE.update({"home": Path(home), "log": Path(log) if log else None, "tier_names": dict(tier_names or {})})
     Path(home).mkdir(parents=True, exist_ok=True)
     auth = Path.home() / ".codex" / "auth.json"
     if auth.exists():
@@ -182,15 +223,16 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
             self._last_usage = []
             self._usage_accumulator = []
             import asyncio
+
             self._loop = asyncio.new_event_loop()
             return
         orig_init(self, model, provider)
 
-    def chat_async(self, prompts_lst, num_samples=10, temperature=None,
-                   reasoning_effort="high"):
+    def chat_async(self, prompts_lst, num_samples=10, temperature=None, reasoning_effort="high"):
         if getattr(self, "provider", None) != "codex":
-            return orig_chat_async(self, prompts_lst, num_samples=num_samples,
-                                   temperature=temperature, reasoning_effort=reasoning_effort)
+            return orig_chat_async(
+                self, prompts_lst, num_samples=num_samples, temperature=temperature, reasoning_effort=reasoning_effort
+            )
         # Precedence: the tier's own effort (from its model string) beats AutoComp's per-call
         # default, which beats the install-time one. That ordering is what lets `models=` and
         # `code_models=` differ while AutoComp passes the same `reasoning_effort` to both.
@@ -201,13 +243,12 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
         out: list[list[str]] = [[] for _ in prompts_lst]
         results: dict[tuple[int, int], str] = {}
         with ThreadPoolExecutor(max_workers=max_parallel) as ex:
-            futs = {ex.submit(_one_sample, prompts_lst[pi], self.model, eff, timeout): (pi, si)
-                    for (pi, si) in jobs}
+            futs = {ex.submit(_one_sample, prompts_lst[pi], self.model, eff, timeout): (pi, si) for (pi, si) in jobs}
             for f in futs:
                 pi, si = futs[f]
                 try:
                     text, usage = f.result()
-                except Exception as exc:              # a failed sample is EMPTY, never fabricated
+                except Exception as exc:  # a failed sample is EMPTY, never fabricated
                     text, usage = "", {"model": self.model, "error": str(exc), "cost_usd": 0.0}
                 usage.setdefault("phase", _STATE.get("phase") or "codex")
                 usage.setdefault("tier", getattr(self, "_codex_tier", None) or "unknown")
@@ -219,10 +260,19 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
                 # three, and the claim this experiment makes is about token COST, so the breakdown is
                 # the measurement rather than a detail of it.
                 key = f"{usage.get('model')}@{usage.get('effort')}"
-                t = _STATE["by_tier"].setdefault(key, {
-                    "calls": 0, "seconds": 0.0, "tiers": [],
-                    "tokens_input_fresh": 0, "tokens_output": 0,
-                    "tokens_cache_read": 0, "tokens_cache_write": 0, "tokens_total": 0})
+                t = _STATE["by_tier"].setdefault(
+                    key,
+                    {
+                        "calls": 0,
+                        "seconds": 0.0,
+                        "tiers": [],
+                        "tokens_input_fresh": 0,
+                        "tokens_output": 0,
+                        "tokens_cache_read": 0,
+                        "tokens_cache_write": 0,
+                        "tokens_total": 0,
+                    },
+                )
                 fresh = int(usage.get("input_tokens", 0) or 0)
                 outp = int(usage.get("output_tokens", 0) or 0)
                 cread = int(usage.get("cache_read_tokens", 0) or 0)
@@ -237,15 +287,18 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
                 if usage["tier"] not in t["tiers"]:
                     t["tiers"].append(usage["tier"])
                 _STATE["calls"] += 1
-                _STATE["tokens"] += (int(usage.get("input_tokens", 0) or 0)
-                                     + int(usage.get("output_tokens", 0) or 0)
-                                     + int(usage.get("cache_read_tokens", 0) or 0))
+                _STATE["tokens"] += (
+                    int(usage.get("input_tokens", 0) or 0)
+                    + int(usage.get("output_tokens", 0) or 0)
+                    + int(usage.get("cache_read_tokens", 0) or 0)
+                )
                 if _STATE["log"]:
                     with _STATE["log"].open("a", encoding="utf-8") as fh:
-                        fh.write(json.dumps({"prompt_index": pi, "sample": si,
-                                             "usage": usage, "chars": len(text)}) + "\n")
+                        fh.write(
+                            json.dumps({"prompt_index": pi, "sample": si, "usage": usage, "chars": len(text)}) + "\n"
+                        )
                 results[(pi, si)] = text
-        for (pi, si) in sorted(results):
+        for pi, si in sorted(results):
             out[pi].append(results[(pi, si)])
         return out
 
@@ -255,21 +308,26 @@ def install(*, home: Path, log: Path | None = None, effort: str = "high",
 
 
 def stats() -> dict:
-    return {"calls": _STATE["calls"], "tokens_total": _STATE["tokens"],
-            "billed_usd": None, "billing_mode": "subscription_notional",
-            "seat_model": SEAT_MODEL,
-            #: what each tier actually cost, keyed by the model@effort that answered, with the
-            #: token buckets kept apart (fresh input / output / cache read / cache write)
-            "by_tier": {k: dict(v) for k, v in _STATE["by_tier"].items()},
-            "token_bucket_note": (
-                "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write buckets, "
-                "so fresh input is recorded by SUBTRACTION; adding them overstated a measured round "
-                "by 85% once. tokens_total here is the sum of the four disjoint buckets."),
-            "deviations": [
-                "no temperature control: codex exec exposes none, so sample diversity comes only "
-                "from independent invocations",
-                "num_samples costs num_samples fresh sessions, each paying ~20k tokens of fixed "
-                "session overhead, so the token axis is not comparable to a batched API arm",
-                "dollars are notional: a seat is not billed per token, so cost_usd is 0.0 and the "
-                "projection is kept separately",
-            ]}
+    return {
+        "calls": _STATE["calls"],
+        "tokens_total": _STATE["tokens"],
+        "billed_usd": None,
+        "billing_mode": "subscription_notional",
+        "seat_model": SEAT_MODEL,
+        #: what each tier actually cost, keyed by the model@effort that answered, with the
+        #: token buckets kept apart (fresh input / output / cache read / cache write)
+        "by_tier": {k: dict(v) for k, v in _STATE["by_tier"].items()},
+        "token_bucket_note": (
+            "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write buckets, "
+            "so fresh input is recorded by SUBTRACTION; adding them overstated a measured round "
+            "by 85% once. tokens_total here is the sum of the four disjoint buckets."
+        ),
+        "deviations": [
+            "no temperature control: codex exec exposes none, so sample diversity comes only "
+            "from independent invocations",
+            "num_samples costs num_samples fresh sessions, each paying ~20k tokens of fixed "
+            "session overhead, so the token axis is not comparable to a batched API arm",
+            "dollars are notional: a seat is not billed per token, so cost_usd is 0.0 and the "
+            "projection is kept separately",
+        ],
+    }

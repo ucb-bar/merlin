@@ -22,6 +22,7 @@ store costs time, while a missing one costs only the time it would have saved. T
 however, fail CLOSED -- a capture filed under a pin set that does not describe the engines that produced
 it is worse than no capture at all.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,8 +31,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import produce_gsim_certificate as PRODUCER      # noqa: E402
-from merlin.perf import capture_store as STORE   # noqa: E402
+import produce_gsim_certificate as PRODUCER  # noqa: E402
+
+from merlin.perf import capture_store as STORE  # noqa: E402
 from merlin.perf.engine_pins import engine_pins  # noqa: E402
 
 
@@ -43,7 +45,8 @@ def _artifact_paths(target: str) -> PRODUCER.ArtifactPaths:
         verilator_firrtl=Path(pins["verilator_firrtl"]["path"]),
         gsim_model=Path(pins["gsim_model"]["path"]),
         gsim_binary=Path(pins["gsim_binary"]["path"]),
-        verilator_binary=Path(pins["verilator_binary"]["path"]))
+        verilator_binary=Path(pins["verilator_binary"]["path"]),
+    )
 
 
 def _graded_capsules(run_dir: Path) -> list[tuple[str, Path]]:
@@ -67,26 +70,31 @@ def _graded_capsules(run_dir: Path) -> list[tuple[str, Path]]:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--target", required=True)
-    ap.add_argument("--run-dir", required=True, type=Path,
-                    help="a finished capsule-bench run directory")
-    ap.add_argument("--capsule-root", required=True, type=Path,
-                    help="corpus root holding <capsule>/capsule.yaml")
+    ap.add_argument("--run-dir", required=True, type=Path, help="a finished capsule-bench run directory")
+    ap.add_argument("--capsule-root", required=True, type=Path, help="corpus root holding <capsule>/capsule.yaml")
     ap.add_argument("--workdir", required=True, type=Path)
-    ap.add_argument("--timeout", type=int, default=600,
-                    help="bounded reduced-witness timeout; full-size validation is optional and separate")
-    ap.add_argument("--reference-timeout", type=int, default=600,
-                    help="bounded reduced-witness reference timeout; reduce the shape instead of "
-                         "extending the inner-loop deadline")
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=600,
+        help="bounded reduced-witness timeout; full-size validation is optional and separate",
+    )
+    ap.add_argument(
+        "--reference-timeout",
+        type=int,
+        default=600,
+        help="bounded reduced-witness reference timeout; reduce the shape instead of extending the inner-loop deadline",
+    )
     ap.add_argument("--limit", type=int, default=None)
     args = ap.parse_args(argv)
 
-    artifacts = _artifact_paths(args.target)          # fails closed, and says which pin
+    artifacts = _artifact_paths(args.target)  # fails closed, and says which pin
     pins = artifacts.pinned()
     work = Path(args.workdir)
     work.mkdir(parents=True, exist_ok=True)
 
     filed = hit = skipped = 0
-    for name, generated in _graded_capsules(Path(args.run_dir))[:args.limit]:
+    for name, generated in _graded_capsules(Path(args.run_dir))[: args.limit]:
         manifest = Path(args.capsule_root) / name / "capsule.yaml"
         if not manifest.is_file():
             print(f"  {name}: no manifest under {args.capsule_root}; skipped", flush=True)
@@ -95,9 +103,14 @@ def main(argv: list[str] | None = None) -> int:
         try:
             before = STORE.census(args.target)["entries"]
             PRODUCER.capture_case(
-                target=args.target, capsule_manifest=manifest, artifact_dir=generated,
-                workdir=work / name, artifacts=artifacts, timeout=args.timeout,
-                reference_timeout=args.reference_timeout)
+                target=args.target,
+                capsule_manifest=manifest,
+                artifact_dir=generated,
+                workdir=work / name,
+                artifacts=artifacts,
+                timeout=args.timeout,
+                reference_timeout=args.reference_timeout,
+            )
             after = STORE.census(args.target)["entries"]
             if after > before:
                 filed += 1
@@ -105,11 +118,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 hit += 1
                 print(f"  {name}: already stored", flush=True)
-        except Exception as exc:                       # noqa: BLE001 - per-capsule, fail open
+        except Exception as exc:  # noqa: BLE001 - per-capsule, fail open
             skipped += 1
             print(f"  {name}: skipped ({type(exc).__name__}: {str(exc)[:110]})", flush=True)
-    print(f"\nfiled {filed}, already stored {hit}, skipped {skipped}; "
-          f"store now {STORE.census(args.target)}")
+    print(f"\nfiled {filed}, already stored {hit}, skipped {skipped}; store now {STORE.census(args.target)}")
     return 0
 
 

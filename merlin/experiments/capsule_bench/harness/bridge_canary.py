@@ -17,6 +17,7 @@ Exit 0 = GO. Anything else and the campaign must not launch.
 
     MERLIN_PROXY_KEY=... .venv/bin/python bridge_canary.py [--models nemotron,glm5] [--skip-control]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,6 +34,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import agent_bridge as BR  # noqa: E402
+
 from merlin.common.artifacts import cache_dir  # noqa: E402
 
 TASK = "Create a file named probe.txt whose entire contents are the word BRIDGE_OK. Then stop."
@@ -40,14 +42,15 @@ EXPECT = "BRIDGE_OK"
 
 
 def _post(path: str, payload: dict, headers: dict, timeout: int = 120) -> tuple[int, dict]:
-    req = urllib.request.Request(BR.PROXY_BASE + path, data=json.dumps(payload).encode(),
-                                 headers={"Content-Type": "application/json", **headers})
+    req = urllib.request.Request(
+        BR.PROXY_BASE + path, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **headers}
+    )
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         return e.code, {"error": e.read().decode()[:400]}
-    except Exception as e:                                   # noqa: BLE001
+    except Exception as e:  # noqa: BLE001
         return 0, {"error": f"{type(e).__name__}: {e}"}
 
 
@@ -58,11 +61,11 @@ def _text_of(body: dict) -> str:
     opaque id, so a naive ``"OK" in json.dumps(body)[:160]`` reports a healthy endpoint as broken.
     """
     parts: list[str] = []
-    for item in body.get("output") or []:                      # Responses
+    for item in body.get("output") or []:  # Responses
         for c in item.get("content") or []:
             if c.get("type") in ("output_text", "text"):
                 parts.append(str(c.get("text", "")))
-    for c in body.get("content") or []:                        # Anthropic Messages
+    for c in body.get("content") or []:  # Anthropic Messages
         if isinstance(c, dict) and c.get("type") == "text":
             parts.append(str(c.get("text", "")))
     return " ".join(parts)
@@ -72,18 +75,30 @@ def check_wire(models: list[str]) -> list[tuple[str, bool, str]]:
     key = BR.proxy_key()
     out = []
     for m in models:
-        st, body = _post("/v1/responses", {"model": m, "input": "reply with exactly: OK"},
-                         {"Authorization": f"Bearer {key}"})
+        st, body = _post(
+            "/v1/responses", {"model": m, "input": "reply with exactly: OK"}, {"Authorization": f"Bearer {key}"}
+        )
         txt = _text_of(body)
-        out.append((f"responses:{m}", st == 200 and "OK" in txt,
-                    f"HTTP {st} text={txt[:60]!r}" if st == 200 else f"HTTP {st} {str(body)[:120]}"))
-        st, body = _post("/v1/messages",
-                         {"model": m, "max_tokens": 32,
-                          "messages": [{"role": "user", "content": "reply with exactly: OK"}]},
-                         {"x-api-key": key, "anthropic-version": "2023-06-01"})
+        out.append(
+            (
+                f"responses:{m}",
+                st == 200 and "OK" in txt,
+                f"HTTP {st} text={txt[:60]!r}" if st == 200 else f"HTTP {st} {str(body)[:120]}",
+            )
+        )
+        st, body = _post(
+            "/v1/messages",
+            {"model": m, "max_tokens": 32, "messages": [{"role": "user", "content": "reply with exactly: OK"}]},
+            {"x-api-key": key, "anthropic-version": "2023-06-01"},
+        )
         txt = _text_of(body)
-        out.append((f"messages:{m}", st == 200 and "OK" in txt,
-                    f"HTTP {st} text={txt[:60]!r}" if st == 200 else f"HTTP {st} {str(body)[:120]}"))
+        out.append(
+            (
+                f"messages:{m}",
+                st == 200 and "OK" in txt,
+                f"HTTP {st} text={txt[:60]!r}" if st == 200 else f"HTTP {st} {str(body)[:120]}",
+            )
+        )
     return out
 
 
@@ -95,8 +110,9 @@ def _run_codex(model: str, ws: Path, *, force: bool) -> tuple[bool, str]:
         env["MERLIN_FORCE_BRIDGE"] = "1"
     frag = BR.codex_config_fragment(model) if (force or BR.bridged_name(model, "codex")) else ""
     (home / "config.toml").write_text(
-        f'model = {json.dumps(BR.codex_model_name(model))}\n'
-        'approval_policy = "never"\nsandbox_mode = "danger-full-access"\n' + frag)
+        f"model = {json.dumps(BR.codex_model_name(model))}\n"
+        'approval_policy = "never"\nsandbox_mode = "danger-full-access"\n' + frag
+    )
     # The NATIVE codex path authenticates against the ChatGPT seat, whose credential lives in the real
     # CODEX_HOME. Without it the native leg fails for lack of auth and the control "passes" only because
     # both legs failed the same way -- which is exactly what it must not do. The harness bind-mounts this
@@ -112,8 +128,7 @@ def _run_codex(model: str, ws: Path, *, force: bool) -> tuple[bool, str]:
         return False, "timeout"
     finally:
         shutil.rmtree(home, ignore_errors=True)
-    tools = sum(1 for l in r.stdout.splitlines()
-                if '"command_execution"' in l or '"file_change"' in l)
+    tools = sum(1 for l in r.stdout.splitlines() if '"command_execution"' in l or '"file_change"' in l)
     return (ws / "probe.txt").is_file(), f"tool_events={tools} rc={r.returncode}"
 
 
@@ -124,8 +139,17 @@ def _run_claude(model: str, ws: Path, *, force: bool) -> tuple[bool, str]:
     env.update({k: v for k, v in BR.claude_env(model, force=force).items() if v} or {})
     home = Path(tempfile.mkdtemp(prefix="canary_cc_"))
     env["CLAUDE_CONFIG_DIR"] = str(home)
-    cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose",
-           "--model", BR.claude_model_name(model, force=force), "--dangerously-skip-permissions", TASK]
+    cmd = [
+        "claude",
+        "-p",
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--model",
+        BR.claude_model_name(model, force=force),
+        "--dangerously-skip-permissions",
+        TASK,
+    ]
     try:
         r = subprocess.run(cmd, cwd=str(ws), env=env, capture_output=True, text=True, timeout=900)
     except subprocess.TimeoutExpired:
@@ -145,8 +169,13 @@ def check_agency(models: list[str]) -> list[tuple[str, bool, str]]:
             ok, note = fn(m, ws, force=False)
             body = (ws / "probe.txt").read_text().strip() if (ws / "probe.txt").is_file() else ""
             shutil.rmtree(ws, ignore_errors=True)
-            out.append((f"{harness}+{m} agentic turn", ok and EXPECT in body,
-                        f"{note} wrote={body[:20]!r} {time.time()-t0:.0f}s"))
+            out.append(
+                (
+                    f"{harness}+{m} agentic turn",
+                    ok and EXPECT in body,
+                    f"{note} wrote={body[:20]!r} {time.time() - t0:.0f}s",
+                )
+            )
     return out
 
 
@@ -168,8 +197,13 @@ def check_control(model: str) -> list[tuple[str, bool, str]]:
         # perfectly and prove nothing, which is how a missing seat credential once produced a green
         # "native==bridged" from native=(False,...) bridged=(False,...).
         both_ok = res["native"][0] and res["bridged"][0]
-        out.append((f"control {harness}+{model} native and bridged both succeed", both_ok,
-                    f"native={res['native']} bridged={res['bridged']}"))
+        out.append(
+            (
+                f"control {harness}+{model} native and bridged both succeed",
+                both_ok,
+                f"native={res['native']} bridged={res['bridged']}",
+            )
+        )
     return out
 
 
@@ -192,15 +226,18 @@ def main() -> int:
     rows: list[tuple[str, bool, str]] = []
     print("== wire reachability ==")
     for name, ok, note in check_wire(models):
-        rows.append((name, ok, note)); print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
+        rows.append((name, ok, note))
+        print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
     if not a.skip_agency:
         print("\n== agentic turn through each harness ==")
         for name, ok, note in check_agency(models):
-            rows.append((name, ok, note)); print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
+            rows.append((name, ok, note))
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
     if not a.skip_control:
         print("\n== proxy-vs-direct control ==")
         for name, ok, note in check_control(a.control_model):
-            rows.append((name, ok, note)); print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
+            rows.append((name, ok, note))
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name} — {note}")
 
     bad = [n for n, ok, _ in rows if not ok]
     print("\n" + "=" * 60)

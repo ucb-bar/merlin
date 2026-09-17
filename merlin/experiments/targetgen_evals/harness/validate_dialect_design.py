@@ -7,10 +7,7 @@ from pathlib import Path
 
 def run(run_dir: Path, manifest: dict) -> dict:
     target = manifest["target"]
-    golden_path = (
-        Path(__file__).parent.parent / "datasets" / target / "golden"
-        / "expected_dialect_features.yaml"
-    )
+    golden_path = Path(__file__).parent.parent / "datasets" / target / "golden" / "expected_dialect_features.yaml"
     dialect_plan_path = run_dir / "contracts" / "dialect_plan.yaml"
 
     metrics: dict = {
@@ -28,6 +25,7 @@ def run(run_dir: Path, manifest: dict) -> dict:
         return metrics
 
     import yaml
+
     with open(golden_path) as f:
         golden = yaml.safe_load(f) or {}
 
@@ -50,9 +48,7 @@ def run(run_dir: Path, manifest: dict) -> dict:
     metrics["ops_generated"] = len(generated_ops)
 
     if expected_ops:
-        metrics["ops_coverage"] = round(
-            len(generated_ops & expected_ops) / len(expected_ops), 3
-        )
+        metrics["ops_coverage"] = round(len(generated_ops & expected_ops) / len(expected_ops), 3)
 
     metrics["missing_ops"] = sorted(expected_ops - generated_ops)
     metrics["extra_ops"] = sorted(generated_ops - expected_ops)

@@ -39,6 +39,7 @@ Usage::
     headline.py measure --target T --set size --tier vsim      # run the generated shapes, serially
     headline.py report  --target T                             # both claims + the written result
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,24 +54,24 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "python"))
 
-from merlin.common import artifacts as A                                          # noqa: E402
-from merlin.common.paths import env                                               # noqa: E402
-from merlin.perf.attribution import buckets_from_kinds                            # noqa: E402
-from merlin.perf.composer import (                                                # noqa: E402
+from merlin.common import artifacts as A  # noqa: E402
+from merlin.common.paths import env  # noqa: E402
+from merlin.perf.attribution import buckets_from_kinds  # noqa: E402
+from merlin.perf.composer import (  # noqa: E402
     compose_corpus,
     peaks_from_observations,
     structural_unit_time,
 )
 from merlin.perf.decompose import UNKNOWN, ResourceKind, activity_from_busy, is_unknown  # noqa: E402
-from merlin.perf.envelope import (                                                # noqa: E402
+from merlin.perf.envelope import (  # noqa: E402
     Basis,
     ResourceDemand,
     ResourceTime,
     compose,
     resource_time,
 )
-from merlin.perf.headroom import composition_operator                             # noqa: E402
-from merlin.perf.record import (                                                  # noqa: E402
+from merlin.perf.headroom import composition_operator  # noqa: E402
+from merlin.perf.record import (  # noqa: E402
     compose_unit_busy,
     derive_delay_mnemonic,
     derive_unit_roles,
@@ -112,10 +113,17 @@ ARTIFACT_NAMES = ("atlas_arc_cycle_suite",)
 #:              decomposed. Ranking these is a real question with a real answer, which is what
 #:              top-K recall and regret need and what a set of differently-sized shapes cannot give.
 SHAPE_SETS = {
-    "size": ("32x32x32", "64x32x64", "128x32x128", "256x32x256", "384x32x384", "512x32x512",
-             "640x32x640", "704x32x704"),
-    "iso": ("256x32x512", "256x64x256", "128x128x256", "128x256x128", "128x512x64", "64x1024x64",
-            "32x4096x32"),
+    "size": (
+        "32x32x32",
+        "64x32x64",
+        "128x32x128",
+        "256x32x256",
+        "384x32x384",
+        "512x32x512",
+        "640x32x640",
+        "704x32x704",
+    ),
+    "iso": ("256x32x512", "256x64x256", "128x128x256", "128x256x128", "128x512x64", "64x1024x64", "32x4096x32"),
 }
 ISO_MACS = 4194304
 
@@ -144,11 +152,17 @@ def corpus_sources(suite: dict) -> list:
     out = []
     for name, body in suite["kernels"].items():
         arc = body["arc"]
-        out.append(activity_from_busy(
-            name, arc["truth"],
-            {b: arc[BUCKET_FIELDS[b]] for b in BUCKET_KINDS},
-            BUCKET_KINDS, partitioned=True, completion_observable=True,
-            provenance="per-cycle activity decomposition from the cycle-accurate model"))
+        out.append(
+            activity_from_busy(
+                name,
+                arc["truth"],
+                {b: arc[BUCKET_FIELDS[b]] for b in BUCKET_KINDS},
+                BUCKET_KINDS,
+                partitioned=True,
+                completion_observable=True,
+                provenance="per-cycle activity decomposition from the cycle-accurate model",
+            )
+        )
     return out
 
 
@@ -167,20 +181,32 @@ def corpus_demands(suite: dict) -> dict:
         arc = body["arc"]
         out[name] = {
             MOVEMENT_BUCKET: ResourceDemand(
-                MOVEMENT_BUCKET, ResourceKind.MOVEMENT, arc["reads"] + arc["writes"], "beats",
-                basis=Basis.MOVED, provenance="measured read/write beats x the port width"),
+                MOVEMENT_BUCKET,
+                ResourceKind.MOVEMENT,
+                arc["reads"] + arc["writes"],
+                "beats",
+                basis=Basis.MOVED,
+                provenance="measured read/write beats x the port width",
+            ),
             VECTOR_BUCKET: ResourceDemand(
-                VECTOR_BUCKET, ResourceKind.COMPUTE,
-                sum(1 for fam, _m, _i in body["op_stream"] if fam == VECTOR_FAMILY), "ops",
-                basis=Basis.MOVED, provenance="program op stream"),
+                VECTOR_BUCKET,
+                ResourceKind.COMPUTE,
+                sum(1 for fam, _m, _i in body["op_stream"] if fam == VECTOR_FAMILY),
+                "ops",
+                basis=Basis.MOVED,
+                provenance="program op stream",
+            ),
         }
     return out
 
 
 def corpus_peaks(suite: dict, sources) -> dict:
     return peaks_from_observations(
-        corpus_demands(suite), sources, units={MOVEMENT_BUCKET: "beats", VECTOR_BUCKET: "ops"},
-        provenance="per-cycle activity decomposition")
+        corpus_demands(suite),
+        sources,
+        units={MOVEMENT_BUCKET: "beats", VECTOR_BUCKET: "ops"},
+        provenance="per-cycle activity decomposition",
+    )
 
 
 def corpus_times(suite: dict, sources) -> dict:
@@ -192,22 +218,29 @@ def corpus_times(suite: dict, sources) -> dict:
     for name, body in suite["kernels"].items():
         out[name] = [
             resource_time(demands[name][MOVEMENT_BUCKET], peaks[MOVEMENT_BUCKET]),
-            structural_unit_time(COMPUTE_BUCKET, ResourceKind.COMPUTE,
-                                 compose_unit_busy(body["op_stream"], roles, fill, delay),
-                                 provenance=f"fill={fill} plus the program's scheduled delays"),
+            structural_unit_time(
+                COMPUTE_BUCKET,
+                ResourceKind.COMPUTE,
+                compose_unit_busy(body["op_stream"], roles, fill, delay),
+                provenance=f"fill={fill} plus the program's scheduled delays",
+            ),
             resource_time(demands[name][VECTOR_BUCKET], peaks[VECTOR_BUCKET]),
-            ResourceTime(resource=FIXED_BUCKET, kind=ResourceKind.FIXED,
-                         cycles=float(suite["_meta"]["reset_cycles"]), unit="cycles",
-                         basis=Basis.MOVED, evidence_kind="measured",
-                         provenance="reset_cycles declared by the measurement source"),
+            ResourceTime(
+                resource=FIXED_BUCKET,
+                kind=ResourceKind.FIXED,
+                cycles=float(suite["_meta"]["reset_cycles"]),
+                unit="cycles",
+                basis=Basis.MOVED,
+                evidence_kind="measured",
+                provenance="reset_cycles declared by the measurement source",
+            ),
         ]
     return out
 
 
 def derived_operator(sources):
     """The composition operator, DERIVED. Never defaulted, and it refuses from the buckets alone."""
-    got = composition_operator(list(sources),
-                               observed_overlap_cycles={s.workload: 0 for s in sources})
+    got = composition_operator(list(sources), observed_overlap_cycles={s.workload: 0 for s in sources})
     if not isinstance(got, tuple):
         raise SystemExit(f"the composition operator could not be derived: {got}")
     return got
@@ -217,8 +250,9 @@ def timing_records(target: str):
     """``facts['timing']`` for the target, or None -- UNCACHED is not a design with no logic."""
     try:
         from merlin.targetgen.rtl import facts as F
+
         return (F.load_facts(target).get("facts") or {}).get("timing")
-    except Exception:                                       # noqa: BLE001 - absent is recorded, not raised
+    except Exception:  # noqa: BLE001 - absent is recorded, not raised
         return None
 
 
@@ -227,11 +261,17 @@ def corpus_prediction(target: str, suite: dict):
     op, eta = derived_operator(sources)
     records = timing_records(target)
     from merlin.perf.composer import fixed_terms_from_timing
+
     structural, _refused = fixed_terms_from_timing(records, RESOURCE_MODULES)
     return compose_corpus(
-        sources, times=corpus_times(suite, sources), operator=op, eta=eta,
+        sources,
+        times=corpus_times(suite, sources),
+        operator=op,
+        eta=eta,
         buckets=buckets_from_kinds(BUCKET_KINDS, fixed_bucket="control"),
-        timing_records=records, structural_resources=list(structural)), (op, eta)
+        timing_records=records,
+        structural_resources=list(structural),
+    ), (op, eta)
 
 
 # ==================================================================================================
@@ -249,47 +289,55 @@ def claim_recovers(target: str, suite: dict) -> dict:
     resolved = pred.resolved
     rows = []
     for name, p in sorted(pred.predictions.items()):
-        rows.append({
-            "kernel": name,
-            "measured_cycles": p.measured_cycles,
-            "resolved": not is_unknown(p.predicted_cycles),
-            "predicted_cycles": (None if is_unknown(p.predicted_cycles)
-                                 else round(float(p.predicted_cycles), 2)),
-            "fraction_of_reference": (None if is_unknown(p.recovered_share)
-                                      else round(float(p.recovered_share), 4)),
-            "partial_fraction_of_reference": round(p.partial_recovered_share, 4),
-            "unresolved_resources": list(p.envelope.unresolved),
-            "limiter": (None if is_unknown(p.envelope.limiter) else p.envelope.limiter),
-        })
+        rows.append(
+            {
+                "kernel": name,
+                "measured_cycles": p.measured_cycles,
+                "resolved": not is_unknown(p.predicted_cycles),
+                "predicted_cycles": (None if is_unknown(p.predicted_cycles) else round(float(p.predicted_cycles), 2)),
+                "fraction_of_reference": (
+                    None if is_unknown(p.recovered_share) else round(float(p.recovered_share), 4)
+                ),
+                "partial_fraction_of_reference": round(p.partial_recovered_share, 4),
+                "unresolved_resources": list(p.envelope.unresolved),
+                "limiter": (None if is_unknown(p.envelope.limiter) else p.envelope.limiter),
+            }
+        )
     full = [r for r in rows if r["resolved"]]
     return {
         "claim": "RECOVERS: fraction of a shipped reference implementation's measured cycles that "
-                 "the derived structural envelope accounts for",
+        "the derived structural envelope accounts for",
         "denominator": "the measured cycles of the reference program shipped for that kernel",
         "kernel_relative_only": True,
         "percent_of_peak": "UNCLAIMABLE: speed_of_light is null for this target and the one "
-                           "candidate attainment model is GEMM-only, so no attainment denominator "
-                           "is derived and none is invented",
-        "operator": {"composition": op.value, "eta": eta,
-                     "derivation": "from an overlap observation independent of the activity "
-                                   "buckets; the buckets partition the timeline and cannot settle "
-                                   "it"},
+        "candidate attainment model is GEMM-only, so no attainment denominator "
+        "is derived and none is invented",
+        "operator": {
+            "composition": op.value,
+            "eta": eta,
+            "derivation": "from an overlap observation independent of the activity "
+            "buckets; the buckets partition the timeline and cannot settle "
+            "it",
+        },
         "n_measured": len(rows),
         "n_resolved_end_to_end": len(full),
         "n_partial_only": len(rows) - len(full),
         "corpus_fraction_of_reference": (
-            None if is_unknown(pred.corpus_recovered_share())
-            else round(float(pred.corpus_recovered_share()), 4)),
+            None if is_unknown(pred.corpus_recovered_share()) else round(float(pred.corpus_recovered_share()), 4)
+        ),
         "corpus_fraction_of_reference_note": (
             f"summed predicted over summed measured across the {len(full)} kernel(s) whose bound "
             "resolves end to end. NOT a corpus average: the other kernels are absent from both "
-            "sides of the ratio"),
+            "sides of the ratio"
+        ),
         "floor_violations": list(pred.floor_violations),
         "bound_violations": list(pred.bound_violations),
         "unresolved_reason_by_resource": dict(pred.coverage.unresolved_reasons),
         "time_weighted_resolved_share": (
-            None if is_unknown(pred.coverage.time_weighted_resolved_share)
-            else round(float(pred.coverage.time_weighted_resolved_share), 4)),
+            None
+            if is_unknown(pred.coverage.time_weighted_resolved_share)
+            else round(float(pred.coverage.time_weighted_resolved_share), 4)
+        ),
         "kernels": rows,
     }
 
@@ -333,12 +381,12 @@ def emitted_op_stream(plan, *, delay_mnemonic: str, family_of) -> list:
     body: list = []
     for _tile in range(mt * nt):
         for k in range(kt):
-            body += op(ops.tile_load, s.tensor)          # weight tile into a matrix register
+            body += op(ops.tile_load, s.tensor)  # weight tile into a matrix register
             body += op(ops.transpose, s.tensor)
             body += op(ops.weight_push, s.tensor)
-            body += op(ops.tile_load, s.tensor)          # activation tile
+            body += op(ops.tile_load, s.tensor)  # activation tile
             body += op(ops.contract if k == 0 else ops.contract_accumulate, s.mxu)
-        body += op(ops.acc_read, s.vpu)                  # drain this output tile
+        body += op(ops.acc_read, s.vpu)  # drain this output tile
         for _b in range(plan.facts.banks_per_tile):
             body += op(ops.tile_store, s.tensor)
     return body
@@ -376,16 +424,28 @@ def vector_demand(plan, suite: dict) -> tuple[float, str, list]:
     """
     fam = family_map(suite)
     ops = plan.ops
-    emitted = {ops.tile_load, ops.tile_store, ops.transpose, ops.weight_push, ops.contract,
-               ops.contract_accumulate, ops.acc_read, ops.dma_load, ops.dma_store, ops.dma_wait}
+    emitted = {
+        ops.tile_load,
+        ops.tile_store,
+        ops.transpose,
+        ops.weight_push,
+        ops.contract,
+        ops.contract_accumulate,
+        ops.acc_read,
+        ops.dma_load,
+        ops.dma_store,
+        ops.dma_wait,
+    }
     unmapped = sorted(m for m in emitted if _vocab(m) not in fam)
     known_vector = sorted(m for m in emitted if fam.get(_vocab(m)) == VECTOR_FAMILY)
     if unmapped:
-        return (float(len(known_vector)),
-                f"{len(unmapped)} emitted instruction(s) do not appear in any measured program, so "
-                f"this bucket's op-count proxy cannot be evaluated on them: {unmapped}. The demand "
-                "is a lower bound, not a total",
-                unmapped)
+        return (
+            float(len(known_vector)),
+            f"{len(unmapped)} emitted instruction(s) do not appear in any measured program, so "
+            f"this bucket's op-count proxy cannot be evaluated on them: {unmapped}. The demand "
+            "is a lower bound, not a total",
+            unmapped,
+        )
     return float(len(known_vector)), "", []
 
 
@@ -412,21 +472,26 @@ def scheduled_stall_cycles(stream, *, delay_mnemonic: str, roles, unit_busy) -> 
             else:
                 unclaimed += int(imm)
         prev_base = str(mnemonic).split(".", 1)[0]
-    return {"counted_inside_a_unit_law": claimed, "unclaimed": unclaimed,
-            "total": claimed + unclaimed,
-            "unit_law_resolved": counted_by_unit}
+    return {
+        "counted_inside_a_unit_law": claimed,
+        "unclaimed": unclaimed,
+        "total": claimed + unclaimed,
+        "unit_law_resolved": counted_by_unit,
+    }
 
 
 def _check_stream(plan, stream, roles) -> dict:
     """Cross-check the reconstructed trace against the plan's own independently-computed accessors."""
     mt, kt, nt = plan.tiles
-    computes = sum(1 for fam, m, _i in stream
-                   if fam == roles.family and str(m).split(".", 1)[0] == roles.compute)
-    drains = sum(1 for fam, m, _i in stream
-                 if fam == roles.family and str(m).split(".", 1)[0] == roles.drain)
-    return {"compute_ops": computes, "expected_compute_ops": mt * kt * nt,
-            "drains": drains, "expected_drains": mt * nt,
-            "agrees": computes == mt * kt * nt and drains == mt * nt}
+    computes = sum(1 for fam, m, _i in stream if fam == roles.family and str(m).split(".", 1)[0] == roles.compute)
+    drains = sum(1 for fam, m, _i in stream if fam == roles.family and str(m).split(".", 1)[0] == roles.drain)
+    return {
+        "compute_ops": computes,
+        "expected_compute_ops": mt * kt * nt,
+        "drains": drains,
+        "expected_drains": mt * nt,
+        "agrees": computes == mt * kt * nt and drains == mt * nt,
+    }
 
 
 def generated_times(plan, suite: dict, sources, *, variant: str) -> tuple:
@@ -435,49 +500,88 @@ def generated_times(plan, suite: dict, sources, *, variant: str) -> tuple:
     peaks = corpus_peaks(suite, sources)
     meta = suite["_meta"]
     fam = family_map(suite)
-    stream = emitted_op_stream(plan, delay_mnemonic=delay_mnemonic,
-                              family_of=lambda m: fam.get(_vocab(m), "Unmapped"))
+    stream = emitted_op_stream(plan, delay_mnemonic=delay_mnemonic, family_of=lambda m: fam.get(_vocab(m), "Unmapped"))
     busy = compose_unit_busy(stream, roles, fill, delay_mnemonic)
-    stalls = scheduled_stall_cycles(stream, delay_mnemonic=delay_mnemonic, roles=roles,
-                                    unit_busy=busy)
+    stalls = scheduled_stall_cycles(stream, delay_mnemonic=delay_mnemonic, roles=roles, unit_busy=busy)
 
     beats = plan.moved_bytes() / int(meta["beat_bytes"])
     move = resource_time(
-        ResourceDemand(MOVEMENT_BUCKET, ResourceKind.MOVEMENT, beats, "beats", basis=Basis.MOVED,
-                       provenance="bytes the emitted schedule moves, over the port width"),
-        peaks[MOVEMENT_BUCKET])
+        ResourceDemand(
+            MOVEMENT_BUCKET,
+            ResourceKind.MOVEMENT,
+            beats,
+            "beats",
+            basis=Basis.MOVED,
+            provenance="bytes the emitted schedule moves, over the port width",
+        ),
+        peaks[MOVEMENT_BUCKET],
+    )
 
-    comp = structural_unit_time(COMPUTE_BUCKET, ResourceKind.COMPUTE, busy,
-                                provenance=f"fill={fill} plus the delays the emitted program "
-                                           "schedules")
+    comp = structural_unit_time(
+        COMPUTE_BUCKET,
+        ResourceKind.COMPUTE,
+        busy,
+        provenance=f"fill={fill} plus the delays the emitted program schedules",
+    )
 
     vdem, vreason, unmapped = vector_demand(plan, suite)
     if vreason:
-        vec = ResourceTime(resource=VECTOR_BUCKET, kind=ResourceKind.COMPUTE, cycles=UNKNOWN,
-                           unit="ops", basis=Basis.MOVED, evidence_kind="trace_derived",
-                           provenance="emitted instruction inventory", reason=vreason)
+        vec = ResourceTime(
+            resource=VECTOR_BUCKET,
+            kind=ResourceKind.COMPUTE,
+            cycles=UNKNOWN,
+            unit="ops",
+            basis=Basis.MOVED,
+            evidence_kind="trace_derived",
+            provenance="emitted instruction inventory",
+            reason=vreason,
+        )
     else:
         vec = resource_time(
-            ResourceDemand(VECTOR_BUCKET, ResourceKind.COMPUTE, vdem, "ops", basis=Basis.MOVED,
-                           provenance="emitted instruction inventory"),
-            peaks[VECTOR_BUCKET])
+            ResourceDemand(
+                VECTOR_BUCKET,
+                ResourceKind.COMPUTE,
+                vdem,
+                "ops",
+                basis=Basis.MOVED,
+                provenance="emitted instruction inventory",
+            ),
+            peaks[VECTOR_BUCKET],
+        )
 
     fixed_cycles = float(meta["reset_cycles"])
     fixed_prov = "reset_cycles declared by the measurement source"
     if variant == "plus_program_schedule":
         fixed_cycles += float(stalls["unclaimed"])
-        fixed_prov += ("; plus the stall cycles the emitted program schedules that no unit law "
-                       "claims, read from the plan's own settle contract and tile counts")
+        fixed_prov += (
+            "; plus the stall cycles the emitted program schedules that no unit law "
+            "claims, read from the plan's own settle contract and tile counts"
+        )
     elif variant != "corpus_only":
         raise ValueError(f"unknown envelope variant {variant!r}")
-    fixed = ResourceTime(resource=FIXED_BUCKET, kind=ResourceKind.FIXED, cycles=fixed_cycles,
-                         unit="cycles", basis=Basis.MOVED, evidence_kind="measured",
-                         provenance=fixed_prov)
-    detail = {"moved_bytes": plan.moved_bytes(), "beats": beats,
-              "scheduled_stalls": stalls, "unmapped_mnemonics": unmapped,
-              "stream_check": _check_stream(plan, stream, roles),
-              "compute": {"cycles": busy.cycles, "groups": busy.groups, "computes": busy.computes,
-                          "lower_bound": busy.lower_bound, "reason": busy.reason}}
+    fixed = ResourceTime(
+        resource=FIXED_BUCKET,
+        kind=ResourceKind.FIXED,
+        cycles=fixed_cycles,
+        unit="cycles",
+        basis=Basis.MOVED,
+        evidence_kind="measured",
+        provenance=fixed_prov,
+    )
+    detail = {
+        "moved_bytes": plan.moved_bytes(),
+        "beats": beats,
+        "scheduled_stalls": stalls,
+        "unmapped_mnemonics": unmapped,
+        "stream_check": _check_stream(plan, stream, roles),
+        "compute": {
+            "cycles": busy.cycles,
+            "groups": busy.groups,
+            "computes": busy.computes,
+            "lower_bound": busy.lower_bound,
+            "reason": busy.reason,
+        },
+    }
     return [move, comp, vec, fixed], detail
 
 
@@ -510,15 +614,23 @@ def measure_shape(lw, target: str, tier: str, shape: str, workdir: Path, *, time
     rep = lw.WG.alias_report(plan.placements, plan.facts.dram_window)
     mt, kt, nt = plan.tiles
     row = {
-        "shape": shape, "m": plan.m, "k": plan.k, "n": plan.n,
+        "shape": shape,
+        "m": plan.m,
+        "k": plan.k,
+        "n": plan.n,
         "tiles": {"m": mt, "k": kt, "n": nt, "passes": mt * kt * nt},
         "macs": plan.total_macs(),
         "footprint_bytes": rep.footprint_bytes,
         "moved_bytes": plan.moved_bytes(),
         "kernel_words": len(plan.words),
         "unrolled_words": plan.unrolled_word_estimate(),
-        "alias": {"ok": rep.ok, "window": rep.window, "reason": rep.reason,
-                  "wrapped": list(rep.wrapped), "collisions": [list(c) for c in rep.collisions]},
+        "alias": {
+            "ok": rep.ok,
+            "window": rep.window,
+            "reason": rep.reason,
+            "wrapped": list(rep.wrapped),
+            "collisions": [list(c) for c in rep.collisions],
+        },
         "tier": tier,
         "settle": {"tensor": plan.settle.tensor, "mxu": plan.settle.mxu, "vpu": plan.settle.vpu},
     }
@@ -541,10 +653,15 @@ def measure_shape(lw, target: str, tier: str, shape: str, workdir: Path, *, time
         return row
     wall = time.time() - t0
     ok = plan.matches(out)
-    row["result"] = {"ran": True, "halted": True, "bit_exact": ok,
-                     "cycles": int(res["cycles"]), "wall_seconds": round(wall, 2),
-                     "cycles_per_second": round(int(res["cycles"]) / max(wall, 1e-9), 1),
-                     "oracle": res.get("oracle")}
+    row["result"] = {
+        "ran": True,
+        "halted": True,
+        "bit_exact": ok,
+        "cycles": int(res["cycles"]),
+        "wall_seconds": round(wall, 2),
+        "cycles_per_second": round(int(res["cycles"]) / max(wall, 1e-9), 1),
+        "oracle": res.get("oracle"),
+    }
     if not ok:
         row["result"]["divergence"] = plan.divergence(out)
     return row
@@ -560,8 +677,7 @@ def load_measurements(target: str) -> dict:
 
 
 def save_measurements(target: str, body: dict) -> None:
-    measure_path(target).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n",
-                                    encoding="utf-8")
+    measure_path(target).write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def prior_runs(target: str) -> list:
@@ -579,10 +695,16 @@ def prior_runs(target: str) -> list:
         sh = rec.get("shape") or {}
         if not res.get("ran") or not res.get("halted"):
             continue
-        out.append({"shape": f"{sh.get('m')}x{sh.get('k')}x{sh.get('n')}",
-                    "cycles": int(res["cycles"]), "bit_exact": bool(res.get("bit_exact")),
-                    "alias_ok": bool((rec.get("alias") or {}).get("ok")),
-                    "tier": rec.get("tier"), "product": str(rec_path.parent)})
+        out.append(
+            {
+                "shape": f"{sh.get('m')}x{sh.get('k')}x{sh.get('n')}",
+                "cycles": int(res["cycles"]),
+                "bit_exact": bool(res.get("bit_exact")),
+                "alias_ok": bool((rec.get("alias") or {}).get("ok")),
+                "tier": rec.get("tier"),
+                "product": str(rec_path.parent),
+            }
+        )
     return out
 
 
@@ -591,7 +713,7 @@ def cmd_measure(args) -> int:
     wd = Path(args.workdir)
     wd.mkdir(parents=True, exist_ok=True)
     shapes: list[str] = []
-    for name in (SHAPE_SETS if args.set == "all" else [args.set]):
+    for name in SHAPE_SETS if args.set == "all" else [args.set]:
         shapes += list(SHAPE_SETS[name])
     body = load_measurements(args.target)
     runs = body.setdefault("runs", {})
@@ -605,9 +727,13 @@ def cmd_measure(args) -> int:
         runs[key] = row
         save_measurements(args.target, body)
         r = row.get("result") or {}
-        print(f"#   alias_ok={row['alias']['ok']} ran={r.get('ran')} "
-              f"bit_exact={r.get('bit_exact')} cycles={r.get('cycles')} "
-              f"wall={r.get('wall_seconds')}s", file=sys.stderr, flush=True)
+        print(
+            f"#   alias_ok={row['alias']['ok']} ran={r.get('ran')} "
+            f"bit_exact={r.get('bit_exact')} cycles={r.get('cycles')} "
+            f"wall={r.get('wall_seconds')}s",
+            file=sys.stderr,
+            flush=True,
+        )
     save_measurements(args.target, body)
     print(json.dumps({"measured": len(runs), "path": str(measure_path(args.target))}, indent=2))
     return 0
@@ -635,18 +761,27 @@ def claim_predicts(target: str, suite: dict, tier: str) -> dict:
         if run.get("tier") != tier:
             continue
         res = run.get("result") or {}
-        row = {"shape": run["shape"], "macs": run["macs"], "tiles": run["tiles"],
-               "alias": run["alias"], "measured": res}
+        row = {
+            "shape": run["shape"],
+            "macs": run["macs"],
+            "tiles": run["tiles"],
+            "alias": run["alias"],
+            "measured": res,
+        }
         if not (res.get("ran") and res.get("halted")):
             row["priced"] = False
-            row["not_priced_because"] = ("the shape was refused for a wrapping footprint"
-                                         if not run["alias"]["ok"] else "the program did not halt")
+            row["not_priced_because"] = (
+                "the shape was refused for a wrapping footprint"
+                if not run["alias"]["ok"]
+                else "the program did not halt"
+            )
             rows.append(row)
             continue
         if not res.get("bit_exact"):
             row["priced"] = False
-            row["not_priced_because"] = ("the run is not bit-exact, so its cycle count belongs to a "
-                                         "different computation than the one predicted")
+            row["not_priced_because"] = (
+                "the run is not bit-exact, so its cycle count belongs to a different computation than the one predicted"
+            )
             rows.append(row)
             continue
         plan = lw.build_plan(target, tier, run["shape"], wd, with_operands=False)
@@ -658,7 +793,7 @@ def claim_predicts(target: str, suite: dict, tier: str) -> dict:
             full = p["predicted_cycles"]
             partial = p["partial_predicted_cycles"]
             p["measured_cycles"] = measured
-            p["prediction_accuracy"] = (None if full is None else round(full / measured, 4))
+            p["prediction_accuracy"] = None if full is None else round(full / measured, 4)
             p["partial_prediction_accuracy"] = round(partial / measured, 4)
             p["exceeds_measurement"] = bool(full is not None and full > measured)
             p["partial_exceeds_measurement"] = bool(partial > measured)
@@ -668,13 +803,12 @@ def claim_predicts(target: str, suite: dict, tier: str) -> dict:
     priced = [r for r in rows if r.get("priced")]
     out = {
         "claim": "PREDICTS: predicted cycles against measured cycles for merlin's OWN emitted "
-                 "kernel, at shapes for which no reference implementation exists",
+        "kernel, at shapes for which no reference implementation exists",
         "denominator": "the measured cycles of merlin's own emitted kernel",
         "does_not_measure": "how good the emitted code is. With no shipped reference at these "
-                            "shapes there is no fraction-of-reference to compute, and a predictor "
-                            "can be exact on a kernel that is far slower than it should be",
-        "percent_of_peak": "UNCLAIMABLE for the same reason as 7.1; nothing here divides by a "
-                           "nameplate rate",
+        "shapes there is no fraction-of-reference to compute, and a predictor "
+        "can be exact on a kernel that is far slower than it should be",
+        "percent_of_peak": "UNCLAIMABLE for the same reason as 7.1; nothing here divides by a nameplate rate",
         "tier": tier,
         "operator": {"composition": op.value, "eta": eta},
         "n_shapes_attempted": len(rows),
@@ -687,15 +821,22 @@ def claim_predicts(target: str, suite: dict, tier: str) -> dict:
         out[variant] = {
             "n_resolved_end_to_end": len(full),
             "n_partial_only": len(vals) - len(full),
-            "median_partial_prediction_accuracy": _median(
-                [v["partial_prediction_accuracy"] for v in vals]),
+            "median_partial_prediction_accuracy": _median([v["partial_prediction_accuracy"] for v in vals]),
             "range_partial_prediction_accuracy": (
-                (min(v["partial_prediction_accuracy"] for v in vals),
-                 max(v["partial_prediction_accuracy"] for v in vals)) if vals else None),
+                (
+                    min(v["partial_prediction_accuracy"] for v in vals),
+                    max(v["partial_prediction_accuracy"] for v in vals),
+                )
+                if vals
+                else None
+            ),
             "median_prediction_accuracy": _median([v["prediction_accuracy"] for v in full]),
-            "shapes_exceeding_measurement": [r["shape"] for r in priced
-                                             if r["variants"][variant]["exceeds_measurement"]
-                                             or r["variants"][variant]["partial_exceeds_measurement"]],
+            "shapes_exceeding_measurement": [
+                r["shape"]
+                for r in priced
+                if r["variants"][variant]["exceeds_measurement"]
+                or r["variants"][variant]["partial_exceeds_measurement"]
+            ],
         }
     out["prior_generated_runs_on_disk"] = prior_runs(target)
     return out
@@ -769,16 +910,24 @@ def rank_agreement(pairs, *, what: str) -> dict:
     """Spearman and Kendall over ``(predicted, measured)``, or the reason they were not computed."""
     n = len(pairs)
     if n < MIN_RANK_N:
-        return {"n": n, "computed": False,
-                "not_computed_because": f"{n} point(s); a rank correlation needs more than "
-                                        f"{MIN_RANK_N - 1} to be distinguishable from chance, and "
-                                        "reporting one over this sample would be a number rather "
-                                        "than a result",
-                "over": what}
+        return {
+            "n": n,
+            "computed": False,
+            "not_computed_because": f"{n} point(s); a rank correlation needs more than "
+            f"{MIN_RANK_N - 1} to be distinguishable from chance, and "
+            "reporting one over this sample would be a number rather "
+            "than a result",
+            "over": what,
+        }
     pred = [p for p, _m in pairs]
     meas = [m for _p, m in pairs]
-    return {"n": n, "computed": True, "over": what,
-            "spearman": _r(spearman(pred, meas)), "kendall_tau_b": _r(kendall_tau_b(pred, meas))}
+    return {
+        "n": n,
+        "computed": True,
+        "over": what,
+        "spearman": _r(spearman(pred, meas)),
+        "kendall_tau_b": _r(kendall_tau_b(pred, meas)),
+    }
 
 
 def _r(v):
@@ -795,33 +944,52 @@ def top_k(pairs, k: int) -> dict:
     only ever called on the iso-work set.
     """
     if len(pairs) < k + 1:
-        return {"k": k, "n": len(pairs), "computed": False,
-                "not_computed_because": f"{len(pairs)} candidate(s) cannot support a top-{k} claim"}
+        return {
+            "k": k,
+            "n": len(pairs),
+            "computed": False,
+            "not_computed_because": f"{len(pairs)} candidate(s) cannot support a top-{k} claim",
+        }
     by_pred = sorted(pairs, key=lambda p: p[1])
     by_meas = sorted(pairs, key=lambda p: p[2])
     pred_k = {p[0] for p in by_pred[:k]}
     meas_k = {p[0] for p in by_meas[:k]}
     best_pred, best_meas = by_pred[0], by_meas[0]
     regret = (best_pred[2] - best_meas[2]) / best_meas[2]
-    return {"k": k, "n": len(pairs), "computed": True,
-            "recall": round(len(pred_k & meas_k) / k, 4),
-            "picked": best_pred[0], "true_best": best_meas[0],
-            "regret_fraction": round(regret, 6),
-            "regret_cycles": best_pred[2] - best_meas[2],
-            "measured_spread_fraction": round(by_meas[-1][2] / by_meas[0][2] - 1.0, 6)}
+    return {
+        "k": k,
+        "n": len(pairs),
+        "computed": True,
+        "recall": round(len(pred_k & meas_k) / k, 4),
+        "picked": best_pred[0],
+        "true_best": best_meas[0],
+        "regret_fraction": round(regret, 6),
+        "regret_cycles": best_pred[2] - best_meas[2],
+        "measured_spread_fraction": round(by_meas[-1][2] / by_meas[0][2] - 1.0, 6),
+    }
 
 
 def size_analysis(recovers: dict, predicts: dict, *, variant: str) -> dict:
     """Error and ranking as a function of size, over the two claims' points kept apart."""
-    corpus_pts = [(r["kernel"], r["measured_cycles"], r["partial_fraction_of_reference"],
-                   r["fraction_of_reference"]) for r in recovers["kernels"]]
+    corpus_pts = [
+        (r["kernel"], r["measured_cycles"], r["partial_fraction_of_reference"], r["fraction_of_reference"])
+        for r in recovers["kernels"]
+    ]
     gen_pts = []
     for r in predicts["shapes"]:
         if not r.get("priced"):
             continue
         v = r["variants"][variant]
-        gen_pts.append((r["shape"], v["measured_cycles"], v["partial_prediction_accuracy"],
-                        v["prediction_accuracy"], v["partial_predicted_cycles"], r["macs"]))
+        gen_pts.append(
+            (
+                r["shape"],
+                v["measured_cycles"],
+                v["partial_prediction_accuracy"],
+                v["prediction_accuracy"],
+                v["partial_predicted_cycles"],
+                r["macs"],
+            )
+        )
 
     buckets: dict[str, list] = {}
     for name, measured, partial, _full in corpus_pts:
@@ -832,46 +1000,59 @@ def size_analysis(recovers: dict, predicts: dict, *, variant: str) -> dict:
     by_decade = []
     for dec in sorted(buckets, key=lambda d: int(d.split("e")[1])):
         rows = buckets[dec]
-        by_decade.append({
-            "decade": dec, "n": len(rows),
-            "sides": sorted({r[0] for r in rows}),
-            "median_partial_accuracy": _median([r[3] for r in rows]),
-            "members": [r[1] for r in rows],
-        })
+        by_decade.append(
+            {
+                "decade": dec,
+                "n": len(rows),
+                "sides": sorted({r[0] for r in rows}),
+                "median_partial_accuracy": _median([r[3] for r in rows]),
+                "members": [r[1] for r in rows],
+            }
+        )
 
     iso = [(n, pp, m) for (n, m, _pa, _fa, pp, macs) in gen_pts if macs == ISO_MACS]
     size_span = None
     all_measured = [p[1] for p in corpus_pts] + [p[1] for p in gen_pts]
     if all_measured:
-        size_span = {"smallest_measured_cycles": min(all_measured),
-                     "largest_measured_cycles": max(all_measured),
-                     "span": round(max(all_measured) / max(1, min(all_measured)), 1)}
+        size_span = {
+            "smallest_measured_cycles": min(all_measured),
+            "largest_measured_cycles": max(all_measured),
+            "span": round(max(all_measured) / max(1, min(all_measured)), 1),
+        }
 
     return {
         "variant": variant,
         "size_span": size_span,
         "by_decade": by_decade,
         "rank_agreement_generated": dict(
-            rank_agreement([(pp, m) for (_n, m, _pa, _fa, pp, _mc) in gen_pts],
-                           what="generated shapes, predicted vs measured cycles"),
+            rank_agreement(
+                [(pp, m) for (_n, m, _pa, _fa, pp, _mc) in gen_pts],
+                what="generated shapes, predicted vs measured cycles",
+            ),
             caveat="these shapes do DIFFERENT amounts of work, so a high rank correlation here is "
-                   "mostly the ordering of the work itself. It is reported because it was asked "
-                   "for, and it is not evidence that the model discriminates between candidates"),
+            "mostly the ordering of the work itself. It is reported because it was asked "
+            "for, and it is not evidence that the model discriminates between candidates",
+        ),
         "rank_agreement_reference": dict(
-            rank_agreement([(r["partial_fraction_of_reference"] * r["measured_cycles"],
-                             r["measured_cycles"]) for r in recovers["kernels"]],
-                           what="reference kernels, partial predicted vs measured cycles"),
-            caveat="same caveat: the corpus kernels are different workloads, not alternatives for "
-                   "one another"),
+            rank_agreement(
+                [
+                    (r["partial_fraction_of_reference"] * r["measured_cycles"], r["measured_cycles"])
+                    for r in recovers["kernels"]
+                ],
+                what="reference kernels, partial predicted vs measured cycles",
+            ),
+            caveat="same caveat: the corpus kernels are different workloads, not alternatives for one another",
+        ),
         "choice_set": {
             "definition": f"{len(iso)} shapes doing IDENTICAL arithmetic ({ISO_MACS:,} MACs) in an "
-                          "identical number of tile passes, differing only in how the contraction "
-                          "is decomposed. This is the only set here where ranking is a real "
-                          "question: the candidates are alternatives for one another",
-            "candidates": [{"shape": n, "predicted_cycles": pp, "measured_cycles": m}
-                           for n, pp, m in sorted(iso, key=lambda p: p[2])],
-            "rank_agreement": rank_agreement([(pp, m) for _n, pp, m in iso],
-                                             what="iso-work choice set"),
+            "identical number of tile passes, differing only in how the contraction "
+            "is decomposed. This is the only set here where ranking is a real "
+            "question: the candidates are alternatives for one another",
+            "candidates": [
+                {"shape": n, "predicted_cycles": pp, "measured_cycles": m}
+                for n, pp, m in sorted(iso, key=lambda p: p[2])
+            ],
+            "rank_agreement": rank_agreement([(pp, m) for _n, pp, m in iso], what="iso-work choice set"),
             "top_1": top_k(iso, 1),
             "top_3": top_k(iso, 3),
         },
@@ -886,9 +1067,11 @@ def _decade(cycles: int) -> str:
 # provenance + emission
 # ==================================================================================================
 def digest_triple():
-    return read_digest_triple(pin_names=list(PIN_NAMES), artifact_names=list(ARTIFACT_NAMES),
-                              sources=[suite_path(), Path(__file__),
-                                       Path(__file__).resolve().parent / "layer_workload.py"])
+    return read_digest_triple(
+        pin_names=list(PIN_NAMES),
+        artifact_names=list(ARTIFACT_NAMES),
+        sources=[suite_path(), Path(__file__), Path(__file__).resolve().parent / "layer_workload.py"],
+    )
 
 
 def _written_result(recovers: dict, predicts: dict, sizes: dict) -> list:
@@ -921,12 +1104,16 @@ def _written_result(recovers: dict, predicts: dict, sizes: dict) -> list:
         "named as such.",
     ]
     if recovers["bound_violations"] or recovers["floor_violations"]:
-        lines.append(f"WARNING: the reference-side bound is violated on "
-                     f"{recovers['bound_violations']} / floors {recovers['floor_violations']}.")
+        lines.append(
+            f"WARNING: the reference-side bound is violated on "
+            f"{recovers['bound_violations']} / floors {recovers['floor_violations']}."
+        )
     if v["shapes_exceeding_measurement"]:
-        lines.append("WARNING: the program-schedule variant predicts MORE cycles than measured on "
-                     f"{v['shapes_exceeding_measurement']}; a lower bound that exceeds its "
-                     "measurement falsifies an input rather than being a good fit.")
+        lines.append(
+            "WARNING: the program-schedule variant predicts MORE cycles than measured on "
+            f"{v['shapes_exceeding_measurement']}; a lower bound that exceeds its "
+            "measurement falsifies an input rather than being a good fit."
+        )
     return lines
 
 
@@ -947,7 +1134,8 @@ def report(target: str, tier: str) -> dict:
             "They are never averaged, summed, or presented as one headline number: 7.1's "
             "denominator is a shipped reference implementation's measured cycles and 7.2's is "
             "merlin's own emitted kernel's, so a single combined figure would report a prediction "
-            "result as a recovery result"),
+            "result as a recovery result"
+        ),
         "analysis_7_4_vs_size": sizes,
         "analysis_7_4_vs_size_corpus_only": sizes_corpus_only,
         "written_result": _written_result(recovers, predicts, sizes),
@@ -957,15 +1145,18 @@ def report(target: str, tier: str) -> dict:
 def cmd_report(args) -> int:
     body = report(args.target, args.tier)
     if not args.no_product:
-        pd = A.new_product("perf-headline", version=1, target=args.target,
-                           sources=[str(suite_path()), str(measure_path(args.target))],
-                           notes="R7: the recovery claim and the prediction claim, reported "
-                                 "separately with their own n and their own denominator")
-        pd.add_artifact("headline.json").write_text(
-            json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        pd = A.new_product(
+            "perf-headline",
+            version=1,
+            target=args.target,
+            sources=[str(suite_path()), str(measure_path(args.target))],
+            notes="R7: the recovery claim and the prediction claim, reported "
+            "separately with their own n and their own denominator",
+        )
+        pd.add_artifact("headline.json").write_text(json.dumps(body, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         pd.add_artifact("result.md").write_text(
-            "# R7 headline\n\n" + "\n\n".join(f"- {line}" for line in body["written_result"])
-            + "\n", encoding="utf-8")
+            "# R7 headline\n\n" + "\n\n".join(f"- {line}" for line in body["written_result"]) + "\n", encoding="utf-8"
+        )
         pd.write_manifest()
         print(f"# product: {pd.path}", file=sys.stderr)
     print(json.dumps(body["written_result"], indent=2))

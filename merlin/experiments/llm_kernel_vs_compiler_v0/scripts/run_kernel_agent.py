@@ -52,14 +52,16 @@ def _repo_root() -> Path:
 
 def _load_method(name: str) -> dict:
     import yaml
+
     p = EXP / "methods" / name / "method.yaml"
     if not p.is_file():
         raise SystemExit(f"no method config at {p}")
     return yaml.safe_load(p.read_text()) or {}
 
 
-def _task_card(capsule_dir: Path, iface: str, rnd: int, *, kernel_path: Path,
-               stage: str = "functional", best: dict | None = None) -> str:
+def _task_card(
+    capsule_dir: Path, iface: str, rnd: int, *, kernel_path: Path, stage: str = "functional", best: dict | None = None
+) -> str:
     """What the agent is told. Contains the interface and the ABI -- never a reference answer.
 
     Two stages, because they ask for different things. The functional stage asks for a correct kernel
@@ -119,9 +121,12 @@ Correctness first. A kernel that is fast and wrong scores nothing.
 - Do not modify anything outside `{kernel_path}`.
 
 Round {rnd}.
-""" + (_optimization_brief(best) if stage == "optimization" else
-       f"If `{kernel_path.parent.parent / 'qa' / 'verdict.json'}` exists, it is the grader's verdict "
-       "on your previous attempt -- read it first and fix what it reports.\n")
+""" + (
+        _optimization_brief(best)
+        if stage == "optimization"
+        else f"If `{kernel_path.parent.parent / 'qa' / 'verdict.json'}` exists, it is the grader's verdict "
+        "on your previous attempt -- read it first and fix what it reports.\n"
+    )
 
 
 def _optimization_brief(best: dict | None) -> str:
@@ -131,8 +136,7 @@ def _optimization_brief(best: dict | None) -> str:
     lines = [
         "\n## You already have a CORRECT kernel. Now make it faster.",
         "",
-        f"Your best correct kernel so far runs in **{b.get('cycles')} cycles** "
-        f"({b.get('pct_fp_peak')} of FP peak).",
+        f"Your best correct kernel so far runs in **{b.get('cycles')} cycles** ({b.get('pct_fp_peak')} of FP peak).",
         "",
         "Where its time actually goes, as fractions of the run:",
     ]
@@ -152,15 +156,25 @@ def _optimization_brief(best: dict | None) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _evaluate(kernel: Path, capsule_dir: Path, *, shim_pkg: Path, runs_root: Path,
-              task_id: str, config_id: str, target: str, method: str, timeout: int) -> dict:
+def _evaluate(
+    kernel: Path,
+    capsule_dir: Path,
+    *,
+    shim_pkg: Path,
+    runs_root: Path,
+    task_id: str,
+    config_id: str,
+    target: str,
+    method: str,
+    timeout: int,
+) -> dict:
     """Grade the agent's kernel through the shim, and return (full, redacted) as plain dicts.
 
     Run in a SUBPROCESS: the oracle pulls in the target backend and a simulator, and a crash there
     must fail this one evaluation rather than take the whole campaign down with it.
     """
     repo = _repo_root()
-    code = f'''
+    code = f"""
 import json, pathlib, sys
 from merlin.runtime.backends.base import get_backend
 from merlin.benchharness import evaluation as EV
@@ -177,20 +191,21 @@ ev = EV.from_capsule_result(r, task_id={task_id!r}, config_id={config_id!r}, tar
                             certifying_tiers=frozenset({{"L2"}}), method={method!r},
                             artifact_provenance="agent_kernel_in_harness_shim")
 print("<<<KVC>>>" + json.dumps({{"full": ev.to_dict(), "redacted": ev.redact()}}))
-'''
+"""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(repo / "merlin" / "python")
     env["MERLIN_KVC_KERNEL_FILE"] = str(kernel)
     env["MERLIN_MUON_SKIP_RTL_L3"] = env.get("MERLIN_MUON_SKIP_RTL_L3", "1")
-    r = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
-                       env=env, cwd=str(repo), timeout=timeout + 300)
+    r = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, env=env, cwd=str(repo), timeout=timeout + 300
+    )
     for line in r.stdout.splitlines():
         if line.startswith("<<<KVC>>>"):
-            return json.loads(line[len("<<<KVC>>>"):])
-    return {"full": {"status": "error", "failure_detail": (r.stderr or r.stdout)[-600:]},
-            "redacted": {"status": "error", "correct": False,
-                         "failure_detail": (r.stderr or r.stdout)[-600:]}}
-
+            return json.loads(line[len("<<<KVC>>>") :])
+    return {
+        "full": {"status": "error", "failure_detail": (r.stderr or r.stdout)[-600:]},
+        "redacted": {"status": "error", "correct": False, "failure_detail": (r.stderr or r.stdout)[-600:]},
+    }
 
 
 def _find_misrouted_kernel(transcript: Path | None, *, expected: Path) -> Path | None:
@@ -228,7 +243,7 @@ def _find_misrouted_kernel(transcript: Path | None, *, expected: Path) -> Path |
         try:
             rec = json.loads(line)
         except ValueError:
-            continue                      # a partial or non-JSON line is not evidence either way
+            continue  # a partial or non-JSON line is not evidence either way
         for cand in paths(rec):
             q = Path(cand)
             if q.name == want and q != expected and q.is_file():
@@ -294,11 +309,13 @@ def _sandbox_argv(driver: str, ws: Path, run_dir: Path, repo: Path) -> list[str]
     if shutil.which("bwrap") is None:
         return None
     from merlin.targetgen.sandbox import bwrap
+
     return bwrap.base_argv(ws, {}, repo=repo) + _runtime_binds(driver, run_dir)
 
 
-def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
-               timeout: int, sandbox: list[str] | None = None) -> tuple[int, Path | None]:
+def _run_agent(
+    cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str, timeout: int, sandbox: list[str] | None = None
+) -> tuple[int, Path | None]:
     """Invoke the agent CLI for this method, with OUR prompt. Returns (rc, raw-output path).
 
     The full stdout is kept per round regardless of outcome -- a failed round is part of the cost
@@ -328,8 +345,18 @@ def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
         # everything outside the workspace, and it -- not codex's setting -- is the boundary the
         # study relies on. Outside our box the setting still matters, so it is conditional.
         inner = "danger-full-access" if sandbox else "workspace-write"
-        argv = ["codex", "exec", "--json", "--skip-git-repo-check",
-                "-c", "approval_policy=never", "--sandbox", inner, "--cd", str(ws)]
+        argv = [
+            "codex",
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            "-c",
+            "approval_policy=never",
+            "--sandbox",
+            inner,
+            "--cd",
+            str(ws),
+        ]
         stdin = prompt
     elif driver == "opencode":
         model = cfg["model"]
@@ -343,8 +370,7 @@ def _run_agent(cfg: dict, ws: Path, run_dir: Path, rnd: int, prompt: str,
     if sandbox:
         argv = sandbox + argv
     try:
-        r = subprocess.run(argv, input=stdin, capture_output=True, text=True,
-                           timeout=timeout, cwd=str(ws), env=env)
+        r = subprocess.run(argv, input=stdin, capture_output=True, text=True, timeout=timeout, cwd=str(ws), env=env)
         out.write_text(r.stdout + ("\n" + r.stderr if r.stderr else ""))
         return r.returncode, out
     except subprocess.TimeoutExpired:
@@ -358,19 +384,31 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--capsule", required=True, type=Path)
     ap.add_argument("--run-id", required=True)
     ap.add_argument("--target", default="radiance")
-    ap.add_argument("--rounds", type=int, default=2,
-                    help="functional-stage budget: rounds allowed to reach a CORRECT kernel")
-    ap.add_argument("--opt-rounds", type=int, default=0,
-                    help="optimization-stage budget: rounds spent making a correct kernel faster")
-    ap.add_argument("--seed-kernel", type=Path, default=None,
-                    help="start from this correct kernel and go straight to optimization -- the "
-                         "like-for-like setting against a search that requires a working seed")
+    ap.add_argument(
+        "--rounds", type=int, default=2, help="functional-stage budget: rounds allowed to reach a CORRECT kernel"
+    )
+    ap.add_argument(
+        "--opt-rounds",
+        type=int,
+        default=0,
+        help="optimization-stage budget: rounds spent making a correct kernel faster",
+    )
+    ap.add_argument(
+        "--seed-kernel",
+        type=Path,
+        default=None,
+        help="start from this correct kernel and go straight to optimization -- the "
+        "like-for-like setting against a search that requires a working seed",
+    )
     ap.add_argument("--round-timeout", type=int, default=1800)
     ap.add_argument("--eval-timeout", type=int, default=900)
-    ap.add_argument("--runs-root", type=Path,
-                    default=runs_dir() / "kvc")
-    ap.add_argument("--sandbox", default="bwrap", choices=("bwrap", "none"),
-                    help="bwrap (default) isolates the agent so it cannot read other arms' runs")
+    ap.add_argument("--runs-root", type=Path, default=runs_dir() / "kvc")
+    ap.add_argument(
+        "--sandbox",
+        default="bwrap",
+        choices=("bwrap", "none"),
+        help="bwrap (default) isolates the agent so it cannot read other arms' runs",
+    )
     ap.add_argument("--seed", type=int, default=1)
     a = ap.parse_args(argv)
 
@@ -380,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
     # The routing policy is a launch gate, not advice: refuse to spend on an unapproved route.
     sys.path.insert(0, str(HERE))
     import check_method_models as policy
+
     bad = policy.violations(cfg, where=a.method)
     if bad:
         for b in bad:
@@ -401,9 +440,8 @@ def main(argv: list[str] | None = None) -> int:
     for f in ("kernelshim", "manifest.yaml"):
         shutil.copy2(EXP / "shim" / f, shim_pkg / f)
     os.environ.setdefault(
-        "MERLIN_KVC_REFERENCE_TOOL",
-        str(repo / "out" / "artifacts" / "targets" / "muon" / "reference_v0" / "muon-opt"))
-
+        "MERLIN_KVC_REFERENCE_TOOL", str(repo / "out" / "artifacts" / "targets" / "muon" / "reference_v0" / "muon-opt")
+    )
 
     # An agent CLI resolves relative paths against the PROJECT ROOT IT DETECTS, not the cwd it was
     # given -- and it detects that root by walking up for a `.git`. With the workspace nested under a
@@ -415,8 +453,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sandbox_argv = _sandbox_argv(cfg["driver"], ws, run_dir, repo) if a.sandbox != "none" else None
     if a.sandbox != "none" and sandbox_argv is None:
-        raise SystemExit("bwrap not found: refusing to run unsandboxed, because an unsandboxed arm "
-                         "can read the other arms' results. Pass --sandbox none to override.")
+        raise SystemExit(
+            "bwrap not found: refusing to run unsandboxed, because an unsandboxed arm "
+            "can read the other arms' results. Pass --sandbox none to override."
+        )
     if sandbox_argv is None:
         print("  !! UNSANDBOXED: this run can read other arms' results and is not blind.", flush=True)
 
@@ -424,7 +464,7 @@ def main(argv: list[str] | None = None) -> int:
     history: list[dict] = []
     t_start = time.time()
 
-    best: dict | None = None          # best CORRECT candidate so far, by cycles
+    best: dict | None = None  # best CORRECT candidate so far, by cycles
     best_src: str | None = None
     solved_round: int | None = None
 
@@ -434,55 +474,80 @@ def main(argv: list[str] | None = None) -> int:
     if a.seed_kernel:
         seed = a.seed_kernel.read_text()
         kernel.write_text(seed)
-        res0 = _evaluate(kernel, capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
-                         task_id=capsule_dir.name, config_id="C0", target=a.target,
-                         method=a.method, timeout=a.eval_timeout)
+        res0 = _evaluate(
+            kernel,
+            capsule_dir,
+            shim_pkg=shim_pkg,
+            runs_root=a.runs_root,
+            task_id=capsule_dir.name,
+            config_id="C0",
+            target=a.target,
+            method=a.method,
+            timeout=a.eval_timeout,
+        )
         full0 = res0["full"]
         if not (full0.get("verdict") == "match" and full0.get("certifying_tier")):
             # Refuse rather than silently start the optimization stage from a broken kernel, which
             # would make every later round look like the agent breaking something it never had.
-            raise SystemExit(f"seed kernel is not correct under this oracle: "
-                             f"{full0.get('failure_detail') or full0.get('verdict')}")
+            raise SystemExit(
+                f"seed kernel is not correct under this oracle: {full0.get('failure_detail') or full0.get('verdict')}"
+            )
         best = {k: full0.get(k) for k in ("cycles", "pct_fp_peak", "gflops", "utilization")}
         best_src = seed
-        solved_round = -1                      # correct before the agent was asked anything
+        solved_round = -1  # correct before the agent was asked anything
         (run_dir / "best_kernel.llvm.mlir").write_text(seed)
         (ws / "qa" / "verdict.json").write_text(json.dumps(res0["redacted"], indent=2))
-        history.append({"round": -1, "stage": "seed", "rc": 0, "agent_seconds": 0.0,
-                        "kernel_written": True, "correct": True, "evaluation": full0,
-                        "best_cycles_so_far": best.get("cycles")})
+        history.append(
+            {
+                "round": -1,
+                "stage": "seed",
+                "rc": 0,
+                "agent_seconds": 0.0,
+                "kernel_written": True,
+                "correct": True,
+                "evaluation": full0,
+                "best_cycles_so_far": best.get("cycles"),
+            }
+        )
         print(f"  seed: correct, {best.get('cycles')} cycles -- optimization stage only", flush=True)
 
     for rnd in range(a.rounds + a.opt_rounds):
         stage = "functional" if best is None else "optimization"
         if stage == "functional" and rnd >= a.rounds:
-            break                          # never became correct; the optimization budget is unusable
+            break  # never became correct; the optimization budget is unusable
         card = _task_card(capsule_dir, iface, rnd, kernel_path=kernel, stage=stage, best=best)
-        prev = (ws / "qa" / "verdict.json")
+        prev = ws / "qa" / "verdict.json"
         if rnd and prev.is_file():
-            card += ("\n## The grader's verdict on your previous attempt\n\n```json\n"
-                     + prev.read_text()[:4000] + "\n```\n")
+            card += (
+                "\n## The grader's verdict on your previous attempt\n\n```json\n" + prev.read_text()[:4000] + "\n```\n"
+            )
         (ws / "TASK.md").write_text(card)
         t0 = time.time()
-        rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout,
-                                    sandbox=sandbox_argv)
+        rc, transcript = _run_agent(cfg, ws, run_dir, rnd, card, a.round_timeout, sandbox=sandbox_argv)
         agent_s = time.time() - t0
 
         misroute = None
         if not kernel.is_file():
             misroute = _find_misrouted_kernel(transcript, expected=kernel)
 
-        rec: dict = {"round": rnd, "stage": stage, "rc": rc,
-                     "agent_seconds": round(agent_s, 1),
-                     "transcript": str(transcript) if transcript else None,
-                     "kernel_written": kernel.is_file() or bool(misroute)}
+        rec: dict = {
+            "round": rnd,
+            "stage": stage,
+            "rc": rc,
+            "agent_seconds": round(agent_s, 1),
+            "transcript": str(transcript) if transcript else None,
+            "kernel_written": kernel.is_file() or bool(misroute),
+        }
         if misroute:
             # The agent DID the work; the harness looked in the wrong place. Recording this as an
             # incorrect kernel is how a harness defect gets published as a model result, so it is
             # named as a harness fault and the kernel is graded where it actually landed.
             rec["harness_misroute"] = {"found_at": str(misroute), "expected_at": str(kernel)}
-            print(f"  !! HARNESS MISROUTE: agent wrote {misroute}, harness expected {kernel}. "
-                  f"Grading the kernel it wrote; the run is flagged.", flush=True)
+            print(
+                f"  !! HARNESS MISROUTE: agent wrote {misroute}, harness expected {kernel}. "
+                f"Grading the kernel it wrote; the run is flagged.",
+                flush=True,
+            )
             kernel.parent.mkdir(parents=True, exist_ok=True)
             kernel.write_text(Path(misroute).read_text())
         if kernel.is_file():
@@ -496,20 +561,30 @@ def main(argv: list[str] | None = None) -> int:
             cand.write_text(kernel.read_text())
             rec["candidate"] = str(cand)
             t1 = time.time()
-            res = _evaluate(kernel, capsule_dir, shim_pkg=shim_pkg, runs_root=a.runs_root,
-                            task_id=capsule_dir.name, config_id="C0", target=a.target,
-                            method=a.method, timeout=a.eval_timeout)
+            res = _evaluate(
+                kernel,
+                capsule_dir,
+                shim_pkg=shim_pkg,
+                runs_root=a.runs_root,
+                task_id=capsule_dir.name,
+                config_id="C0",
+                target=a.target,
+                method=a.method,
+                timeout=a.eval_timeout,
+            )
             rec["eval_seconds"] = round(time.time() - t1, 1)
             rec["evaluation"] = res["full"]
             # ONLY the redacted view reaches the workspace the agent reads.
             (ws / "qa" / "verdict.json").write_text(json.dumps(res["redacted"], indent=2))
-            rec["correct"] = bool(res["full"].get("verdict") == "match"
-                                  and res["full"].get("certifying_tier"))
+            rec["correct"] = bool(res["full"].get("verdict") == "match" and res["full"].get("certifying_tier"))
         else:
             rec["correct"] = False
-            (ws / "qa" / "verdict.json").write_text(json.dumps(
-                {"status": "error", "correct": False,
-                 "failure_detail": f"no kernel found at {KERNEL_REL}"}, indent=2))
+            (ws / "qa" / "verdict.json").write_text(
+                json.dumps(
+                    {"status": "error", "correct": False, "failure_detail": f"no kernel found at {KERNEL_REL}"},
+                    indent=2,
+                )
+            )
 
         # Keep the best CORRECT candidate. A regression does not discard it -- the agent is asked
         # for a faster kernel, not a riskier one, and every candidate is preserved either way.
@@ -518,8 +593,7 @@ def main(argv: list[str] | None = None) -> int:
             if solved_round is None:
                 solved_round = rnd
             if cyc is not None and (best is None or cyc < (best.get("cycles") or 1 << 62)):
-                best = {k: (rec["evaluation"] or {}).get(k)
-                        for k in ("cycles", "pct_fp_peak", "gflops", "utilization")}
+                best = {k: (rec["evaluation"] or {}).get(k) for k in ("cycles", "pct_fp_peak", "gflops", "utilization")}
                 best_src = kernel.read_text()
                 (run_dir / "best_kernel.llvm.mlir").write_text(best_src)
         elif best_src is not None:
@@ -530,24 +604,33 @@ def main(argv: list[str] | None = None) -> int:
         # Accounting per round, beside the verdict. Recovered from the transcript rather than
         # tracked separately so the two can never disagree, and recorded for FAILED rounds too --
         # a repair loop spends most of its tokens on rounds that did not work.
-        rec["accounting"] = ET.parse_agent_transcript(
-            transcript, driver=cfg["driver"], model=cfg["model"],
-            billing_mode=cfg.get("billing_mode", ET.METERED)) if transcript else {"available": False}
+        rec["accounting"] = (
+            ET.parse_agent_transcript(
+                transcript, driver=cfg["driver"], model=cfg["model"], billing_mode=cfg.get("billing_mode", ET.METERED)
+            )
+            if transcript
+            else {"available": False}
+        )
 
         rec["best_cycles_so_far"] = (best or {}).get("cycles")
         history.append(rec)
         (run_dir / "rounds" / f"round_{rnd:02d}.json").write_text(json.dumps(rec, indent=2))
-        print(f"  round {rnd} [{stage}]: rc={rc} kernel={rec['kernel_written']} "
-              f"correct={rec['correct']} cycles={(rec.get('evaluation') or {}).get('cycles')} "
-              f"best={(best or {}).get('cycles')} agent={rec['agent_seconds']}s", flush=True)
+        print(
+            f"  round {rnd} [{stage}]: rc={rc} kernel={rec['kernel_written']} "
+            f"correct={rec['correct']} cycles={(rec.get('evaluation') or {}).get('cycles')} "
+            f"best={(best or {}).get('cycles')} agent={rec['agent_seconds']}s",
+            flush=True,
+        )
 
     # Cumulative cost for this run: the axis the amortization curves are plotted against. Summed
     # over EVERY round including the failures, and with billed and notional kept in separate fields
     # so nothing can total a subscription seat's notional dollars into a real budget.
     acc = [r.get("accounting") or {} for r in history]
     priced = [x for x in acc if x.get("available")]
-    totals = {k: sum(x.get(k) or 0 for x in priced)
-              for k in ("tokens_input", "tokens_cached", "tokens_output", "tokens_total")}
+    totals = {
+        k: sum(x.get(k) or 0 for x in priced)
+        for k in ("tokens_input", "tokens_cached", "tokens_output", "tokens_total")
+    }
     totals["rounds_priced"] = len(priced)
     totals["rounds_unpriced"] = sum(1 for x in acc if x and not x.get("available"))
     totals["usage_complete"] = all(x.get("usage_complete", True) for x in priced) and not totals["rounds_unpriced"]
@@ -557,27 +640,37 @@ def main(argv: list[str] | None = None) -> int:
     totals["eval_seconds"] = round(sum(r.get("eval_seconds") or 0 for r in history), 1)
 
     summary = {
-        "run_id": a.run_id, "method": a.method, "driver": cfg["driver"],
+        "run_id": a.run_id,
+        "method": a.method,
+        "driver": cfg["driver"],
         "cost": totals,
-        "provider": cfg.get("provider"), "model": cfg["model"],
-        "billing_mode": cfg.get("billing_mode"), "seed": a.seed,
-        "task_id": capsule_dir.name, "target": a.target,
+        "provider": cfg.get("provider"),
+        "model": cfg["model"],
+        "billing_mode": cfg.get("billing_mode"),
+        "seed": a.seed,
+        "task_id": capsule_dir.name,
+        "target": a.target,
         "rounds_run": len(history),
         "functional_rounds": sum(1 for r in history if r["stage"] == "functional"),
         "optimization_rounds": sum(1 for r in history if r["stage"] == "optimization"),
         "solved": any(r["correct"] for r in history),
         "solved_at_round": solved_round,
         "sandbox": a.sandbox if sandbox_argv else "NONE (not blind)",
-        "started_from": ("supplied seed kernel (optimization only)" if a.seed_kernel
-                         else "the specification (generation then optimization)"),
+        "started_from": (
+            "supplied seed kernel (optimization only)"
+            if a.seed_kernel
+            else "the specification (generation then optimization)"
+        ),
         "best_cycles": (best or {}).get("cycles"),
         "best_utilization": (best or {}).get("utilization"),
         "wall_seconds": round(time.time() - t_start, 1),
         "history": history,
     }
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=2))
-    print(f"\n  {a.method}/{capsule_dir.name}: solved={summary['solved']} "
-          f"rounds={summary['rounds_run']} wall={summary['wall_seconds']}s")
+    print(
+        f"\n  {a.method}/{capsule_dir.name}: solved={summary['solved']} "
+        f"rounds={summary['rounds_run']} wall={summary['wall_seconds']}s"
+    )
     print(f"  -> {run_dir}")
     return 0
 

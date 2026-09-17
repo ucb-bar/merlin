@@ -9,7 +9,9 @@ Target-general: everything is derived from the bundle manifest + the descriptor'
 
 Usage: MERLIN_TARGET_EXPERIMENT=<descriptor> sandbox_access_audit.py [--arm merlin_assisted_rtlchecks]
 """
+
 from __future__ import annotations
+
 import argparse
 import subprocess
 import sys
@@ -18,17 +20,21 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+import run_agent_experiment as RX  # noqa: E402
 import yaml  # noqa: E402
+
 from merlin.targetgen.sandbox import bwrap as _BW  # noqa: E402
 from merlin.targetgen.sandbox.answer_surfaces import answer_surfaces  # noqa: E402
 from merlin.targetgen.target_experiment import load_target_experiment  # noqa: E402
-import run_agent_experiment as RX  # noqa: E402
 
 # The test CONTRACT files present in each graded capsule dir (what the agent must see to know the goal);
 # the ANSWER files (golden.yaml / expected_command_buffer*) are enumerated by answer_surfaces() instead.
 _CONTRACT_NAMES = ("capsule.interface.mlir", "capsule.yaml", "expected_instruction_coverage.yaml")
-_CONTRACT_DOCS = ("merlin/contract/command_buffer_abi.yaml", "merlin/contract/interface_grammar.md",
-                  "merlin/contract/capsule.schema.json")
+_CONTRACT_DOCS = (
+    "merlin/contract/command_buffer_abi.yaml",
+    "merlin/contract/interface_grammar.md",
+    "merlin/contract/capsule.schema.json",
+)
 
 
 def _expand(paths: set[str], p: Path, cap: int) -> None:
@@ -85,13 +91,14 @@ def audit(arm_bundle: str) -> int:
     # `bash -c <bwrap …>` past the cap and the whole audit died with "Argument list too long" instead of
     # reporting a verdict. Feeding the list through stdin keeps the command constant-size however many
     # surfaces the target declares.
-    probe = ("""while IFS= read -r __p; do
+    probe = """while IFS= read -r __p; do
   case "$__p" in ===*) echo "$__p"; continue;; esac
   if head -c1 "$__p" >/dev/null 2>&1; then echo "R::$__p"; else echo "X::$__p"; fi
-done""")
+done"""
     feed = "\n".join(["===DENY===", *deny, "===ALLOW===", *allow]) + "\n"
-    out = subprocess.run(["bash", "-c", _BW.wrap(te, ws, probe, bundle)], input=feed,
-                         capture_output=True, text=True, cwd=str(repo)).stdout
+    out = subprocess.run(
+        ["bash", "-c", _BW.wrap(te, ws, probe, bundle)], input=feed, capture_output=True, text=True, cwd=str(repo)
+    ).stdout
     section, leaks, blocked = None, [], []
     for ln in out.splitlines():
         if ln in ("===DENY===", "===ALLOW==="):
@@ -118,9 +125,12 @@ done""")
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--arm", default=None,
-                    help="bundle id to audit (default: the CIRCT arm's hwbringup bundle if present, "
-                         "else the first bundle in the target's input_bundles dir)")
+    ap.add_argument(
+        "--arm",
+        default=None,
+        help="bundle id to audit (default: the CIRCT arm's hwbringup bundle if present, "
+        "else the first bundle in the target's input_bundles dir)",
+    )
     a = ap.parse_args(argv)
     arm = a.arm
     if not arm:
@@ -130,8 +140,7 @@ def main(argv: list[str] | None = None) -> int:
                 arm = cand
                 break
         if not arm:
-            bs = sorted(d.name for d in C.BUNDLES.glob("*_hwbringup*")
-                        if (d / "input_bundle_manifest.yaml").is_file())
+            bs = sorted(d.name for d in C.BUNDLES.glob("*_hwbringup*") if (d / "input_bundle_manifest.yaml").is_file())
             arm = bs[0] if bs else None
     if not arm:
         print("no hwbringup bundle found for this target", file=sys.stderr)

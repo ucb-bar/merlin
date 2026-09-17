@@ -21,6 +21,7 @@ Usage:
   launch_ab_batch.py --tag abc1 --mode parallel
   launch_ab_batch.py --tag abc1 --arms baseline,merlin,merlin_rtlchecks --mode parallel
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,20 +32,55 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import _common as C
 import yaml
 
 from merlin.common.paths import ext_path  # noqa: E402
-import _common as C
 
 SCRIPTS = C.EXP / "scripts"
 # arm -> (driver, extra args, run-id prefix, run-dir subdir, realistic bundle id, full bundle id)
 # realistic (abc3+) = HW-bringup info set: RTL + ISA + README + ONE example kernel (not the full suite).
 ARMS = {
-    "baseline":         (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "raw_baseline"], "rb", "raw_baseline", "raw_baseline_hwbringup_v0", "raw_baseline_public_v0"),
-    "merlin":           (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "merlin_assisted"], "merlin", "merlin_assisted", "merlin_assisted_hwbringup_v0", "merlin_assisted_public_v0"),
-    "merlin_rtlchecks": (SCRIPTS / "run_rtlchecks_qa_loop.py", [], "merlincirct", "merlin_assisted", "merlin_assisted_rtlchecks_hwbringup_v0", "merlin_assisted_rtlchecks_public_v0"),
-    "cpp_merlininfra":  (SCRIPTS / "run_baseline_qa_loop.py", ["--arm", "cpp_merlininfra"], "rbinfra", "cpp_merlininfra", "cpp_merlininfra_hwbringup_v0", "cpp_merlininfra_public_v0"),
-    "merlin_eqsat":     (SCRIPTS / "run_eqsat_qa_loop.py", [], "merlineqsat", "merlin_assisted", "merlin_assisted_eqsat_hwbringup_v0", "merlin_assisted_eqsat_public_v0"),
+    "baseline": (
+        SCRIPTS / "run_baseline_qa_loop.py",
+        ["--arm", "raw_baseline"],
+        "rb",
+        "raw_baseline",
+        "raw_baseline_hwbringup_v0",
+        "raw_baseline_public_v0",
+    ),
+    "merlin": (
+        SCRIPTS / "run_baseline_qa_loop.py",
+        ["--arm", "merlin_assisted"],
+        "merlin",
+        "merlin_assisted",
+        "merlin_assisted_hwbringup_v0",
+        "merlin_assisted_public_v0",
+    ),
+    "merlin_rtlchecks": (
+        SCRIPTS / "run_rtlchecks_qa_loop.py",
+        [],
+        "merlincirct",
+        "merlin_assisted",
+        "merlin_assisted_rtlchecks_hwbringup_v0",
+        "merlin_assisted_rtlchecks_public_v0",
+    ),
+    "cpp_merlininfra": (
+        SCRIPTS / "run_baseline_qa_loop.py",
+        ["--arm", "cpp_merlininfra"],
+        "rbinfra",
+        "cpp_merlininfra",
+        "cpp_merlininfra_hwbringup_v0",
+        "cpp_merlininfra_public_v0",
+    ),
+    "merlin_eqsat": (
+        SCRIPTS / "run_eqsat_qa_loop.py",
+        [],
+        "merlineqsat",
+        "merlin_assisted",
+        "merlin_assisted_eqsat_hwbringup_v0",
+        "merlin_assisted_eqsat_public_v0",
+    ),
 }
 
 
@@ -52,7 +88,8 @@ def _sim_via() -> str:
     """The target's declared bespoke sim (toolchain.sim_via) from the active descriptor — "" (arc-only)
     for atlas/npu_model/radiance/saturn, "chipyard" for gemmini. Drives the verilator-timing preflight."""
     import yaml
-    desc = C.EXP / "target_experiment.yaml"       # C.EXP honors MERLIN_TARGET_EXPERIMENT
+
+    desc = C.EXP / "target_experiment.yaml"  # C.EXP honors MERLIN_TARGET_EXPERIMENT
     if desc.is_file():
         d = yaml.safe_load(desc.read_text()) or {}
         return ((d.get("toolchain") or {}).get("sim_via") or "").strip()
@@ -74,7 +111,7 @@ def _bundle_for(arm: str, cond: str, experiment: str) -> str:
         return ARMS[arm][5]
     if experiment != "realistic":
         raise ValueError(f"unknown experiment {experiment!r}")
-    b = ARMS[arm][4]                                   # *_hwbringup_v0 (kernels condition)
+    b = ARMS[arm][4]  # *_hwbringup_v0 (kernels condition)
     if cond == "no-kernels":
         b = b.replace("_hwbringup_v0", "_hwbringup_nokernel_v0")
     elif cond == "kernel-library":
@@ -86,10 +123,22 @@ def _bundle_for(arm: str, cond: str, experiment: str) -> str:
 
 def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     driver, extra, _, _, _, _ = ARMS[arm]
-    cmd = [sys.executable, str(driver), "--run-id", run_id,
-           "--model", a.model, "--effort", a.effort,
-           "--max-rounds", str(a.max_rounds), "--max-rate-limit-waits", str(a.max_rate_limit_waits),
-           "--round-timeout", str(a.round_timeout)]
+    cmd = [
+        sys.executable,
+        str(driver),
+        "--run-id",
+        run_id,
+        "--model",
+        a.model,
+        "--effort",
+        a.effort,
+        "--max-rounds",
+        str(a.max_rounds),
+        "--max-rate-limit-waits",
+        str(a.max_rate_limit_waits),
+        "--round-timeout",
+        str(a.round_timeout),
+    ]
     if getattr(a, "min_rounds", 0):
         cmd += ["--min-rounds", str(a.min_rounds)]
     # Always spell the experiment shape in child argv. An implicit legacy default produced a
@@ -129,8 +178,7 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
     # process-global default before delegating to the common loop, so inferring the bundle from the arm
     # name here is wrong (most importantly, the rtlchecks full cell serves *_rtlchecks_public_v0). Making
     # it an argv fact lets preflight validate the exact manifest the launched process will load.
-    cmd += ["--experiment", a.experiment,
-            "--bundle", _bundle_for(arm, cond, a.experiment)]
+    cmd += ["--experiment", a.experiment, "--bundle", _bundle_for(arm, cond, a.experiment)]
     if a.skip_hidden:
         cmd += ["--skip-hidden"]
     cmd += ["--sandbox", a.sandbox]
@@ -157,7 +205,7 @@ def _arm_cmd(arm: str, run_id: str, a, cond: str = "kernels") -> list[str]:
 def _host_answer_surfaces(te) -> list[Path]:
     surfaces: list[Path] = []
     if te is not None:
-        h = te.hidden_corpus()                                # per-target hidden set (capsules/<t>/hidden)
+        h = te.hidden_corpus()  # per-target hidden set (capsules/<t>/hidden)
         if h:
             surfaces.append(C.REPO / h.rstrip("/"))
     surfaces.append(C.REPO / f"out/artifacts/capsule-bench/{C.TARGET}")  # stale prior results
@@ -185,12 +233,11 @@ def _make_host_owner_only(root: Path) -> int:
         if entry.is_symlink():
             try:
                 target = entry.resolve()
-            except OSError as e:                     # a broken link resolves to nothing to protect
+            except OSError as e:  # a broken link resolves to nothing to protect
                 raise RuntimeError(f"answer surface contains an unresolvable symlink: {entry}") from e
             if not target.is_relative_to(root_real):
-                raise RuntimeError(
-                    f"answer surface contains a symlink leaving the surface: {entry} -> {target}")
-            continue                                 # its target is protected as an entry of its own
+                raise RuntimeError(f"answer surface contains a symlink leaving the surface: {entry} -> {target}")
+            continue  # its target is protected as an entry of its own
         entry.chmod(0o700 if entry.is_dir() else 0o600)
         protected += 1
     return protected
@@ -225,16 +272,18 @@ def _planned_bundle_manifests(planned_commands: list[list[str]]) -> list[Path]:
         if body.get("bundle_id") != bundle_id:
             raise ValueError(
                 f"selected bundle identity mismatch: command names {bundle_id!r}, "
-                f"manifest declares {body.get('bundle_id')!r} at {manifest}")
+                f"manifest declares {body.get('bundle_id')!r} at {manifest}"
+            )
         manifests.append(manifest)
     return manifests
 
 
 def _run_preflight(planned_commands: list[list[str]]) -> int:
     """Prepare host-only surfaces + run verify_no_cheat.py. Returns 0 iff safe."""
-    C.require_scaffolding()   # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
-    from merlin.targetgen.target_experiment import load_target_experiment, bundles_match_descriptor
-    desc = C.EXP / "target_experiment.yaml"          # C.EXP honors MERLIN_TARGET_EXPERIMENT
+    C.require_scaffolding()  # fail loudly if MERLIN_TARGET_EXPERIMENT points at a scaffolding-less dir
+    from merlin.targetgen.target_experiment import bundles_match_descriptor, load_target_experiment
+
+    desc = C.EXP / "target_experiment.yaml"  # C.EXP honors MERLIN_TARGET_EXPERIMENT
     try:
         if not desc.is_file():
             raise FileNotFoundError(f"active target descriptor does not exist: {desc}")
@@ -245,8 +294,7 @@ def _run_preflight(planned_commands: list[list[str]]) -> int:
             print(f"  ⚠ selected bundles drifted from {desc.name}'s shared spec: {drift}")
             return 1
         names = [manifest.parent.name for manifest in manifests]
-        print(f"  descriptor consistency: OK ({len(manifests)} selected bundle(s) vs {desc.name}: "
-              f"{', '.join(names)})")
+        print(f"  descriptor consistency: OK ({len(manifests)} selected bundle(s) vs {desc.name}: {', '.join(names)})")
     except Exception as exc:  # noqa: BLE001 — a missing/invalid selected bundle must stop all spend
         print(f"  ⚠ selected-bundle consistency check errored: {exc}")
         return 1
@@ -276,7 +324,7 @@ def _arm_env(arm: str, a, base_env: dict) -> dict:
     """Per-arm env. Realistic baseline = status-quo C++ OOT MLIR (PILOT_LANG=cpp); merlin arms = xDSL."""
     env = dict(base_env)
     if a.experiment == "realistic" and arm in ("baseline", "cpp_merlininfra"):
-        env["PILOT_LANG"] = "cpp"   # both C++ arms author a C++ OOT package (status-quo vs infra-assisted)
+        env["PILOT_LANG"] = "cpp"  # both C++ arms author a C++ OOT package (status-quo vs infra-assisted)
     return env
 
 
@@ -294,12 +342,15 @@ def main(argv=None):
     ap.add_argument("--model", default="gpt-5.6-sol")
     ap.add_argument("--effort", default="high")
     # Agent driver + tier-within-agent models (Claude-Code-like). auto preserves route-by-model-id behavior.
-    ap.add_argument("--driver", choices=["auto", "converse", "claudecode", "opencode", "codex"],
-                    default="codex",
-                    help="agent driver for every arm. Default codex (the subscription seat these "
-                         "experiments run on). NOTE that `auto` cannot select codex: it routes by "
-                         "model id to the Bedrock Converse loop or the claude CLI, so it is a way to "
-                         "run a different agent than intended, not a way to pick this one.")
+    ap.add_argument(
+        "--driver",
+        choices=["auto", "converse", "claudecode", "opencode", "codex"],
+        default="codex",
+        help="agent driver for every arm. Default codex (the subscription seat these "
+        "experiments run on). NOTE that `auto` cannot select codex: it routes by "
+        "model id to the Bedrock Converse loop or the claude CLI, so it is a way to "
+        "run a different agent than intended, not a way to pick this one.",
+    )
     ap.add_argument("--subagent-model", default="", help="delegate/subagent model (alias or Bedrock id)")
     ap.add_argument("--background-model", default="", help="background/mechanical model (alias or Bedrock id)")
     # Provider for the agent CLI (experiments-only; interactive Claude Code keeps the subscription).
@@ -307,73 +358,137 @@ def main(argv=None):
     ap.add_argument("--provider", choices=["subscription", "bedrock"], default="subscription")
     ap.add_argument("--aws-region", default="us-east-1", help="AWS region for --provider bedrock")
     ap.add_argument("--aws-profile", default="", help="AWS profile (~/.aws) for --provider bedrock")
-    ap.add_argument("--schedule", choices=("rounds", "continuous"), default="continuous",
-                    help="forwarded explicitly to every arm. continuous (default) removes the round "
-                         "COUNT as a terminator; rounds is legacy reproduction mode.")
-    ap.add_argument("--plateau-rounds", type=int, default=None,
-                    help="continuous only: forwarded to each arm's loop — stop when the best "
-                         "score has not improved across this many rounds (0 disables). "
-                         "Unset leaves the loop default, so a batch that omits it is unchanged.")
-    ap.add_argument("--max-wall-s", type=int, default=0,
-                    help="forwarded with --schedule continuous: per-arm ACTIVE wall budget (0 = none).")
+    ap.add_argument(
+        "--schedule",
+        choices=("rounds", "continuous"),
+        default="continuous",
+        help="forwarded explicitly to every arm. continuous (default) removes the round "
+        "COUNT as a terminator; rounds is legacy reproduction mode.",
+    )
+    ap.add_argument(
+        "--plateau-rounds",
+        type=int,
+        default=None,
+        help="continuous only: forwarded to each arm's loop — stop when the best "
+        "score has not improved across this many rounds (0 disables). "
+        "Unset leaves the loop default, so a batch that omits it is unchanged.",
+    )
+    ap.add_argument(
+        "--max-wall-s",
+        type=int,
+        default=0,
+        help="forwarded with --schedule continuous: per-arm ACTIVE wall budget (0 = none).",
+    )
     ap.add_argument("--max-rounds", type=int, default=12)
-    ap.add_argument("--min-rounds", type=int, default=0,
-                    help="Decline a READY_FOR_BARRIER self-declaration before round N while the run is "
-                         "still failing (0 = disabled). Passed through to the arm driver.")
+    ap.add_argument(
+        "--min-rounds",
+        type=int,
+        default=0,
+        help="Decline a READY_FOR_BARRIER self-declaration before round N while the run is "
+        "still failing (0 = disabled). Passed through to the arm driver.",
+    )
     ap.add_argument("--max-rate-limit-waits", type=int, default=8)
-    ap.add_argument("--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout")
-    ap.add_argument("--qa-timeout", type=int, default=None,
-                    help="per-grade wall ceiling (s) forwarded to every arm. Unset = the loop default "
-                         "(900); the gemmini reference run used 1200.")
-    ap.add_argument("--sim-max-jobs", type=int, default=None,
-                    help="simjob broker concurrency forwarded to every arm. Unset = the loop default "
-                         "(0 -> the broker's own 4). Remember this is PER ARM: N arms in parallel put "
-                         "N*this many verilator/spike jobs on the host at once.")
-    ap.add_argument("--model-budget-s", type=int, default=None,
-                    help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
-                         "Unset = the driver's default; 0 = no ceiling.")
-    ap.add_argument("--max-spend-usd", type=float, default=0.0,
-                    help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
-                         "to a shared ledger and stops before its next round once the total crosses this "
-                         "(enforces the org spend ceiling in code, e.g. --max-spend-usd 300).")
+    ap.add_argument(
+        "--round-timeout", type=int, default=14400, help="per-round agent wall cap (s); large = effectively no timeout"
+    )
+    ap.add_argument(
+        "--qa-timeout",
+        type=int,
+        default=None,
+        help="per-grade wall ceiling (s) forwarded to every arm. Unset = the loop default "
+        "(900); the gemmini reference run used 1200.",
+    )
+    ap.add_argument(
+        "--sim-max-jobs",
+        type=int,
+        default=None,
+        help="simjob broker concurrency forwarded to every arm. Unset = the loop default "
+        "(0 -> the broker's own 4). Remember this is PER ARM: N arms in parallel put "
+        "N*this many verilator/spike jobs on the host at once.",
+    )
+    ap.add_argument(
+        "--model-budget-s",
+        type=int,
+        default=None,
+        help="wall-clock ceiling for ONE whole-model capsule inside a round grade (s). "
+        "Unset = the driver's default; 0 = no ceiling.",
+    )
+    ap.add_argument(
+        "--max-spend-usd",
+        type=float,
+        default=0.0,
+        help="batch DOLLAR ceiling across ALL arms (0=off). Each arm appends its per-round cost "
+        "to a shared ledger and stops before its next round once the total crosses this "
+        "(enforces the org spend ceiling in code, e.g. --max-spend-usd 300).",
+    )
     ap.add_argument("--skip-hidden", action="store_true")
-    ap.add_argument("--experiment", choices=["full", "realistic"], default="full",
-                    help="'realistic' (abc2): whole-repo + self-check tool + verilator barrier; baseline=C++")
+    ap.add_argument(
+        "--experiment",
+        choices=["full", "realistic"],
+        default="full",
+        help="'realistic' (abc2): whole-repo + self-check tool + verilator barrier; baseline=C++",
+    )
     ap.add_argument("--account-config-dir", default="", help="CLAUDE_CONFIG_DIR for all arms (optional)")
-    ap.add_argument("--repeats", type=int, default=1,
-                    help="N independent repeats per arm×condition (fresh tagged run-ids; N>1 -> _r{n} suffix). "
-                         "The N>1 that the magnitude claims need (error bars).")
-    ap.add_argument("--condition", choices=["kernels", "no-kernels", "kernel-library", "both", "all"],
-                    default="kernels",
-                    help="info-set axis: 'kernels' (hwbringup + example kernels) vs 'no-kernels' "
-                         "(RTL+ISA+README only) vs 'kernel-library' (pinned PR#1 library). 'both' is "
-                         "the legacy first two; 'all' expands all three conditions.")
-    ap.add_argument("--sandbox", choices=["bwrap", "none"], default="bwrap",
-                    help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
-                         "— only granted bundle files + the legit toolchain visible, all answers masked "
-                         "(proven by preflight_sandbox.py per arm). 'none' = legacy reachable-fs + audit.")
-    ap.add_argument("--preflight", action="store_true",
-                    help="make host answer surfaces owner-only + dry-run + assert cheat-clean BEFORE "
-                         "any spend; bwrap masks them from the agent; launches NOTHING.")
-    ap.add_argument("--with-tool", action="append", default=[], metavar="NAME",
-                    help="ABLATION: grant this arm-gated tool on top of every launched arm's rung "
-                         "(repeatable). Generate the matching bundles first with "
-                         "`python -m merlin.targetgen.generate_bundles --with-tool NAME`.")
-    ap.add_argument("--without-tool", action="append", default=[], metavar="NAME",
-                    help="ABLATION: withhold this arm-gated tool from every launched arm (repeatable).")
+    ap.add_argument(
+        "--repeats",
+        type=int,
+        default=1,
+        help="N independent repeats per arm×condition (fresh tagged run-ids; N>1 -> _r{n} suffix). "
+        "The N>1 that the magnitude claims need (error bars).",
+    )
+    ap.add_argument(
+        "--condition",
+        choices=["kernels", "no-kernels", "kernel-library", "both", "all"],
+        default="kernels",
+        help="info-set axis: 'kernels' (hwbringup + example kernels) vs 'no-kernels' "
+        "(RTL+ISA+README only) vs 'kernel-library' (pinned PR#1 library). 'both' is "
+        "the legacy first two; 'all' expands all three conditions.",
+    )
+    ap.add_argument(
+        "--sandbox",
+        choices=["bwrap", "none"],
+        default="bwrap",
+        help="bwrap (default, now that claude 2.1.185 runs under it): true filesystem allow-list "
+        "— only granted bundle files + the legit toolchain visible, all answers masked "
+        "(proven by preflight_sandbox.py per arm). 'none' = legacy reachable-fs + audit.",
+    )
+    ap.add_argument(
+        "--preflight",
+        action="store_true",
+        help="make host answer surfaces owner-only + dry-run + assert cheat-clean BEFORE "
+        "any spend; bwrap masks them from the agent; launches NOTHING.",
+    )
+    ap.add_argument(
+        "--with-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="ABLATION: grant this arm-gated tool on top of every launched arm's rung "
+        "(repeatable). Generate the matching bundles first with "
+        "`python -m merlin.targetgen.generate_bundles --with-tool NAME`.",
+    )
+    ap.add_argument(
+        "--without-tool",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="ABLATION: withhold this arm-gated tool from every launched arm (repeatable).",
+    )
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args(argv)
 
     arms = [s.strip() for s in a.arms.split(",") if s.strip()]
     bad = [x for x in arms if x not in ARMS]
     if bad:
-        print(f"unknown arms: {bad} (valid: {list(ARMS)})", file=sys.stderr); return 2
+        print(f"unknown arms: {bad} (valid: {list(ARMS)})", file=sys.stderr)
+        return 2
     if a.repeats < 1:
-        print("--repeats must be >= 1", file=sys.stderr); return 2
+        print("--repeats must be >= 1", file=sys.stderr)
+        return 2
 
-    conditions = ({"both": ["kernels", "no-kernels"],
-                   "all": ["kernels", "no-kernels", "kernel-library"]}.get(
-                       a.condition, [a.condition]))
+    conditions = {"both": ["kernels", "no-kernels"], "all": ["kernels", "no-kernels", "kernel-library"]}.get(
+        a.condition, [a.condition]
+    )
     # each (arm, condition, repeat) -> a fresh tagged run. tag encodes the cell so dirs never collide.
     cells = []  # (arm, condition, tag)
     for cond in conditions:
@@ -385,7 +500,8 @@ def main(argv=None):
 
     planned, problems = [], []
     for arm, cond, tag in cells:
-        rid = _run_id(arm, tag); rd = _run_dir(arm, rid)
+        rid = _run_id(arm, tag)
+        rd = _run_dir(arm, rid)
         if rd.exists():
             problems.append(f"run dir already exists: {rd} (fresh experiment requires a new --tag)")
         planned.append((arm, rid, rd, cond))
@@ -402,13 +518,18 @@ def main(argv=None):
     try:
         sys.path.insert(0, str(C.EXP / "harness"))
         import run_baseline_qa_loop as _L
+
         _L._DRIVER = a.driver
-        _agent = (f"driver={a.driver} -> resolved={_L._driver_for(a.model)} model={a.model} "
-                  f"billing={_L._billing_mode(a.model)}")
+        _agent = (
+            f"driver={a.driver} -> resolved={_L._driver_for(a.model)} model={a.model} "
+            f"billing={_L._billing_mode(a.model)}"
+        )
     except Exception as _e:  # noqa: BLE001 — a banner must never block a launch
         _agent += f" (resolution unavailable: {type(_e).__name__})"
-    print(f"=== A/B/C batch '{a.tag}' — arms={arms} mode={a.mode} {_agent} effort={a.effort} "
-          f"repeats={a.repeats} condition={a.condition} ({len(planned)} runs) ===")
+    print(
+        f"=== A/B/C batch '{a.tag}' — arms={arms} mode={a.mode} {_agent} effort={a.effort} "
+        f"repeats={a.repeats} condition={a.condition} ({len(planned)} runs) ==="
+    )
     for arm, rid, rd, cond in planned:
         print(f"  {arm:16s} [{cond:10s}] run-id={rid:22s} -> {rd}")
         print(f"     $ {' '.join(_arm_cmd(arm, rid, a, cond))}")
@@ -422,12 +543,16 @@ def main(argv=None):
         print("\n=== --preflight: protect host surfaces + assert cheat-clean (launches NOTHING) ===")
         commands = [_arm_cmd(arm, rid, a, cond) for arm, rid, _rd, cond in planned]
         rc = _run_preflight(commands)
-        print(f"\n[preflight] {'PASS — safe to launch (drop --preflight, keep flags)' if rc == 0 else 'FAILED — DO NOT launch'}")
+        print(
+            f"\n[preflight] {'PASS — safe to launch (drop --preflight, keep flags)' if rc == 0 else 'FAILED — DO NOT launch'}"
+        )
         return rc
 
     if a.dry_run:
-        print(f"\n[dry-run] plan checks OK ({a.mode}); the authoritative --preflight was NOT run and "
-              "nothing launched. Run once with --preflight before dropping both flags.")
+        print(
+            f"\n[dry-run] plan checks OK ({a.mode}); the authoritative --preflight was NOT run and "
+            "nothing launched. Run once with --preflight before dropping both flags."
+        )
         return 0
 
     # HARD pre-flight: verilator timing must be FRESH (readiness_check measured it on a known-good backend
@@ -446,27 +571,36 @@ def main(argv=None):
         if _tsc.is_file():
             print(f"[pre-flight] L3 timing target-scoped & present: {_tsc.name} = {_tsc.read_text().strip()[:80]}")
         else:
-            print(f"[pre-flight] verilator-timing gate: no target-scoped {_tsc.name} — if this target runs a "
-                  f"verilator L3 cert, the driver will use a CONSERVATIVE timeout (run the L3 measurement / "
-                  f"readiness to record it). N/A for pure mlc-arc targets.")
+            print(
+                f"[pre-flight] verilator-timing gate: no target-scoped {_tsc.name} — if this target runs a "
+                f"verilator L3 cert, the driver will use a CONSERVATIVE timeout (run the L3 measurement / "
+                f"readiness to record it). N/A for pure mlc-arc targets."
+            )
     elif a.sandbox == "bwrap":
         timing = SCRIPTS / ".oracle_timing.json"
         if not timing.is_file():
-            print("REFUSING TO LAUNCH: scripts/.oracle_timing.json missing — run readiness_check.py "
-                  "(it RUNS spike+verilator on the reference backend) first.", file=sys.stderr)
+            print(
+                "REFUSING TO LAUNCH: scripts/.oracle_timing.json missing — run readiness_check.py "
+                "(it RUNS spike+verilator on the reference backend) first.",
+                file=sys.stderr,
+            )
             return 3
         # Resolve the verilator binary the SAME way the sandbox and readiness_check do (.env chipyard),
         # and take the design name from the timing record readiness_check wrote — a literal path here
         # silently never matched, so the staleness half of this gate could not fire at all.
         _cfg = (json.loads(timing.read_text()) or {}).get("config")
-        sim = (ext_path("chipyard") / "sims" / "verilator"
-               / f"simulator-chipyard.harness-{_cfg}") if _cfg else None
+        sim = (ext_path("chipyard") / "sims" / "verilator" / f"simulator-chipyard.harness-{_cfg}") if _cfg else None
         if sim is None or not sim.is_file():
-            print(f"[pre-flight] verilator staleness check SKIPPED (no binary at {sim}) — the timing "
-                  f"record exists but cannot be compared against a build.")
+            print(
+                f"[pre-flight] verilator staleness check SKIPPED (no binary at {sim}) — the timing "
+                f"record exists but cannot be compared against a build."
+            )
         elif timing.stat().st_mtime < sim.stat().st_mtime:
-            print("REFUSING TO LAUNCH: .oracle_timing.json is STALE (older than the verilator binary) — "
-                  "re-run readiness_check.py to re-measure.", file=sys.stderr)
+            print(
+                "REFUSING TO LAUNCH: .oracle_timing.json is STALE (older than the verilator binary) — "
+                "re-run readiness_check.py to re-measure.",
+                file=sys.stderr,
+            )
             return 3
         print(f"[pre-flight] oracle timing fresh: {timing.read_text().strip()[:80]}")
 
@@ -479,22 +613,39 @@ def main(argv=None):
         # round per arm. Consumed by run_baseline_qa_loop._spend_over_cap.
         env["MERLIN_MAX_SPEND_USD"] = str(a.max_spend_usd)
         env["MERLIN_SPEND_LEDGER"] = str(C.RUNS / f"ab_batch_{a.tag}.spend_ledger.jsonl")
-        print(f"[cost-cap] batch ceiling ${a.max_spend_usd:.2f} across all arms; shared ledger "
-              f"{env['MERLIN_SPEND_LEDGER']} (each arm stops before its next round once crossed).")
-    manifest = {"tag": a.tag, "mode": a.mode, "launched_at": datetime.now(timezone.utc).isoformat(),
-                "model": a.model, "effort": a.effort, "account_config_dir": acct or None,
-                "run_config": {"schedule": a.schedule, "max_wall_s": a.max_wall_s,
-                               "max_rounds": a.max_rounds, "round_timeout_s": a.round_timeout},
-                "runs": []}
+        print(
+            f"[cost-cap] batch ceiling ${a.max_spend_usd:.2f} across all arms; shared ledger "
+            f"{env['MERLIN_SPEND_LEDGER']} (each arm stops before its next round once crossed)."
+        )
+    manifest = {
+        "tag": a.tag,
+        "mode": a.mode,
+        "launched_at": datetime.now(timezone.utc).isoformat(),
+        "model": a.model,
+        "effort": a.effort,
+        "account_config_dir": acct or None,
+        "run_config": {
+            "schedule": a.schedule,
+            "max_wall_s": a.max_wall_s,
+            "max_rounds": a.max_rounds,
+            "round_timeout_s": a.round_timeout,
+        },
+        "runs": [],
+    }
 
     if a.mode == "parallel":
         for arm, rid, rd, cond in planned:
             rd.parent.mkdir(parents=True, exist_ok=True)
             log = rd.parent / f"{rid}.launch.log"
             with open(log, "w") as lf:
-                p = subprocess.Popen(_arm_cmd(arm, rid, a, cond), cwd=str(C.REPO), stdout=lf,
-                                     stderr=subprocess.STDOUT, start_new_session=True,
-                                     env=_arm_env(arm, a, env))
+                p = subprocess.Popen(
+                    _arm_cmd(arm, rid, a, cond),
+                    cwd=str(C.REPO),
+                    stdout=lf,
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                    env=_arm_env(arm, a, env),
+                )
             manifest["runs"].append({"arm": arm, "run_id": rid, "condition": cond, "pid": p.pid, "log": str(log)})
             print(f"launched {arm}/{rid} [{cond}]  pid={p.pid}  log={log}")
     else:  # sequential: one backgrounded bash chain (cmd1 ; cmd2 ; cmd3)
@@ -502,22 +653,34 @@ def main(argv=None):
         for arm, rid, rd, cond in planned:
             rd.parent.mkdir(parents=True, exist_ok=True)
             log = rd.parent / f"{rid}.launch.log"
-            prefix = "PILOT_LANG=cpp " if (a.experiment == "realistic" and arm in ("baseline", "cpp_merlininfra")) else ""
+            prefix = (
+                "PILOT_LANG=cpp " if (a.experiment == "realistic" and arm in ("baseline", "cpp_merlininfra")) else ""
+            )
             parts.append(f"{prefix}{' '.join(_arm_cmd(arm, rid, a, cond))} > {log} 2>&1")
             manifest["runs"].append({"arm": arm, "run_id": rid, "condition": cond, "pid": None, "log": str(log)})
         chain = " ; ".join(parts)
         clog = C.RUNS / f"ab_batch_{a.tag}.chain.log"
         with open(clog, "w") as lf:
-            p = subprocess.Popen(["bash", "-c", chain], cwd=str(C.REPO), stdout=lf,
-                                 stderr=subprocess.STDOUT, start_new_session=True, env=env)
+            p = subprocess.Popen(
+                ["bash", "-c", chain],
+                cwd=str(C.REPO),
+                stdout=lf,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+                env=env,
+            )
         manifest["chain_pid"] = p.pid
-        print(f"launched sequential chain pid={p.pid}  chain-log={clog}\n  order: {[r['run_id'] for r in manifest['runs']]}")
+        print(
+            f"launched sequential chain pid={p.pid}  chain-log={clog}\n  order: {[r['run_id'] for r in manifest['runs']]}"
+        )
 
     mpath = C.RUNS / f"ab_batch_{a.tag}.json"
     mpath.write_text(json.dumps(manifest, indent=2))
     print(f"\nbatch manifest: {mpath}")
-    print("monitor via each run's qa_loop_state.yaml (NOT .log). After convergence: full_suite_audit.py + "
-          "agg_agentic_results.py + the agentic plots.")
+    print(
+        "monitor via each run's qa_loop_state.yaml (NOT .log). After convergence: full_suite_audit.py + "
+        "agg_agentic_results.py + the agentic plots."
+    )
     return 0
 
 

@@ -18,19 +18,21 @@ synchronization is a runtime no-op family — all excluded and recorded in ``ski
 
 Usage: MERLIN_TARGET_EXPERIMENT=<descriptor> generalization_difftest.py [--max-dim 64] [--families a,b]
 """
+
 from __future__ import annotations
 
 import argparse
 import json
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import yaml
-from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _common as C  # noqa: E402 — active target (descriptor-driven), bootstraps merlin/python
+
 from merlin.targetgen import capability_probes as CP  # noqa: E402
 from merlin.targetgen import coverage_report as CR  # noqa: E402
 from merlin.targetgen import eligibility as EL  # noqa: E402
@@ -59,12 +61,14 @@ def default_package() -> Path | None:
             continue
     pool = exempt or any_pkg
     return pool[0] if pool else None
+
+
 CONTRACT = C.REPO / "merlin" / "contract"
 OUTDIR = C.RUNS / "genmatrix" / "caps"
 RUNS = C.RUNS / "genmatrix"
 GRADEABLE_DTYPE = {"fp32": "f32", "fp16": "f16", "bf16": "bf16", "int8": "i8"}
-NORM_C = 16                    # feature width for row-op families (probes vary the ROW count)
-MAX_DIM_DEFAULT = 64           # skip 4096-wide skinny probes (impractical to simulate)
+NORM_C = 16  # feature width for row-op families (probes vary the ROW count)
+MAX_DIM_DEFAULT = 64  # skip 4096-wide skinny probes (impractical to simulate)
 
 
 def corpus_oracle_tiers() -> list[str]:
@@ -83,6 +87,7 @@ def corpus_oracle_tiers() -> list[str]:
     """
     try:
         from merlin.targetgen.target_experiment import load_target_experiment as _lte
+
         root = _lte(C.DESCRIPTOR).capsule_corpus
     except Exception:  # noqa: BLE001 — no descriptor: fall through to the floor below
         root = None
@@ -97,7 +102,7 @@ def corpus_oracle_tiers() -> list[str]:
             if tiers:
                 declared.append(set(tiers))
     if not declared:
-        return ["L0"]                       # fail closed: the weakest honest bar, never an assumed one
+        return ["L0"]  # fail closed: the weakest honest bar, never an assumed one
     common = set.intersection(*declared)
     return sorted(common) if common else sorted(set.union(*declared))
 
@@ -125,15 +130,19 @@ def datapath_policy() -> dict:
     try:
         from merlin.targetgen import corpus_spec as _CS
         from merlin.targetgen.target_experiment import load_target_experiment as _lte
+
         b = _CS.derive_binding(_lte(C.DESCRIPTOR), dp)
         operand, accum = b.cap_dtype(b.operand_dtype), b.cap_dtype(b.accum_dtype)
     except Exception:  # noqa: BLE001 — fall back to the profile's own declaration
         operand, accum = dp.get("operand_dtype"), dp.get("accum_dtype")
-    return {"compare": compare, "exact": exact,
-            # On an exact datapath the operand dtype is fixed by the hardware; on a float one the probe's
-            # own declared dtype stands, which is what makes the dtype axis mean something.
-            "operand_dtype": operand if exact else None,
-            "acc_dtype": accum or ("f32" if not exact else None)}
+    return {
+        "compare": compare,
+        "exact": exact,
+        # On an exact datapath the operand dtype is fixed by the hardware; on a float one the probe's
+        # own declared dtype stands, which is what makes the dtype axis mean something.
+        "operand_dtype": operand if exact else None,
+        "acc_dtype": accum or ("f32" if not exact else None),
+    }
 
 
 def _round_dtype(x: np.ndarray, dt: str) -> np.ndarray:
@@ -150,8 +159,10 @@ def _round_dtype(x: np.ndarray, dt: str) -> np.ndarray:
 
 
 def _iface_header() -> str:
-    return (f'module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "{TARGET}", '
-            f'merlin_iface.abi_version = "0.1"}} {{\n')
+    return (
+        f'module attributes {{merlin_iface.version = "0.1", merlin_iface.target = "{TARGET}", '
+        f'merlin_iface.abi_version = "0.1"}} {{\n'
+    )
 
 
 def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct, out_dtype=None) -> Path:
@@ -166,43 +177,67 @@ def _write_capsule(probe, iface, *, inputs, out, op, op_attrs, ct, out_dtype=Non
     cdir = OUTDIR / probe.name.replace(".", "_")
     cdir.mkdir(parents=True, exist_ok=True)
     (cdir / "capsule.interface.mlir").write_text(iface)
-    (cdir / "capsule.yaml").write_text(yaml.safe_dump({
-        "name": probe.name.replace(".", "_"), "kind": "isa", "label": "public",
-        "source_role": "handauthored_compiler_test",
-        "source_reference": f"generalization probe {probe.name} axis={probe.axis}",
-        "interface_mlir": "capsule.interface.mlir",
-        "inputs": [{"name": nm, "role": role, "shape": sh, "dtype": ct} for nm, role, sh, _ in inputs],
-        "operation": {"op": op, "attributes": op_attrs},
-        "numeric_policy": ({"compare": pol["compare"], "dtype": out_dtype or pol["acc_dtype"]}
-                           if pol["exact"] else
-                           {"compare": "tolerance_float", "dtype": out_dtype or "f32",
-                            "atol": 0.03125, "rtol": 0.015625}),
-        "expected": {"instruction_classes": [], "modes": {}},
-        "required_oracle_tiers": corpus_oracle_tiers(), "vcs": "optional",
-    }, sort_keys=False))
+    (cdir / "capsule.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": probe.name.replace(".", "_"),
+                "kind": "isa",
+                "label": "public",
+                "source_role": "handauthored_compiler_test",
+                "source_reference": f"generalization probe {probe.name} axis={probe.axis}",
+                "interface_mlir": "capsule.interface.mlir",
+                "inputs": [{"name": nm, "role": role, "shape": sh, "dtype": ct} for nm, role, sh, _ in inputs],
+                "operation": {"op": op, "attributes": op_attrs},
+                "numeric_policy": (
+                    {"compare": pol["compare"], "dtype": out_dtype or pol["acc_dtype"]}
+                    if pol["exact"]
+                    else {"compare": "tolerance_float", "dtype": out_dtype or "f32", "atol": 0.03125, "rtol": 0.015625}
+                ),
+                "expected": {"instruction_classes": [], "modes": {}},
+                "required_oracle_tiers": corpus_oracle_tiers(),
+                "vcs": "optional",
+            },
+            sort_keys=False,
+        )
+    )
     if pol["exact"]:
         # Integer datapath: declare `merlin_tensor_int` and ship NO decoded operands, so the grader
         # materializes the leaves and recomputes the golden on its own exact-integer engine — the same
         # path every shipped integer capsule takes. A numpy float reference would introduce a second
         # arithmetic definition for a datapath that has exactly one.
-        (cdir / "golden.yaml").write_text(yaml.safe_dump({
-            "golden_source": "merlin_tensor_int",
-            "oracle_provenance": {"engine": "merlin Tensor exact-integer recompute (grader-side)",
-                                  "operand_dtype": ct, "accum_dtype": pol["acc_dtype"],
-                                  "output_dtype": pol["acc_dtype"],
-                                  "grade_policy": {"compare": pol["compare"]}},
-        }, sort_keys=False))
+        (cdir / "golden.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "golden_source": "merlin_tensor_int",
+                    "oracle_provenance": {
+                        "engine": "merlin Tensor exact-integer recompute (grader-side)",
+                        "operand_dtype": ct,
+                        "accum_dtype": pol["acc_dtype"],
+                        "output_dtype": pol["acc_dtype"],
+                        "grade_policy": {"compare": pol["compare"]},
+                    },
+                },
+                sort_keys=False,
+            )
+        )
     else:
-        (cdir / "golden.yaml").write_text(yaml.safe_dump({
-            "golden_source": "ieee_simt_f32_accumulate",
-            "oracle_provenance": {"engine": f"numpy IEEE float {op} (independent CPU reference)",
-                                  "operand_dtype": ct, "accum_dtype": "f32", "output_dtype": "f32",
-                                  "grade_policy": {"compare": "tolerance_float", "atol": 0.03125,
-                                                   "rtol": 0.015625},
-                                  "inputs": {nm: {"shape": sh, "decoded": arr.reshape(-1).tolist()}
-                                             for nm, _, sh, arr in inputs}},
-            "outputs": {"Y0": out.reshape(-1).tolist()},
-        }, sort_keys=False))
+        (cdir / "golden.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "golden_source": "ieee_simt_f32_accumulate",
+                    "oracle_provenance": {
+                        "engine": f"numpy IEEE float {op} (independent CPU reference)",
+                        "operand_dtype": ct,
+                        "accum_dtype": "f32",
+                        "output_dtype": "f32",
+                        "grade_policy": {"compare": "tolerance_float", "atol": 0.03125, "rtol": 0.015625},
+                        "inputs": {nm: {"shape": sh, "decoded": arr.reshape(-1).tolist()} for nm, _, sh, arr in inputs},
+                    },
+                    "outputs": {"Y0": out.reshape(-1).tolist()},
+                },
+                sort_keys=False,
+            )
+        )
     return cdir
 
 
@@ -219,23 +254,30 @@ def materialize_contraction(probe, seed):
     m, k, n = int(d.m), int(d.k), int(d.n)
     rng = np.random.default_rng(seed)
     if pol["exact"]:
-        A = W = None                       # grader materializes the leaves and recomputes the golden
+        A = W = None  # grader materializes the leaves and recomputes the golden
         Y = None
     else:
         A = _round_dtype(rng.standard_normal((m, k)), d.in_dtype)
         W = _round_dtype(rng.standard_normal((k, n)), d.in_dtype)
         Y = (A.astype(np.float32) @ W.astype(np.float32)).astype(np.float32)
-    iface = (_iface_header()
-             + f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{k}x{n}x{ct}>\n'
-             + f'  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{m}x{k}x{ct}>\n'
-             + f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : (tensor<{k}x{n}x{ct}>) -> !merlin_iface.resident\n'
-             + f'  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{ct}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc}>\n'
-             + f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], output_dtype = "{acc}"}} : (!merlin_iface.acc<{acc}>) -> tensor<{m}x{n}x{acc}>\n'
-             + '  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n')
-    return _write_capsule(probe, iface, inputs=[("W", "weight", [k, n], W), ("A0", "input", [m, k], A)],
-                          out=Y, op="matmul", ct=ct,
-                          op_attrs={"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [],
-                                    "output_dtype": acc})
+    iface = (
+        _iface_header()
+        + f'  %W = merlin_iface.tensor {{name = "W", role = "weight"}} : tensor<{k}x{n}x{ct}>\n'
+        + f'  %A0 = merlin_iface.tensor {{name = "A0", role = "input"}} : tensor<{m}x{k}x{ct}>\n'
+        + f'  %W_res = merlin_iface.resident_pack %W {{layout = "packed_rhs"}} : (tensor<{k}x{n}x{ct}>) -> !merlin_iface.resident\n'
+        + f"  %acc0 = merlin_iface.matmul %A0, %W_res : (tensor<{m}x{k}x{ct}>, !merlin_iface.resident) -> !merlin_iface.acc<{acc}>\n"
+        + f'  %Y0 = merlin_iface.commit %acc0 {{name = "Y0", epilogue = [], output_dtype = "{acc}"}} : (!merlin_iface.acc<{acc}>) -> tensor<{m}x{n}x{acc}>\n'
+        + "  merlin_iface.evict %W_res : (!merlin_iface.resident) -> ()\n}\n"
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("W", "weight", [k, n], W), ("A0", "input", [m, k], A)],
+        out=Y,
+        op="matmul",
+        ct=ct,
+        op_attrs={"lhs": "A0", "weight": "W", "out": "Y0", "epilogue": [], "output_dtype": acc},
+    )
 
 
 def materialize_normalization(probe, seed):
@@ -249,13 +291,21 @@ def materialize_normalization(probe, seed):
     G = _round_dtype(rng.standard_normal((1, c)), d.in_dtype)
     Xf, Gf = X.astype(np.float32), G.astype(np.float32)
     Y = (Xf / np.sqrt(np.mean(Xf * Xf, axis=1, keepdims=True) + 1e-5)) * Gf
-    iface = (_iface_header()
-             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{c}x{ct}>\n'
-             + f'  %G = merlin_iface.tensor {{name = "G", role = "weight"}} : tensor<1x{c}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.rmsnorm %X, %G {{name = "Y0", eps = 1.000000000e-05 : f64, output_dtype = "f32"}} : (tensor<{m}x{c}x{ct}>, tensor<1x{c}x{ct}>) -> tensor<{m}x{c}xf32>\n}}\n')
-    return _write_capsule(probe, iface, inputs=[("X", "input", [m, c], X), ("G", "weight", [1, c], G)],
-                          out=Y, op="rmsnorm", ct=ct,
-                          op_attrs={"src": "X", "gamma": "G", "out": "Y0", "eps": 1e-5, "output_dtype": "f32"})
+    iface = (
+        _iface_header()
+        + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{c}x{ct}>\n'
+        + f'  %G = merlin_iface.tensor {{name = "G", role = "weight"}} : tensor<1x{c}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.rmsnorm %X, %G {{name = "Y0", eps = 1.000000000e-05 : f64, output_dtype = "f32"}} : (tensor<{m}x{c}x{ct}>, tensor<1x{c}x{ct}>) -> tensor<{m}x{c}xf32>\n}}\n'
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("X", "input", [m, c], X), ("G", "weight", [1, c], G)],
+        out=Y,
+        op="rmsnorm",
+        ct=ct,
+        op_attrs={"src": "X", "gamma": "G", "out": "Y0", "eps": 1e-5, "output_dtype": "f32"},
+    )
 
 
 def materialize_softmax(probe, seed):
@@ -269,11 +319,20 @@ def materialize_softmax(probe, seed):
     Xf = X.astype(np.float32)
     e = np.exp(Xf - Xf.max(axis=1, keepdims=True))
     Y = e / e.sum(axis=1, keepdims=True)
-    iface = (_iface_header()
-             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{c}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.softmax %X {{name = "Y0", output_dtype = "f32"}} : (tensor<{m}x{c}x{ct}>) -> tensor<{m}x{c}xf32>\n}}\n')
-    return _write_capsule(probe, iface, inputs=[("X", "input", [m, c], X)], out=Y, op="softmax", ct=ct,
-                          op_attrs={"src": "X", "out": "Y0", "output_dtype": "f32"})
+    iface = (
+        _iface_header()
+        + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{c}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.softmax %X {{name = "Y0", output_dtype = "f32"}} : (tensor<{m}x{c}x{ct}>) -> tensor<{m}x{c}xf32>\n}}\n'
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("X", "input", [m, c], X)],
+        out=Y,
+        op="softmax",
+        ct=ct,
+        op_attrs={"src": "X", "out": "Y0", "output_dtype": "f32"},
+    )
 
 
 def materialize_attention(probe, seed):
@@ -286,13 +345,21 @@ def materialize_attention(probe, seed):
     Q = _round_dtype(rng.standard_normal((m, k)), d.in_dtype)
     K = _round_dtype(rng.standard_normal((n, k)), d.in_dtype)
     S = (Q.astype(np.float32) @ K.astype(np.float32).T).astype(np.float32)
-    iface = (_iface_header()
-             + f'  %Q = merlin_iface.tensor {{name = "Q", role = "input"}} : tensor<{m}x{k}x{ct}>\n'
-             + f'  %K = merlin_iface.tensor {{name = "K", role = "input"}} : tensor<{n}x{k}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.attention_qk %Q, %K {{name = "Y0", output_dtype = "f32"}} : (tensor<{m}x{k}x{ct}>, tensor<{n}x{k}x{ct}>) -> tensor<{m}x{n}xf32>\n}}\n')
-    return _write_capsule(probe, iface, inputs=[("Q", "input", [m, k], Q), ("K", "input", [n, k], K)],
-                          out=S, op="attention_qk", ct=ct,
-                          op_attrs={"q": "Q", "k": "K", "out": "Y0", "output_dtype": "f32"})
+    iface = (
+        _iface_header()
+        + f'  %Q = merlin_iface.tensor {{name = "Q", role = "input"}} : tensor<{m}x{k}x{ct}>\n'
+        + f'  %K = merlin_iface.tensor {{name = "K", role = "input"}} : tensor<{n}x{k}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.attention_qk %Q, %K {{name = "Y0", output_dtype = "f32"}} : (tensor<{m}x{k}x{ct}>, tensor<{n}x{k}x{ct}>) -> tensor<{m}x{n}xf32>\n}}\n'
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("Q", "input", [m, k], Q), ("K", "input", [n, k], K)],
+        out=S,
+        op="attention_qk",
+        ct=ct,
+        op_attrs={"q": "Q", "k": "K", "out": "Y0", "output_dtype": "f32"},
+    )
 
 
 def materialize_movement(probe, seed):
@@ -312,16 +379,25 @@ def materialize_movement(probe, seed):
     n = int(d.n or 0) or NORM_C
     rng = np.random.default_rng(seed)
     if pol["exact"]:
-        X = Y = None                       # grader materializes the leaf and recomputes the golden
+        X = Y = None  # grader materializes the leaf and recomputes the golden
     else:
         X = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
-        Y = X.astype(np.float32)           # movement is the identity on values, by definition
-    iface = (_iface_header()
-             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.movement %X {{name = "Y0"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x{n}x{ct}>\n}}\n')
-    return _write_capsule(probe, iface, inputs=[("X", "input", [m, n], X)], out=Y,
-                          op="movement", ct=ct, out_dtype=ct,   # identity: out dtype == operand dtype
-                          op_attrs={"src": "X", "out": "Y0", "output_dtype": ct})
+        Y = X.astype(np.float32)  # movement is the identity on values, by definition
+    iface = (
+        _iface_header()
+        + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.movement %X {{name = "Y0"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x{n}x{ct}>\n}}\n'
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("X", "input", [m, n], X)],
+        out=Y,
+        op="movement",
+        ct=ct,
+        out_dtype=ct,  # identity: out dtype == operand dtype
+        op_attrs={"src": "X", "out": "Y0", "output_dtype": ct},
+    )
 
 
 def materialize_elementwise_map(probe, seed):
@@ -337,9 +413,9 @@ def materialize_elementwise_map(probe, seed):
     ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
     if ct is None:
         return None
-    combine = (getattr(d, "combine", None) or "add")
+    combine = getattr(d, "combine", None) or "add"
     if combine not in ("add", "mul"):
-        return None                        # not expressible by the runtime's VECTOR_MAP — fail closed
+        return None  # not expressible by the runtime's VECTOR_MAP — fail closed
     m = int(d.m or 0) or NORM_C
     n = int(d.n or 0) or NORM_C
     rng = np.random.default_rng(seed)
@@ -352,17 +428,24 @@ def materialize_elementwise_map(probe, seed):
     B = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
     Af, Bf = A.astype(np.float32), B.astype(np.float32)
     Y = (Af + Bf) if combine == "add" else (Af * Bf)
-    iface = (_iface_header()
-             + f'  %A = merlin_iface.tensor {{name = "A", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
-             + f'  %B = merlin_iface.tensor {{name = "B", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.vector_map %A, %B {{name = "Y0", op = "{combine}", '
-               f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>, tensor<{m}x{n}x{ct}>) '
-               f'-> tensor<{m}x{n}x{ct}>\n}}\n')
-    return _write_capsule(probe, iface,
-                          inputs=[("A", "input", [m, n], A), ("B", "input", [m, n], B)],
-                          out=Y, op="vector_map", ct=ct, out_dtype=ct,
-                          op_attrs={"lhs": "A", "rhs": "B", "out": "Y0", "op": combine,
-                                    "output_dtype": ct})
+    iface = (
+        _iface_header()
+        + f'  %A = merlin_iface.tensor {{name = "A", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+        + f'  %B = merlin_iface.tensor {{name = "B", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.vector_map %A, %B {{name = "Y0", op = "{combine}", '
+        f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>, tensor<{m}x{n}x{ct}>) '
+        f"-> tensor<{m}x{n}x{ct}>\n}}\n"
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("A", "input", [m, n], A), ("B", "input", [m, n], B)],
+        out=Y,
+        op="vector_map",
+        ct=ct,
+        out_dtype=ct,
+        op_attrs={"lhs": "A", "rhs": "B", "out": "Y0", "op": combine, "output_dtype": ct},
+    )
 
 
 def materialize_reduction(probe, seed):
@@ -378,36 +461,57 @@ def materialize_reduction(probe, seed):
     ct = pol["operand_dtype"] or GRADEABLE_DTYPE.get(d.in_dtype)
     if ct is None:
         return None
-    kind = (getattr(d, "reduce", None) or "sum")
+    kind = getattr(d, "reduce", None) or "sum"
     if kind != "sum":
         return None
     if pol["exact"]:
-        return None                        # same reason as elementwise: no exact-int golden entry
+        return None  # same reason as elementwise: no exact-int golden entry
     m = int(d.m or 0) or NORM_C
     n = int(d.n or 0) or NORM_C
     rng = np.random.default_rng(seed)
     X = _round_dtype(rng.standard_normal((m, n)), d.in_dtype)
-    Y = X.astype(np.float32).sum(axis=1, keepdims=True)      # [m, n] -> [m, 1]
-    iface = (_iface_header()
-             + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
-             + f'  %Y0 = merlin_iface.vector_reduce %X {{name = "Y0", op = "sum", '
-               f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x1x{ct}>\n}}\n')
-    return _write_capsule(probe, iface, inputs=[("X", "input", [m, n], X)],
-                          out=Y, op="vector_reduce", ct=ct, out_dtype=ct,
-                          op_attrs={"src": "X", "out": "Y0", "op": "sum", "output_dtype": ct})
+    Y = X.astype(np.float32).sum(axis=1, keepdims=True)  # [m, n] -> [m, 1]
+    iface = (
+        _iface_header()
+        + f'  %X = merlin_iface.tensor {{name = "X", role = "input"}} : tensor<{m}x{n}x{ct}>\n'
+        + f'  %Y0 = merlin_iface.vector_reduce %X {{name = "Y0", op = "sum", '
+        f'output_dtype = "{ct}"}} : (tensor<{m}x{n}x{ct}>) -> tensor<{m}x1x{ct}>\n}}\n'
+    )
+    return _write_capsule(
+        probe,
+        iface,
+        inputs=[("X", "input", [m, n], X)],
+        out=Y,
+        op="vector_reduce",
+        ct=ct,
+        out_dtype=ct,
+        op_attrs={"src": "X", "out": "Y0", "op": "sum", "output_dtype": ct},
+    )
 
 
-FAMILY_MAT = {"contraction": materialize_contraction, "normalization": materialize_normalization,
-              "softmax": materialize_softmax, "attention": materialize_attention,
-              "movement": materialize_movement,
-              "elementwise_map": materialize_elementwise_map,
-              "reduction": materialize_reduction}
+FAMILY_MAT = {
+    "contraction": materialize_contraction,
+    "normalization": materialize_normalization,
+    "softmax": materialize_softmax,
+    "attention": materialize_attention,
+    "movement": materialize_movement,
+    "elementwise_map": materialize_elementwise_map,
+    "reduction": materialize_reduction,
+}
 
 
 def grade(cdir: Path, adapters, pkg: Path) -> str:
     cap = load_capsule(str(cdir), contract=str(CONTRACT))
-    res = run_capsule(cap, pkg, runs_root=RUNS, run_id=cap["name"], contract=str(CONTRACT),
-                      target=TARGET, timeout=600, oracle_adapters=adapters)
+    res = run_capsule(
+        cap,
+        pkg,
+        runs_root=RUNS,
+        run_id=cap["name"],
+        contract=str(CONTRACT),
+        target=TARGET,
+        timeout=600,
+        oracle_adapters=adapters,
+    )
     # A STATED DECLINE IS ITS OWN VERDICT HERE TOO. Folding it into "fail" is what made a backend that
     # never lowered a shape look identical to one whose arithmetic was wrong, which is the confusion
     # this whole probe suite exists to resolve.
@@ -429,8 +533,7 @@ def _write_splits() -> int:
 
     caps_root = C.REPO / "merlin" / "contract" / "capsules"
     own = caps_root / TARGET
-    roots = [own] if own.is_dir() else [caps_root / d for d in
-                                        ("isa", "layers", "model_slices", "model", "hidden")]
+    roots = [own] if own.is_dir() else [caps_root / d for d in ("isa", "layers", "model_slices", "model", "hidden")]
     caps = []
     for r in roots:
         if r.is_dir():
@@ -454,23 +557,31 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--max-dim", type=int, default=MAX_DIM_DEFAULT)
     ap.add_argument("--families", default=",".join(FAMILY_MAT))
-    ap.add_argument("--package", default=None,
-                    help="backend package to measure (default: the target's derived reference backend). "
-                         "Point it at a run's frozen submission/ to measure THAT compiler's recall.")
-    ap.add_argument("--corners", default=None,
-                    help="comma-separated SHAPE-CORNER names to keep (e.g. "
-                         "'tile,m_2tiles,k_2tiles,n_2tiles'). The per-round loop uses this to run the "
-                         "multi-tile corners only -- the cheap subset that answers 'does this backend "
-                         "generalize past ONE tile, and along which axis?' without paying for the full "
-                         "closure every round.")
-    ap.add_argument("--out", default=None,
-                    help="where to write the JSON report (default: the target's reports dir)")
+    ap.add_argument(
+        "--package",
+        default=None,
+        help="backend package to measure (default: the target's derived reference backend). "
+        "Point it at a run's frozen submission/ to measure THAT compiler's recall.",
+    )
+    ap.add_argument(
+        "--corners",
+        default=None,
+        help="comma-separated SHAPE-CORNER names to keep (e.g. "
+        "'tile,m_2tiles,k_2tiles,n_2tiles'). The per-round loop uses this to run the "
+        "multi-tile corners only -- the cheap subset that answers 'does this backend "
+        "generalize past ONE tile, and along which axis?' without paying for the full "
+        "closure every round.",
+    )
+    ap.add_argument("--out", default=None, help="where to write the JSON report (default: the target's reports dir)")
     ap.add_argument("--quiet", action="store_true", help="suppress per-probe streaming lines")
-    ap.add_argument("--splits", action="store_true",
-                    help="write the leave-one-family-out manifest for this target and exit (no grading, "
-                         "no spend). The splits module has always been able to compute these; nothing "
-                         "consumed it, so the strongest generalization question -- 'here is a capability "
-                         "family you were never shown, can you still lower it?' -- was never asked.")
+    ap.add_argument(
+        "--splits",
+        action="store_true",
+        help="write the leave-one-family-out manifest for this target and exit (no grading, "
+        "no spend). The splits module has always been able to compute these; nothing "
+        "consumed it, so the strongest generalization question -- 'here is a capability "
+        "family you were never shown, can you still lower it?' -- was never asked.",
+    )
     a = ap.parse_args(argv)
     if a.splits:
         return _write_splits()
@@ -483,8 +594,9 @@ def main(argv=None) -> int:
     cap_map = EL.capability_map_for_target(TARGET)
     # target= so the shape corners bracket THIS device's derived tile edge; without it they are
     # measured against the software-tiling default and cannot cross a wider mesh's tile boundary.
-    probes = [p for p in CP.synthesize(cap_map, target=TARGET)
-              if p.descriptor.resolved_family() in (fams & set(FAMILY_MAT))]
+    probes = [
+        p for p in CP.synthesize(cap_map, target=TARGET) if p.descriptor.resolved_family() in (fams & set(FAMILY_MAT))
+    ]
     if a.corners:
         keep = {c.strip() for c in a.corners.split(",") if c.strip()}
         # probe names are "<family>.<corner>"; select on the corner half so one flag covers every family
@@ -501,15 +613,14 @@ def main(argv=None) -> int:
             # multi-tile probes skipped on exactly the target they were added for, and the suite
             # reported 0 graded, which reads as "nothing to report" rather than "could not look".
             # Only ever a substitution for the SHAPE axis; a dtype-axis probe is about its dtype.
-            _alt = next((dt for dt in (cap_map.get(fam).dtypes if cap_map.get(fam) else ())
-                         if dt in GRADEABLE_DTYPE), None)
+            _alt = next(
+                (dt for dt in (cap_map.get(fam).dtypes if cap_map.get(fam) else ()) if dt in GRADEABLE_DTYPE), None
+            )
             if p.axis != "shape" or not _alt:
                 skipped.append((p.name, "mx-dtype (seeded operands, no from-float CPU ref)"))
                 continue
-            d = replace(d, in_dtype=_alt,
-                        weight_dtype=(_alt if d.weight_dtype is not None else None))
-            substituted.append({"probe": p.name, "declared_dtype": p.descriptor.in_dtype,
-                                "graded_dtype": _alt})
+            d = replace(d, in_dtype=_alt, weight_dtype=(_alt if d.weight_dtype is not None else None))
+            substituted.append({"probe": p.name, "declared_dtype": p.descriptor.in_dtype, "graded_dtype": _alt})
         dims = [int(v) for v in (d.m, d.k, d.n) if v is not None]
         if dims and max(dims) > a.max_dim:
             skipped.append((p.name, f"shape>{a.max_dim} (impractical to simulate)"))
@@ -527,8 +638,15 @@ def main(argv=None) -> int:
             verdict = grade(cdir, adapters, pkg)
         except Exception as e:  # noqa: BLE001
             verdict = f"error:{type(e).__name__}:{str(e)[:80]}"
-        rows.append({"probe": p.name, "family": fam, "axis": p.axis, "verdict": verdict,
-                     "shape": {k: v for k, v in (("m", d.m), ("k", d.k), ("n", d.n)) if v is not None}})
+        rows.append(
+            {
+                "probe": p.name,
+                "family": fam,
+                "axis": p.axis,
+                "verdict": verdict,
+                "shape": {k: v for k, v in (("m", d.m), ("k", d.k), ("n", d.n)) if v is not None},
+            }
+        )
         if not a.quiet:
             print(json.dumps(rows[-1]), flush=True)
 
@@ -541,13 +659,19 @@ def main(argv=None) -> int:
         return {k: f"{p}/{t}" for k, (p, t) in sorted(agg.items())}
 
     n_pass = sum(1 for r in rows if r["verdict"] == "pass")
-    summary = {"target": TARGET, "package": str(pkg), "graded": len(rows), "overall": f"{n_pass}/{len(rows)}",
-               "acceleratable_region_recall_sampled": (n_pass / len(rows)) if rows else None,
-               "per_family_recall": _recall("family"), "per_axis_recall": _recall("axis"),
-               "skipped": skipped,
-               # RECORDED, not silent: a shape verdict measured on a substituted operand dtype is a
-               # statement about the LOWERING's shape handling, not about that capsule's numerics.
-               "dtype_substituted": substituted}
+    summary = {
+        "target": TARGET,
+        "package": str(pkg),
+        "graded": len(rows),
+        "overall": f"{n_pass}/{len(rows)}",
+        "acceleratable_region_recall_sampled": (n_pass / len(rows)) if rows else None,
+        "per_family_recall": _recall("family"),
+        "per_axis_recall": _recall("axis"),
+        "skipped": skipped,
+        # RECORDED, not silent: a shape verdict measured on a substituted operand dtype is a
+        # statement about the LOWERING's shape handling, not about that capsule's numerics.
+        "dtype_substituted": substituted,
+    }
     # PER-AXIS, because "does it generalize" is the wrong granularity. A backend that loops over K and N
     # but not M passes two thirds of these, and only naming the axis turns the result into an action.
     summary["per_corner_verdict"] = {r["probe"].rpartition(".")[2]: r["verdict"] for r in rows}
@@ -562,12 +686,14 @@ def main(argv=None) -> int:
     summary["baseline_tile_pass"] = _baseline_ok
     if _baseline_ok:
         summary["multi_tile_axes_failed"] = sorted(
-            {c[0] for c, v in _corner.items() if c.endswith("_2tiles") and v != "pass"})
+            {c[0] for c, v in _corner.items() if c.endswith("_2tiles") and v != "pass"}
+        )
     else:
         summary["multi_tile_axes_failed"] = []
         summary["shape_axis_unmeasured"] = (
             "the one-tile baseline corner did NOT pass, so the multi-tile corners cannot attribute "
-            "anything to shape generalization -- fix the baseline first, then re-read this.")
+            "anything to shape generalization -- fix the baseline first, then re-read this."
+        )
     summary["n_declined"] = sum(1 for r in rows if str(r["verdict"]).startswith("declined"))
     out = Path(a.out) if a.out else (C.REPORTS / "generalization_arr.json")
     out.parent.mkdir(parents=True, exist_ok=True)

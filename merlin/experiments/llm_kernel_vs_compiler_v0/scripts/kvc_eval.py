@@ -27,12 +27,12 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
-
-from merlin.common.paths import _dotenv
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+from merlin.common.paths import _dotenv
 
 HERE = Path(__file__).resolve().parent
 EXP = HERE.parent
@@ -74,7 +74,6 @@ def repo_root() -> Path:
         if (anc / "merlin" / "python" / "merlin").is_dir():
             return anc
     raise SystemExit("could not locate the repo root")
-
 
 
 def _evaluator_python() -> str:
@@ -126,7 +125,7 @@ def evaluate(
         raise ValueError(f"unknown fidelity {fidelity!r}; expected one of {sorted(FIDELITY_ENV)}")
     repo = repo_root()
 
-    code = f'''
+    code = f"""
 import json, pathlib
 from merlin.runtime.backends.base import get_backend
 from merlin.benchharness import evaluation as EV
@@ -144,21 +143,26 @@ ev = EV.from_capsule_result(r, task_id=d.name, config_id={config_id!r}, target={
                             method={method!r},
                             artifact_provenance="agent_kernel_in_harness_shim")
 print("<<<KVC>>>" + json.dumps({{"full": ev.to_dict(), "redacted": ev.redact()}}))
-'''
+"""
     env = dict(os.environ)
     env["PYTHONPATH"] = str(repo / "merlin" / "python")
     env["MERLIN_KVC_KERNEL_FILE"] = str(kernel_file)
-    env.setdefault("MERLIN_KVC_REFERENCE_TOOL",
-                   str(repo / "out/artifacts/targets/muon/reference_v0/muon-opt"))
+    env.setdefault("MERLIN_KVC_REFERENCE_TOOL", str(repo / "out/artifacts/targets/muon/reference_v0/muon-opt"))
     env.setdefault("TMPDIR", tempfile.gettempdir())
     env.update(FIDELITY_ENV[fidelity])
 
     try:
-        r = subprocess.run([_evaluator_python(), "-c", code], capture_output=True, text=True,
-                           env=env, cwd=str(repo), timeout=timeout + 300)
+        r = subprocess.run(
+            [_evaluator_python(), "-c", code],
+            capture_output=True,
+            text=True,
+            env=env,
+            cwd=str(repo),
+            timeout=timeout + 300,
+        )
         for line in r.stdout.splitlines():
             if line.startswith("<<<KVC>>>"):
-                out = json.loads(line[len("<<<KVC>>>"):])
+                out = json.loads(line[len("<<<KVC>>>") :])
                 out["fidelity"] = fidelity
                 # The oracle's own name for what ran, so a fast estimate can never be quoted as a
                 # cycle-accurate measurement by a reader of the record alone.
@@ -187,9 +191,11 @@ def feedback_text(redacted: dict) -> str:
             if redacted.get(k):
                 lines.append(f"{k}: {redacted[k]}")
         if redacted.get("mismatch_count") is not None:
-            lines.append(f"mismatched elements: {redacted['mismatch_count']} "
-                         f"(max abs {redacted.get('max_abs_error')}, "
-                         f"max rel {redacted.get('max_rel_error')})")
+            lines.append(
+                f"mismatched elements: {redacted['mismatch_count']} "
+                f"(max abs {redacted.get('max_abs_error')}, "
+                f"max rel {redacted.get('max_rel_error')})"
+            )
     if redacted.get("cycles") is not None:
         lines.append(f"cycles: {redacted['cycles']}   %FP-peak: {redacted.get('pct_fp_peak')}")
     util = redacted.get("utilization") or {}
@@ -197,6 +203,8 @@ def feedback_text(redacted: dict) -> str:
         lines.append("utilization (fraction of the run's cycles):")
         for k, v in util.items():
             lines.append(f"    {k}: {'unmeasured' if v is None else f'{v:.4f}'}")
-        lines.append("Low FP utilization with healthy occupancy means the wrong work is being "
-                     "issued; high utilization with low occupancy means it is starved.")
+        lines.append(
+            "Low FP utilization with healthy occupancy means the wrong work is being "
+            "issued; high utilization with low occupancy means it is starved."
+        )
     return "\n".join(lines)

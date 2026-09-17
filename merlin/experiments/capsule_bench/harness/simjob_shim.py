@@ -19,7 +19,9 @@ Subcommands (same channel, simjob_* prefixes):
 Verilator is slow (minutes/capsule): prefer `submit` a few per-capsule jobs, then `poll` — do NOT
 `wait` on a big verilator batch.
 """
+
 from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -55,11 +57,28 @@ def _submit(a) -> int:
     jid = f"{os.getpid()}_{int(time.time() * 1000) % 1000000}"
     caps = [c.strip() for c in a.capsules.split(",") if c.strip()] if a.capsules != "all" else "all"
     n = len(caps) if isinstance(caps, list) else 20
-    (CH / f"simreq_{jid}.json").write_text(json.dumps({
-        "sim": a.sim, "capsules": a.capsules, "debug": a.debug or [],
-        "workers": a.workers, "submitted_at": int(time.time())}))
-    print(json.dumps({"job_id": jid, "state": "queued", "sim": a.sim, "n_capsules": n,
-                      "note": "poll with: simjob.py poll --job-id %s" % jid}))
+    (CH / f"simreq_{jid}.json").write_text(
+        json.dumps(
+            {
+                "sim": a.sim,
+                "capsules": a.capsules,
+                "debug": a.debug or [],
+                "workers": a.workers,
+                "submitted_at": int(time.time()),
+            }
+        )
+    )
+    print(
+        json.dumps(
+            {
+                "job_id": jid,
+                "state": "queued",
+                "sim": a.sim,
+                "n_capsules": n,
+                "note": "poll with: simjob.py poll --job-id %s" % jid,
+            }
+        )
+    )
     return 0
 
 
@@ -77,15 +96,22 @@ def _wait(a) -> int:
             print(json.dumps({"job_id": a.job_id, "state": st, "result": res}))
             return 0 if (res or {}).get("all_pass") else 1
         time.sleep(1.0)
-    print(json.dumps({"job_id": a.job_id, "state": "running",
-                      "note": "still running after --timeout; keep polling (verilator is slow)"}))
+    print(
+        json.dumps(
+            {
+                "job_id": a.job_id,
+                "state": "running",
+                "note": "still running after --timeout; keep polling (verilator is slow)",
+            }
+        )
+    )
     return 0
 
 
 def _list(a) -> int:
     jobs = {}
     for req in sorted(CH.glob("simreq_*.json")) if CH.is_dir() else []:
-        jid = req.stem[len("simreq_"):]
+        jid = req.stem[len("simreq_") :]
         jobs[jid] = _state(jid)[0]
     print(json.dumps({"jobs": jobs}))
     return 0
@@ -105,12 +131,19 @@ def main(argv=None):
     # whole target its in-sandbox oracle.
     s = sub.add_parser("submit")
     s.add_argument("--sim", required=True)
-    s.add_argument("--capsules", default="all"); s.add_argument("--debug", nargs="*", default=[])
-    s.add_argument("--workers", type=int, default=1); s.set_defaults(fn=_submit)
-    p = sub.add_parser("poll"); p.add_argument("--job-id", required=True, dest="job_id"); p.set_defaults(fn=_poll)
-    w = sub.add_parser("wait"); w.add_argument("--job-id", required=True, dest="job_id")
-    w.add_argument("--timeout", type=int, default=120); w.set_defaults(fn=_wait)
-    ls = sub.add_parser("list"); ls.set_defaults(fn=_list)
+    s.add_argument("--capsules", default="all")
+    s.add_argument("--debug", nargs="*", default=[])
+    s.add_argument("--workers", type=int, default=1)
+    s.set_defaults(fn=_submit)
+    p = sub.add_parser("poll")
+    p.add_argument("--job-id", required=True, dest="job_id")
+    p.set_defaults(fn=_poll)
+    w = sub.add_parser("wait")
+    w.add_argument("--job-id", required=True, dest="job_id")
+    w.add_argument("--timeout", type=int, default=120)
+    w.set_defaults(fn=_wait)
+    ls = sub.add_parser("list")
+    ls.set_defaults(fn=_list)
     a = ap.parse_args(argv)
     return a.fn(a)
 

@@ -33,6 +33,7 @@ with any number produced this way:
 Run :func:`proxy_canary`-style controls (the same model through opencode-direct and through the proxy)
 before attributing any difference to the harness.
 """
+
 from __future__ import annotations
 
 import json
@@ -118,11 +119,12 @@ def _known_vendors() -> frozenset[str]:
         add(rid)
     try:
         import yaml
+
         cfg = yaml.safe_load(proxy_config_path().read_text()) or {}
         for entry in cfg.get("model_list") or []:
             add(str((entry.get("litellm_params") or {}).get("model", "")))
     except Exception:
-        pass                      # config unreadable -> fall back to the registry-derived set
+        pass  # config unreadable -> fall back to the registry-derived set
     return frozenset(vendors)
 
 
@@ -147,8 +149,13 @@ def _vendor(model: str) -> str:
 #: The harness identifier travels under two spellings: ``_driver_for`` in the QA loop returns
 #: ``"claudecode"`` while the runtime wiring here uses ``"claude"``. They must resolve to one routing
 #: decision, so normalise rather than branch on the raw string.
-_HARNESS_ALIASES = {"claudecode": "claude", "claude_code": "claude", "claude-code": "claude",
-                    "codex_cli": "codex", "codex-cli": "codex"}
+_HARNESS_ALIASES = {
+    "claudecode": "claude",
+    "claude_code": "claude",
+    "claude-code": "claude",
+    "codex_cli": "codex",
+    "codex-cli": "codex",
+}
 _KNOWN_HARNESSES = {"claude", "codex", "opencode", "converse"}
 
 
@@ -168,13 +175,13 @@ def bridged_name(model: str, harness: str, *, force: bool | None = None) -> str 
         force = os.environ.get("MERLIN_FORCE_BRIDGE", "") == "1"
     name = _proxy_name(model)
     if name is None:
-        return None                       # proxy does not serve it; nothing to route
+        return None  # proxy does not serve it; nothing to route
     if force:
         return name
     harness = _HARNESS_ALIASES.get(harness, harness)
     vendor = _vendor(model)
     if harness in ("opencode", "converse"):
-        return None                       # both reach Bedrock directly; no proxy in the path
+        return None  # both reach Bedrock directly; no proxy in the path
     if harness == "codex":
         # codex-cli reaches its own catalogue on the subscription seat; everything else needs Responses.
         return None if vendor in ("native", "openai") else name
@@ -185,7 +192,8 @@ def bridged_name(model: str, harness: str, *, force: bool | None = None) -> str 
         "Refusing to guess -- the previous fallthrough returned a proxy name for ANY harness string it "
         "did not recognise, so an Opus run under the 'claudecode' driver (the name _driver_for returns, "
         "vs the 'claude' this function branched on) was routed through the proxy, recorded "
-        "bridged: true, and had the claude CLI's own authoritative cost discarded and re-derived.")
+        "bridged: true, and had the claude CLI's own authoritative cost discarded and re-derived."
+    )
 
 
 def context_window(model: str) -> int | None:
@@ -208,6 +216,7 @@ def proxy_key() -> str:
 # ---------------------------------------------------------------------------------------------------
 # Lifecycle
 
+
 def is_up(timeout: float = 2.0) -> bool:
     """True when something is listening on the proxy port."""
     try:
@@ -223,6 +232,7 @@ def proxy_config_path() -> Path:
 
 def proxy_venv_python() -> Path:
     from merlin.common.paths import repo_root
+
     return repo_root() / "build" / "proxy-venv" / "bin" / "litellm"
 
 
@@ -235,15 +245,26 @@ def start_proxy(log_path: Path, *, wait_s: int = 90) -> dict:
     if is_up():
         return {"proxy": PROXY_BASE, "started_by_us": False, "config": str(proxy_config_path())}
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [str(proxy_venv_python()), "--config", str(proxy_config_path()),
-           "--port", str(PROXY_PORT), "--host", PROXY_HOST]
+    cmd = [
+        str(proxy_venv_python()),
+        "--config",
+        str(proxy_config_path()),
+        "--port",
+        str(PROXY_PORT),
+        "--host",
+        PROXY_HOST,
+    ]
     with open(log_path, "ab") as lf:
         subprocess.Popen(cmd, stdout=lf, stderr=lf, start_new_session=True)
     deadline = time.time() + wait_s
     while time.time() < deadline:
         if is_up():
-            return {"proxy": PROXY_BASE, "started_by_us": True, "config": str(proxy_config_path()),
-                    "log": str(log_path)}
+            return {
+                "proxy": PROXY_BASE,
+                "started_by_us": True,
+                "config": str(proxy_config_path()),
+                "log": str(log_path),
+            }
         time.sleep(2)
     raise RuntimeError(f"litellm proxy did not come up within {wait_s}s; see {log_path}")
 
@@ -314,8 +335,7 @@ def claude_env(model: str, *, force: bool | None = None) -> dict:
     }
 
 
-def claude_model_name(model: str, *, force: bool | None = None,
-                      provider: str = "bedrock") -> str:
+def claude_model_name(model: str, *, force: bool | None = None, provider: str = "bedrock") -> str:
     """The name to hand the claude CLI's ``--model``, for this model and PROVIDER.
 
     ``model_tiers.MODELS`` maps an alias to a BEDROCK inference profile, which is the right answer only
@@ -335,7 +355,7 @@ def claude_model_name(model: str, *, force: bool | None = None,
     if bridged:
         return bridged
     if str(provider) == "subscription":
-        return model                       # the CLI resolves its own aliases; do not Bedrock-ise them
+        return model  # the CLI resolves its own aliases; do not Bedrock-ise them
     return _MT.resolve(model)
 
 
@@ -361,7 +381,12 @@ def record(model: str, harness: str) -> dict:
         "context_window": context_window(model),
         "max_output_tokens": max_output_tokens(model),
         # Stated, not inferred: these are the two known asymmetries vs a native run.
-        "caveats": ([] if not name else
-                    ["no prompt caching through the proxy (native codex served 98% of input from cache)",
-                     "harness system-prompt preamble differs per harness (~12K tokens for codex-cli)"]),
+        "caveats": (
+            []
+            if not name
+            else [
+                "no prompt caching through the proxy (native codex served 98% of input from cache)",
+                "harness system-prompt preamble differs per harness (~12K tokens for codex-cli)",
+            ]
+        ),
     }

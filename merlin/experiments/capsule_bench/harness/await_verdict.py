@@ -26,6 +26,7 @@ new grade landed), ``timeout`` (none did, in the time allowed), or ``absent`` (n
 yet and none appeared). A timeout is not an error: the grade interval may simply be longer than the
 wait, and the exit status says which so a shell can branch on it without parsing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -69,25 +70,41 @@ def _summary(path: Path) -> dict:
     for key in ("n_passed", "n_capsules", "all_pass", "integrity_status", "highest_tier"):
         if key in doc:
             out[key] = doc[key]
-    failing = [name for name, status in (doc.get("per_capsule") or {}).items()
-               if isinstance(status, str) and status != "pass"] \
-        if isinstance(doc.get("per_capsule"), dict) else \
-        [row.get("capsule") for row in (doc.get("per_capsule") or [])
-         if isinstance(row, dict) and row.get("status") != "pass"]
+    failing = (
+        [
+            name
+            for name, status in (doc.get("per_capsule") or {}).items()
+            if isinstance(status, str) and status != "pass"
+        ]
+        if isinstance(doc.get("per_capsule"), dict)
+        else [
+            row.get("capsule")
+            for row in (doc.get("per_capsule") or [])
+            if isinstance(row, dict) and row.get("status") != "pass"
+        ]
+    )
     out["failing"] = sorted(n for n in failing if n)
     return out
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--verdict", default="qa/verdict.json",
-                    help="the harness verdict to wait on (default: qa/verdict.json)")
-    ap.add_argument("--timeout", type=int, default=_DEFAULT_TIMEOUT_S,
-                    help=f"seconds to wait before giving up and saying so (default {_DEFAULT_TIMEOUT_S})")
-    ap.add_argument("--since-ns", type=int, default=0,
-                    help="wait for a grade strictly newer than this st_mtime_ns; 0 (default) means "
-                         "'newer than whatever is there right now'")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument(
+        "--verdict", default="qa/verdict.json", help="the harness verdict to wait on (default: qa/verdict.json)"
+    )
+    ap.add_argument(
+        "--timeout",
+        type=int,
+        default=_DEFAULT_TIMEOUT_S,
+        help=f"seconds to wait before giving up and saying so (default {_DEFAULT_TIMEOUT_S})",
+    )
+    ap.add_argument(
+        "--since-ns",
+        type=int,
+        default=0,
+        help="wait for a grade strictly newer than this st_mtime_ns; 0 (default) means "
+        "'newer than whatever is there right now'",
+    )
     a = ap.parse_args(argv)
 
     path = Path(a.verdict)
@@ -98,21 +115,34 @@ def main(argv=None) -> int:
     while True:
         now = _stamp(path)
         if now is not None and now > baseline:
-            out = {"waited": "graded", "verdict": str(path), "mtime_ns": now,
-                   "waited_s": round(a.timeout - max(0.0, deadline - time.monotonic()), 1)}
+            out = {
+                "waited": "graded",
+                "verdict": str(path),
+                "mtime_ns": now,
+                "waited_s": round(a.timeout - max(0.0, deadline - time.monotonic()), 1),
+            }
             out.update(_summary(path))
             print(json.dumps(out, indent=2))
             return 0
         if time.monotonic() >= deadline:
             kind = "timeout" if now is not None else "absent"
-            print(json.dumps({
-                "waited": kind, "verdict": str(path), "mtime_ns": now,
-                "waited_s": a.timeout,
-                "note": ("no new grade landed within the wait; the grade interval may be longer than "
-                         "--timeout, so this is not necessarily a fault. Keep working and wait again."
-                         if kind == "timeout" else
-                         "no verdict file exists yet -- the first grade has not completed."),
-            }, indent=2))
+            print(
+                json.dumps(
+                    {
+                        "waited": kind,
+                        "verdict": str(path),
+                        "mtime_ns": now,
+                        "waited_s": a.timeout,
+                        "note": (
+                            "no new grade landed within the wait; the grade interval may be longer than "
+                            "--timeout, so this is not necessarily a fault. Keep working and wait again."
+                            if kind == "timeout"
+                            else "no verdict file exists yet -- the first grade has not completed."
+                        ),
+                    },
+                    indent=2,
+                )
+            )
             return 2
         time.sleep(min(_POLL_S, max(0.0, deadline - time.monotonic())))
 

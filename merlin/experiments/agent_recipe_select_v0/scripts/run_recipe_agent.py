@@ -29,6 +29,7 @@ A DUPLICATE RECIPE STILL COSTS TOKENS. Re-proposing an evaluated point is served
 cache and charged no simulator time, but the round's tokens are counted anyway -- that is the real cost
 of a search that revisits, and hiding it would flatter this arm.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -40,11 +41,11 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import _track as T                                                    # noqa: E402
-import agent_compile as AC                                            # noqa: E402
+import _track as T  # noqa: E402
+import agent_compile as AC  # noqa: E402
 
-from merlin.common.artifacts import start_run, finish_run             # noqa: E402
-from merlin.targetgen import experiment_tokens as ET                  # noqa: E402
+from merlin.common.artifacts import finish_run, start_run  # noqa: E402
+from merlin.targetgen import experiment_tokens as ET  # noqa: E402
 
 DRIVER = "codex"
 BILLING = "subscription_notional"
@@ -53,14 +54,16 @@ BILLING = "subscription_notional"
 def _utc() -> str:
     """UTC stamp in the repo's sortable form."""
     from datetime import datetime, timezone
+
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def _sims_running() -> int | None:
     """How many target simulators are executing right now, or None if it cannot be determined."""
     try:
-        out = subprocess.run(["pgrep", "-fc", "emu_gemmini|simulator-chipyard"],
-                             capture_output=True, text=True, timeout=10)
+        out = subprocess.run(
+            ["pgrep", "-fc", "emu_gemmini|simulator-chipyard"], capture_output=True, text=True, timeout=10
+        )
         return int((out.stdout or "0").strip() or 0)
     except Exception:
         return None
@@ -71,6 +74,7 @@ def _loadavg() -> float | None:
         return float(Path("/proc/loadavg").read_text().split()[0])
     except Exception:
         return None
+
 
 TASK = """You are choosing compiler optimization settings for a frozen Gemmini accelerator backend.
 
@@ -105,8 +109,7 @@ jointly illegal, and the build will tell you why.
 No prose, no markdown fence, no explanation. Just the JSON object."""
 
 
-def ask_codex(prompt: str, ws: Path, model: str, effort: str,
-              timeout: int) -> tuple[str, Path, float, int]:
+def ask_codex(prompt: str, ws: Path, model: str, effort: str, timeout: int) -> tuple[str, Path, float, int]:
     """One codex turn. Returns (reply_text, transcript_path, wall_seconds, returncode)."""
     ws.mkdir(parents=True, exist_ok=True)
     transcript = ws / "turn.jsonl"
@@ -120,9 +123,20 @@ def ask_codex(prompt: str, ws: Path, model: str, effort: str,
         dst = ws / "codex_home" / "auth.json"
         if not dst.exists():
             dst.write_bytes(real_auth.read_bytes())
-    argv = ["codex", "exec", "--json", "--skip-git-repo-check",
-            "-c", "approval_policy=never", "-c", f"model_reasoning_effort={effort}",
-            "--sandbox", "read-only", "--cd", str(ws)]
+    argv = [
+        "codex",
+        "exec",
+        "--json",
+        "--skip-git-repo-check",
+        "-c",
+        "approval_policy=never",
+        "-c",
+        f"model_reasoning_effort={effort}",
+        "--sandbox",
+        "read-only",
+        "--cd",
+        str(ws),
+    ]
     t0 = time.time()
     r = subprocess.run(argv, input=prompt, capture_output=True, text=True, env=env, timeout=timeout)
     wall = time.time() - t0
@@ -154,9 +168,9 @@ def parse_recipe(reply: str) -> tuple[dict | None, str]:
     if lo == -1 or hi <= lo:
         return None, f"no JSON object in the reply: {reply[:160]!r}"
     try:
-        d = json.loads(s[lo:hi + 1])
+        d = json.loads(s[lo : hi + 1])
     except json.JSONDecodeError as exc:
-        return None, f"reply is not valid JSON ({exc}): {s[lo:hi + 1][:160]!r}"
+        return None, f"reply is not valid JSON ({exc}): {s[lo : hi + 1][:160]!r}"
     if not isinstance(d, dict):
         return None, "the JSON was not an object"
     return {k: str(v) for k, v in d.items()}, ""
@@ -190,10 +204,21 @@ def main(argv: list[str] | None = None) -> int:
     R = AC._recipe_mod()
     default = dict(R.DEFAULTS)
 
-    h = start_run(suite=T.SUITE, method=args.method, target=T.TARGET, seed=0,
-                  extra={"workload": str(mlir), "driver": DRIVER, "model": args.model,
-                         "billing_mode": BILLING, "budget": args.budget,
-                         "engine": args.engine, "llm_in_loop": True})
+    h = start_run(
+        suite=T.SUITE,
+        method=args.method,
+        target=T.TARGET,
+        seed=0,
+        extra={
+            "workload": str(mlir),
+            "driver": DRIVER,
+            "model": args.model,
+            "billing_mode": BILLING,
+            "budget": args.budget,
+            "engine": args.engine,
+            "llm_in_loop": True,
+        },
+    )
     ws_root = h.run_dir / "turns"
 
     # Candidate 0 is ALWAYS the frozen default, evaluated by the harness and not by the agent, so
@@ -220,8 +245,7 @@ def main(argv: list[str] | None = None) -> int:
                 out.append(f"  {json.dumps(r['recipe'])} -> no result: {r.get('failure')}")
             else:
                 tag = "" if not r.get("duplicate") else " (already tried — no new information)"
-                out.append(f"  {json.dumps(r['recipe'])} -> {r['cycles']} cycles, "
-                           f"correct={r['correct']}{tag}")
+                out.append(f"  {json.dumps(r['recipe'])} -> {r['cycles']} cycles, correct={r['correct']}{tag}")
         return "\n".join(out)
 
     for i in range(args.budget):
@@ -232,44 +256,73 @@ def main(argv: list[str] | None = None) -> int:
             # the block extents INTERACT: the accumulator bounds the PRODUCT of the M and N blocks, so
             # a value flagged here can still be refused in combination. Calling it `legal` would tell
             # the model something the compiler does not promise.
-            choices=json.dumps({d: [{"value": e["value"], "means": e["means"],
-                                     "legal_with_others_default": e["legal_with_others_default"],
-                                     "n_blocks": e.get("n_blocks")}
-                                    for e in v] for d, v in choices["dimensions"].items()}, indent=1),
-            default=json.dumps(default), baseline=baseline,
-            n_tried=len(history), budget=args.budget, history=render_history())
+            choices=json.dumps(
+                {
+                    d: [
+                        {
+                            "value": e["value"],
+                            "means": e["means"],
+                            "legal_with_others_default": e["legal_with_others_default"],
+                            "n_blocks": e.get("n_blocks"),
+                        }
+                        for e in v
+                    ]
+                    for d, v in choices["dimensions"].items()
+                },
+                indent=1,
+            ),
+            default=json.dumps(default),
+            baseline=baseline,
+            n_tried=len(history),
+            budget=args.budget,
+            history=render_history(),
+        )
         ws = ws_root / f"turn_{i:02d}"
         t_turn0 = _utc()
-        reply, transcript, agent_s, rc = ask_codex(prompt, ws, args.model, args.effort,
-                                                   args.turn_timeout)
-        acct = ET.parse_agent_transcript(transcript, driver=DRIVER, model=args.model,
-                                         billing_mode=BILLING) if transcript.exists() \
+        reply, transcript, agent_s, rc = ask_codex(prompt, ws, args.model, args.effort, args.turn_timeout)
+        acct = (
+            ET.parse_agent_transcript(transcript, driver=DRIVER, model=args.model, billing_mode=BILLING)
+            if transcript.exists()
             else {"available": False}
+        )
         cum_tokens += int(acct.get("tokens_total") or 0)
 
         recipe, why = parse_recipe(reply)
-        rec: dict = {"candidate": i, "recipe": recipe, "agent_seconds": round(agent_s, 2),
-                     "codex_rc": rc, "accounting": acct, "cumulative_tokens": cum_tokens,
-                     "prompt_chars": len(prompt), "reply_chars": len(reply),
-                     # Harness-side timestamps: no codex event carries one, so this is the only
-                     # source of wall-clock ordering.
-                     "turn_started_utc": t_turn0, "turn_ended_utc": _utc(),
-                     "transcript": str(transcript),
-                     # The raw reply, so a malformed round can be audited rather than guessed at.
-                     "reply_text": reply,
-                     # Load AT THE MOMENT of measurement: cycles are concurrency-invariant, wall
-                     # times are not, so a wall number is only interpretable beside this.
-                     "sims_running_observed": _sims_running(),
-                     "loadavg_1m": _loadavg()}
+        rec: dict = {
+            "candidate": i,
+            "recipe": recipe,
+            "agent_seconds": round(agent_s, 2),
+            "codex_rc": rc,
+            "accounting": acct,
+            "cumulative_tokens": cum_tokens,
+            "prompt_chars": len(prompt),
+            "reply_chars": len(reply),
+            # Harness-side timestamps: no codex event carries one, so this is the only
+            # source of wall-clock ordering.
+            "turn_started_utc": t_turn0,
+            "turn_ended_utc": _utc(),
+            "transcript": str(transcript),
+            # The raw reply, so a malformed round can be audited rather than guessed at.
+            "reply_text": reply,
+            # Load AT THE MOMENT of measurement: cycles are concurrency-invariant, wall
+            # times are not, so a wall number is only interpretable beside this.
+            "sims_running_observed": _sims_running(),
+            "loadavg_1m": _loadavg(),
+        }
         if recipe is None:
-            rec.update({"legal": False, "failure": f"malformed_reply: {why}", "cycles": None,
-                        "correct": False})
+            rec.update({"legal": False, "failure": f"malformed_reply: {why}", "cycles": None, "correct": False})
         else:
             dup = next((r for r in history if r.get("recipe") == recipe), None)
             built = AC.v_build(mlir, json.dumps(recipe), dump=False)
             if not built.get("built"):
-                rec.update({"legal": False, "failure": built.get("reason") or built.get("failure"),
-                            "cycles": None, "correct": False})
+                rec.update(
+                    {
+                        "legal": False,
+                        "failure": built.get("reason") or built.get("failure"),
+                        "cycles": None,
+                        "correct": False,
+                    }
+                )
             else:
                 rec["instr_counts"] = built.get("instr_counts")
                 rec["n_instructions"] = built.get("n_instructions")
@@ -282,12 +335,18 @@ def main(argv: list[str] | None = None) -> int:
                 rec["fits_without_cutting"] = built.get("fits_without_cutting")
                 t0 = time.time()
                 ev = AC.v_evaluate(built["candidate_id"], args.engine, args.eval_timeout)
-                rec.update({"legal": True, "cycles": ev.get("cycles"),
-                            "correct": ev.get("correct"), "failure": ev.get("failure"),
-                            "eval_seconds": round(time.time() - t0, 2),
-                            "served_from_cache": ev.get("served_from_cache"),
-                            "duplicate": dup is not None,
-                            "candidate_id": built["candidate_id"]})
+                rec.update(
+                    {
+                        "legal": True,
+                        "cycles": ev.get("cycles"),
+                        "correct": ev.get("correct"),
+                        "failure": ev.get("failure"),
+                        "eval_seconds": round(time.time() - t0, 2),
+                        "served_from_cache": ev.get("served_from_cache"),
+                        "duplicate": dup is not None,
+                        "candidate_id": built["candidate_id"],
+                    }
+                )
                 if isinstance(ev.get("cycles"), int) and ev.get("correct"):
                     if best is None or ev["cycles"] < best:
                         best = ev["cycles"]
@@ -302,71 +361,98 @@ def main(argv: list[str] | None = None) -> int:
         rec["cumulative_eval_seconds"] = round(cum_eval_s, 2)
         rec["cumulative_wall_seconds"] = round(cum_agent_s + cum_eval_s, 2)
         rec["cumulative_notional_usd"] = round(cum_notional, 6)
-        rec["cumulative_billed_usd"] = None    # a seat is never billed per token, by construction
+        rec["cumulative_billed_usd"] = None  # a seat is never billed per token, by construction
         history.append(rec)
-        print(f"[{i:02d}] {json.dumps(recipe) if recipe else 'MALFORMED':<86} "
-              f"cycles={rec.get('cycles')} best={best} "
-              f"tok={acct.get('tokens_total')} cum={cum_tokens}", flush=True)
+        print(
+            f"[{i:02d}] {json.dumps(recipe) if recipe else 'MALFORMED':<86} "
+            f"cycles={rec.get('cycles')} best={best} "
+            f"tok={acct.get('tokens_total')} cum={cum_tokens}",
+            flush=True,
+        )
 
-    tot = {k: sum(int(r["accounting"].get(k) or 0) for r in history)
-           for k in ("tokens_input", "tokens_cached", "tokens_cache_write", "tokens_output",
-                     "tokens_reasoning", "tokens_total")}
-    tot["notional_usd"] = round(sum(float(r["accounting"].get("subscription_notional_usd") or 0.0)
-                                    for r in history), 4)
-    tot["billed_usd"] = None            # a seat is not billed per token, by construction
+    tot = {
+        k: sum(int(r["accounting"].get(k) or 0) for r in history)
+        for k in (
+            "tokens_input",
+            "tokens_cached",
+            "tokens_cache_write",
+            "tokens_output",
+            "tokens_reasoning",
+            "tokens_total",
+        )
+    }
+    tot["notional_usd"] = round(sum(float(r["accounting"].get("subscription_notional_usd") or 0.0) for r in history), 4)
+    tot["billed_usd"] = None  # a seat is not billed per token, by construction
     tot["agent_seconds"] = round(sum(r["agent_seconds"] for r in history), 1)
     tot["eval_seconds"] = round(sum(r.get("eval_seconds") or 0 for r in history), 1)
     n_invalid = sum(1 for r in history if not r.get("legal"))
     n_dup = sum(1 for r in history if r.get("duplicate"))
 
-    summary = {"workload": str(mlir),
-               "shape": {k: insp[k] for k in ("M", "N", "K", "tiles", "macs")},
-               "baseline_recipe": default,
-               "space_size": choices.get("n_total"), "space_legal": choices.get("n_legal"),
-               "budget": args.budget, "effort": args.effort,
-               "gsim_emu": str(T.GSIM_EMU), "gsim_sha256": T.GSIM_SHA,
-               "codex_version": _codex_version(),
-               "driver": DRIVER, "model": args.model,
-               "billing_mode": BILLING, "engine": args.engine,
-               "baseline_cycles": baseline, "best_cycles": best,
-               "speedup_vs_default": round(baseline / best, 4) if (best and baseline) else None,
-               "candidates": len(history), "invalid_candidates": n_invalid,
-               "duplicate_candidates": n_dup, "totals": tot,
-               # Same shape the AutoComp arm reports, keyed by the model@effort that answered, so a
-               # cross-arm token comparison is a lookup rather than a reconciliation. This arm runs
-               # ONE tier by construction -- the agent only ever selects -- and saying so explicitly
-               # is the point: the arms differ in how many tiers they need, not only in how many
-               # tokens they spend.
-               "by_tier": {f"{args.model}@{args.effort}": {
-                   "calls": len(history),
-                   "tiers": ["select"],
-                   "tokens_input_fresh": tot["tokens_input"],
-                   "tokens_output": tot["tokens_output"],
-                   "tokens_cache_read": tot["tokens_cached"],
-                   "tokens_cache_write": tot["tokens_cache_write"],
-                   "tokens_reasoning": tot["tokens_reasoning"],
-                   "tokens_total": tot["tokens_total"],
-                   "seconds": round(sum(float(r.get("agent_seconds") or 0) for r in history), 1),
-               }},
-               "token_bucket_note": (
-                   "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write "
-                   "buckets, so fresh input is recorded by SUBTRACTION; adding them overstated a "
-                   "measured round by 85% once. Note also that ~20k tokens per turn is FIXED codex "
-                   "session overhead (a fresh session per candidate), so the cache-read bucket "
-                   "measures the loop design as much as the prompt."),
-               "engine_note": T.ENGINE_NOTE, "history": history}
+    summary = {
+        "workload": str(mlir),
+        "shape": {k: insp[k] for k in ("M", "N", "K", "tiles", "macs")},
+        "baseline_recipe": default,
+        "space_size": choices.get("n_total"),
+        "space_legal": choices.get("n_legal"),
+        "budget": args.budget,
+        "effort": args.effort,
+        "gsim_emu": str(T.GSIM_EMU),
+        "gsim_sha256": T.GSIM_SHA,
+        "codex_version": _codex_version(),
+        "driver": DRIVER,
+        "model": args.model,
+        "billing_mode": BILLING,
+        "engine": args.engine,
+        "baseline_cycles": baseline,
+        "best_cycles": best,
+        "speedup_vs_default": round(baseline / best, 4) if (best and baseline) else None,
+        "candidates": len(history),
+        "invalid_candidates": n_invalid,
+        "duplicate_candidates": n_dup,
+        "totals": tot,
+        # Same shape the AutoComp arm reports, keyed by the model@effort that answered, so a
+        # cross-arm token comparison is a lookup rather than a reconciliation. This arm runs
+        # ONE tier by construction -- the agent only ever selects -- and saying so explicitly
+        # is the point: the arms differ in how many tiers they need, not only in how many
+        # tokens they spend.
+        "by_tier": {
+            f"{args.model}@{args.effort}": {
+                "calls": len(history),
+                "tiers": ["select"],
+                "tokens_input_fresh": tot["tokens_input"],
+                "tokens_output": tot["tokens_output"],
+                "tokens_cache_read": tot["tokens_cached"],
+                "tokens_cache_write": tot["tokens_cache_write"],
+                "tokens_reasoning": tot["tokens_reasoning"],
+                "tokens_total": tot["tokens_total"],
+                "seconds": round(sum(float(r.get("agent_seconds") or 0) for r in history), 1),
+            }
+        },
+        "token_bucket_note": (
+            "`input_tokens` from this CLI ALREADY CONTAINS the cached and cache-write "
+            "buckets, so fresh input is recorded by SUBTRACTION; adding them overstated a "
+            "measured round by 85% once. Note also that ~20k tokens per turn is FIXED codex "
+            "session overhead (a fresh session per candidate), so the cache-read bucket "
+            "measures the loop design as much as the prompt."
+        ),
+        "engine_note": T.ENGINE_NOTE,
+        "history": history,
+    }
     (h.run_dir / "agent_summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
 
-    print(f"\nbaseline {baseline} -> best {best} "
-          f"({summary['speedup_vs_default']}x) in {len(history)} candidates "
-          f"({n_invalid} invalid, {n_dup} duplicate)")
-    print(f"tokens: {tot['tokens_total']} total = {tot['tokens_input']} fresh in + "
-          f"{tot['tokens_output']} out + {tot['tokens_cached']} cache-read + "
-          f"{tot['tokens_cache_write']} cache-write "
-          f"(reasoning {tot['tokens_reasoning']}), model {args.model}@{args.effort}, "
-          f"notional ${tot['notional_usd']} (billed: none — seat)")
-    finish_run(h, "ok", summary={"best_cycles": best, "tokens_total": tot["tokens_total"],
-                                 "candidates": len(history)})
+    print(
+        f"\nbaseline {baseline} -> best {best} "
+        f"({summary['speedup_vs_default']}x) in {len(history)} candidates "
+        f"({n_invalid} invalid, {n_dup} duplicate)"
+    )
+    print(
+        f"tokens: {tot['tokens_total']} total = {tot['tokens_input']} fresh in + "
+        f"{tot['tokens_output']} out + {tot['tokens_cached']} cache-read + "
+        f"{tot['tokens_cache_write']} cache-write "
+        f"(reasoning {tot['tokens_reasoning']}), model {args.model}@{args.effort}, "
+        f"notional ${tot['notional_usd']} (billed: none — seat)"
+    )
+    finish_run(h, "ok", summary={"best_cycles": best, "tokens_total": tot["tokens_total"], "candidates": len(history)})
     print(f"run: {h.run_dir}")
     return 0
 
