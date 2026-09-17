@@ -18,21 +18,14 @@ SCRIPTS = ROOT / "build_tools" / "scripts"
 MAP = ROOT / "docs" / "reference" / "repo_map.md"
 
 
-def test_the_committed_map_is_current():
-    r = subprocess.run(
-        [sys.executable, str(SCRIPTS / "gen_repo_map.py"), "--check"], capture_output=True, text=True, cwd=ROOT
-    )
-    assert r.returncode == 0, r.stderr + r.stdout
-
-
-def test_it_counts_what_git_actually_tracks():
+def test_the_generator_counts_what_git_tracks():
     """The totals line is the claim; an off-by-a-tree map would be worse than no map.
 
-    Counts of ten or more are rounded to two significant figures ON PURPOSE. Exact ones went
-    stale on every commit that adds a file -- and `git commit --only` runs the hook against a
-    temporary index holding just the committed paths, so an INDEX-based count answered
-    differently inside the hook than outside it whenever another session had something
-    staged. The map is read from HEAD, which is the same revision in both places.
+    Checked against a fresh render rather than the committed file. The committed map is a snapshot and
+    is deliberately not required to be current: gating it failed the NEXT unrelated commit whenever
+    anyone added a file, and cost other sessions a regenerate commit each.
+
+    Counts of ten or more are rounded to two significant figures so one file cannot move a bucket.
     """
     import sys as _sys
 
@@ -42,10 +35,8 @@ def test_it_counts_what_git_actually_tracks():
     tracked = subprocess.run(
         ["git", "ls-tree", "-r", "HEAD", "--name-only"], cwd=ROOT, capture_output=True, text=True, check=True
     ).stdout.splitlines()
-    body = MAP.read_text(encoding="utf-8")
-    assert f"**{R._approx(len(tracked))} tracked files**" in body
+    assert f"**{R._approx(len(tracked))} tracked files**" in R.render()
     assert R._approx(7) == "7" and R._approx(6814) == "~6.8k" and R._approx(293) == "~290"
-    # A single added file must never move a bucket -- that is the whole point.
     assert R._approx(17) == R._approx(18) and R._approx(293) == R._approx(294)
 
 

@@ -5,7 +5,6 @@ Runs the doc generators + linters in --check mode (no writes) and reports any st
   - gen_cli_docs.py       (docs/reference/cli.md vs pyproject scripts)
   - gen_package_docs.py   (docs/reference/module_index.md + package AGENT.md)
   - gen_schema_docs.py    (docs/reference/schemas.md vs merlin/schemas/)
-  - gen_repo_map.py       (docs/reference/repo_map.md vs the tracked tree)
   - gen_docs_index.py     (docs/README.md hub vs front-matter)
   - check_docs_freshness.py (front-matter schema validity)
   - check_doc_paths.py    (no retired paths in docs/ + AGENT.md)
@@ -30,7 +29,6 @@ CHECKS = [
     ("cli docs", "gen_cli_docs.py"),
     ("package docs", "gen_package_docs.py"),
     ("schema docs", "gen_schema_docs.py"),
-    ("repo map", "gen_repo_map.py"),
     ("docs index", "gen_docs_index.py"),
     ("docs freshness", "check_docs_freshness.py"),
     ("doc paths", "check_doc_paths.py"),
