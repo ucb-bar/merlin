@@ -102,13 +102,19 @@ jobs:
         run: uv run pytest merlin/tests/infra merlin/tests/ir merlin/tests/kernels merlin/tests/targetgen -q -m "not slow and not integration"
 
   ruff:
-    # Advisory until the codebase is ruff-clean; does not block merges yet.
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: astral-sh/setup-uv@v5
-      - name: ruff lint + format check
+      # BLOCKING, and incremental: Python this change adds or modifies must be formatted. ~410 files
+      # were left alone because other work had them checked out; they converge as they are edited.
+      - name: format gate (changed Python must be ruff-formatted)
+        run: python build_tools/scripts/check_format.py --base "${{ github.event.pull_request.base.sha || github.event.before }}"
+      # Advisory until the untouched remainder reaches zero; then fold into the gate above.
+      - name: full-tree ruff lint + format report (advisory)
+        continue-on-error: true
         run: |
           uvx ruff@0.16.8 check .
           uvx ruff@0.16.8 format --check .

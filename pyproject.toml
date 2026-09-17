@@ -193,6 +193,13 @@ exclude = [
     "build_tools/scripts/check_no_target_name.py",
     "build_tools/scripts/gen_saturn_opu_rvv_contract.py",
     "merlin/python/merlin/llvmlower/requant_fuse.py",
+    # Its markers sit inside fixture STRINGS; pinning them would change what the test feeds the gate.
+    "merlin/tests/infra/test_overfit_gate_regression.py",
+    # GSIM engine build scripts a sealed certificate was built with; kept byte-identical to that build.
+    "merlin/contract/external/gsim/model_build/**",
+    # Markdown carries its own gates (docs freshness, doc paths), and task text an agent reads is a
+    # benchmark input, so a formatter does not get to restyle the code blocks inside it.
+    "**/*.md",
 ]
 
 [tool.uv]

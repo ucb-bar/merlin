@@ -20,6 +20,12 @@ echo "[pre-commit] no-target-name (staged)…"
 
 echo "[pre-commit] no-assumed-constants (staged)…"
 "$PY" build_tools/scripts/check_no_assumed_constants.py --staged
+
+# Whatever you touch, you format: the staged bytes of every changed .py must be ruff-formatted.
+# The marker gates above judge the same staged bytes, so a reformat that moves a `# target-ok:`
+# off its line fails this very commit rather than the next one.
+echo "[pre-commit] ruff format (staged)…"
+"$PY" build_tools/scripts/check_format.py --staged
 # Whole-tree, not --staged: the register's claim is about the tree as a whole, and a commit that couples a
 # module to a target without declaring it must fail even when the coupling arrives from another file.
 echo "[pre-commit] overfit register (tree)…"
