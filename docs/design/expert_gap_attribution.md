@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [beam_search]
-code_refs: [merlin/python/merlin/rvvgen/pmu.py, merlin/python/merlin/rvvgen/k1.py, merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/kernels/ceiling_drivers/k1_harness/util.h, build_tools/scripts/k1_microkernel_ipc_sweep.py]
+code_refs: [merlin/python/merlin/mining/pmu.py, merlin/python/merlin/mining/k1.py, merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/kernels/ceiling_drivers/k1_harness/util.h, build_tools/scripts/k1_microkernel_ipc_sweep.py]
 ---
 
 # Attributing the expert-kernel gap

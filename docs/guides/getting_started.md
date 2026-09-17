@@ -33,7 +33,7 @@ a fabricated pass). So set up only the pieces for the workflow you actually run;
 ## 1. Base install — needed for every workflow
 
 The project uses [uv](https://docs.astral.sh/uv/) (the in-repo `.venv` is Python 3.13; the package
-supports 3.10+). A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
+requires 3.12+, per `requires-python` in `pyproject.toml`). A plain clone is enough — **no `--recursive`**; the multi-GB `third_party/`
 submodules are opt-in per task (§5).
 
 ```bash
@@ -155,11 +155,13 @@ mlc` is a normal import. `MERLIN_MLC_DIR` still locates mlc's **non-Python asset
 mlc-derived RTL facts report honest-unavailable rather than crashing.
 
 **LLVM / MLIR 23 + clang-23.** The whole-model path needs a standalone LLVM/MLIR-23 install
-(`mlir-translate`) and `clang-23`. Point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` and
-`MERLIN_CLANG` at them, or set `MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23. In-repo
-there is a prebuilt `third_party/llvm-install/` and the `third_party/llvm-project` submodule (the LLVM
-monorepo — the dominant clone cost, init only if you build it yourself:
-`git submodule update --init --depth 1 third_party/llvm-project`).
+(`mlir-translate`) and `clang-23`. The repo builds its own at `third_party/llvm-install/`, which
+`llvmlower.toolchain` defaults to — but that path is **gitignored, so a fresh clone does not have it**;
+build it with [Building the pinned LLVM/MLIR toolchain](llvm_toolchain.md) (`third_party/llvm-project` is
+the submodule it builds from, and the dominant clone cost:
+`git submodule update --init --depth 1 third_party/llvm-project`). To use an LLVM 23 you already have
+instead, point `MERLIN_MLIR_INSTALL` / `MERLIN_MLIR_TRANSLATE` / `MERLIN_CLANG` at it (or
+`MERLIN_IREE_BIN` at the IREE-Merlin build that ships clang-23).
 
 **spike + RISC-V toolchain (chipyard).** The rv64gcv RVV oracle and the RISC-V cross toolchain come
 from a [chipyard](https://github.com/ucb-bar/chipyard) checkout (`spike`,
@@ -175,7 +177,7 @@ cannot be provisioned by a `git clone`. Set `MERLIN_K1_HOST=root@<board-ip>` and
 `spike rv64gcv` gives bit-exact RVV correctness (and cycle counts under the simulator); only the
 real-wall-clock speedup claims require the board, and those steps record `not_run` when it is absent.
 Board-SSH note: the campus path filters inbound `:22` to that segment, so the board also listens on
-**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `rvvgen/k1.py`); a
+**2222** and `.env` sets `MERLIN_K1_SSH_PORT=2222` (honored across all ssh/scp by `mining/k1.py`); a
 board that pings but hangs on `:22` is not down — use 2222.
 
 **Gemmini / Saturn / Muon simulators.** Gemmini functional (spike, L2) and RTL-cycle (verilator, L3)

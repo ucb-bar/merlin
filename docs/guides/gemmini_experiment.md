@@ -3,10 +3,10 @@ title: Gemmini target-dialect-generation experiment (case study)
 kind: guide
 status: current
 owner: targetgen
-last_verified: 2026-07-22
+last_verified: 2026-08-30
 related: [getting_started, reproducibility, targetgen, adding_a_target, target_publishing, experiment_abi]
 code_refs:
-  - merlin/experiments/gemmini_capsule_bench_v0
+  - merlin/experiments/capsule_bench/targets/gemmini
   - merlin/experiments/gemmini_cert
   - merlin/experiments/gemmini_perf_bench
   - merlin/python/merlin/targetgen/capsule_runner.py
@@ -67,11 +67,11 @@ first, then `check_repro_env.py` to confirm the Gemmini capabilities (`gemmini_s
 
 ```bash
 # every legit tool works + every answer is masked, per arm. Exit 0 only if all green. No agent, no $.
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm merlin_rtlchecks
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm raw_baseline
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/test_sandbox.py --arm merlin
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm merlin_rtlchecks
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm raw_baseline
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/preflight_sandbox.py --arm merlin
 # static cheat-clean gate: no answer content in any shipped tool/prompt (grep over source)
-.venv/bin/python merlin/experiments/gemmini_capsule_bench_v0/scripts/verify_no_cheat.py
+.venv/bin/python merlin/experiments/capsule_bench/targets/gemmini/scripts/verify_no_cheat.py
 ```
 Both must be green (`🟢 sandbox GO`, `✅ VERIFY_NO_CHEAT: PASS`). The sandbox tmpfs-masks all of
 `/scratch*`, binds back only the legit toolchain + the workspace (bound LAST so no deny-mask clobbers
@@ -88,7 +88,7 @@ context re-read + rate-limit exposure). The rate-limit watchdog (`--max-rate-lim
 sleeps to the window reset and resumes the same round unattended.
 
 ```bash
-cd merlin/experiments/gemmini_capsule_bench_v0/scripts
+cd merlin/experiments/capsule_bench/targets/gemmini/scripts
 .venv/bin/python launch_ab_batch.py --tag <tag> \
   --arms baseline,cpp_merlininfra,merlin,merlin_rtlchecks \
   --mode sequential            # one arm-chain after another; --mode parallel if the 5h bucket has headroom
@@ -103,6 +103,26 @@ verdicts in `qa_history/` + `cost_time_toolcalls.yaml` with the active-vs-rate-l
 For unattended survival across session/usage limits, the QA loop's own watchdog handles the five-hour
 window; for weekly-limit or process-death resilience use `--resume`, or drive through `aet run --resume`.
 
+### Bound the whole-model capstone, or the round grade never ends
+
+`--qa-timeout` (default 900 s) is a **per-step** subprocess cap. A whole-model capsule (`kind: model`,
+e.g. `GX0_interop_rvv_lane`) makes many such calls, so nothing bounds the capsule itself — and once the
+op suite clears its `gate.after_op_pass_fraction`, the round grade runs a cycle-accurate simulation of
+the entire model.
+
+Measured (`merlincirct_defcal1`, 2026-08-29): the agent round finished in 40 min, the capstone was
+scheduled at 18/22 = 0.82 against a 0.8 gate, and then ran **5 h 30 m** — past the round's own 4 h
+timeout — writing nothing into its run directory. The round never graded.
+
+`--model-budget-s` (default: `--qa-timeout`, so the capstone may cost at most what you already
+said one grading step may) is the ceiling on the capsule. Exceeding it stops the grade **and its
+oracle subprocesses** and records `status: budget_exhausted` — in neither the numerator nor the
+denominator, listed by name in the score, and never a verdict on the submission. Pass `0` for no
+ceiling; an operator certification run (`capsule_grade`, no `MERLIN_MODEL_BUDGET_S`) has none by
+default, which is where a capstone is meant to be certified. A run in progress leaves
+`model_grade_started.json` in the capsule's run directory, so a long grade is distinguishable from a
+wedged one.
+
 ## 3. Certify (RTL conformance)
 
 ```bash
@@ -115,15 +135,29 @@ Resumable via `out/runs/gemmini/cert/ledger.jsonl` (skips already-correct cells)
 toolchain through `.env`. RTL facts are extracted by `targetgen/rtl/circt_introspect.py`
 (`firtool --ir-hw` → HW-dialect) and compiled into FileCheck assertions by `rtl_check_compiler.py`.
 
-## 4. Perf-bench (cross-approach profile)
+## 4. Agentic perf-bench (sealed, one claim per campaign)
 
 ```bash
-.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/run_perf_bench.py \
-  --kernels all --approaches golden,baseline,merlin_targetgen,merlin_native   # + agentic_* backends
+# CONFIG.json contains an explicit suite_id, member names, functional run+digest,
+# target descriptor/RTL/profile paths, and exact tuning+functional certificate paths.
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py prepare \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID --config CONFIG.json
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py preflight \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py run \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
+.venv/bin/python merlin/experiments/gemmini_perf_bench/scripts/perf_suite.py status \
+  --root out/artifacts/perf-bench/gemmini/suites/SUITE_ID
 ```
-The `agentic_*` backends resolve the latest submission per arm live from `out/runs/gemmini/capsule-bench/`
-(a not-yet-run arm is an honest skip). golden(C-lib) and IREE-dialect are additional reference approaches.
-Outputs under `out/runs/gemmini/perf-bench/` + `out/artifacts/plots/gemmini/perf-bench/`.
+
+There is no latest-submission lookup and no mixed-claim campaign. Preparation seals the source,
+derives each analyzer/cohort, and records exact functional and engine identities. Preflight verifies
+those bytes and executes every frozen baseline member before any authoring spend. The launcher then
+runs/resumes one campaign per claim; its internal measurement entry point is
+`run_paired_perf_bench.py`, which predeclares and records adjacent/interleaved baseline-candidate
+cells. `run_perf_bench.py` remains a fixed-corpus helper used by the paired runner, not this workflow's
+top-level CLI. Suite state lives below the supplied artifact root; raw campaign cells remain under
+`out/runs/gemmini/perf-bench/`.
 
 ## 5. Publish a certified champion
 
@@ -148,4 +182,7 @@ remote `ucb-bar/rvv-mlir`). **A real GitHub push (drop the `file://`) needs an e
   example, adjudicated at `finalize`).
 - Runs are high-variance — compare distributions (n≥3), never a single run; keep round budgets equal
   across arms for a fair comparison.
+- A capsule that was not measured (`not_graded`, `gated`, `screened_only`, `budget_exhausted`) is in
+  neither the numerator nor the denominator, and is listed by name — counting one as a failure makes
+  `all_pass` unreachable and costs the loop its only early exit.
 - Publishing is verified against a `file://` remote; GitHub push is human-gated.

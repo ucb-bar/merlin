@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [expert_gap_attribution, compiler_plane]
-code_refs: [merlin/python/merlin/kernels/escape_audit.py, merlin/python/merlin/rvvgen/escape_sweep.py, merlin/python/merlin/llvmlower/selfcopy.py, merlin/python/merlin/kernels/cca.py, build_tools/scripts/k1_escape_cost.py]
+code_refs: [merlin/python/merlin/kernels/escape_audit.py, merlin/python/merlin/mining/escape_sweep.py, merlin/python/merlin/llvmlower/selfcopy.py, merlin/python/merlin/kernels/cca.py, build_tools/scripts/k1_escape_cost.py]
 ---
 
 # Runtime escapes: making a whole defect CLASS visible
@@ -55,7 +55,7 @@ not be. When the enclosing spans do not form a containment chain the depth numbe
 
 ## What the sweep found
 
-`rvvgen/escape_sweep.py` fans the audit across {op} x {dtype} x {model} x {baseline, feature}. Over
+`mining/escape_sweep.py` fans the audit across {op} x {dtype} x {model} x {baseline, feature}. Over
 42 cells (7 ops x 2 dtypes, plus 7 whole models, each with and without `erase_self_copy`), all
 readable, no unknowns:
 
@@ -111,7 +111,7 @@ bug. `build_tools/scripts/k1_escape_cost.py` runs it, holding out the largest si
 gated on `VERIFY PASS`.
 
 **Status: the fit has not yet been run on silicon.** Its build path is exercised, but every board
-attempt during this work sat on the host-wide `flock` behind another agent's session. So the escape
+attempt during this work blocked on the host-wide `flock` held by a concurrent job. So the escape
 matrix above is a *structural* result — read from emitted objects and linked ELFs — and carries no
 board timing of its own. In particular the most actionable item, whether `erase_self_copy` buys real
 int8 GEMM time now that we know it removes the int8 escape, is **open**: the emitted-code change is

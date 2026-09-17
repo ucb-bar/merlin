@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [expert_gap_attribution]
-code_refs: [merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/rvvgen/from_strategy.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/python/merlin/kernels/decode/rvv.py, merlin/python/merlin/rvvgen/k1.py, build_tools/scripts/k1_microkernel_ipc_sweep.py]
+code_refs: [merlin/python/merlin/kernels/microkernel.py, merlin/python/merlin/mining/from_strategy.py, merlin/python/merlin/llvmlower/impr_features.py, merlin/python/merlin/kernels/decode/rvv.py, merlin/python/merlin/mining/k1.py, build_tools/scripts/k1_microkernel_ipc_sweep.py]
 ---
 
 # VL-agnostic RVV codegen

@@ -5,7 +5,7 @@ status: current
 owner: core
 last_verified: 2026-07-19
 related: [expert_gap_attribution, runtime_escape_audit]
-code_refs: [merlin/python/merlin/llvmlower/op_profile.py, merlin/runtime/c/merlin_op_prof.c, merlin/python/merlin/rvvgen/k1.py, build_tools/scripts/k1_op_profile.py, merlin/python/merlin/baselines/contract.py]
+code_refs: [merlin/python/merlin/llvmlower/op_profile.py, merlin/runtime/c/merlin_op_prof.c, merlin/python/merlin/mining/k1.py, build_tools/scripts/k1_op_profile.py, merlin/python/merlin/baselines/contract.py]
 ---
 
 # Whole-model per-op profiler: where model time actually goes

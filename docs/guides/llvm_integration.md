@@ -4,11 +4,15 @@ kind: guide
 status: current
 owner: runtime
 last_verified: 2026-07-14
-related: [lowering_pipeline]
+related: [lowering_pipeline, llvm_toolchain]
 code_refs: [merlin/python/merlin/llvmlower]
 ---
 
 # LLVM integration
+
+This page is about **modifying** LLVM for a target. To *build* the LLVM/MLIR 23 install the compiler runs
+on (`third_party/llvm-install`, which no clone ships), see
+[Building the pinned LLVM/MLIR toolchain](llvm_toolchain.md).
 
 LLVM-project modifications are **optional and late-stage**. The MVP requires no LLVM backend
 patches. TargetGen emits an `llvm_extension_plan.yaml` first; real changes come only when a

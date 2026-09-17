@@ -3,18 +3,20 @@ title: TinyLlama int8 on multicore RVV under Zephyr — end to end
 kind: guide
 status: current
 owner: runtime
-last_verified: 2026-07-26
-related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies]
+last_verified: 2026-09-04
+related: [getting_started, rvv_e2e, zephyr, model2mlir, reproducibility, compilation_strategies, vision_workloads_rvv_zephyr]
 code_refs:
   - merlin/python/merlin/compile_cli.py
   - merlin/python/merlin/llvmlower/pipeline.py
   - merlin/python/merlin/runtime/backends/zephyr_model.py
   - merlin/runtime/c/libomp_zephyr.c
   - merlin/runtime/c/omp_static_schedule.h
-  - merlin/python/merlin/rvvgen/k1.py
+  - merlin/python/merlin/mining/k1.py
   - merlin/python/merlin/targetgen/publish.py
   - build_tools/scripts/k1_multicore_scaling.py
   - build_tools/scripts/check_repro_env.py
+  - build_tools/scripts/make_w8a8_golden.py
+  - build_tools/scripts/make_w8a8_independent_golden.py
 ---
 
 # TinyLlama int8 on multicore RVV under Zephyr
@@ -25,6 +27,11 @@ sustained loop for application development.
 
 This guide is the whole path on a fresh machine. It assumes nothing except the base install in
 [Getting started](getting_started.md); every stage states its oracle and what a `not_run` means.
+
+For the same pipeline applied to **conv / FFT / recurrent** models — a spectral vision transformer,
+a speech encoder-decoder, a recurrent control policy and a convolutional codec — see
+[Vision, audio and control workloads on multicore RVV](vision_workloads_rvv_zephyr.md). It also
+covers what a register block claims about a model's extents, and which models fit a 512 MB SoC.
 
 > **The one thing to know up front.** There are four places a number can come from here and they
 > are not interchangeable. **spike** proves correctness and cannot tell you anything about speed —
@@ -77,6 +84,72 @@ W8A8 *does* legitimately diverge from fp32 — cos 0.976 on the full tensor, and
 top-1 does not match fp32. That is quantization, and it is why the gate has a separate `w8a8`
 tier rather than one fp32-tight threshold.
 
+### `golden_w8a8.npy` decides EXECUTION, not arithmetic
+
+Read the table above for what it says: the board matched the **host**. `golden_w8a8.npy` is
+written by `make_w8a8_golden.py`, which computes it with *merlin's own* int8 datapath
+(`dispatch_runtime.run_model(int8_compute=True)`). Both sides of that comparison are the same
+program, so a host run scores `cos 1.0 / rel 0.0` against it no matter what the arithmetic does —
+`rel` of exactly `0.0` over a 250-op transformer is the tell, not a triumph. Measured 2026-09-04:
+re-running `spectformer_int8_full` with the **pre-fix** `passes_quant_int` reproduced that
+bundle's shipped `golden_w8a8.npy` bit-for-bit (maxabs 0.0), while the post-fix code differs by
+0.0755. The reference was a photograph of the runtime frozen at the 2026-08-18 code.
+
+That reference answers "did the device reproduce what the host compiler computes", which is what
+the `0.484` hunt above actually needed. It cannot answer "is our int8 arithmetic right". Each
+golden now records which kind it is in a `golden_w8a8.provenance.json` beside it.
+
+To decide the arithmetic you need a reference from **outside** the compiler:
+
+```bash
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py --list
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py spectformer_int8_full
+# gemma2_2b pins the SMOKE layer count in capture.toml; the `_full` bundle was captured without it
+.venv/bin/python build_tools/scripts/make_w8a8_independent_golden.py gemma2_2b_int8_full \
+    --env M2M_GEMMA_LAYERS= --env M2M_GEMMA_SESSION= --env M2M_SEQ=128
+```
+
+It computes the reference with torchao's `int8_dyn_act_int8_weight` in torch eager, inside the
+model's own capture venv, and **refuses to write unless the activation-quantized instance
+reproduces the bundle's own quantized weights bit-for-bit**. That refusal is the artifact: a
+reference belonging to different weights than the bundle ships manufactures failures (or passes)
+that have nothing to do with the datapath, and is indistinguishable from a real one once written.
+It writes `golden_w8a8.independent.npy` **beside** `golden_w8a8.npy`, never over it — board runs
+grade against the shipped file, and changing a golden underneath a running grade is its own
+failure mode.
+
+The two references disagree by much more than the tier's own bar, so which one you cite decides
+the verdict (host int8 datapath, 2026-09-04, after the i-exp softmax fix `3d74bbe0`):
+
+| bundle | vs `golden_w8a8.npy` (self) | vs `golden_w8a8.independent.npy` | `tier_ok` |
+|---|---|---|---|
+| `small_llama_int8_consistent` | cos 0.9999655, rel 0.0084 | cos 0.9999655, rel 0.0084 *(the shipped file here IS the independent one)* | `fp32_cos_only` |
+| `spectformer_int8_full` | cos 0.9999709, rel 0.0153 | **cos 0.9976, rel 0.175** | none |
+| `gemma2_2b_int8_full` | cos 0.9854, rel 0.544 | **cos 0.9828, rel 0.424** | none |
+
+`spectformer` looks all but converged against its own frozen output and is a long way from the
+independent reference. `gemma2_2b` fails against both, because its shipped golden was frozen in
+August and the datapath has moved since.
+
+**The two sides do not quantize the same ops, and the residual is part policy.** torchao's
+`int8_dyn_act_int8_weight` quantizes `nn.Linear` only; `merlin.llvmlower.quant_passes.apply_quant`
+rewrites every structurally-recognized contraction plus softmax, GELU, SiLU and rsqrt. Measured
+per bundle (torchao-quantized weights vs our pass counts): `spectformer_int8_full` 41 vs 106
+contractions + 8 softmax + 12 GELU + 25 rsqrt; `gemma2_2b_int8_full` 183 vs 236 + 26 + 26 + 105;
+`small_llama_int8_consistent` 15 vs 19 + 2 softmax + 2 SiLU + 5 rsqrt. The extra contractions are
+the attention `QK^T`/`PV` products (and, in SpectFormer, the spectral DFT contractions) that torch
+eager keeps in fp32. So a gap against this reference is **our arithmetic error plus our more
+aggressive quantization policy**, and only a run that isolates the two can say how much is which.
+`small_llama`'s rel 0.0084 clears T1's aggregate bar in spite of that; `spectformer`'s 0.175 does
+not, on a model whose signature op is one of the contractions torch never quantized.
+
+Note also that T1's per-element term (`max_rel < 0.05`) is not satisfiable by any correct
+implementation. Under the gate's own RMS mask the **reference itself** measures, against the fp32
+golden, per-element max-rel 1.149 (`spectformer_int8_full`), 1.277 (`small_llama_int8_consistent`)
+and 79.5 (`gemma2_2b_int8_full`) — that is what W8A8 quantization does to a small logit, not a
+defect. Do not relax the threshold to make a run pass; quote `tiers` / `tier_ok` /
+`per_element_basis` and say which term failed.
+
 ## 0. Prerequisites
 
 Do the base install and `.env` setup in [Getting started](getting_started.md) first, then confirm
@@ -125,6 +198,10 @@ reference](#grade-int8-against-an-int8-reference) above. If a bundle lacks `gold
 .venv/bin/python build_tools/scripts/make_w8a8_golden.py --list        # coverage
 .venv/bin/python build_tools/scripts/make_w8a8_golden.py tiny_llama_int8_full
 ```
+
+That writes the EXECUTION reference. For the independent one — the only reference that can decide
+the arithmetic — see [`golden_w8a8.npy` decides EXECUTION, not
+arithmetic](#golden_w8a8npy-decides-execution-not-arithmetic).
 
 int8 is the only measured-working quantized format today — `fp8`/`int4` are a documented plan, not
 a claim. See [model2MLIR frontend](model2mlir.md).
@@ -419,8 +496,8 @@ There is one physical FPGA, so **every run must go through the job queue**, neve
 `firesim` invocation:
 
 ```bash
-/scratch2/agustin/firesim_queue/bin/firesim-queue status      # daemon must be ALIVE
-/scratch2/agustin/firesim_queue/bin/firesim-queue daemon      # start it if not (leave running)
+$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue status      # daemon must be ALIVE
+$MERLIN_EXT_FIRESIM_QUEUE/bin/firesim-queue daemon      # start it if not (leave running)
 ```
 
 `zephyr_model.run_on_firesim()` already defaults to `queue=True`. It resolves ModelBlaster's
